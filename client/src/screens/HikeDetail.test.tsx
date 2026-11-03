@@ -7,9 +7,13 @@
 // the record already there rather than a second one made.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import 'fake-indexeddb/auto'
+import { set } from 'idb-keyval'
 import { HikeDetail } from './HikeDetail'
+import { conditionsCacheKey } from '../lib/conditionsCache'
+import { suggestedHikeDetailKey } from '../lib/config'
 import type { SuggestedHike } from '../lib/suggestedHikes'
 import { STANDARD_PACE } from '../lib/pace'
 
@@ -61,6 +65,11 @@ function show(over: Partial<SuggestedHike> = {}, props: Record<string, unknown> 
       hike={hike(over)}
       pace={PACE}
       units="imperial"
+      // Offline, so useHikeDetail (#1473) reaches no network and hands back
+      // the fixture's own `detail` untouched. Everything below therefore
+      // still tests THIS screen rather than the fetch under it - the split
+      // moved where the prose comes from, not what the screen does with it.
+      online={false}
       onBack={vi.fn()}
       {...props}
     />,
@@ -82,6 +91,33 @@ describe('the two figures, which are allowed to disagree', () => {
 
     const line = screen.getByText(/measured on the trail lines this phone holds/)
     expect(line).not.toHaveTextContent('says')
+  })
+
+  it('gains the publisher’s length when the prose lands, having printed without it', async () => {
+    // THE ONE THAT CAUGHT IT (#1473). `publishedMiles` is not a SHELF_FIELD,
+    // so after the split it arrives with the prose - and this line was still
+    // reading it off the shelf record, where it now never is. Every fixture
+    // above puts it on `hike.detail` by hand and so passed either way; this
+    // is the only one that puts it where a real phone finds it.
+    await set(conditionsCacheKey(suggestedHikeDetailKey('50')), {
+      document: { id: 'nynjtc_hike_finder:50', publishedMiles: 4.5 },
+      storedAt: new Date().toISOString(),
+    })
+    // No `detail` on the shelf record, which is the post-split shape: the
+    // figures are there, the publisher's own number is not.
+    show({ id: 'nynjtc_hike_finder:50', detail: undefined })
+
+    // Printed before the read comes back - the phone's own half never waits
+    // on the publisher's.
+    expect(
+      screen.getByText(/measured on the trail lines this phone holds/),
+    ).not.toHaveTextContent('says')
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/measured on the trail lines this phone holds/),
+      ).toHaveTextContent('New York-New Jersey Trail Conference says 4.5 mi'),
+    )
   })
 
   it('refuses a time rather than pricing an unmeasured climb as flat ground', () => {
@@ -159,11 +195,22 @@ describe('the publisher’s words', () => {
   it('links back to their page and never to Avenza', () => {
     show({ detail: DETAIL })
 
-    expect(screen.getByRole('link', { name: /Read it on their page/ })).toHaveAttribute(
-      'href',
-      DETAIL!.url,
-    )
+    const link = screen.getByRole('link', { name: /Read it on their page/ })
+    expect(link).toHaveAttribute('href', DETAIL!.url)
+    // Beside the app, as every other external link opens: the installed
+    // web app is the tab, and navigating it away loses the hike.
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noreferrer')
     expect(screen.queryByText(/Avenza/i)).not.toBeInTheDocument()
+  })
+
+  it('renders no source link when the publisher’s URL is not a web page (#1578)', () => {
+    // The URL is the publisher's own export, kept as any non-empty string by
+    // lib/suggestedHikesData.ts; the screen is where the scheme is checked.
+    show({ detail: { ...DETAIL!, url: 'data:text/html,<p>their page</p>' } })
+
+    expect(screen.queryByRole('link', { name: /Read it on their page/ })).toBeNull()
+    expect(screen.getByText(/route and words/)).toBeInTheDocument()
   })
 
   it('says the line on the map is ours, built from their description', () => {
@@ -282,5 +329,116 @@ describe('the publisher’s rating', () => {
     show({ difficulty: null, detail: DETAIL })
 
     expect(screen.queryByText(/Moderate|Easy|Strenuous/)).not.toBeInTheDocument()
+  })
+})
+
+describe('the publisher’s paper map (#1574)', () => {
+  /** NYNJTC as the stewards artifact carries it: the hike finder is one of
+   *  its registry keys, the store grants this screen, and one product lists
+   *  Harriman on two sheets. */
+  const NYNJTC = {
+    provider: 'NYNJTC',
+    name: 'New York-New Jersey Trail Conference',
+    trust: 'authoritative',
+    licence: null,
+    attribution: null,
+    terms: null,
+    termsSource: null,
+    layers: ['NYNJTC Hike Finder export'],
+    keys: ['nynjtc_hike_finder'],
+    support: null,
+    store: {
+      storeUrl: 'https://store.nynjtc.org/collections/maps',
+      storeCta: 'Trail Maps',
+      storeSurfaces: ['sources_screen', 'hike_detail'],
+      paperMaps: [
+        {
+          handle: 'harriman-bear-mountain-trails-map',
+          title: 'Harriman-Bear Mountain Trails Map',
+          url: 'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map?utm_source=ourhike',
+          sheets: ['118', '119'],
+          covers: [],
+          sheetCovers: {
+            '118': ['Southern Harriman State Park'],
+            '119': ['Northern Harriman State Park', 'Bear Mountain State Park'],
+          },
+        },
+      ],
+    },
+  }
+  const IN_HARRIMAN = { ...DETAIL, park: 'Harriman State Park' }
+
+  it('links the park’s sheets to the publisher’s own store product, title verbatim', () => {
+    show({ id: 'nynjtc_hike_finder:1', detail: IN_HARRIMAN }, { stewards: [NYNJTC] })
+
+    const link = screen.getByRole('link', { name: 'Harriman-Bear Mountain Trails Map ›' })
+    expect(link).toHaveAttribute(
+      'href',
+      'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map?utm_source=ourhike',
+    )
+    expect(
+      screen.getByText(
+        'The park is on sheets 118 and 119 of the New York-New Jersey Trail Conference’s',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/takes no cut and never touches that money/),
+    ).toBeInTheDocument()
+  })
+
+  it('prints no map line for a park no sheet names', () => {
+    show({ id: 'nynjtc_hike_finder:1', detail: DETAIL }, { stewards: [NYNJTC] })
+
+    expect(screen.queryByText(/Trails Map ›/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/takes no cut/)).not.toBeInTheDocument()
+  })
+
+  it('prints no map line when the publisher is not a steward this phone holds', () => {
+    show({ id: 'nynjtc_hike_finder:1', detail: IN_HARRIMAN })
+
+    expect(screen.queryByText(/Trails Map ›/)).not.toBeInTheDocument()
+  })
+
+  it('prints no map line where the organization has not granted the hike detail', () => {
+    const elsewhere = {
+      ...NYNJTC,
+      store: { ...NYNJTC.store, storeSurfaces: ['sources_screen'] },
+    }
+    show({ id: 'nynjtc_hike_finder:1', detail: IN_HARRIMAN }, { stewards: [elsewhere] })
+
+    expect(screen.queryByText(/Trails Map ›/)).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Podcast episodes picked for the hike (#1683).
+
+describe('the podcast episodes picked for this hike', () => {
+  const EPISODE = {
+    spotifyId: '0aBcDeFgHiJkLmNoPqRsTu',
+    title: 'The park’s history',
+    show: 'A show',
+    minutes: 48,
+    hikes: ['nynjtc_favorite_hikes:hike-vista-loop-trail'],
+    atMiles: [],
+    pois: [],
+    links: {},
+  }
+
+  it('is the last thing on the screen, below the provenance (the maintainer, 2026-09-26)', () => {
+    const { container } = show({ detail: DETAIL }, { podcastEpisodes: [EPISODE] })
+
+    const body = container.querySelector('.hike-detail__body') as HTMLElement
+    const last = body.lastElementChild as HTMLElement
+    expect(last.querySelector('.hike-detail__rule')?.textContent).toBe(
+      'Listen before you go',
+    )
+    expect(last.textContent).toContain('The park’s history')
+    expect(last.previousElementSibling?.tagName).toBe('FOOTER')
+  })
+
+  it('draws no section for a hike nobody picked an episode for', () => {
+    show({ detail: DETAIL })
+    expect(screen.queryByText('Listen before you go')).not.toBeInTheDocument()
   })
 })

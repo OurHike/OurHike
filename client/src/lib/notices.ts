@@ -248,13 +248,17 @@ export function scopedNotices(
  *  unreadable date to the bottom is the conservative direction: it cannot
  *  claim to be the newest thing an organization has posted. */
 function noticeTime(notice: TrailNotice): number {
+  if (notice.updated_at === null) return 0
   const at = new Date(notice.updated_at).getTime()
   return Number.isNaN(at) ? 0 : at
 }
 
 /** The parsed `updated_at`, or null when the organization's stamp is
- *  unreadable - which renders as no date rather than as today. */
+ *  unreadable or absent (conditions/notices.json carries null where a club
+ *  gives none) - which renders as no date rather than as today, and never as
+ *  1970, which is what `new Date(null)` would have made of it. */
 export function noticeUpdatedAt(notice: TrailNotice): Date | null {
+  if (notice.updated_at === null) return null
   const at = new Date(notice.updated_at)
   return Number.isNaN(at.getTime()) ? null : at
 }
@@ -286,10 +290,40 @@ export function noticeBandId(notice: TrailNotice): string {
  * a prettified guess would say something nobody stands behind. It happens for
  * real when a phone holds a notice artifact and a stewards artifact from
  * different releases.
+ *
+ * ONE STEP COMES BEFORE IT: the notice's own `provider`, the registry's short
+ * name for its source, which the pipeline writes onto every row from
+ * sources.json, so it is the registry's word and not a guess. A key no steward
+ * claims is read through that provider, by the steward's full name where
+ * stewards.json lists the provider, else as the row gives it ("BLM"). The
+ * maintainer chose this on 2026-10-05, from a frame of a hazard-area sheet
+ * reading "oprhp_hunting_areas' layer": UA's stewards.json came from a
+ * release built before the hazard sources were registered.
  */
 export function noticeOrgLabel(stewards: Stewards): (notice: TrailNotice) => string {
+  const label = sourceOrgLabel(stewards)
+  return (notice) => label(notice.source_key || null, notice.provider)
+}
+
+/**
+ * `noticeOrgLabel`'s rule for a source key and the provider its rows carry,
+ * for a caller holding the two without a notice: the "new notices" sentence
+ * (`newNoticeLabel`), which counts by key. One rule for both, so the banner
+ * never names an organization differently from the list it opens - it read
+ * the key alone until the word-choice review of #1805 (2026-10-09), and would
+ * have announced a hunting area as "oprhp_hunting_areas".
+ */
+export function sourceOrgLabel(
+  stewards: Stewards,
+): (sourceKey: string | null, provider?: string | null) => string {
   const label = orgLabelFrom(stewards)
-  return (notice) => label(notice.source_key || null)
+  const byProvider = new Map(stewards.map((steward) => [steward.provider, steward.name]))
+  return (key, provider) => {
+    const named = label(key)
+    if (key === null || named !== key) return named
+    if (typeof provider !== 'string' || provider === '') return named
+    return byProvider.get(provider) ?? provider
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -311,12 +345,40 @@ export function noticeOrgLabel(stewards: Stewards): (notice: TrailNotice) => str
  * and the banner's count spans organizations - so the same three days is what
  * makes the number mean one thing.
  *
- * @unvalidated The three days is ATC's cadence reasoned about, not a
- * measurement of what hikers do. NYNJTC's own posting rhythm has never been
- * measured against it - their 18 alerts span 2024-01-11 to 2026-06-16, which
- * is far slower, so the window is if anything generous for them. What would
- * settle it: how often a hiker opens the app, which #93's field testing is the
- * only thing that can answer.
+ * MEASURED, AND KEPT AT THREE DAYS ANYWAY (#1442). This carried `@unvalidated`
+ * until 2026-09-15 with the note that "the three days is ATC's cadence
+ * reasoned about, not a measurement", and that what would settle it was "how
+ * often a hiker opens the app". That named the wrong question. How often a
+ * hiker opens the app decides the DISMISSAL rule; what decides this window is
+ * how often the organizations post, and that was answerable from bytes already
+ * in the bucket rather than from field testing.
+ *
+ * Measured 2026-09-15 against the published `conditions/` artifacts, which are
+ * root-scoped and live rather than pinned to a release:
+ *
+ *   ATC     38 notices, 2021-04-08..2026-09-11, median gap between consecutive
+ *           edits 167.4 h, 26 of 37 gaps longer than this window
+ *   NYNJTC  18 notices, 2025-06-24..2026-06-16, median gap 236.0 h
+ *
+ * So the median gap between ATC's edits is seven days against a three-day
+ * window, and the banner is lit on 40.7% of days over the 90 before that date
+ * (26.0% over the year). **The banner being dark most of the time is intended,
+ * not a defect** - a notice nobody would call fresh is what the paragraph above
+ * declines to light it for, and the notices stay readable in the legend's list
+ * whether or not it is lit. What the measurement changes is that a reader can
+ * now tell the quiet is the design.
+ *
+ * Three alternatives were considered on #1442 and declined: widening this to
+ * the measured cadence (a week-old notice called "new" is precisely what the
+ * paragraph above rejects), making it relative rather than a clock ("since you
+ * last looked", which the per-organization watermark half-implements and which
+ * cannot go dark from upstream silence - the strongest of the three, and a
+ * larger change than the evidence demands), and per-organization windows (the
+ * paragraph above already rejects those, and the two medians do not overturn
+ * its reason).
+ *
+ * What this window is still not derived from is any hiker's behaviour. It is
+ * a publisher-cadence number now, which is the question it actually answers.
  */
 export const NEW_NOTICE_WINDOW_MS = 72 * 60 * 60 * 1000
 
@@ -405,8 +467,18 @@ export interface NewNotices {
   sourceKeys: string[]
   /** The newest edit per organization, which is what a dismissal is recorded
    *  against. One watermark per key, never one shared - see
-   *  `noticeSilenceKey`. */
+   *  `noticeSilenceKey`. A notice counted from when OurHike first saw it
+   *  has a watermark of its own, under a key
+   *  lib/noticeSelection.ts's `newClubNotices` names. */
   newestBySource: Map<string, Date>
+  /** True when a counted notice gave no date of its own and is counted from
+   *  when OurHike first saw it: the banner then names no verb,
+   *  never "issued", since nobody said when it was issued. */
+  seen?: boolean
+  /** The registry provider a counted organization's rows carry
+   *  (conditions/notices.json's `provider`), by source key, where they carry
+   *  one: what names a key no steward claims, as `noticeOrgLabel` names it. */
+  providers?: Map<string, string>
 }
 
 /**
@@ -419,6 +491,10 @@ export interface NewNotices {
  *
  * What is new is that the watermark is looked up PER ROW rather than passed as
  * one value, because two organizations' watermarks are two different facts.
+ *
+ * A notice with no `updated_at` is never counted here. With
+ * conditions/notices.json, lib/noticeSelection.ts's `newClubNotices` counts
+ * one from when OurHike first saw it, through this function.
  */
 export function newNoticesSince(
   notices: readonly TrailNotice[],
@@ -427,6 +503,7 @@ export function newNoticesSince(
 ): NewNotices | null {
   const watermarks = new Map<string, Date | null>()
   const newestBySource = new Map<string, Date>()
+  const providers = new Map<string, string>()
   const sourceKeys: string[] = []
   let count = 0
 
@@ -447,9 +524,13 @@ export function newNoticesSince(
     if (seen === undefined || at.getTime() > seen.getTime()) {
       newestBySource.set(key, at)
     }
+    const { provider } = notice
+    if (typeof provider === 'string' && provider !== '' && !providers.has(key)) {
+      providers.set(key, provider)
+    }
   }
 
-  return count === 0 ? null : { count, sourceKeys, newestBySource }
+  return count === 0 ? null : { count, sourceKeys, newestBySource, providers }
 }
 
 /**
@@ -491,14 +572,27 @@ export function silenceNewNotices(newNotices: NewNotices): void {
  * three notice sources, read on a phone in daylight.
  */
 export function newNoticeLabel(newNotices: NewNotices, stewards: Stewards): string {
-  const label = orgLabelFrom(stewards)
-  const names = newNotices.sourceKeys.map((key) => label(key))
+  const label = sourceOrgLabel(stewards)
+  // One name per organization: two sources of one publisher, such as New
+  // York State Parks' closures and its hunting areas, are one organization,
+  // never "X and X" and never counted as two.
+  const names = [
+    ...new Set(
+      newNotices.sourceKeys.map((key) => label(key, newNotices.providers?.get(key))),
+    ),
+  ]
   const { count } = newNotices
+  // No verb when any counted notice is new only because OurHike
+  // first saw it - "issued" would claim a date nobody gave, and "New notice"
+  // alone is true of every one counted. It said "seen" until the word-choice
+  // review of #1805 (2026-10-09), which read as "you saw it", the opposite
+  // of what the line is for.
+  const verb = newNotices.seen === true ? '' : ' issued'
 
   if (names.length === 1) {
     return count === 1
-      ? `${names[0]} · New notice issued`
-      : `${names[0]} · ${count} new notices issued`
+      ? `${names[0]} · New notice${verb}`
+      : `${names[0]} · ${count} new notices${verb}`
   }
 
   const who = names.length === 2 ? names.join(' and ') : `${names.length} organizations`

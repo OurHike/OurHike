@@ -17,27 +17,33 @@ import enum
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user, get_current_user_optional, require_role
-from app.core.disputes import DisputeInput, dispute_state
-from app.core.orm import commit_and_refresh, get_or_404
+from app.core.assignments import stood_behind
+from app.core.auth import get_current_user, get_current_user_optional, require_role, still_signed_in
+from app.core.disputes import DISPUTE_DECAY_DAYS, DisputeInput, dispute_state
+from app.core.edge_cache import shared_at_edge
+from app.core.orm import commit_and_refresh, get_or_404, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
     JPEG_MAGIC,
     MAX_PHOTO_BYTES,
     PhotoStorageUnavailable,
+    discard_refused_upload,
     note_photo_key,
     photo_uploads_enabled,
     store_photo_object,
 )
 from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
+from app.models.club import Club
 from app.models.field_note import FieldNote, NoteFlag, Observation
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
+from app.models.waypoint_mile import WaypointMile
 from app.routers.reports import read_capped_body
 from app.schemas.dispute import DisputeOut
 from app.schemas.field_note import (
@@ -235,18 +241,42 @@ def flag_field_note(
     if note is None or note.hidden_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
-    existing = db.query(NoteFlag).filter(NoteFlag.note_id == note_id, NoteFlag.flagged_by == current_user.id).first()
-    if existing is not None:
+    if _existing_flag(db, note_id, current_user.id) is not None:
         response.status_code = status.HTTP_200_OK
         return {"status": "already flagged"}
 
     flag = NoteFlag(note_id=note_id, flagged_by=current_user.id, reason=payload.reason)
     db.add(flag)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # The lookup above and this insert are two statements, so two
+        # concurrent flags from one account both see "not flagged yet" and
+        # both insert - the #265 shape, at the one seam where losing the race
+        # used to be silently counted rather than refused: before
+        # `uq_note_flags_note_flagger` (#1545) both rows landed and the queue
+        # sorted by taps. Now the loser's row is refused by the database, and
+        # the winner's is exactly the row this account wanted, so the answer
+        # is the same 200 a plain second tap gets.
+        db.rollback()
+        if _existing_flag(db, note_id, current_user.id) is None:
+            raise
+        response.status_code = status.HTTP_200_OK
+        return {"status": "already flagged"}
     return {"status": "flagged"}
 
 
-@router.get("/disputes", response_model=list[DisputeOut])
+def _existing_flag(db: Session, note_id: str, flagger_id: str) -> NoteFlag | None:
+    """This account's flag on this note, if it already holds one.
+
+    A seam as much as a query: the race in `flag_field_note` is two requests
+    inside one round trip, which a test cannot stage, so the test makes this
+    lookup miss instead and lets the constraint refuse the insert for real.
+    """
+    return db.query(NoteFlag).filter(NoteFlag.note_id == note_id, NoteFlag.flagged_by == flagger_id).first()
+
+
+@router.get("/disputes", response_model=list[DisputeOut], dependencies=[Depends(shared_at_edge)])
 def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     """Places the field says are not there (#876, FIELD_NOTES.md §4).
 
@@ -265,29 +295,64 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     corroboration mean anything and is exactly what FieldNoteOut withholds
     (§6, #252) - so the rule runs here and a verdict goes out.
     """
+    now = utc_now()
+    # The window is applied here as well as in `dispute_state` (#1757): a note
+    # older than DISPUTE_DECAY_DAYS can neither dispute (decay) nor clear (a
+    # confirmation only clears a dispute older than itself, and every dispute
+    # that still counts is inside the window), so dropping it changes no
+    # verdict - `test_core_disputes.py` pins the rule - and keeps the scan from
+    # growing with every note ever written.
+    window_start = now - timedelta(days=DISPUTE_DECAY_DAYS)
     hidden_excluded = db.query(FieldNote).filter(FieldNote.hidden_at.is_(None), FieldNote.poi_id.isnot(None))
-    notes = hidden_excluded.filter(FieldNote.observation.isnot(None)).all()
+    notes = hidden_excluded.filter(FieldNote.observation.isnot(None), FieldNote.observed_at >= window_start).all()
 
     # Every current assignment, once, rather than a query per note: a
     # maintainer's word outweighs the count and the covering test is a range
     # check, so the whole table is cheaper than N lookups and stays correct
     # as it grows to a few hundred rows.
+    #
+    # Only the assignments something other than their own organization
+    # stands behind (`core/assignments.py`'s `stood_behind`, #1635): one
+    # note from a covering maintainer is enough to put "reported missing" on
+    # a pin, so a self-registered organization's own row must not buy it.
     today = utc_now().date()
     assignments = (
         db.query(MaintainerAssignment)
+        .join(Club, Club.id == MaintainerAssignment.club_id)
         .filter(
+            stood_behind(),
             MaintainerAssignment.effective_from <= today,
             (MaintainerAssignment.effective_to.is_(None)) | (MaintainerAssignment.effective_to >= today),
         )
         .all()
     )
 
-    def covers(reporter_id: str, mile: float | None) -> bool:
-        """Whether this reporter looks after the stretch this note is on.
+    # WHERE EACH WAYPOINT IS, not where its notes say they were written
+    # (#1917 - A maintainer's note settles a water dispute anywhere on the
+    # trail, because the covering check reads the mile the note's author
+    # typed, not where the waypoint is). A note's `mile` is whatever the
+    # author's client sent, so covering used to be a claim a maintainer could
+    # make about any waypoint by typing a mile inside their own stretch.
+    # `waypoint_miles` is loaded from the published export instead
+    # (`load_waypoint_miles.py`).
+    #
+    # The whole table rather than an `IN` over this window's ids: it is one
+    # row per published waypoint (3,024 in release 2026-10-10-2), and `IN`
+    # binds a parameter per id, which Postgres caps at 65,535 - so a window
+    # holding that many distinct `poi_id`s, which nothing stops one account
+    # writing, would turn this read into a 500.
+    waypoint_mile = dict(db.query(WaypointMile.poi_id, WaypointMile.mile).all())
 
-        A note with no mile cannot be covered by anybody: an assignment is a
-        range along the centerline, and treating "no mile" as covered would
-        hand every maintainer a veto over every unplaced note in the country.
+    def covers(reporter_id: str, mile: float | None) -> bool:
+        """Whether this reporter looks after the stretch this waypoint is on.
+
+        No mile at all - an unloaded waypoint's confirmation, or a
+        `not_found` that carried none - cannot be covered by anybody: an
+        assignment is a range along the centerline, and treating "no mile" as
+        covered would hand every maintainer a veto over every unplaced
+        waypoint in the country. Such a note counts as anybody's, so it takes
+        two people's notes to put a dispute on or take one off
+        (`app/core/disputes.py`).
         """
         if mile is None:
             return False
@@ -298,16 +363,29 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
 
     by_poi: dict[str, list[DisputeInput]] = {}
     for note in notes:
+        disputes = note.observation is Observation.not_found
+        mile = waypoint_mile.get(note.poi_id)
+        # A WAYPOINT WITH NO LOADED MILE - every waypoint until the first load,
+        # and each one a release adds until the next - is where the two
+        # directions part. A maintainer's `not_found` may still put "reported
+        # missing" on it from the mile they typed: the worst a wrong one does
+        # is send a hiker on with extra water, the error app/core/disputes.py
+        # accepts by design. Their confirmation may not take one off: that is
+        # #1917's harm, a warning gone from a spring two people could not
+        # find. Without this, a covering maintainer's lone `not_found` on an
+        # unloaded waypoint said nothing at all - the missing warning, which
+        # is the dangerous half.
+        if mile is None and disputes:
+            mile = note.mile
         by_poi.setdefault(note.poi_id, []).append(
             DisputeInput(
                 reporter_id=note.reporter_id,
                 observed_at=note.observed_at,
-                disputes=note.observation is Observation.not_found,
-                maintainer=covers(note.reporter_id, note.mile),
+                disputes=disputes,
+                maintainer=covers(note.reporter_id, mile),
             )
         )
 
-    now = utc_now()
     out: list[DisputeOut] = []
     for poi_id, inputs in sorted(by_poi.items()):
         state = dispute_state(inputs, now)
@@ -348,19 +426,10 @@ async def upload_note_photo(
     the body is capped as it streams, and JPEG is decided by the bytes' own
     magic rather than by a header the client writes.
     """
-    note = get_or_404(db, FieldNote, note_id, detail="Note not found")
-
-    if note.reporter_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="A note's photo can only be added by whoever wrote the note.",
-        )
-
-    if not photo_uploads_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Photo storage is not configured on this server.",
-        )
+    # The checks, then the connection handed back before the wait for the
+    # bytes (`release_before_waiting` says why). `_record_stored_note_photo`
+    # looks the note up again once the photo is in the bucket.
+    uploader_id = await run_in_threadpool(_note_checked_then_released, db, note_id, current_user)
 
     if request.headers.get("content-type", "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -377,13 +446,81 @@ async def upload_note_photo(
             detail=f"Note photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
+    # The R2 put and the commit are blocking, so they run off the event loop;
+    # `read_capped_body` is the only awaited part (#1753).
+    return await run_in_threadpool(_store_then_record_note_photo, db, note_id, body, uploader_id)
+
+
+def _note_checked_then_released(db: Session, note_id: str, current_user: Profile) -> str:
+    """The checks, then the connection handed back; the caller's id, as a
+    plain string for the reason `reports._checked_then_released` gives."""
+    uploader_id = current_user.id
+    _note_this_caller_may_upload_to(db.get(FieldNote, note_id), uploader_id)
+    release_before_waiting(db)
+    return uploader_id
+
+
+def _note_this_caller_may_upload_to(note: FieldNote | None, uploader_id: str) -> FieldNote:
+    """The note, if it exists, this caller wrote it, and there is a bucket.
+
+    Handed the row, because it is looked up plainly before the body is read
+    and locked once the photo is in the bucket (`_record_stored_note_photo`).
+    """
+    if note is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
+
+    if note.reporter_id != uploader_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A note's photo can only be added by whoever wrote the note.",
+        )
+
+    if not photo_uploads_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo storage is not configured on this server.",
+        )
+    return note
+
+
+def _store_then_record_note_photo(db: Session, note_id: str, body: bytes, uploader_id: str) -> FieldNoteOut:
+    """The put, holding no database connection, then the record step - the
+    order `reports._store_then_record_photo` explains."""
+    key = note_photo_key(note_id)
     try:
-        store_photo_object(note_photo_key(note.id), body)
+        store_photo_object(key, body)
     except PhotoStorageUnavailable as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        # `error.detail`, never `str(error)` - the message names the endpoint
+        # and the endpoint names the account (app/core/photos.py).
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
+
+    return _record_stored_note_photo(db, note_id, key, uploader_id)
+
+
+def _record_stored_note_photo(db: Session, note_id: str, key: str, uploader_id: str) -> FieldNoteOut:
+    """Record a photo already in the bucket, in one short transaction on the
+    locked note, or refuse it and take the object back out.
+
+    The same step as `reports._record_stored_photo`, which argues the lock,
+    the account check and the refusal; account deletion keeps a hiker's notes
+    as it keeps their reports. The object stays only where a recorded photo
+    is still using it: `notes/{id}.jpg` has one photo per note, so a refused
+    upload to a note whose photo already landed has overwritten that photo.
+    """
+    note = db.get(FieldNote, note_id, with_for_update=True, populate_existing=True)
+    try:
+        uploader = still_signed_in(db, uploader_id)
+        _note_this_caller_may_upload_to(note, uploader_id)
+    except HTTPException:
+        unrecorded = note is None or note.photo_uploaded_at is None
+        db.rollback()
+        if unrecorded:
+            discard_refused_upload(key)
+        raise
 
     note.photo_uploaded_at = utc_now()
-    return FieldNoteOut.for_viewer(commit_and_refresh(db, note), current_user)
+    commit_and_refresh(db, note)
+    return FieldNoteOut.for_viewer(note, uploader)
 
 
 @router.post("/field-notes/{note_id}/photo/review", response_model=FieldNoteOut)

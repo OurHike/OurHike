@@ -186,6 +186,22 @@
   margin-right: 6px;
 }
 
+/* A club's own line: the tag the card the maintainer chose
+   from drew beside the trail's name, small capitals on the sunken panel, so
+   a hiker comparing two sheets can tell a club line from the network's at a
+   glance; the sentence after it says what the tag means. */
+.line-sheet__tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-radius: 4px;
+}
+
 .map-plate__position {
   margin: 2px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -323,6 +339,46 @@
 .map-view .maplibregl-ctrl button {
   width: var(--map-control-size);
   height: var(--map-control-size);
+}
+
+/* THE REPORT DOOR (#1438, frame 9c, D15).
+ *
+ * Everything that makes it look like its neighbours is inherited rather than
+ * restated: the chip, the radius and the shadow come from
+ * `.maplibregl-ctrl-group`, and the 42px comes from the rule above, which
+ * matches on any button inside a `.maplibregl-ctrl`. What is left here is the
+ * one thing this control owns - the glyph's colour - plus the flex needed to
+ * centre an inline SVG where the neighbours centre a background image.
+ *
+ * `--danger` rather than a literal `--blaze-orange-dark`: the token IS
+ * blaze-orange-dark under the light theme, which is what the handoff names,
+ * and flips to `--blaze-orange-light` under the dark one. The chip flips too
+ * (`--surface-over-map`, white to `--ink-700`), so a fixed hex would be a
+ * 1.9:1 glyph on an ink map - the same failure #336 found on these controls
+ * and the reason `--danger-on-chrome` exists at all. */
+.map-view .map-report__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--danger);
+}
+
+/* THE LOCATE BUTTON (#1581), built exactly as the report door above and
+ * inheriting everything the same way. Its glyph is the hiker's mark itself
+ * (map/mapChrome.ts's LOCATE_GLYPH, map/positionMark.ts's proportions), in
+ * `--fg-1` - stone-900 on the white chip, bone on the ink one - which is the
+ * ink the mark is drawn in on the sheet under it. Disabled while there is no
+ * fix to centre on: present and plainly off, at the same 0.4 the dark theme
+ * gives a disabled zoom button below, rather than absent. */
+.map-view .map-locate__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-1);
+}
+.map-view .map-locate__button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* The same controls under the dark theme.
@@ -477,6 +533,40 @@
   display: none;
 }
 
+/* Rendered only in the sidebar layout, and by chrome/TabBar.tsx rather than
+   by a rule in here - AccountButton.tsx carries the reasoning, which is that
+   a button hidden by `display: none` is still a button in the DOM and the
+   three places this app can draw one have to add up to exactly one. So
+   nothing here switches it off; desktop.css only places it. */
+.tab-bar__account {
+  display: flex;
+}
+
+.tab-bar__account-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--header-button-size, 38px);
+  height: var(--header-button-size, 38px);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  /* The chrome's own foreground, as the tab labels and the wordmark use -
+     this button only ever sits on `--bg-chrome`. */
+  color: var(--fg-chrome-1);
+  position: relative;
+}
+
+/* The same trick `.map-header__button` uses: a 38px circle a thumb can still
+   hit, by growing the hit area rather than the drawn one. */
+.tab-bar__account-button::before {
+  content: '';
+  position: absolute;
+  inset: calc((var(--header-button-size, 38px) - var(--min-touch-target, 44px)) / 2);
+}
+
 .tab-bar__brand-icon {
   display: block;
   width: 24px;
@@ -604,6 +694,26 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+
+  /* HOW FAR ABOVE THIS BOX'S BOTTOM EDGE ANYTHING OF OURS HAS TO SIT to clear
+     MapLibre's scale bar. map/mapChrome.ts puts the scale bar at
+     'bottom-left'; the compass, the locate button and the report door all go
+     'bottom-right'. So this corner is the one the app may float things in,
+     and the scale bar is the only thing already in it.
+
+     30px is measured rather than derived - the Harriman z12 render of
+     2026-09-10, where .map-screen__dropped at 12px drew across the "1000 ft"
+     bar - and covers the bar's box plus MapLibre's own 10px control margin.
+     --space-3 is the gap above it.
+
+     ONE FIGURE, NAMED ONCE, which is the same argument .turn-card's comment
+     makes about the other corner. Only .map-screen__dropped reads it today -
+     a Show points switch read it too for one day, before moving into the
+     legend - and it stays a token rather than a literal because the next
+     thing floated into this corner must not be a second guess at the same
+     clearance. src/desktop.css raises it where the credit strip joins this
+     box. */
+  --over-map-floor: calc(var(--space-3, 12px) + 30px);
 }
 
 /* A row of its own rather than an overlay in the corner, which is where it
@@ -1235,17 +1345,27 @@
    alert - the panel is where the per-category detail lives. */
 .map-screen__dropped {
   position: absolute;
-  /* Above the scale bar, not on it: MapLibre's bottom-left control sits in
-     the same corner (10px in, ~20px tall), and at 12px the chip drew across
-     the "1000 ft" bar (the Harriman z12 render of 2026-09-10). 30px clears
-     the bar's box with its own gap; measured on that render, not derived. */
-  bottom: calc(var(--space-3, 12px) + 30px);
+  /* Above the scale bar, not on it - .map-screen__canvas's --over-map-floor
+     is where that figure and its measurement live now.
+
+     A Show points switch sat between this and the scale bar for one day
+     (2026-09-20) and the chip was raised by that switch's 44 px plus a step.
+     The switch moved into the legend's Showing picker the same day, so the
+     chip is back on the floor itself - the one figure both controls in this
+     corner ever read. */
+  bottom: var(--over-map-floor);
   left: var(--space-3, 12px);
   z-index: 2;
   margin: 0;
   padding: 2px var(--space-2, 8px);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
+  /* `--bg-raised` until 2026-09-20, and nothing has ever defined it - so this
+     declaration was invalid at computed-value time and the chip rendered with
+     no background at all from #528 onwards, map showing straight through the
+     figures. --surface-over-map is the token for exactly this surface and the
+     reason it exists (#336: a screen surface over the map came out at 1.06:1
+     against it). */
+  background: color-mix(in srgb, var(--surface-over-map) 82%, transparent);
   color: var(--fg-2);
   font-size: 12px;
   pointer-events: none;
@@ -1426,6 +1546,36 @@
   color: var(--fg-2);
 }
 
+/* The challenge places switch (#1780, Legend.tsx): the Drought row's weight
+   and rule, with the Blaze row's switch (.legend__switch below) in place of
+   a checkbox. Not the Blaze row's 15px name and heavy rule - that row is
+   the panel's headline by the maintainer's ask, and this is one layer among
+   the others. */
+.legend__challenges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  min-height: var(--min-touch-target);
+  margin-top: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+  font-size: 13px;
+}
+
+.legend__challenges-name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legend__challenges-detail {
+  /* The drought detail's 12px and --fg-2, for its reasons. */
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
 .legend__verified {
   display: flex;
   align-items: center;
@@ -1443,37 +1593,110 @@
   flex: 1;
 }
 
-/* The alerts switch (#1047, Legend.tsx). Shaped exactly like .legend__drought
-   above, down to the second line of smaller text, because it is the same kind
-   of thing and a hiker should not have to work out that it is: a map overlay,
-   named, with a sentence under the name and a checkbox at the end. The one
-   place it deliberately differs is the sentence itself, which on the drought
-   row carries numbers and here carries what the switch does NOT take away. */
-.legend__alerts {
+/* The blaze colours toggle (#1575, Legend.tsx): the first row under the
+   head and the most prominent thing on the panel, at the maintainer's ask of
+   2026-09-17 ("Move the blaze color option up to be the first one, directly
+   under the Pills. Have the most prominent thing in the legend. Can it be a
+   toggle instead of a checkbox?"). A name at the panel title's size with a
+   sentence under it, and a switch - a track and a knob - rather than the
+   13px checkbox the rows under the grid use, because on and off is what it
+   is. The row closes with a heavier rule than any row below carries, so the
+   panel reads as this control and then the key. */
+.legend__blazes {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2, 8px);
+  gap: var(--space-3, 12px);
   min-height: var(--min-touch-target);
-  margin-top: var(--space-2, 8px);
-  padding-top: var(--space-2, 8px);
-  border-top: 1px solid var(--border-1);
-  font-size: 13px;
-  cursor: pointer;
+  margin: var(--space-2, 8px) 0;
+  padding-bottom: var(--space-2, 8px);
+  border-bottom: 2px solid var(--border-2);
 }
 
-.legend__alerts-name {
+.legend__blazes-name {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.legend__alerts-detail {
+.legend__blazes-detail {
   /* 12px: the #1054 floor under sun-read prose. --fg-2: #1057's fix -
      --text-2 was never declared, so the line inherited body colour. */
   font-size: 12px;
+  font-weight: 400;
   color: var(--fg-2);
+}
+
+/* The switch: a 52 by 30 track with a 24px knob that slides across it, in a
+   button no shorter than the touch floor. Brand green on and the mid grey
+   (--fg-3) off, with the knob in the surface colour, so the knob stands off
+   the track in both themes and both states - white on forest and on stone by
+   day, ink on moss and on bone at night - and the state reads from position
+   and colour together rather than from either alone: a colour-blind hiker,
+   or a sun-washed screen, still gets the position. Semantic tokens only,
+   which themeTokens.test.ts holds; the first cut read --paper-0 and failed
+   it. The sizes are the toggle's own rather than a token: nothing else in
+   the chrome draws one yet, and a second toggle is where a token would earn
+   its place. */
+.legend__switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 52px;
+  min-height: var(--min-touch-target);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.legend__switch::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  box-sizing: border-box;
+  width: 52px;
+  height: 30px;
+  transform: translateY(-50%);
+  border: 1px solid var(--fg-3);
+  border-radius: 15px;
+  background: var(--fg-3);
+  transition: background 120ms ease;
+}
+
+.legend__switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  transition: left 120ms ease;
+}
+
+.legend__switch[aria-checked='true']::before {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary);
+}
+
+.legend__switch[aria-checked='true'] .legend__switch-knob {
+  left: 25px;
+}
+
+.legend__switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.legend__switch:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }
 
 /* A safety row spans the grid rather than sitting in one column of it.
@@ -1800,10 +2023,18 @@
   border-radius: 10px;
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .closure-sheet__age {
   margin: 0;
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
+}
+
+/* How OurHike gathers and checks a notice: the site's page, in the
+   brand's link ink, on the age line it explains. */
+.closure-sheet__how {
+  color: var(--brand-primary);
+  font-weight: 600;
 }
 
 /* ---------- Route entrance sheet (RouteEntranceSheet.tsx, #755) ---------- */
@@ -2357,6 +2588,33 @@
   cursor: pointer;
 }
 
+.route-map-pick__keep {
+  flex: none;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* THE REPORT'S CROSSHAIR IS NOT THE ROUTE'S (#1439).
+ *
+ * It shares the bar, which is the point - one slot over the map, one shape -
+ * and it differs in the one place that matters. `role="status"` in the route
+ * bar carries a REFUSAL ("no honest mile to give it"), so the rule above
+ * paints it `--danger`. Here it carries the ANSWER: a mile, "This spot", or a
+ * distance off the trail, none of which is a refusal and none of which should
+ * arrive in alert orange. Mono because it is a figure, which is this app's
+ * whole type argument for the face - mono means the app measured it. */
+.route-map-pick--report .route-map-pick__hint [role='status'] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--fg-1);
+}
+
 /* ---------- Every ATC notice (AtcNoticeList.tsx) ---------- */
 
 /* The single-notice sheet's frame, with one difference that is the whole
@@ -2502,6 +2760,152 @@
   margin: 2px 0 var(--space-2, 8px);
   font-size: 13px;
   font-weight: 600;
+  color: var(--fg-2);
+}
+
+/* The list's first line while a planned hike's notices are not on the phone
+   (NoticeList's `plannedNoticesMissing`): the warning box of option A in the
+   maintainer's poll of 2026-10-09. The caution surface under `--fg-1`, the
+   pair .planned-notices__category below already holds in both themes
+   (design-system/tokens/contrast.test.ts), with the warn notice's orange
+   rule down its left edge (chrome/notice.css's .notice--warn). Full body
+   weight, never dimmed, for .atc-notices__offmap's reason: this is the
+   caveat the rows under it depend on. */
+.atc-notices__missing {
+  margin: 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-left: 4px solid var(--accent-blaze-orange);
+  border-radius: 8px;
+  background: var(--surface-warning);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
+/* ---------- Notices for your planned hikes (#1805) ---------- */
+
+/* One section per hike planned in the next 7 days, its name and days as the
+   heading the rows sit under - the mock's "Notices for your maps" card,
+   carried to the rule the maintainer chose. */
+.planned-notices__hike {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+}
+
+.planned-notices__hike-title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.planned-notices__dates {
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-weight: 400;
+  color: var(--fg-2);
+}
+
+.planned-notices__tagline {
+  margin: 0;
+}
+
+/* The mock's `.tag`: a small mono label ahead of the title. Two registers and
+   no more - the sunken sage one for a notice, and the caution tint for a
+   closure or a hazard area's advisory ("Advisory"), and for a closure's
+   "Starts Oct 20" before its start (the maintainer's frame B, whose wireframe drew that
+   tag blue: no blue register exists, so it takes the closure's). Semantic
+   tokens, so both flip with the theme and the text keeps `--fg-1`'s contrast
+   on them; never the closure band's red, because an advisory is not a
+   closure. */
+.planned-notices__tag {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: 1px;
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+}
+
+.planned-notices__tag--warn {
+  background: var(--surface-warning);
+}
+
+/* The source's own category under a row's title: the frame
+   the maintainer picked on 2026-10-05 draws it as the card's warn
+   line, a caution-tinted strip the row's width. The tint is
+   `--surface-warning` and the text `--fg-1`, for the reason the warm tag
+   above gives, so "Closed" keeps its contrast in both themes. */
+.planned-notices__category {
+  margin: 3px 0 0;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  background: var(--surface-warning);
+  color: var(--fg-1);
+}
+
+.planned-notices__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+/* A hazard area's line on a tapped stretch's card: the advice first, in the
+   card's own body size, with the warm tag ahead of it. */
+.line-sheet__advisory {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-1);
+}
+
+/* A notice that may no longer apply (#1805, the maintainer's frame A, poll of
+   2026-10-10): it keeps its place, greyed, with one line under it from
+   lib/noticeCurrency.ts. `.notice--not-current` goes on the row, the sheet or
+   the stretch's advisory; `.notice__not-current` is the line.
+
+   Greyed by token, never by opacity, which would fade the line below with
+   everything else: the title, the heading, a sheet's red status line, the
+   advisory and the tag drop to the third text level `--fg-3`, the faintest
+   grey that still holds WCAG AA's 4.5:1 on every surface in both themes
+   (4.53:1 at its worst, on the sunken surface the tag sits on;
+   design-system/tokens/colors.css says how it was derived). The frame's own
+   rows are greyer than that, at 62% opacity, which a phone read in sun cannot
+   afford. The tag's and the category's caution tint gives way to that sunken
+   surface, so a notice that may no longer apply stops shouting caution. The
+   row's dates and its source line stay `--fg-2`, as every line a hiker
+   decides whether to trust the screen by does (src/test/trustLines.test.ts,
+   the maintainer's poll of 2026-09-26), and the link keeps its colour: the
+   source's page is how a hiker finds out whether it still applies. */
+.notice--not-current .atc-notices__title,
+.notice--not-current .closure-sheet__status,
+.notice--not-current .legend__title,
+.notice--not-current .line-sheet__advisory {
+  color: var(--fg-3);
+}
+
+.notice--not-current .planned-notices__tag,
+.notice--not-current .planned-notices__category {
+  background: var(--bg-sunken);
+  color: var(--fg-3);
+}
+
+/* The line itself is a trust line (src/test/trustLines.test.ts): `--fg-2`,
+   at the meta line's size and never fainter, on the sunken box frame A draws
+   it in, because it is the sentence the greyed notice now depends on. */
+.notice__not-current {
+  margin: 4px 0 0;
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  background: var(--bg-sunken);
   color: var(--fg-2);
 }
 
@@ -2727,7 +3131,10 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--fg-1);
-  background: var(--bg-raised, var(--bg-0));
+  /* `--bg-raised, --bg-0` until 2026-09-20 and neither has ever been defined,
+     so this button had no face - only its border. --bg-surface is what
+     .poi-card__observation, the other button on this card, already uses. */
+  background: var(--bg-surface);
   border: 1px solid var(--border-2, var(--bg-sunken));
   border-radius: var(--radius-pill, 999px);
   cursor: pointer;
@@ -2773,6 +3180,367 @@
   color: var(--fg-3);
 }
 
+/* ---------- NOAA's forecast on the card (#1056) ---------- */
+
+/* One type treatment for every figure in the band: tabular, so a column of
+   highs lines up digit under digit and a changing hour does not shift its
+   neighbours. */
+.poi-card__weather,
+.poi-card__weather-line,
+.poi-card__weather-warning {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The line icons (chrome/weatherIcons.tsx): 1.5px strokes in the text's own
+   colour, the sun in the yellow blaze, clouds filled with the card so they sit
+   in front of what is behind them. */
+.weather-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  stroke: var(--fg-2);
+}
+
+.weather-icon__sun {
+  stroke: var(--warning);
+}
+
+.weather-icon__sun circle {
+  fill: color-mix(in srgb, var(--warning) 22%, var(--bg-surface));
+}
+
+.weather-icon__moon {
+  fill: var(--bg-surface);
+  stroke: var(--fg-2);
+}
+
+.weather-icon__cloud {
+  fill: var(--bg-surface);
+  stroke: var(--fg-2);
+}
+
+.weather-icon--drop {
+  width: 10px;
+  height: 10px;
+  margin-right: 1px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.weather-icon--wind {
+  width: 16px;
+  height: 16px;
+  stroke: var(--fg-3);
+}
+
+.weather-icon--alert {
+  width: 18px;
+  height: 18px;
+  stroke: var(--danger-strong);
+}
+
+/* ----- The peek's line ----- */
+
+/* The sky, today's high and low, the chance and the forecast's age on one
+   row, the age pushed to the end in a quieter voice. That row is the room
+   the maintainer chose to spend on the peek (poll 2026-09-30); #1374's cap is
+   what scrolls the peek if it ever needs two. */
+.poi-card__weather-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--space-2, 8px);
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+/* The sky icon only - a direct child - so the chance's drop keeps its own
+   size. */
+.poi-card__weather-line > .weather-icon {
+  grid-row: span 2;
+  width: 26px;
+  height: 26px;
+}
+
+.poi-card__weather-line-main {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.poi-card__weather-today {
+  white-space: nowrap;
+}
+
+.poi-card__weather-today strong {
+  font-weight: 700;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-slash {
+  color: var(--fg-3);
+}
+
+.poi-card__weather-line-chance,
+.poi-card__weather-hour-chance,
+.poi-card__weather-day-chance {
+  display: inline-flex;
+  align-items: center;
+  color: var(--info);
+  white-space: nowrap;
+}
+
+/* Zero is still said - "0%" is a forecast, where no figure is not - but
+   quietly, so the eye goes to the chances that are not zero. */
+.poi-card__weather-line-chance--zero,
+.poi-card__weather-hour-chance--zero,
+.poi-card__weather-day-chance--zero,
+.poi-card__weather-hour-chance--none,
+.poi-card__weather-day-chance--none {
+  color: var(--fg-3);
+}
+
+.poi-card__weather-age {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* An NWS alert on for this spot: NWS's warning, so the one place on the peek
+   in a warning's colours. */
+.poi-card__weather-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2, 8px);
+  margin: 0;
+  padding: var(--space-2, 8px);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fg-2);
+  background: var(--surface-warning);
+  border-radius: var(--radius-m, 8px);
+}
+
+.poi-card__weather-warning strong {
+  color: var(--fg-1);
+}
+
+/* ----- The opened card's band ----- */
+
+.poi-card__weather-age-line {
+  margin: 0 0 var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* Out of signal the age is the first thing to read, so it takes the weight
+   the approved drawing gave it. */
+.poi-card__weather-age-line--stale {
+  font-weight: 600;
+  color: var(--danger-strong);
+}
+
+.poi-card__weather-alert {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin: 0 0 var(--space-3, 12px);
+  padding: 10px var(--space-3, 12px);
+  background: var(--surface-warning);
+  border-radius: 10px;
+}
+
+.poi-card__weather-alert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.poi-card__weather-alert-body strong {
+  font-size: 14px;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-alert-text summary {
+  margin-top: var(--space-1, 4px);
+  font-weight: 600;
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.poi-card__weather-alert-text p {
+  margin: var(--space-1, 4px) 0 0;
+  white-space: pre-line;
+}
+
+/* With signal, a dated sentence and nothing more: the ordinary answer, so it
+   is not dressed as news. */
+.poi-card__weather-quiet {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* Out of signal it is the absence of an answer, so it gets an edge: dashed,
+   because it is a gap rather than a finding. */
+.poi-card__weather-quiet--unknown {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+}
+
+.poi-card__weather-quiet--unknown .poi-card__weather-quiet-title {
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+/* Six hours across the band, no boxes: the columns are the structure. */
+.poi-card__weather-hours {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  margin: 0;
+  padding: var(--space-2, 8px) 0;
+  list-style: none;
+  border-top: 1px solid var(--border-1);
+  border-bottom: 1px solid var(--border-1);
+}
+
+.poi-card__weather-hour {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.poi-card__weather-hour-time {
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.poi-card__weather-hour-sky {
+  display: flex;
+  height: 26px;
+  align-items: center;
+}
+
+.poi-card__weather-hour-temp {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-hour-chance {
+  font-size: 11px;
+}
+
+/* Past HOURLY_TRUST_HOURS the timing is not to be leaned on (WEATHER.md §5):
+   faded, not hidden, and the note under it says why. */
+.poi-card__weather-hours--stale .poi-card__weather-hour {
+  opacity: 0.45;
+}
+
+.poi-card__weather-wind,
+.poi-card__weather-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.poi-card__weather-note {
+  color: var(--fg-3);
+}
+
+/* Five days as rows: the day, the chance, and the low and high either side of
+   a bar drawn against the week's own range. */
+.poi-card__weather-days {
+  margin: var(--space-3, 12px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.poi-card__weather-day {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px 32px minmax(56px, 1.1fr) 32px;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: 40px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.poi-card__weather-day:last-child {
+  border-bottom: 0;
+}
+
+.poi-card__weather-day-name {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-day-note {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+.poi-card__weather-day-chance {
+  justify-content: flex-end;
+  font-size: 12px;
+}
+
+.poi-card__weather-day-low {
+  text-align: right;
+  color: var(--fg-3);
+}
+
+.poi-card__weather-day-high {
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.poi-card__weather-day-bar {
+  position: relative;
+  height: 5px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.poi-card__weather-day-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--brand-primary);
+  border-radius: var(--radius-pill, 999px);
+}
+
+.poi-card__weather-day--none {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.poi-card__weather-day-none {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.poi-card__weather-credit {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
 /* Where the answering happens. Ruled off from the history above it because
    the two are different acts - reading what the field said, and saying
    something back - and #941's third defect was that the composer had nowhere
@@ -2800,6 +3568,40 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* A photograph too small to fill the slot honestly is drawn at its own size,
+   centred, rather than stretched and cropped to 16:10 (#1495).
+
+   The slot is 240 CSS pixels - the 264px card less the body's 12px padding
+   either side - so `lib/poiPhotos.ts` puts the line at 480, which is that
+   slot on a DPR-2 phone. Below it, filling would upscale a file past what it
+   holds and then crop what somebody framed; the crop falls hardest on the
+   images least able to afford it. The NYNJTC archive corpus recovered in
+   #1450 is 396 of 403 images under 640px - measured over the whole corpus on
+   2026-09-15, min 100, median 250, max 4000 - so this is most of that corpus
+   rather than an edge case.
+
+   There is deliberately no `--hero` rule: filling the box is what the base
+   class above already does, and an empty ruleset restating it would be one
+   more place to keep in step. The class is still on the element, because
+   `data-frame` alone would not survive somebody reading the DOM in a browser.
+
+   `inset: 0` with `margin: auto` centres on both axes without making the
+   media box a flex container, which would disturb the credit line and the
+   placeholder already positioned inside it. `object-fit: none` with auto
+   width and height is what renders at natural size; the max-* pair is the
+   guard for a photograph wider than the slot but still under the line on a
+   narrow screen, where it should shrink to fit rather than overflow. */
+.poi-card__photo--inset {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  object-fit: none;
 }
 
 /* The photo's credit line - author, licence, month, from the pipeline's
@@ -3017,6 +3819,25 @@ a.poi-card__credit::after {
   display: none;
 }
 
+/* The parts strip on the peek (#1706). The peek's own flex gap spaces it, so
+   the 4px the opened card's body needs above and below would double it. The
+   strip is 240px here as it is in the opened card - the same 12px padding
+   either side of a 264px card - so .poi-card__chips' five-parts-fit
+   arithmetic holds unchanged.
+
+   `flex-shrink: 0` IS THE LINE THAT KEEPS THE ROW ON A SMALL PHONE. The peek
+   is a flex column capped to the room beside its pin (#1374), and the strip's
+   `overflow-x: auto` makes its automatic minimum height zero - so where the
+   cap binds, flexbox shrinks the row away entirely rather than scrolling the
+   peek. Photographed 2026-09-28 at 375x667 on Limestone Spring Shelter, UA
+   data: without this line the peek drew its name and conditions and no chips
+   at all. The other peek children keep their height because nothing else in
+   it clips overflow. */
+.poi-card__peek > .poi-card__chips {
+  flex-shrink: 0;
+  margin: 0;
+}
+
 /* `flex: 0 0 auto`, and NOT tabs.css's `flex: 1 0 auto`: a tab strip stretches
    its tabs to fill the row, which for two chips in a 240px card would make each
    one 120px of mostly nothing and for five would squeeze them all instead of
@@ -3160,10 +3981,13 @@ a.poi-card__credit::after {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts.
+   The coordinates are what a hiker reads out when lost, and they carry
+   `.poi-card__source` on the same line. */
 .poi-card__coords {
   margin: 0;
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* Body text. Sits between the meta line and the unverified block at a size
@@ -3185,6 +4009,21 @@ a.poi-card__credit::after {
   color: var(--fg-2);
 }
 
+/* A trailhead whose trails are all closed (#1695): the unverified line's
+   panel, with a heavy edge and full weight, because it is the reason the pin
+   is a cross. The edge is the text's own ink (--fg-1) rather than the
+   closure's #14130f, which would vanish on the dark theme's sunken panel. */
+.poi-card__trails-closed {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-left: 4px solid var(--fg-1);
+  border-radius: 10px;
+}
+
 /* Called out rather than set in fine print. This is the line that says the app
    cannot vouch for the pin someone just tapped, and it earns the same weight as
    the sunken block the closure sheet uses to say what it will not do. */
@@ -3194,6 +4033,21 @@ a.poi-card__credit::after {
   font-size: 12px;
   color: var(--fg-2);
   background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* The season caution on a plumbed tap: the unverified line's
+   panel, with a left rule in the warning ink, so it reads as a second and
+   different claim beside "nobody has confirmed this one" rather than as more
+   of the same sentence. Not the trails-closed line's full weight: the tap may
+   well be on, and the caution is to carry enough, not to stay away. */
+.poi-card__season-caution {
+  margin: var(--space-1, 4px) 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-left: 3px solid var(--warning, #b26a00);
   border-radius: 10px;
 }
 
@@ -3267,9 +4121,10 @@ a.poi-card__credit::after {
   border-radius: var(--radius-pill, 999px);
 }
 
+/* A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .poi-card__note-when {
   font-size: 12px;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* A paragraph of its own since #941, rather than a span beside the tag: a
@@ -3287,7 +4142,10 @@ a.poi-card__credit::after {
   font: inherit;
   font-size: 12px;
   color: var(--fg-1);
-  background: var(--bg-raised, var(--bg-0));
+  /* See .poi-card__expand: the token this reached for does not exist, so the
+     field was transparent. --bg-surface is what every other text input in the
+     app uses (.search__input, .legend's fields, reporting.css). */
+  background: var(--bg-surface);
   border: 1px solid var(--bg-sunken);
   border-radius: 8px;
   resize: vertical;
@@ -3333,7 +4191,9 @@ a.poi-card__credit::after {
 }
 
 .poi-card__observation:hover {
-  background: var(--bg-raised, var(--bg-0));
+  /* One step off the card rather than the undefined token this reached for,
+     which left the hover indistinguishable from the rest state. */
+  background: var(--surface-card-alt);
   color: var(--fg-1);
 }
 
@@ -3550,10 +4410,12 @@ a.poi-card__credit::after {
 
    Body face, against the mono the coordinates inherit: a source name is a
    name, and setting it in the figures' typeface would invite it to be read as
-   part of the number. */
+   part of the number.
+
+   A trust line (#1670): `--fg-2`, not the faint `--fg-3` - test/trustLines.test.ts. */
 .poi-card__source {
   font-family: var(--font-body);
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 
 /* Keep-or-discard over a just-picked photo's preview (PoiCard.tsx, #571).

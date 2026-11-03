@@ -213,6 +213,20 @@ export function formatShortDistance(feet: number, units: UnitSystem): string {
 }
 
 /**
+ * A short distance that is a round pick rather than a measurement, from the
+ * canonical feet, to the nearest 10 of the hiker's unit.
+ *
+ * For a radius somebody chose, like the 100 m a closed trailhead is judged by
+ * (#1695): "328 ft" would state a round pick to the foot, as if it had been
+ * surveyed. The caller says "about" in front of it. `formatDistance` rounds a
+ * spur length to 10 m for the same reason.
+ */
+export function formatRoundShortDistance(feet: number, units: UnitSystem): string {
+  if (units === 'metric') return `${group(Math.round(feet / FEET_PER_METRE / 10) * 10)} m`
+  return `${group(Math.round(feet / 10) * 10)} ft`
+}
+
+/**
  * One metre, in feet - the floor under any distance this app STATES.
  *
  * pipeline/lib/poi_description.py's `MIN_PART_FT` is the same number for the
@@ -265,4 +279,52 @@ export function feetFromMetres(metres: number): number {
 
 export function unitSystemLabel(units: UnitSystem): string {
   return units === 'metric' ? 'Metres' : 'Feet'
+}
+
+// ---------------------------------------------------------------------------
+// Weather (#1056), from the units NOAA's National Blend of Models publishes -
+// °F and knots - which is what the cell files store (pipeline/export_weather.py:
+// "store what the source says, convert at display"). The system follows the
+// same feet-or-metres choice as everything else on the card, the maintainer's
+// call of 2026-09-30: °F and mph with feet, °C and km/h with metres. There is
+// no separate temperature setting.
+
+const MPH_PER_KNOT = 1.150779448
+const KMH_PER_KNOT = 1.852
+
+/** A temperature as a whole degree with no letter - "56°" - for the boxes,
+ *  where `temperatureUnitLabel` says the scale once for the whole band. Whole
+ *  degrees because NBM publishes whole °F, so a tenth of a °C would be
+ *  precision the forecast does not have. */
+export function formatTemperature(fahrenheit: number, units: UnitSystem): string {
+  const degrees = units === 'metric' ? ((fahrenheit - 32) * 5) / 9 : fahrenheit
+  // `+ 0` turns the -0 that rounding -0.3 gives into 0.
+  return `${Math.round(degrees) + 0}°`
+}
+
+export function temperatureUnitLabel(units: UnitSystem): string {
+  return units === 'metric' ? '°C' : '°F'
+}
+
+function windValue(knots: number, units: UnitSystem): number {
+  return Math.round(knots * (units === 'metric' ? KMH_PER_KNOT : MPH_PER_KNOT))
+}
+
+/** A wind speed from knots: "8 mph", "13 km/h". Whole units, because NBM's
+ *  wind is whole knots. */
+export function formatWind(knots: number, units: UnitSystem): string {
+  return `${windValue(knots, units)} ${units === 'metric' ? 'km/h' : 'mph'}`
+}
+
+/** A range of wind speeds from knots: "3–6 mph", or "5 mph" when both ends
+ *  round to the same number. */
+export function formatWindRange(
+  minKnots: number,
+  maxKnots: number,
+  units: UnitSystem,
+): string {
+  const low = windValue(minKnots, units)
+  const high = windValue(maxKnots, units)
+  const unit = units === 'metric' ? 'km/h' : 'mph'
+  return low === high ? `${low} ${unit}` : `${low}–${high} ${unit}`
 }

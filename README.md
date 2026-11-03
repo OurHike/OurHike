@@ -19,6 +19,7 @@ An offline-first map for hikers — inspired by the Appalachian Trail, and drawn
 | [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) | How it is built, and why those choices |
 | [ROADMAP.md](ROADMAP.md) | The phases and where things stand |
 | [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | The ordered runbook for deploying v1 |
+| [INHERITANCE.md](INHERITANCE.md) | For a club that is not the ATC: what running OurHike for your own trail network actually inherits, costs, and still needs |
 
 Found a blowdown or a washed-out crossing? That goes through the app's own "Report a problem" flow, not this repository — it reaches a moderator who can act on it.
 

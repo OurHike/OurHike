@@ -29,6 +29,7 @@ import {
   type WorkProjectSummary,
   workdayAwayLine,
 } from '../lib/workProjects'
+import { CrewContactLink } from './CrewContactLink'
 
 export interface WorkdaySheetProps {
   project: WorkProjectSummary
@@ -79,11 +80,7 @@ export function WorkdaySheet({ project, gpsMile, onClose }: WorkdaySheetProps) {
       {/* The club's own channel. An introduction, never an enrolment - and
           the app renders no confirmation of its own invention, because it
           has none to render: Phase B is read-only. */}
-      {project.signup_contact !== null && (
-        <a className="closure-sheet__link" href={project.signup_contact}>
-          Ask the crew about joining
-        </a>
-      )}
+      <CrewContactLink contact={project.signup_contact} className="closure-sheet__link" />
 
       <p className="closure-sheet__meta">
         Posted by the club. Check with them before travelling — a workday can be called

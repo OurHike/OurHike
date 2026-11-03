@@ -16,18 +16,22 @@
 // answers to one question, which is the failure App.tsx's own comments keep
 // naming ("two surfaces measuring the same distance two ways").
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MapScreenProps } from './MapScreen'
-import { LineSheet } from './LineSheet'
+import { LineSheet } from '../screens/deferred'
 import { trailIdForSource } from '../map/trailBadges'
 import { ClubSheet } from './ClubSheet'
 import { HighlightSheet } from './HighlightSheet'
 import { buildLineDetail, type LineDetail } from '../lib/lineDetail'
+import { lineClimb, type LineClimb } from '../lib/lineClimb'
+import { fetchTrailGraphElevationCells, type MergedGraph } from '../lib/trailGraphData'
 import { buildClubDetail, type ClubDetail } from '../lib/clubDetail'
 import { buildHighlightDetail, type HighlightDetail } from '../lib/highlightDetail'
 import type { ClubRun, ClubSections } from '../lib/clubSections'
 import type { Highlight } from '../lib/highlights'
 import type { TappedLine } from '../map/lineTaps'
+import type { PaperMapLine } from '../lib/lineDetail'
+import type { Stewards } from '../lib/stewards'
 import type { SpurRecord } from '../lib/spurDestination'
 import type { StoredPoi } from '../lib/trailData'
 import type { TrailIndex } from '../lib/trailPosition'
@@ -36,6 +40,18 @@ import type { ElevationProfile } from '../lib/elevationProfile'
 import type { PaceProfile } from '../lib/pace'
 import type { MileRange } from '../lib/walkedMiles'
 import type { UnitSystem } from '../lib/userPreferences'
+import type { StretchAdvisory } from '../lib/hazardAreas'
+
+/** No advisory anywhere: a phone without hazard areas. One shared
+ *  reference, for NO_PAPER_MAPS's reason. */
+function noAdvisories(): StretchAdvisory[] {
+  return []
+}
+
+/** No paper map, as one shared reference: the sheet's detail is memoised on
+ *  it, and a fresh empty array per render would rebuild the detail on every
+ *  render for nothing. */
+const NO_PAPER_MAPS: readonly PaperMapLine[] = []
 
 /** The `MapScreenProps` fields this feature owns. See atcNoticesPanel.tsx. */
 export type TappedLineMapProps = Pick<
@@ -49,6 +65,10 @@ export interface TappedLinePanel {
 }
 
 export interface TappedLineInput {
+  /** The hazard advisories for a tapped place (#1805): each drawn
+   *  hunting area, shooting site or burned area it is inside or beside, from
+   *  chrome/noticesPanel.tsx, which owns the areas. Absent is none. */
+  hazardAdvisoriesAt?: (at: [number, number]) => StretchAdvisory[]
   spurs: Record<string, SpurRecord>
   pois: readonly StoredPoi[]
   units: UnitSystem
@@ -59,6 +79,10 @@ export interface TappedLineInput {
    *  their own words. Empty until stewards load, which reads exactly as the
    *  sheet always read: sentences without a by-clause, never a made-up one. */
   trailSources: Readonly<Record<string, { attribution: string | null }>>
+  /** Who the map's data belongs to (lib/stewards.ts): the paper maps each
+   *  organization sells and which sheets they hold (#1574). Empty until the
+   *  stewards load, which reads as no paper map, exactly as before. */
+  stewards: Stewards
   walked: readonly MileRange[]
   /** The centerline, or null before it has loaded. */
   trailIndex: TrailIndex | null
@@ -66,6 +90,17 @@ export interface TappedLineInput {
    *  Passed in because the legend's maintainer line reads the same answer. */
   belowSeam: boolean
   clubSections: ClubSections
+  /**
+   * The junction graph as merged from the cells this phone holds (#1476), or
+   * null before any lands. What the climb figure is summed out of: an edge
+   * carries its parent line's `trail_id`, so the tapped feature's id selects
+   * its own edges and nothing else.
+   */
+  graphMerged: MergedGraph | null
+  /** Whether the climb half may be fetched with signal. Passed rather than
+   *  assumed, for lib/trailGraphData.ts's reason: offline the store read is
+   *  what makes this work at a trailhead instead of only at the hostel. */
+  online: boolean
   /** The corridor read end to end, in mile order. Passed in for the same
    *  reason `belowSeam` is. */
   clubRuns: readonly ClubRun[]
@@ -127,17 +162,21 @@ function takeProps(
 }
 
 export function useTappedLinePanel({
+  hazardAdvisoriesAt = noAdvisories,
   spurs,
   pois,
   units,
   trailName,
   pace,
   trailSources,
+  stewards,
   walked,
   trailIndex,
   belowSeam,
   clubSections,
   clubRuns,
+  graphMerged,
+  online,
   highlights,
   elevation,
   onCloseLegend,
@@ -153,10 +192,129 @@ export function useTappedLinePanel({
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null)
 
   /**
+   * The climb half of the graph cells this phone holds, and the graph it was
+   * fetched for (#1476).
+   *
+   * PAIRED WITH ITS GRAPH RATHER THAN KEPT ALONE, because the merge is
+   * append-only: a cell landing after this was fetched leaves the array
+   * shorter than the edges it would be read against, and an array priced
+   * against the wrong edges is a plausible figure on the wrong trail. Holding
+   * the graph beside it makes the staleness checkable in one `===` instead of
+   * inferred from a length.
+   *
+   * `data: null` is a DECIDED absence - published without the climb half, or
+   * a 404 - and is recorded so it is not re-asked on every tap. An undecided
+   * answer (the network refused) is deliberately NOT recorded: nothing was
+   * learned, so the next tap may ask again. That is lib/trailGraphData.ts's
+   * own three-way distinction, kept rather than flattened here.
+   */
+  const [heldClimb, setHeldClimb] = useState<{
+    graph: MergedGraph
+    data: Array<[number, number] | null> | null
+  } | null>(null)
+
+  // FETCHED ON THE TAP, not at launch. The climb half is small beside the
+  // shard it aligns with, but it is not free, and a hiker who never taps a
+  // line never needs it - the same lazily-when-a-door-opens shape the builder
+  // uses for the geometry half.
+  const wantsClimb = selectedLine !== null
+  useEffect(() => {
+    if (!wantsClimb || graphMerged === null) return
+    if (heldClimb?.graph === graphMerged) return
+
+    const controller = new AbortController()
+    let wanted = true
+    void fetchTrailGraphElevationCells(graphMerged, controller.signal, online).then(
+      (outcome) => {
+        if (!wanted || outcome.kind === 'undecided') return
+        setHeldClimb({
+          graph: graphMerged,
+          data: outcome.kind === 'loaded' ? outcome.data : null,
+        })
+      },
+    )
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [wantsClimb, graphMerged, heldClimb, online])
+
+  /**
+   * What this phone can honestly say about the tapped line's climb.
+   *
+   * The array is used only while it still belongs to the graph in hand;
+   * otherwise nothing is passed and `lineClimb` reads whatever the edges
+   * themselves carry, which for a plain merged shard is nothing at all - the
+   * honest "no figures" rather than a figure summed against stale alignment.
+   */
+  const climb: LineClimb = useMemo(() => {
+    if (selectedLine === null || graphMerged === null) return { kind: 'none' }
+    return lineClimb(
+      graphMerged.graph,
+      selectedLine,
+      heldClimb?.graph === graphMerged ? heldClimb.data : null,
+    )
+  }, [selectedLine, graphMerged, heldClimb])
+
+  /**
    * The tapped line's sheet content (#134), resolved here for the reason
    * `selectedPoi` is: the map reports what was drawn, and the shell is what
    * holds the spur records, the POI a spur leads to, and the hiker's units.
    */
+  /**
+   * Which paper maps hold the tapped point (#1574), resolved here for the
+   * reason the club sheet's mile is: the map reports where the tap landed,
+   * snapped to the line (map/lineTaps.ts), and the shell holds the stewards.
+   * Every match rather than the first: two sets' footprints can overlap at
+   * a margin (Sterling Forest's box and Harriman's do, around Tuxedo), and a
+   * spot on both is on both.
+   *
+   * BEHIND import(), AND THE ARCHIVE IS FETCHED ON THE FIRST TAP. The join
+   * and the archive reader under it are parsed when a line is first tapped,
+   * not before the first frame: imported statically they put the launch 90
+   * bytes over features/LAUNCH_BUDGET.md §3's 256,000-byte eager budget on
+   * this branch's first push. The archive is not safety data, so unlike the
+   * conditions baseline it need not be on the phone before the map is - the
+   * first tap asks for it, and lib/paperMaps.ts keeps it for the rest of the
+   * session.
+   *
+   * Kept beside the line it was resolved for rather than reset when the line
+   * changes: a stale answer is never shown against a new tap, and no state is
+   * set synchronously in the effect.
+   */
+  const [resolvedPaperMaps, setResolvedPaperMaps] = useState<{
+    line: TappedLine
+    lines: readonly PaperMapLine[]
+  } | null>(null)
+  useEffect(() => {
+    // Nothing to join, nothing to load: an A.T.-only phone holds no steward
+    // with a store, and the join's chunk is never fetched or parsed for it.
+    if (selectedLine === null || !stewards.some((steward) => steward.store !== null))
+      return
+    const line = selectedLine
+    let cancelled = false
+    void import('../lib/paperMaps')
+      .then((joins) =>
+        joins.paperMapLinesAt(stewards, 'trail_sheet', line.at[0], line.at[1], online),
+      )
+      .then(
+        (lines) => {
+          if (!cancelled) setResolvedPaperMaps({ line, lines })
+        },
+        // A join that could not load or read is no line on the sheet, which
+        // is exactly what the sheet showed before it existed.
+        () => {},
+      )
+    return () => {
+      cancelled = true
+    }
+  }, [selectedLine, stewards, online])
+  const paperMaps: readonly PaperMapLine[] =
+    resolvedPaperMaps !== null && resolvedPaperMaps.line === selectedLine
+      ? resolvedPaperMaps.lines
+      : NO_PAPER_MAPS
+
   const lineDetail: LineDetail | null = useMemo(() => {
     if (selectedLine === null) return null
     return buildLineDetail(
@@ -167,8 +325,10 @@ export function useTappedLinePanel({
       trailName,
       pace,
       trailSources,
+      climb,
+      paperMaps,
     )
-  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources])
+  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources, climb, paperMaps])
 
   const clubDetail: ClubDetail | null = useMemo(() => {
     if (!belowSeam || selectedLine === null || trailIndex === null) return null
@@ -245,6 +405,16 @@ export function useTappedLinePanel({
           <LineSheet
             detail={lineDetail}
             onClose={() => setSelectedLine(null)}
+            // The advisories for the tapped stretch (#1805):
+            // each drawn hunting area, shooting site or burned area the
+            // tapped point is inside or beside. The point is already on the
+            // line (map/lineTaps.ts), so this is the stretch the hiker
+            // touched, not wherever the thumb landed.
+            advisories={
+              selectedLine === null
+                ? []
+                : hazardAdvisoriesAt([selectedLine.at[0], selectedLine.at[1]])
+            }
             {...takeProps(
               selectedLine === null ? null : trailIdForSource(selectedLine.source),
               takenTrailId,
@@ -280,6 +450,7 @@ export function useTappedLinePanel({
       takenTrailId,
       takenByHike,
       onTakeTrail,
+      hazardAdvisoriesAt,
     ],
   )
 

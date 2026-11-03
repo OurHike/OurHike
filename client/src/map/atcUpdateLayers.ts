@@ -4,10 +4,12 @@
 // Deliberately a SEPARATE SOURCE from `closures` rather than extra features in
 // that one. Two reasons, and the second is the load-bearing one:
 //
-//  - The two are drawn with different dasharrays (lib/atcUpdateStyle.ts), and
-//    a dasharray is a paint property of a layer rather than of a feature, so
-//    one source could not carry both rhythms without a data-driven expression
-//    MapLibre does not support for `line-dasharray`.
+//  - The two were drawn with different dasharrays (lib/atcUpdateStyle.ts) -
+//    barrier tape images now - and a dasharray was a paint property of a
+//    layer rather than of a feature when this was decided, so one source
+//    could not carry both rhythms. (MapLibre honours a per-feature
+//    `line-dasharray` since, which map/style.ts uses for #1588; the reason
+//    below is the one that still stands.)
 //  - A tap has to be able to answer *which kind of thing* it landed on. With
 //    one source, `queryRenderedFeatures` would hand back a band and the shell
 //    would have to parse the id to find out whether an ATC sheet or a closure
@@ -43,7 +45,8 @@ import { atcBandId, type AtcUpdate } from '../lib/atcUpdates'
 import { trailPointAtMile, type TrailIndex } from '../lib/trailPosition'
 import { closureFeatureCollection, type ClosureBand } from './closureLayers'
 import { whenStyleReady } from './styleReady'
-import { closureIdAt } from './closureLayers'
+import { closureIdAt, clubClosureIdAt } from './closureLayers'
+import { poiPinAt } from './poiPinProbe'
 import { warningIdAt } from './warningLayers'
 
 export const ATC_UPDATE_SOURCE_ID = 'atc-updates'
@@ -216,10 +219,22 @@ export function attachAtcUpdateTaps(
   onSelect: (bandId: string) => void,
 ): () => void {
   const onClick = (event: MapMouseEvent) => {
-    // The two safety marks win a touch (closureLayers.ts's order): a
-    // notice band under barrier tape is a tap on the tape.
+    // The marks above this one win a touch, in closureLayers.ts's order:
+    // the warning pin, then a waypoint PIN, then the closure tape, then
+    // this band. A notice band under barrier tape is a tap on the tape.
+    //
+    // THE WAYPOINT PIN JOINED THAT LIST IN #1419 and this handler had to
+    // join it with them. Since the pin stopped yielding to the tape, a
+    // shelter standing on a notice band with no closure under the same point
+    // resolved to the card AND to this sheet - two sheets on one touch,
+    // which the "ONE TOUCH, ONE INTERPRETER" note records as the first
+    // version's bug. The probe is the one poiTaps and closureLayers share.
     if (warningIdAt(map, event.point) !== null) return
+    if (poiPinAt(map, event.point) !== undefined) return
     if (closureIdAt(map, event.point) !== null) return
+    // A club's closure is the same tape (the maintainer's closure-map standard, 2026-10-11),
+    // at the same rank.
+    if (clubClosureIdAt(map, event.point) !== null) return
     const id = atcBandIdAt(map, event.point)
     if (id !== null) onSelect(id)
   }

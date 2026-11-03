@@ -52,6 +52,8 @@ put here is published, not stored. Also never: credentials, mirrors of raw upstr
 about generated data), and anything whose licence has not been established
 ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+**Raw never lands in this bucket.** An earlier plan (2026-10-01) put raw and the step cache here, with a hold-out list for the rows this project never publishes; the maintainer replaced it the same day. Every raw table and the step cache now go in one private bucket, `our-hike-raw`, under `raw/` and `steps/`, with one key, so nothing here is raw and there is no hold-out list to keep (the maintainer: *"Noooooo don't partition the sources … Can you make the private r2 bucket for me and store the secrets to GitHub?"*). **#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly refresh, published docs, and lighter phone downloads** builds it. The earlier design, which reached the same answer for its own reasons:
+
 **There is a design for a raw store, and it is a different bucket** —
 [INCREMENTAL.md](INCREMENTAL.md), designed 2026-09-09, unbuilt. It exists to keep the
 fetchers' outputs between runs, which is exactly the "mirror of raw upstream pulls" the
@@ -67,6 +69,13 @@ segments, the banned word `latest`, the closed extension set — are all consequ
 key being a permanent public URL, and none of them describes a private store, so the raw
 store gets a small validator of its own rather than these rules loosened for both.
 
+**Since 2026-09-24 that design has a second private bucket**, the step cache: the output
+of each expensive pipeline step, stored under a hash of its inputs, plus a read-only
+`.duckdb` copy for people to query (INCREMENTAL.md, "Three tiers, and a step cache between
+them"). It is a separate bucket so the build job can write it without being able to write
+raw. Everything this section says about the raw store is true of it too: never a public
+domain, never these key rules.
+
 ## Top-level prefixes
 
 These are the places an object can be, and a new one is a design decision — recorded in
@@ -77,13 +86,39 @@ data a phone is pinned to.
 
 | prefix | holds | mutable | hiker-facing |
 |---|---|---|---|
-| *(root)* | today's flat keys, plus `latest.json` | frozen; `latest.json` is the one mutable pointer | yes |
+| *(root)* | today's flat keys, plus `latest.json`, `channels.json` and `channels_history.json` | frozen; `latest.json` and `channels.json` are mutable pointers, and `channels_history.json` is appended to by `channels.py` on each move of `channels.json` | yes |
 | `releases/` | one immutable folder per dated release, plus `index.json` and `pinned.json` | written once, never overwritten | yes |
 | `_internal/` | build intermediates, keyed by release | rewritten per build | no |
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
 | `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
-| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
+| `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates — and, since #1056, the NBM forecast for every trail square (`weather_index.json` plus one `weather/<cell>.json` per 1° cell) and every active NWS alert that reaches one (`weather_alerts.json`) (features/WEATHER.md §7) | mutable: rewritten in place, hourly by schedule (about every four hours as GitHub actually fires it, #1346) | yes |
+| `archive/` | one-time snapshots of third-party data read once and possibly never again — today the footprint of each NYNJTC paper map sheet | mutable only by a person dispatching the one-off workflow that wrote it | yes |
+| `archive__nynjtc_photos__do_not_delete/` | the whole Internet Archive recovery of NYNJTC's Drupal-era photographs, content-addressed | written once, never rewritten, never pruned | **no** |
+| `podcasts/` | one object, `episodes.json`: the podcast episodes picked for each hike | mutable only by a person dispatching `publish-podcasts.yml` | yes |
 | `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |
+
+**`archive__nynjtc_photos__do_not_delete/` is a park, not a store anything reads** (#1567).
+It holds all 403 photographs the Internet Archive recovery pulled out of NYNJTC's
+Drupal-era site — a finished corpus of frozen captures that cannot change — so that the
+archive is never asked for them a second time. It was added because 284 of those 403 had
+come to live only in a 14-day workflow artifact and a branch cache that a merge deleted,
+which made a one-time crawl into something that would have to be repeated.
+
+Nothing in the app or the pipeline reads it. What may reach a hiker is decided by
+`pipeline/reference/nynjtc_hike_photos.json` and travels through `photos/` exactly as
+before, so a digest sitting here has no route to a card. The shouting name is doing real
+work rather than decoration: no prune job exists yet ([DATA_RELEASES.md](DATA_RELEASES.md),
+Phase 7 — retention is "keep everything"), and the one eventually written will be scoped
+to `releases/`, so this prefix is safe by design *and* by the name whoever writes that job
+will read.
+
+**What it costs, recorded because it is a real cost.** 284 of the 403 are unreviewed, and
+the `u26` directory they came from is a site-wide upload folder wider than the Favorite
+Hikes permission `sources.json`'s `nynjtc_hikes_licence` covers. A key in this bucket is a
+permanent public URL — the argument #1504 made when it built the review gate, in the words
+"unreferenced is not private". No published artifact references these digests, so nothing
+advertises them, but that is a mitigation and not the licence. The maintainer chose this
+bucket and this name on 2026-09-17, knowing that.
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs.
 That document owns the tree, the retention clocks and the migration — this one only says
@@ -99,6 +134,21 @@ thing every client in the field reads.** That is deliberate rather than transiti
 app-store builds cannot be forced forward (and RELEASING.md §10's planned `DATA_RELEASE`
 constant would pin them harder still), so moving the flat keys is a change no phone
 already in the field could survive.
+
+**A versioned file lives only in a release folder** ([ELT.md](ELT.md),
+"Versions and channels"). A v2 phone file is written beside its v1 at
+`releases/<id>/v2/<file>`, and it has no flat key: every root key is v1's, and a build that
+reads v2 resolves its release folder and reads `v2/<file>` there
+(`client/src/lib/config.ts`'s `phoneFileKey`). So `publish.py` uploads a changed v2 file
+straight into the folder it stages, and copies an unchanged one across from the folder
+`latest.json` names. Only the folder's own `manifest.json` lists it. `latest.json`
+describes the flat keys, and `check_deployment.py`, `smoke_published.py` and every build
+that reads the root fetch each key it lists at that flat name. `v2/` is therefore never a
+top-level prefix, and `lib/r2_keys.py` refuses one at the root. Monthly run 29
+(`refresh-reference.yml` 37726904273, 2026-10-08) is why this is written down: it tried to
+upload the eleven v2 files flat, and that refusal stopped the run before anything was
+uploaded. The root-scoped families keep their versions under their own prefix
+(`conditions/v2/<file>`, `podcasts/v2/<file>`).
 
 `_internal/` is still not written by anything. It holds build intermediates keyed by
 release — per-cell mosaics and their state — whose producer is the raster build, and
@@ -119,6 +169,30 @@ Retention is therefore trivial and needs no prune job: one object per artifact, 
 in place, never accumulating. That is the exemption to DATA_RELEASES.md's rule that a new
 prefix needs a retention clock written for it — there is nothing to retain.
 
+**`conditions/hazard_areas.json` joined the prefix on 2026-10-05**, and like every key here it is permanent from its first upload. It holds
+the rows of `conditions/notices.json` that carry a `hazard` — the hunting areas, shooting
+sites and burned areas the map draws — written by the dbt writer `pub_conditions_hazard_areas`,
+because a phone downloads `notices.json` only once a hike is planned and reads
+this one at launch. Like `notices.json` it is written only on the dbt path, so a bucket the
+exporters still publish answers 404 for it, and the client reads that as no answer rather
+than as no hazard area (`client/src/lib/publishedNotices.ts`).
+
+**`conditions/trail_closures.json` joined the prefix on 2026-10-14** (the maintainer's
+polls of 2026-10-11, building **#1152 — Move OPRHP's temporary
+closures onto the conditions clock, where a safety layer belongs** in its shape C, for
+every club closure). It holds the rows of
+`conditions/notices.json` that obstruct a trail, but ATC's, each with a `shape` of
+`line`, `area`, `shade` or `point`; an area's `place` is the trail stretches inside it, cut
+every hour against the release's own trail lines (the nearby ones and the A.T.'s),
+and a `shade`'s is the area itself, where no mapped trail runs inside.
+The dbt writer
+`pub_conditions_trail_closures` writes it, the phone reads it at launch and draws each
+closure with the crossed-out mark, and like `hazard_areas.json` it is written only on the
+dbt path, so a bucket the exporters still publish answers 404 for it. Nothing new is
+stored anywhere for it in this bucket: the release's lines reach the hourly build through
+the Actions cache (`publish-weather.yml` prepares them once per release), not through a
+key here.
+
 `originals/` is a preservation copy and never a download. `photos/` holds the 640px
 rendering a card actually shows; this holds the full-resolution file it was reduced from,
 so that losing an upstream does not also lose the photograph. The prompt was ATC's
@@ -137,6 +211,29 @@ which POI_PHOTOS.md keeps off this project's disks entirely.
 
 `_internal/` is named to be obvious rather than to hide: on a public r2.dev bucket it is
 readable by anyone. It means "nothing here is a download", not "nobody can see this".
+
+`archive/` holds what this project read from a third party once and may not be able to read
+again ([#1574](https://github.com/OurHike/OurHike/issues/1574)). The first object is
+`archive/nynjtc_map_sheets.json`: the georeferenced footprint of each of NYNJTC's paper map
+sheets, read off the Avenza Map Store's product pages by `archive_nynjtc_sheet_extents.py` and
+written by `archive-nynjtc-sheets.yml`, which has no schedule. The maintainer's rule for it,
+2026-09-17: *"that will eventually go away. It shouldn't be a real pipeline that runs regularly.
+Just an archive that sits in its own folder."* So it is not under `releases/` — a release is
+rebuilt from the code, and this cannot be rebuilt once the store is gone — and not under
+`conditions/`, which is rewritten hourly by scheduled jobs. The client reads it at the root
+beside `conditions/` (`client/src/lib/mapSheets.ts`, `lib/dataRelease.ts`'s
+`ROOT_SCOPED_PREFIXES`). Retention is `conditions/`'s: one object per snapshot, overwritten in
+place by the next deliberate dispatch, never accumulating, so no prune job is needed.
+
+`podcasts/` holds the podcast episodes the maintainer picked for each hike
+([#1683](https://github.com/OurHike/OurHike/issues/1683)), as one object,
+`podcasts/episodes.json`, written by `export_podcasts.py` from the reviewed
+`reference/podcast_episodes.json` when a person dispatches `publish-podcasts.yml`. It is not
+under `releases/` because the maintainer chose a live list (2026-09-26): a release folder is
+pinned by the client's `DATA_RELEASE`, so an episode added there would reach nobody until an
+app release moved the pin. The client reads it at the root (`client/src/lib/podcasts.ts`,
+`lib/dataRelease.ts`'s `ROOT_SCOPED_PREFIXES`). Retention is `conditions/`'s: one object,
+overwritten in place, never accumulating.
 
 `environments/` is the one prefix that holds no objects of its own. `environments/ua/` is this
 whole page again — root keys, `releases/`, `photos/`, `conditions/`, all of it — belonging to

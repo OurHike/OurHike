@@ -354,6 +354,161 @@ and `device_os` is the phone as far as the user agent will say, empty rather
 than guessed. **`shell` is not `fix_source`**: a native build still writes
 `web` rows whenever the background switch is off.
 
+## How the components are put together
+
+TECHNICAL_ARCHITECTURE.md records why the background map is raster and not
+vector, dates the decision and names the trade it accepted. **The client's
+component architecture carried none of that** until #1422, and the honest
+answer to most of it turns out to be that nobody decided — which is the
+sentence a reader cannot reconstruct later and is why this section exists.
+
+It is a description, not a plan. [#937 — _App.tsx is still the chokepoint
+after #327: four features moved, four clusters did not_](https://github.com/OurHike/OurHike/issues/937)
+is the work; [BRANCHING.md](../BRANCHING.md) §2 is the panel-hook convention
+and why `App.tsx` and `MapScreen.tsx` are the two files to check before
+opening a second client branch.
+
+### What it is, measured
+
+At `2f4843ed` (2026-09-15) — this section's own base, **not** the branch that
+added it — re-runnable from `client/`:
+
+|                                           |                                                         | how to re-measure                                                            |
+| ----------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `createContext` anywhere in the client    | **0**                                                   | `grep -rn createContext src --include=*.tsx --include=*.ts`                  |
+| `React.memo` / `memo(`                    | **0**                                                   | `grep -rn 'React\.memo\|= memo(' src --include=*.tsx \| grep -v .test.`      |
+| external state library                    | **none**                                                | no `zustand`/`redux`/`jotai`/`mobx` in `package.json`                        |
+| React Compiler                            | **not installed**                                       | no `babel-plugin-react-compiler`; `vite.config.ts` calls bare `react()`      |
+| `App.tsx`                                 | **10,627 lines** (5,583 code, 4,635 comment, 409 blank) | `wc -l src/App.tsx`                                                          |
+| `useState` in the root                    | **33**                                                  | `grep -c 'useState(' src/App.tsx`                                            |
+| `useCallback` / `useMemo` in the root     | **161 / 98**                                            | `node scripts/memo-census.mjs` — `grep -c 'useMemo('` is 5 short, see below  |
+| `MapScreenProps` fields                   | **170**                                                 | `sed -n '/^export interface MapScreenProps/,/^}/p' src/chrome/MapScreen.tsx` |
+| the `<MapScreen>` call site               | **539 lines**, 111 named props, 9 spread bundles        | `src/App.tsx:9715`                                                           |
+| `lib/` modules, and how many import React | **209 / 33**                                            | `ls src/lib/*.ts* \| grep -v test \| wc -l`                                  |
+| `MapView`'s effects                       | **48**                                                  | `grep -c 'useEffect(' src/map/MapView.tsx`                                   |
+
+### Why there is no Context
+
+**`@unvalidated` — nobody recorded a decision, and nothing in the tree reads
+as one.** There is no comment, no design doc and no commit message arguing
+against Context; there has simply never been a `createContext` call. Read as
+"never considered" rather than "considered and rejected", because the second
+leaves evidence and there is none.
+
+What the absence buys is real and is worth writing down whether or not anyone
+chose it: **every dependency is visible at the call site, and nothing is
+spookily available.** The panel-hook convention depends on exactly that — each
+hook in `chrome/` declares its slice as `Pick<MapScreenProps, …>`, which is a
+grip you only get on props that are explicit. Five modules take that grip
+today. A Context would dissolve it, so moving to one is not a local change to
+`App.tsx`; it is a change to how a feature declares what it needs.
+
+What it costs is the 539-line call site in the table above, and the fact that
+adding one field to a leaf edits `App.tsx` and `MapScreen.tsx` — the two files
+BRANCHING.md §2 measures as the repository's conflict surface.
+
+**What would settle it:** somebody deciding, in writing, with the panel-hook
+grip as the thing being traded. Not a measurement — this is a design question
+and no number answers it.
+
+### Why per-sheet open/closed state lives in the root
+
+**Reasoned, and the code says so** — this is the one of the three questions
+that has a real answer already. `legendOpen`, `searchOpen`, `downloadsOpen`,
+`dayListOpen`, `tripsOpen`, `placeSheetOpen` and `stepPickerOpen` are booleans
+in `App.tsx` with no cross-feature _reader_, which looks like state that
+should have moved out with its feature. They stay because of a cross-feature
+_rule_, stated at `App.tsx:3046`:
+
+> One thing in the lower third: a safety sheet opening closes the card and the
+> legend, and (handleSelectPoi below) a card opening closes the sheet — the
+> rule `openDownloads` states, applied to the two marks #1373 added.
+
+`setLegendOpen(false)` appears at six sites, and every one is another feature
+opening: `closeCardForSheet`, `sweepForBuilder`, `openDayHike`,
+`openDownloads`, and the pin-tap handler. A hiker with the legend and a
+waypoint card stacked in the lower third of a phone screen can read neither,
+so "one thing at a time down there" is a property of the _screen_ rather than
+of any one sheet — and a property of the screen has to be owned by whatever
+owns the screen.
+
+So these are not leftovers. Moving one into its own panel hook means deciding
+where that rule lives afterwards, which is the part to work out before the
+extraction rather than during it.
+
+### What the memoisation policy is
+
+**`@unvalidated`, and this is the one most likely to be cargo.** 161
+`useCallback` calls and 93 `useMemo` calls in the root, against **zero**
+memoised children — no `React.memo`, no external store with selectors, no
+React Compiler.
+
+That is not a contradiction. A stable identity earns its place in another
+hook's dependency array whether or not any child is memoised, and several here
+say so at the site: `lib/outboxSync.ts:115` ("must be referentially stable, or
+this re-runs on every render"), `lib/navigator.ts:334`, `map/MapView.tsx:498`.
+**But no rule says which ones are load-bearing**, so every new handler gets a
+`useCallback` by default and a reader cannot tell the ones holding an effect
+steady from the ones wrapping a function nothing depends on.
+
+**Measured 2026-09-15 at `e266f9e6` (#1454), and the count is worse than the
+paragraph above guessed.** `scripts/memo-census.mjs` parses `App.tsx` and
+follows each memoised value to everything that could depend on it — run
+`node scripts/memo-census.mjs`:
+
+| in `App.tsx`  | total | in an array here | via a prop a child keys on | handed to a custom hook | **nothing depends on it** |
+| ------------- | ----: | ---------------: | -------------------------: | ----------------------: | ------------------------: |
+| `useCallback` |   167 |               41 |                         17 |                       7 |           **102** (61.1%) |
+| `useMemo`     |    99 |               42 |                         22 |                       2 |            **33** (33.3%) |
+
+**Three of those four columns exist because the naive count was wrong**, and
+the wrongness all ran one way — toward calling things cargo:
+
+- **A child's effect is a dependency.** `MapView` keys eight of its 48 effects
+  on callbacks the shell passes it and says so at the prop — "stable across
+  renders (useCallback), like `onSelectPoi`" (`map/MapView.tsx:302`). Counting
+  only `App.tsx`'s own arrays called 126 callbacks cargo; 17 of those are held
+  stable for a child.
+- **So is a custom hook's argument.** `useOutboxSync(…, handleSynced)` puts
+  `handleSynced` in no array and on no prop, and `lib/outboxSync.ts:115` says
+  it "must be referentially stable, or this re-runs on every render." Seven
+  more. The script assumes any `use*` call may key on its arguments rather
+  than opening each one, which overcounts in the safe direction: erring this
+  way cannot manufacture a deletion.
+- **`grep -c 'useMemo('` misses five**, because `useMemo<Footprint[] | null>(…)`
+  has no `useMemo(` in its text. The figure in the table above — 93 at this
+  section's own base — was five short for that reason, and the re-measure
+  command in it has been corrected.
+
+**What the number is, stated no stronger than it is.** 102 `useCallback`s —
+**61%** — are depended on by nothing this script can find: not an array here,
+not a child's effect, not a hook. With zero `React.memo` and no React
+Compiler, a stable identity nothing consumes buys nothing, so that is the
+candidate set for removal. It is **not** a delete list: 67 of the 102 are
+passed as props that no component currently keys on, and a child adding one
+effect turns any of them load-bearing. Each removal is its own judgement.
+
+The `useMemo` row does not carry the same reading and must not be added to it.
+`useMemo` also buys not recomputing something expensive, which has nothing to
+do with identity — so its 33 are "not load-bearing **for identity**" and
+whether each earns its keep is a per-site question no script answers.
+
+**Still `@unvalidated`: whether removing any of the 102 is safe.** The count
+finds candidates and nothing more. `src/test/memoCensus.test.ts` holds the
+script to its classifications, including one blind spot it asserts rather than
+hides — a hook imported under an alias is invisible to the census, and nothing
+in `src/` does that today.
+
+### What is good here and is also undocumented
+
+Said so the three answers above are not read as a verdict on the whole. **176
+of `lib/`'s 209 modules import no React at all**, so the domain logic — mile
+axes, water distances, staleness, the planner — is testable without a renderer
+and is tested at close to 1:1. And `MapView` holds its MapLibre instance in a
+ref behind 48 narrowly-keyed effects, so a React re-render does not redraw the
+canvas. Those are good decisions. They are also undocumented, which is the
+point: a reader today cannot tell them apart from the accidents.
+
 ## What is not wired up yet
 
 - **Sign-in and identity.** There is no deployed backend, so reports save to

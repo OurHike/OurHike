@@ -1,30 +1,91 @@
 """FastAPI application entrypoint."""
 
 import math
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
+from app.config import settings
+from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
+from app.core.edge_cache import NoStoreByDefaultMiddleware
+from app.core.logs import RequestIdMiddleware, configure_logging
+from app.db.session import check_database, database_host
 from app.routers import (
+    analytics,
     app_failures,
+    assist,
     closures,
+    clubs,
+    console,
     field_notes,
     hikes,
     maintainer_assignments,
     moderation,
+    nominations,
+    org_registry,
+    org_roles,
     poi_photos,
     preferences,
     profiles,
     reports,
+    ridge_runner,
+    support,
     synced_day_hikes,
     synced_trips,
+    trail_challenges,
     volunteer_hours,
+    work_projects,
 )
 
-app = FastAPI(title="OurHike backend")
+configure_logging()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Refuse to start when the database cannot be reached (#1756).
+
+    `/health` touches nothing, so a container with DATABASE_URL missing or
+    pointed at the wrong pooler string would otherwise pass the host's health
+    check and answer 500 on every route that reaches the database. Exiting
+    here fails the deploy instead. The message names the host and port and
+    never the credentials.
+
+    Not run by `TestClient(app)` used without a `with` block, which is how
+    tests/conftest.py builds its client, so the suite does not depend on it.
+    """
+    try:
+        check_database()
+    except Exception as exc:
+        raise RuntimeError(
+            f"Cannot reach the database at {database_host(settings.database_url)} "
+            f"({type(exc).__name__}). Check DATABASE_URL, including the pooler host and port."
+        ) from None
+    yield
+
+
+app = FastAPI(title="OurHike backend", lifespan=_lifespan)
+
+# The innermost two, added first for that reason: both act on what the routes
+# answer, and nothing outside them needs a body before it is compressed.
+# app/core/edge_cache.py is the reasoning for the second. Gzip is there because
+# Render bills bytes leaving the service past 5 GB a month, at $0.15/GB (read
+# 2026-10-23, backend/HOSTING.md), and JSON shrinks well; Starlette's defaults
+# (bodies of 500 bytes and up, level 9) are used as they come.
+app.add_middleware(GZipMiddleware)
+app.add_middleware(NoStoreByDefaultMiddleware)
+
+# Added BEFORE the CORS middleware below, which matters: `add_middleware`
+# puts each new middleware outermost, so this one ends up inside CORS and a
+# 413 it answers on its own still carries the CORS headers a browser needs to
+# read it as a 413 rather than as a network error. app/core/body_limit.py is
+# the reasoning, and tests/test_body_limit.py pins the order.
+app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
 
 # Browsing endpoints are meant to be reachable from the client PWA's own
 # origin (and, during local dev, from Vite's dev server) with no auth token
@@ -32,14 +93,27 @@ app = FastAPI(title="OurHike backend")
 # Authorization header (Supabase Auth), never a cookie, so credentialed
 # CORS isn't needed - allow_credentials stays False, which is what makes a
 # wildcard origin safe here. Tighten to an env-driven allowlist once real
-# deployed origins are known.
+# deployed origins are known - and take GET /closures, /reports and /disputes
+# out of the edge cache in the same change, because a shared copy can carry
+# only one origin's answer (app/core/edge_cache.py).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-Id"],
 )
+
+# Added AFTER CORS so it is the outermost middleware added here: a 5xx that
+# CORS or anything inside it raises is still logged, and the id header is on
+# every response - including the 500 an unhandled exception becomes, which
+# Starlette's own ServerErrorMiddleware (outside this one) would otherwise send
+# without it. A browser only lets the client read X-Request-Id because CORS
+# exposes it above, which it does on every response but that crash's 500: that
+# one has no CORS headers at all. RequestIdMiddleware's docstring in
+# app/core/logs.py is the reasoning (#1759).
+app.add_middleware(RequestIdMiddleware)
 
 
 def _json_safe(value):
@@ -60,17 +134,44 @@ def _json_safe(value):
     return value
 
 
+def _without_input(error: dict) -> dict:
+    """A validation error with what was sent taken out of it.
+
+    Pydantic puts the offending value in `input`, and on a list that is the
+    whole list: a 1 MiB field came back as 2 MiB, and a 16 MiB body as 16 MiB
+    more out of the server - outbound bandwidth is what the host bills, and
+    any caller can send the body (#1903's second review). Nothing reads it:
+    the client tells 422s apart by `loc` (client/src/lib/api.ts), and the
+    caller already holds what it sent.
+    """
+    return {key: value for key, value in error.items() if key != "input"}
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_error_survives_its_own_payload(request: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": _json_safe(jsonable_encoder(exc.errors()))},
+        content={"detail": _json_safe(jsonable_encoder([_without_input(error) for error in exc.errors()]))},
     )
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> JSONResponse:
+    """200 when a database query succeeds, 503 when it does not.
+
+    Separate from `/health` on purpose: a health check that needs the database
+    makes a database outage restart-loop the container, which cannot fix it.
+    """
+    try:
+        check_database()
+    except Exception:
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "database unavailable"})
+    return JSONResponse(content={"status": "ok"})
 
 
 app.include_router(profiles.router)
@@ -82,7 +183,31 @@ app.include_router(closures.router)
 app.include_router(maintainer_assignments.router)
 app.include_router(moderation.router)
 app.include_router(app_failures.router)
+# Usage measurement (#1902, features/EVENTING.md): one write, no reads.
+app.include_router(analytics.router)
 app.include_router(field_notes.router)
 app.include_router(volunteer_hours.router)
 app.include_router(synced_trips.router)
 app.include_router(synced_day_hikes.router)
+
+# The organization surface (features/ORG_ONBOARDING.md). Order matters for
+# one pair only: `clubs` declares GET /clubs/{slug}, and the registry and
+# roles routers add longer paths under the same prefix. FastAPI matches the
+# most specific declared route rather than the first prefix, so the grouping
+# below is for a reader rather than for the router - but the reserved slugs
+# in schemas/org.py are what actually keep an org from registering a name
+# that would shadow one of them.
+app.include_router(clubs.router)
+app.include_router(org_registry.router)
+app.include_router(org_roles.router)
+app.include_router(work_projects.router)
+app.include_router(ridge_runner.router)
+app.include_router(console.router)
+app.include_router(assist.router)
+app.include_router(nominations.router)
+# Challenges (#1780, features/CHALLENGES.md). One router for both halves - a
+# hiker's `/challenges/...` and a club's `/clubs/{slug}/challenges...` -
+# because the club's counts and CSV are read off the hiker's rows, and two
+# routers would be two places deciding what a count may reveal.
+app.include_router(trail_challenges.router)
+app.include_router(support.router)

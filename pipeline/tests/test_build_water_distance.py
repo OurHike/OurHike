@@ -134,7 +134,7 @@ def test_every_feature_is_listed_and_blanks_carry_reasons():
 
     records = bwd.resolve_layer("shelters", [matched, unmatched], rows)
 
-    assert [record["atc_global_id"] for record in records] == ["g-matched", "g-unmatched"]
+    assert [record["poi_id"] for record in records] == ["atc_shelters:g-matched", "atc_shelters:g-unmatched"]
     resolved, missing = records
     assert resolved["distance_ft"] == 386
     assert resolved["listed_distance_ft"] == 385.7
@@ -143,6 +143,42 @@ def test_every_feature_is_listed_and_blanks_carry_reasons():
     assert "unresolved" not in resolved
     assert missing["distance_ft"] is None
     assert missing["unresolved"] == bwd.NO_ROW_NEARBY
+
+
+def test_resolve_layer_keys_a_re_keyed_feature_by_the_ledger_id_it_carried():
+    """#1729: ATC re-keys a shelter, reconcile_poi_identity.py carries
+    `atc_shelters:g-old` onto the new GlobalID, and the export keeps publishing
+    the old id. A rebuild has to write that id, or the distance names a POI
+    nothing publishes. A feature the ledger does not carry gets
+    `{source}:{GlobalID}`, the id the ledger would mint for it."""
+    re_keyed = atc_feature("Wise Shelter", global_id="g-new")
+    fresh = atc_feature("Pierce Pond Lean-to Shelter", lat=45.0, global_id="g-fresh")
+    ledger_ids = {("atc_shelters", "g-new"): "atc_shelters:g-old", ("atc_campsites", "g-fresh"): "atc_campsites:elsewhere"}
+
+    records = bwd.resolve_layer("shelters", [re_keyed, fresh], [], ledger_ids)
+
+    assert [record["poi_id"] for record in records] == ["atc_shelters:g-old", "atc_shelters:g-fresh"]
+
+
+def test_poi_id_for_reads_the_ledger_as_export_poi_publishes_under_it(tmp_path):
+    """The ledger read through export_poi.live_ledger_ids(), which main()
+    uses: a live row's id wins, and a retired row is ignored exactly as
+    apply_ledger_ids ignores it, so the feature keeps its composed id."""
+    ledger = tmp_path / "poi_identity.json"
+    ledger.write_text(
+        __import__("json").dumps(
+            {
+                "pois": {
+                    "atc_campsites:carried": {"source": "atc_campsites", "source_feature_id": "c-now"},
+                    "atc_shelters:gone": {"source": "atc_shelters", "source_feature_id": "s-1", "retired": "2026-08-19"},
+                }
+            }
+        )
+    )
+    ledger_ids = bwd.live_ledger_ids(ledger)
+
+    assert bwd.poi_id_for("campsites", "c-now", ledger_ids) == "atc_campsites:carried"
+    assert bwd.poi_id_for("shelters", "s-1", ledger_ids) == "atc_shelters:s-1"
 
 
 def test_a_zero_distance_publishes_nothing_with_the_reason_stated():
@@ -270,3 +306,19 @@ def test_the_checked_in_reference_file_is_complete_and_internally_consistent():
             assert record["distance_ft"] >= 1
             assert record["provenance"], f"{record['atc_name']}: a distance with no provenance"
     assert document["counts"]["with_distance"] == sum(1 for record in records if record["distance_ft"] is not None)
+
+
+def test_a_negative_distance_publishes_nothing_and_keeps_the_evidence():
+    """-999 is how a GIS table often spells unknown, and `max(1, round(-999))`
+    would have published it as one foot from water. Measured 2026-09-17: the
+    checked-in file's smallest listed value is 0.77 ft, so this refusal is
+    written before the layer needs it rather than after."""
+    feature = atc_feature("Gravel Spring Hut")
+    rows = [csi_row("Gravel Spring Hut", 40.0, -76.0, distance=-999)]
+
+    [record] = bwd.resolve_layer("shelters", [feature], rows)
+
+    assert record["distance_ft"] is None
+    assert record["listed_distance_ft"] == -999
+    assert "sentinel" in record["unresolved"]
+    assert record["match"] == "name"

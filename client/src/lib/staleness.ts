@@ -1,8 +1,21 @@
 // Data staleness tiers. See WIREFRAMES.md's Data staleness section: a third
 // visual channel, independent of confidence (whether a POI was ever
 // verified to exist - a separate concern rendered elsewhere, e.g. a dashed
-// pin outline). This module answers only "when did a human last confirm
-// this was fine".
+// pin outline). This module answers only "when did a human last leave a
+// note here", whatever that note said.
+//
+// RECENCY, NOT REASSURANCE - maintainer decision, 2026-09-21 (#1603).
+// A water source whose newest note says `dry` still counts as freshly
+// visited: it keeps the green ring and the words "Confirmed recently"
+// while the card beside it reads "Dry - yesterday, thru-hiker". Two
+// alternatives were drawn and offered - feed the date only from the good
+// end of each type's vocabulary (lib/fieldNotes.ts's QUICK_ANSWERS already
+// names both ends), or give a bad newest note its own ring - and neither
+// was taken. What changed was the sentence: WIREFRAMES.md §11 and this
+// header both used to say the channel meant "when a human last said it was
+// FINE", which this module has never done. lib/noteRollup.test.ts pins the
+// behaviour so the next reader who finds it surprising changes it on
+// purpose rather than as a bug fix.
 //
 // THE PRODUCER EXISTS NOW (#256): field notes (features/FIELD_NOTES.md),
 // whose roll-up feeds `lastConfirmed` from the most recent visible

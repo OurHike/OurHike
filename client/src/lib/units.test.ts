@@ -2,8 +2,14 @@ import { describe, it, expect } from 'vitest'
 import {
   formatDistance,
   formatDistanceRange,
+  feetFromMetres,
   formatElevation,
+  formatRoundShortDistance,
   formatShortDistance,
+  formatTemperature,
+  formatWind,
+  formatWindRange,
+  temperatureUnitLabel,
   unitSystemLabel,
 } from './units'
 
@@ -113,6 +119,15 @@ describe('formatShortDistance', () => {
   })
 })
 
+describe('formatRoundShortDistance', () => {
+  it('states a round pick to the nearest 10 of the hiker\u2019s unit, not to the foot', () => {
+    // 100 m is 328.08 ft: a radius somebody chose, not a survey (#1695).
+    expect(formatRoundShortDistance(feetFromMetres(100), 'imperial')).toBe('330 ft')
+    expect(formatRoundShortDistance(feetFromMetres(100), 'metric')).toBe('100 m')
+    expect(formatRoundShortDistance(feetFromMetres(150), 'metric')).toBe('150 m')
+  })
+})
+
 describe('unitSystemLabel', () => {
   it('names the unit a hiker reads, not the customs schedule it belongs to', () => {
     expect(unitSystemLabel('imperial')).toBe('Feet')
@@ -130,6 +145,7 @@ describe('the module as a whole', () => {
       formatDistance(1, 'metric'),
       formatDistance(0.01, 'metric', 'fine'),
       formatShortDistance(100, 'metric'),
+      formatRoundShortDistance(100, 'metric'),
     ]
     for (const output of outputs) {
       expect(output).toMatch(/^[\d,.]+ (m|km)$/)
@@ -149,5 +165,29 @@ describe('formatDistanceRange', () => {
 
   it('collapses to one figure when the range rounds to nothing', () => {
     expect(formatDistanceRange(12, 12, 'imperial')).toBe('12 mi')
+  })
+})
+
+describe('weather units (#1056)', () => {
+  it("prints NBM's °F unchanged with feet, and converts to whole °C with metres", () => {
+    expect(formatTemperature(56, 'imperial')).toBe('56°')
+    expect(formatTemperature(56, 'metric')).toBe('13°')
+    expect(formatTemperature(34, 'metric')).toBe('1°')
+    expect(temperatureUnitLabel('imperial')).toBe('°F')
+    expect(temperatureUnitLabel('metric')).toBe('°C')
+  })
+
+  it('never prints -0° for a temperature a hair under freezing', () => {
+    expect(formatTemperature(31.5, 'metric')).toBe('0°')
+  })
+
+  it("converts NBM's knots to whole mph or km/h: 7 kt is 8 mph and 13 km/h", () => {
+    expect(formatWind(7, 'imperial')).toBe('8 mph')
+    expect(formatWind(7, 'metric')).toBe('13 km/h')
+  })
+
+  it('prints a wind range as one figure when both ends round alike', () => {
+    expect(formatWindRange(3, 5, 'imperial')).toBe('3–6 mph')
+    expect(formatWindRange(4, 4, 'metric')).toBe('7 km/h')
   })
 })

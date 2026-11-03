@@ -33,10 +33,12 @@ from check_auth_redirects import (
     project_origins,
     redirect_globs,
     sibling_of,
+    signs_nobody_in,
     site_origin,
     site_url,
     verdict_document,
 )
+from check_deployment import cors_origins, load_manifest
 
 PROD_BASE = "https://project.supabase.co"
 UA_BASE = "https://ua-project.supabase.co"
@@ -61,6 +63,15 @@ UA = {
     "app_path": "/",
     "supabase": ["ua"],
     "cors": False,
+    "hiker_facing": False,
+}
+
+# The data docs' host: on the bucket's
+# CORS list for the quality page, and on no Supabase list, explicitly.
+DOCS = {
+    "pattern": "https://docs.ourhike.org",
+    "probe": "https://docs.ourhike.org",
+    "supabase": [],
     "hiker_facing": False,
 }
 
@@ -311,6 +322,62 @@ class TestTheFaultsThisExistsFor:
         targets = [report["origin"] for report in reports]
 
         assert len(targets) == len(set(targets)), "one refusal answers for every origin sharing that parent"
+
+
+class TestAHostThatSignsNobodyIn:
+    """The data docs' host, declared with `supabase: []`.
+
+    Moving the docs off the app's origin is what keeps dbt's page away from a
+    hiker's session; an allow-list that handed a sign-in back to the docs
+    host would put an auth code in front of that same page.
+    """
+
+    WITH_DOCS = {**MANIFEST, "origins": [PAGES, PREVIEW, UA, DOCS]}
+
+    def test_no_project_is_asked_to_accept_it(self):
+        for project in self.WITH_DOCS["supabase_projects"]:
+            assert DOCS["pattern"] not in [origin["pattern"] for origin in project_origins(self.WITH_DOCS, project)]
+            assert not [glob for glob in redirect_globs(self.WITH_DOCS, project) if "docs.ourhike.org" in glob]
+
+    def test_every_project_is_asked_to_refuse_it_and_a_correct_list_does(self, requests_mock):
+        fake_project(requests_mock, PROD_BASE, allowed=PROD_ALLOWED, site=PROD_SITE)
+        fake_project(requests_mock, UA_BASE, allowed=UA_ALLOWED, site=UA_SITE)
+
+        reports = check_all(self.WITH_DOCS, env=ENV)
+        refusals = [r for r in reports if r["check"] == "refuses" and r["origin"] == "https://docs.ourhike.org/"]
+
+        assert {report["project"] for report in refusals} == {"production", "ua"}
+        assert states(reports) == {OK}
+
+    def test_a_list_that_would_hand_it_a_sign_in_is_caught(self, requests_mock):
+        # What a `https://*.ourhike.org/**` paste does: the app keeps working,
+        # and the docs host can be handed a code too.
+        fake_project(requests_mock, PROD_BASE, allowed=[*PROD_ALLOWED, "https://docs.ourhike.org/"], site=PROD_SITE)
+
+        reports = check_all(self.WITH_DOCS, only="production", env=ENV)
+        by_target = {report["origin"]: report for report in reports if report["check"] == "refuses"}
+
+        assert states(reports, check="redirect") == {OK}
+        assert by_target["https://docs.ourhike.org/"]["state"] == FAILED
+        assert "signs nobody in" in by_target["https://docs.ourhike.org/"]["detail"]
+
+    def test_an_origin_with_no_supabase_key_is_neither_demanded_nor_refused(self):
+        # An empty list is a choice somebody wrote down; a missing key is not.
+        unstated = {key: value for key, value in DOCS.items() if key != "supabase"}
+        manifest = {**MANIFEST, "origins": [PAGES, unstated]}
+
+        assert signs_nobody_in(manifest) == []
+        assert unstated not in project_origins(manifest, "production")
+
+    def test_the_real_declaration_lists_the_docs_host_for_cors_and_refuses_it_a_sign_in(self):
+        manifest = load_manifest()
+        (docs,) = [origin for origin in manifest["origins"] if origin["pattern"] == "https://docs.ourhike.org"]
+
+        assert docs in cors_origins(manifest), "the quality page reads the bucket from this origin"
+        assert docs in signs_nobody_in(manifest)
+        for project in manifest["supabase_projects"]:
+            assert docs not in project_origins(manifest, project)
+            assert not [glob for glob in redirect_globs(manifest, project) if "docs.ourhike.org" in glob]
 
 
 class TestWhatMustNotBeCalledAFailure:

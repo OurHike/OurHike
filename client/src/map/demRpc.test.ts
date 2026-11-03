@@ -7,6 +7,7 @@ import {
   type DemResponse,
   type WorkerLike,
 } from './demRpc'
+import type { CellIndex } from '../lib/coverageCells'
 
 // Both protocol ends wired directly to each other - no thread, no jsdom
 // Worker gap. What a real page adds is only the postMessage boundary, and
@@ -15,13 +16,19 @@ import {
 function wire(manager: DemManagerLike): {
   manager: WorkerDemManager
   requests: DemRequest[]
+  cells: { index: CellIndex | null; held: ReadonlySet<string> }[]
 } {
   const requests: DemRequest[] = []
+  const cells: { index: CellIndex | null; held: ReadonlySet<string> }[] = []
   let deliver: (event: MessageEvent) => void = () => {}
 
-  const handler = createDemRequestHandler(manager, (message: DemResponse) => {
-    deliver({ data: message } as MessageEvent)
-  })
+  const handler = createDemRequestHandler(
+    manager,
+    (message: DemResponse) => {
+      deliver({ data: message } as MessageEvent)
+    },
+    (index, held) => cells.push({ index, held }),
+  )
 
   const worker: WorkerLike = {
     postMessage(message: DemRequest) {
@@ -33,7 +40,7 @@ function wire(manager: DemManagerLike): {
     },
   }
 
-  return { manager: new WorkerDemManager(worker), requests }
+  return { manager: new WorkerDemManager(worker), requests, cells }
 }
 
 function stubManager(overrides: Partial<DemManagerLike> = {}): DemManagerLike {
@@ -173,6 +180,7 @@ describe('the DEM worker protocol (#187)', () => {
         ),
       }),
       (message) => posted.push(message),
+      () => {},
     )
 
     handler({ id: 1, kind: 'fetchTile', z: 1, x: 2, y: 3 })
@@ -182,5 +190,61 @@ describe('the DEM worker protocol (#187)', () => {
     await Promise.resolve()
 
     expect(posted).toEqual([])
+  })
+})
+
+describe('the held-cell notification (#1475)', () => {
+  const INDEX = {
+    cellDegrees: 1,
+    seamMarginKm: 3,
+    contextZoom: 9,
+    context: 'dem_context.pmtiles',
+    cells: [
+      {
+        name: 'n41w075',
+        key: 'dem_cell_n41w075.pmtiles',
+        bounds: [-75, 41, -74, 42],
+        covered: [-75, 41, -74, 42],
+      },
+    ],
+  } satisfies CellIndex
+
+  it('carries the shell\u2019s cells to the worker side as a Set', async () => {
+    const { manager, cells } = wire(stubManager())
+
+    manager.setCells(INDEX, new Set(['ourhike:dem-cell:n41w075']))
+
+    expect(cells).toEqual([{ index: INDEX, held: new Set(['ourhike:dem-cell:n41w075']) }])
+  })
+
+  it('carries a null index, which is not the same claim as no cells held', async () => {
+    const { manager, cells } = wire(stubManager())
+
+    manager.setCells(null, new Set())
+
+    expect(cells).toEqual([{ index: null, held: new Set() }])
+  })
+
+  it('waits for nothing and answers nothing, so an in-flight tile is untouched', async () => {
+    let release: (tile: { data: Blob }) => void = () => {}
+    const { manager, cells } = wire(
+      stubManager({
+        fetchTile: vi.fn().mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              release = resolve as never
+            }),
+        ),
+      }),
+    )
+
+    const inflight = manager.fetchTile(1, 2, 3, new AbortController())
+    // A cell landing mid-pan must not disturb a tile already being fetched:
+    // the notification has no id, so it cannot collide with one.
+    manager.setCells(INDEX, new Set(['ourhike:dem-cell:n41w075']))
+    release({ data: new Blob([new Uint8Array([7])]) })
+
+    await expect(inflight).resolves.toMatchObject({ kind: 'fetchTile' })
+    expect(cells).toHaveLength(1)
   })
 })

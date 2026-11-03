@@ -31,12 +31,21 @@ Three entry points, and each is there because it answers a different question.
 The first two shipped in #1133 and the third in #1137, so this list is now
 what the app actually offers rather than what it was heading for.
 
-- **The foot of Today**, beside "Report a problem" at the same width and the
+- **The foot of Today**, under "Report a problem" at the same width and the
   same weight. The pair is the point: reporting a problem and thanking a crew
   are two sides of one relationship, and an outline button beside a filled one
   would say, in the only language a button has, which of the two is the
   afterthought. This is the general-purpose entry — it anchors on the hiker's
   own fix.
+
+  **Two stacked rows since #1438**, not two pills side by side, and the equal
+  weight is unchanged because both are the same row: same width, same chip,
+  same chevron, differing only in their words. What moved is that each now
+  carries a line saying what is behind it, which the pills had no room for —
+  and that the report half is present in **every** mode while this one keeps
+  the day-hike exception the maintainer set on 2026-09-10. That call was about
+  a day hiker's home not accumulating crew sections; thanking a crew is one,
+  and reporting the blowdown in front of you is not.
 - **A place's card**, under the "Something wrong here?" plate and in the same
   construction with a green accent instead of a red one. **This is the one
   that knows which place is being thanked for**, so the thanks carries a

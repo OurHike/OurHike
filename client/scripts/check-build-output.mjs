@@ -388,12 +388,128 @@ if (serviceWorker !== undefined) {
 // Measured 2026-09-09 on a production-configured build: 437 KB compressed
 // before #1300, 323 KB with the map engine out of the closure, 267 KB with the
 // screens behind `import()`, and 215 KB with the Supabase client behind one
-// too. The doc's number is 250 KB and this is it - close enough to the
-// measurement to catch a screen drifting back into the eager chunk, with room
-// for the shell itself to grow. gzip, because that is what the host serves
-// (GitHub Pages; measured off production's own response headers).
-const EAGER_JS_BUDGET_BYTES = 250 * 1024
+// too. The doc's number was 250 KB from then until 2026-09-18 - close enough
+// to the measurement to catch a screen drifting back into the eager chunk,
+// with room for the shell itself to grow. gzip, because that is what the host
+// serves (GitHub Pages; measured off production's own response headers).
+//
+// The shell grew into that room in nine days. Measured 2026-09-18 with this
+// walk over `vite build` output of `main` at four dated commits, built in one
+// worktree sharing one node_modules: 236,347 bytes on 2026-09-10 (4d6f416f),
+// 254,808 on 2026-09-14 (ac14c120), 253,620 on 2026-09-16 (e45388a3), 255,316
+// on 2026-09-18 (2a6aac69) - 684 bytes under the 250 KB line, so the next pull
+// request touching the shell tripped it whatever it did, and #1577 did, by 173
+// bytes. Nothing had drifted in: the closure was ten chunks, then eleven, and
+// no chunk the size of a screen set (56 KB) or the engine (157 KB) appears in
+// the series. What is in it and should not be is 32 KB of map code the Today
+// screen never draws with - the style module and the network tiles, reached
+// statically through the legend's swatches (map/MapIcon.tsx imports
+// map/style.ts) - which is the #1300 shape one size down and the headroom
+// worth reclaiming: #1591 - The legend's swatches drag the map style module
+// and the network tiles, 32 KB compressed, in front of the first frame, and
+// main sits 684 bytes under the launch budget.
+//
+// So 300 KB, from 2026-09-18 to 2026-09-30: the same sixth of room over that
+// day's 255 KB that 250 was over 215. It was a patch on the symptom and said
+// so. The cause is fixed - #1591's first remedy, the ids, inks, palettes,
+// cell setters and archive URLs the shell reads live in leaves under map/,
+// and EAGER_FORBIDDEN below refuses the modules they came from - and the
+// maintainer asked the same day for a smaller budget ("it's too big now").
+// The closure measured 241,578 bytes with the leaves in and 229,145 with the
+// ten sheets, panels and cards a tap opens deferred through
+// screens/deferred.ts (#1735 - 123 KB of chrome surfaces Today never shows
+// sit in the eager closure, and preloadScreens evaluates all 50 lazy chunks
+// on the first idle), both by this script's walk on 2026-09-30. So the line
+// is 240 KB: 16,615 bytes of room over that figure, the same order of room
+// 250 had over the first, with features/LAUNCH_BUDGET.md §4.4 naming what
+// can still leave (the entry card, the planning modules behind their hooks,
+// four layer builders reached for an id, Capacitor). The four builders left
+// on 2026-10-05 - 245,500 to 241,580 bytes on a plain build of
+// claude/intelligent-feynman-sw3ewm, by this walk - and EAGER_FORBIDDEN
+// below names each of them; the line did not move with them, because moving
+// it is the maintainer's call (features/LAUNCH_BUDGET.md §3). The line
+// follows the closure down as each cut lands; it does not lead it. What an
+// absolute line still cannot do is tell organic growth from a drift smaller
+// than the room left; a check against `main`'s own figure would, and is
+// #1591's open half.
+//
+// 241 KB SINCE 2026-10-26, the maintainer's call by poll on #1876 - Ask
+// every hiker to choose what they give after their fifth day of use, $0
+// included, and take payment only on the website. main stood at 245,470
+// bytes, 290 under 240 KB, by this walk on 2026-10-24. The support feature
+// deferred everything that could leave (screens/SupportGate.tsx: both
+// screens, the nudge lines and the three API calls load after launch) and
+// still measured 245,909: the shell's wiring and the preload map's entries
+// for two deferred screens, about 430 bytes. Asked whether to raise the line
+// a kilobyte, find the bytes in unrelated code, or wait for #1591's relative
+// check, the maintainer chose the kilobyte - with 290 bytes of room the next
+// feature trips it too, which is the absolute line's known failure above.
+const EAGER_JS_BUDGET_BYTES = 241 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
+
+/**
+ * Seven more modules the eager closure must not carry, each named by a string
+ * only it holds (#1591). The MapLibre markers above catch the engine; these
+ * catch the #1300 shape one size down, which the byte budget alone cannot
+ * tell from the shell growing: a constant read out of a screen-sized module
+ * brings the module (features/LAUNCH_BUDGET.md §4.4). Measured 2026-09-30 by
+ * attributing the closure to its sources: the style module and its layer
+ * builders were 18,925 gzip bytes of it, the live sheet 14,421 raw, and the
+ * pmtiles library 14,288 raw - all reached from a Today screen that mounts
+ * no map, for a handful of ids, four inks and two setters. Each now lives in
+ * a leaf (map/styleIds.ts, map/sheetInks.ts, map/sheets.ts, map/heldCells.ts,
+ * map/archiveUrls.ts) and the module that builds layers or reads archives
+ * stays behind import().
+ *
+ * The last four are the layer builders §4.4's table still listed, taken out
+ * the same way on 2026-10-05: map/poiLayers.ts for six ids and zooms,
+ * map/corridorLayers.ts for the corridor's GeoJSON shaping, and
+ * map/dayHikeLayers.ts for two casing ids - with map/routeLayers.ts behind
+ * it, through ROUTE_INK. Measured that day by the same attribution, against
+ * a plain `vite build` of claude/intelligent-feynman-sw3ewm at 5a9532b6: the
+ * four were 12,226 raw bytes of the closure and the modules only they
+ * reached (map/stalenessRing.ts, map/poiCrowding.ts, map/poiIconImages.ts)
+ * 2,458 more. Each marker is a layer id or feature property the builder
+ * writes and no leaf holds.
+ */
+const EAGER_FORBIDDEN = [
+  {
+    marker: 'Corridor-view centerline',
+    what: 'the map style module (map/style.ts)',
+    where: 'map/styleIds.ts for an id, map/sheetInks.ts for an ink',
+  },
+  {
+    marker: 'hillshade-exaggeration',
+    what: 'the live sheet (map/liveTopo.ts)',
+    where: 'map/sheets.ts for a palette, a variant or a layer id',
+  },
+  {
+    marker: 'Wrong magic number for PMTiles archive',
+    what: 'the pmtiles library, through a tile handler or map/protocol.ts',
+    where: 'map/heldCells.ts for the cell setters, map/archiveUrls.ts for a URL',
+  },
+  {
+    marker: 'ring_lift',
+    what: 'the waypoint layer builder (map/poiLayers.ts)',
+    where: 'map/poiIds.ts for a source or layer id, or the pin seam zoom',
+  },
+  {
+    marker: 'corridor-unattributed-casing',
+    what: 'the corridor layer builder (map/corridorLayers.ts)',
+    where: "map/corridorFeatures.ts for the corridor's GeoJSON and its kinds",
+  },
+  {
+    marker: 'day-hike-mile-tick-labels',
+    what: 'the day-hike layer builder (map/dayHikeLayers.ts)',
+    where: 'map/dayHikeLayerIds.ts for a casing layer id',
+  },
+  {
+    marker: 'route_point_role',
+    what: 'the route layer builder (map/routeLayers.ts)',
+    where:
+      'a new one beside it, as map/dayHikeLayerIds.ts is beside map/dayHikeLayers.ts',
+  },
+]
 
 const indexHtml = files.find((f) => /(^|[\\/])index\.html$/.test(f))
 const eagerProblems = []
@@ -444,6 +560,15 @@ if (indexHtml === undefined) {
         `  (found ${found.map((m) => `"${m}"`).join(' and ')})`,
         '  The engine belongs behind map/mapEngineLoader.ts. Something the shell',
         '  imports statically reaches `maplibre-gl` - see map/engine.ts and #1300.',
+      )
+    }
+    for (const { marker, what, where } of EAGER_FORBIDDEN) {
+      if (!text.includes(marker)) continue
+      eagerProblems.push(
+        `${what} is in a chunk the document loads before any import(): ${path}`,
+        `  (found "${marker}")`,
+        `  Something the shell imports statically reaches it. The value the shell`,
+        `  wants belongs in a leaf - ${where} - see #1591.`,
       )
     }
   }

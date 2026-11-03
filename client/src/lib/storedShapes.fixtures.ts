@@ -888,6 +888,164 @@ function traceSample(timestampMs: number, lat: number, lon: number, mile: number
   }
 }
 
+// --- v1.2.2 through v1.3.2 ----------------------------------------------------
+//
+// Four entries written together on 2026-09-23 while v1.3.2 was being cut,
+// because no step in the release process named this file between v1.2.1 and
+// then (.claude/skills/release-train/SKILL.md Phase 5 does now). Same method as
+// the three above: read off the writers at each tag with `git show <tag>:path`,
+// every key whose written shape moved since the tag before, nothing captured
+// from a device. The candidates were found by diffing every `ourhike:` literal
+// in client/src between consecutive tags and then reading the writers of the
+// keys that were already there (`git diff <prev> <tag> -- client/src/lib`).
+//
+// Left out on the rule above, not missed: v1.2.2's junction graph in cells -
+// `ourhike:trail-graph-cell:*` and GRAPH_CELLS' `ourhike:graph-cells-index` -
+// is lib/trailGraphStore.ts's hash-checked copy of published bytes, the same
+// artifact cache as the whole-file `ourhike:trail-graph` it replaced, and a
+// phone that cannot read one refetches it. v1.3.0's `ourhike:script`,
+// `ourhike:shell`, `ourhike:today` and `ourhike:index` are performance-mark
+// names (lib/launchMarks.ts), and v1.3.2's `ourhike:map`/`ourhike:map-drawn`
+// the same; `ourhike:orgroute` is a window event name. None is stored.
+
+/** The preferences blob as v1.3.0 wrote it: v1.2.0's, plus the place the
+ *  hiker named on first run (#1373). A park, snapshotted with its box so the
+ *  map fits it - lib/defaultPlace.ts's `snapshotPlace`, never a GPS fix. */
+const PREFERENCES_V1_3_0 = {
+  ...PREFERENCES_V1_1_1,
+  hiking_detail_level: 'light',
+  impact_panel_shown: false,
+  default_place: {
+    id: 'oprhp_park_polygons:1',
+    name: 'Harriman State Park',
+    kind: 'park',
+    lon: -74.0746,
+    lat: 41.2481,
+    state: 'NY',
+    category: 'State Park',
+    bbox: [-74.2021, 41.1558, -73.9829, 41.3363],
+  },
+}
+
+/** A long hike as v1.3.0 writes one into `ourhike:trips` (#1317): POINTS
+ *  rather than v1.2.x's `start`/`end`, a trail, a status, and here paused -
+ *  the two fields a resume offer reads. The first point carries a date. */
+const LONG_HIKE_V1_3_0 = {
+  id: 'hike-0001',
+  name: 'Virginia, over a few years',
+  type: 'section',
+  trailId: 'AT',
+  points: [
+    { poiId: 'atc_shelter_0777', name: 'Damascus', mile: 470.8, date: '2026-09-01' },
+    { mile: 503.3, name: 'Atkins' },
+    { poiId: 'atc_shelter_0999', name: 'Lost Mountain Shelter', mile: 486.2 },
+  ],
+  status: 'paused',
+  tripIds: ['trip-0001'],
+  pausedAtMile: 481.4,
+  pausedOn: '2026-09-04',
+}
+
+/** A day hike saved from a published route (#1290) and walked twice: the
+ *  publisher's id and credit line, and `walks` newest first. `legs` is empty
+ *  and `climb` present because App.tsx's save-from-source writes exactly
+ *  that - the record is re-resolved when it opens. */
+const DAY_HIKE_0005_V1_3_0 = {
+  id: 'day-hike-0005',
+  name: 'Pine Meadow Lake loop',
+  date: null,
+  segments: [
+    [
+      { coord: [-74.1583, 41.2352], poiId: null },
+      { coord: [-74.1319, 41.2204], poiId: null },
+    ],
+  ],
+  figures: { miles: 5.9, legs: [], climb: { gainFt: 980, lossFt: 980 } },
+  looped: false,
+  recorded: 'planned',
+  note: '',
+  walks: [
+    { date: '2026-09-13', note: 'Lake was low.' },
+    { date: '2026-09-06', note: '' },
+  ],
+  sourceId: 'nynjtc_hike_finder:77',
+  sourceAuthor: 'New York-New Jersey Trail Conference',
+}
+
+/** The steward list as v1.3.0 stored it: the PARSED shape (camelCase, as
+ *  lib/stewards.ts's `parseStewards` returns it), with the two fields that
+ *  release added - `terms` quoted whole, and `termsSource`.
+ *
+ *  KNOWN UNREAD, found writing this entry: `storedStewards` re-parses the
+ *  stored array with the artifact's snake_case reader (`terms_source`), so
+ *  `termsSource` here - and v1.3.2's `support` and `store` below - come back
+ *  null from IndexedDB, on the build that wrote them as much as on later
+ *  ones. Left as written, per the rule at the top of this file: the fix
+ *  belongs in the reader. */
+const STEWARDS_V1_3_0 = [
+  {
+    provider: 'ATC',
+    name: 'Appalachian Trail Conservancy',
+    trust: 'authoritative',
+    licence: 'ATC data use terms',
+    attribution: 'Data © Appalachian Trail Conservancy',
+    terms: null,
+    termsSource: null,
+    layers: ['Centerline', 'Shelters'],
+    keys: ['atc_shelters', 'centerline'],
+  },
+  {
+    provider: 'NJDEP',
+    name: 'New Jersey Department of Environmental Protection',
+    trust: null,
+    licence: 'NJDEP Data Distribution Agreement',
+    attribution: 'NJDEP',
+    terms:
+      'New Jersey Department of Environmental Protection (NJDEP) Data Distribution Agreement. The data provided herein are distributed subject to the following conditions…',
+    termsSource:
+      'https://www.arcgis.com/home/item.html?id=2fa0ddfecdf74f8a8718bd3791dabdd7 (licenseInfo field, 1,968 characters, read in full 2026-09-09)',
+    layers: ['Trails'],
+    keys: ['njdep_park_trails'],
+  },
+]
+
+/** A report as v1.3.1's form queued it with no fix and no waypoint: the
+ *  hiker's own words for where (#1439), never coordinates, and its photos
+ *  under `photos` - the array that replaced `photo` for a report. */
+const REPORT_V1_3_1 = {
+  id: '5c6d7e8f-0011-4223-94d5-e6f708192a3b',
+  authoredAt: '2026-09-16T19:12:00.000Z',
+  payload: {
+    type: 'flooding',
+    reporter_type: 'day',
+    note: 'Water over the boards, shin deep.',
+    place_words: 'The brook crossing about half a mile north of Fitzgerald Falls.',
+  },
+  photos: [OWN_PHOTO_BYTES, OWN_PHOTO_BYTES],
+}
+
+/** A report as v1.3.2 queues one from a fix (#1563, lib/reportLocation.ts):
+ *  where the coordinates came from, the platform's stated radius and the
+ *  fix's age, and the name it is signed with plus the contact consent. */
+const REPORT_V1_3_2 = {
+  id: '6d7e8f90-1122-4334-a5e6-f708192a3b4c',
+  authoredAt: '2026-09-23T15:40:00.000Z',
+  payload: {
+    type: 'blowdown',
+    reporter_type: 'section',
+    note: 'Two trunks across the trail at the switchback.',
+    lat: 41.2415,
+    lon: -74.1047,
+    mile: 1406.15,
+    location_source: 'gps',
+    location_accuracy_m: 9.6,
+    location_fix_age_s: 4,
+    signed_name: 'Pat Example',
+    signed_name_kind: 'real',
+    contact_ok: true,
+  },
+}
+
 export const RELEASE_SHAPES: readonly ReleaseShapes[] = deepFreeze<
   readonly ReleaseShapes[]
 >([
@@ -1254,6 +1412,526 @@ export const RELEASE_SHAPES: readonly ReleaseShapes[] = deepFreeze<
     },
     localStorage: {
       'ourhike:basemap-cell:n41w074:completed': '2026-09-07T13:30:00.000Z',
+    },
+  },
+  {
+    tag: 'v1.2.2',
+    commit: 'd684d8e1',
+    published: '2026-09-08',
+    // The other organizations' trail lines as tiles in the same 1° cells
+    // (#1257 stage 2, lib/coverageCells.ts's NETWORK_CELLS): a stretch
+    // download now carries them, each cell an ordinary archiveStore package
+    // under its own family's keys - `n41w074` here is the same ground as the
+    // basemap cell above and must not collide with it. The published index
+    // carries no context archive (`context: null`), so there is no
+    // `ourhike:network-context` to hold.
+    indexedDb: {
+      'ourhike:network-cells-index': {
+        index: {
+          cell_degrees: 1,
+          seam_margin_km: 3,
+          context_zoom: 9,
+          context: null,
+          cells: [
+            {
+              name: 'n41w074',
+              key: 'nearby_trails_cell_n41w074.pmtiles',
+              bounds: [-74, 41, -73, 42],
+            },
+          ],
+        },
+        hash: SOME_SHA256,
+      },
+      'ourhike:network-cell:n41w074:g0:0': new Blob([new Uint8Array(SEGMENT_BYTES[2])]),
+      'ourhike:network-cell:n41w074:complete': {
+        generation: 0,
+        segments: 1,
+        totalBytes: SEGMENT_BYTES[2].length,
+      },
+    },
+    localStorage: {
+      'ourhike:network-cell:n41w074:completed': '2026-09-08T22:05:00.000Z',
+    },
+  },
+  {
+    tag: 'v1.3.0',
+    commit: 'ac14c120',
+    published: '2026-09-14',
+    indexedDb: {
+      'ourhike:preferences': PREFERENCES_V1_3_0,
+      // Long hikes grew points, a trail and a status (#1317), and the store
+      // grew `activeHikeId`. The trip is v1.2.x's, unchanged - only the hike
+      // beside it moved. No `start`/`end` on the hike: this release writes
+      // `points` and only READS the older pair.
+      'ourhike:trips': {
+        openId: 'trip-0001',
+        trips: (STORED_GROUPED_TRIPS['ourhike:trips'] as { trips: readonly unknown[] })
+          .trips,
+        hikes: [LONG_HIKE_V1_3_0],
+        groups: [],
+        activeHikeId: 'hike-0001',
+      },
+      // The sync ledger's second collection: long hikes and the pointer.
+      'ourhike:trips:sync': {
+        dirty: ['trip-0001'],
+        deleted: ['trip-0009'],
+        seen: { 'trip-0001': '2026-09-13T21:14:03.512Z' },
+        since: '2026-09-13T21:14:03.512Z',
+        hikeDirty: false,
+        hikeSeen: '2026-08-26T21:14:03.512Z',
+        hikesDirty: ['hike-0001'],
+        hikesDeleted: ['hike-0002'],
+        hikesSeen: { 'hike-0001': '2026-09-13T21:14:03.512Z' },
+        activeHikeDirty: true,
+        activeHikeSeen: null,
+      },
+      // A saved-from-source day hike with its walks; the three hikes before
+      // it are v1.2.1's, untouched, and hold no `walks` key at all.
+      'ourhike:day-hikes': {
+        openId: 'day-hike-0005',
+        hikes: [
+          (STORED_SHAPES['ourhike:day-hikes'] as { hikes: readonly unknown[] }).hikes[0],
+          {
+            ...DAY_HIKE_0003_V1_2_0,
+            stops: [
+              { poiId: 'atc_shelter_0512', type: 'shelter', name: 'Fingerboard Shelter' },
+            ],
+          },
+          DAY_HIKE_0004_V1_2_0,
+          DAY_HIKE_0005_V1_3_0,
+        ],
+      },
+      'ourhike:stewards': STEWARDS_V1_3_0,
+      // Four small device-local records this release introduced: the last
+      // day the phone had a fix on the trail (#1317, a DAY and never a
+      // place), a day hike left open while following it, the trail taken
+      // from the map, and the reports this phone has sent (lib/sentReports.ts,
+      // newest first, condition reports only).
+      'ourhike:last-on-trail': '2026-09-04',
+      'ourhike:open-walk': { hikeId: 'day-hike-0005', day: '2026-09-13' },
+      'ourhike:taken-trail': 'LP',
+      'ourhike:sent-reports': [
+        {
+          id: '4b5c6d7e-9f00-4112-b3c4-d5e6f708192a',
+          type: 'blowdown',
+          poiId: null,
+          mile: 1406.4,
+          authoredAt: '2026-08-28T14:00:00.000Z',
+          sentAt: '2026-09-13T18:02:11.000Z',
+        },
+        {
+          id: '5f8e1b3a-0c4d-4a2e-9f1b-2c3d4e5f6a7b',
+          type: 'trash',
+          poiId: 'atc_shelter_0421',
+          mile: null,
+          authoredAt: '2026-08-01T14:32:00.000Z',
+          sentAt: '2026-09-12T09:30:00.000Z',
+        },
+      ],
+    },
+    localStorage: {
+      // The first frame's copy of the record (#1301, lib/launchMirror.ts),
+      // written as JSON.stringify of a `LaunchMirror`.
+      'ourhike:launch':
+        '{"onboardingCompleted":true,"theme":"dark","hikerMode":"long","takenTrail":"LP"}',
+    },
+  },
+  {
+    tag: 'v1.3.1',
+    commit: '146a98c3',
+    published: '2026-09-16',
+    indexedDb: {
+      // A report with no fix and no waypoint says where in words, and a
+      // report's photos became an ARRAY (#1439). Every earlier item keeps its
+      // single `photo`, which lib/api.ts still reads.
+      'ourhike:outbox': [
+        ...OUTBOX_V1_1_1,
+        {
+          id: '4b5c6d7e-9f00-4112-b3c4-d5e6f708192a',
+          authoredAt: '2026-08-28T14:00:00.000Z',
+          payload: {
+            type: 'blowdown',
+            reporter_type: 'day',
+            note: 'Across the trail at the switchback.',
+            mile: 1406.4,
+          },
+          holdUntil: '2026-08-28T14:00:08.000Z',
+        },
+        REPORT_V1_3_1,
+      ],
+      // The terrain in the same cells (#1475, DEM_CELLS). Unlike the network
+      // family this one HAS a context archive, and v1.3.1's cutter publishes
+      // `covered` per cell - the part of the square that really has tiles.
+      'ourhike:dem-cells-index': {
+        index: {
+          cell_degrees: 1,
+          seam_margin_km: 3,
+          context_zoom: 9,
+          context: 'dem_context.pmtiles',
+          cells: [
+            {
+              name: 'n41w074',
+              key: 'dem_cell_n41w074.pmtiles',
+              bounds: [-74, 41, -73, 42],
+              covered: [-74, 41, -73.5, 41.6],
+            },
+          ],
+        },
+        hash: SOME_SHA256,
+      },
+      'ourhike:dem-cell:n41w074:g0:0': new Blob([new Uint8Array(SEGMENT_BYTES[0])]),
+      'ourhike:dem-cell:n41w074:complete': {
+        generation: 0,
+        segments: 1,
+        totalBytes: SEGMENT_BYTES[0].length,
+      },
+      'ourhike:dem-context:g0:0': new Blob([new Uint8Array(SEGMENT_BYTES[1])]),
+      'ourhike:dem-context:complete': {
+        generation: 0,
+        segments: 1,
+        totalBytes: SEGMENT_BYTES[1].length,
+      },
+    },
+    localStorage: {
+      'ourhike:dem-cell:n41w074:completed': '2026-09-16T20:45:00.000Z',
+    },
+  },
+  {
+    tag: 'v1.3.2',
+    // The release branch's base on main. The tag is cut from
+    // release/v1.3.2, whose head is this plus a notes-only commit, so no
+    // writer differs between the two.
+    commit: 'a5b41b4d',
+    // PLACEHOLDER: the day this entry was written, while v1.3.2 was being
+    // cut. Replace with the GitHub release's published date once it is
+    // published; the tests check only the YYYY-MM-DD shape.
+    published: '2026-09-23',
+    indexedDb: {
+      // Two keys arrived (#1563, #1575): a real name, null until the hiker
+      // signs a report with it, and whether the map draws blaze colours
+      // (default OFF). Here both are set.
+      'ourhike:preferences': {
+        ...PREFERENCES_V1_3_0,
+        real_name: 'Pat Example',
+        blaze_colors_shown: true,
+      },
+      // A report placed by a fix, signed and consenting to contact (#1563).
+      'ourhike:outbox': [
+        ...OUTBOX_V1_1_1,
+        {
+          id: '4b5c6d7e-9f00-4112-b3c4-d5e6f708192a',
+          authoredAt: '2026-08-28T14:00:00.000Z',
+          payload: {
+            type: 'blowdown',
+            reporter_type: 'day',
+            note: 'Across the trail at the switchback.',
+            mile: 1406.4,
+          },
+          holdUntil: '2026-08-28T14:00:08.000Z',
+        },
+        REPORT_V1_3_1,
+        REPORT_V1_3_2,
+      ],
+      // A steward's donate link and paper-map store (#932, #1574), stored in
+      // the parsed camelCase shape like the rest of the record.
+      'ourhike:stewards': [
+        STEWARDS_V1_3_0[0],
+        STEWARDS_V1_3_0[1],
+        {
+          provider: 'NYNJTC',
+          name: 'New York-New Jersey Trail Conference',
+          trust: null,
+          licence: null,
+          attribution: null,
+          terms: null,
+          termsSource: null,
+          layers: ['Trails'],
+          keys: ['nynjtc'],
+          support: {
+            donateUrl: 'https://www.nynjtc.org/support/',
+            donateCta: 'Donate Today',
+            donateRecipient: null,
+            donateSurfaces: ['sources_screen', 'trail_card', 'day_hike_summary'],
+          },
+          store: {
+            storeUrl: 'https://store.nynjtc.org/collections/maps',
+            storeCta: 'Trail Maps',
+            storeSurfaces: ['sources_screen', 'hike_detail', 'trail_sheet'],
+            paperMaps: [
+              {
+                handle: 'sterling-forest-trails-map',
+                title: 'Sterling Forest Trails Map',
+                url: 'https://store.nynjtc.org/products/sterling-forest-trails-map',
+                sheets: ['100'],
+                covers: ['Sterling Forest State Park'],
+                sheetCovers: {
+                  '100': [
+                    'Sterling Forest State Park',
+                    'Appalachian Trail',
+                    'Tranquility Ridge County Park',
+                    'Highlands Trail',
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+    localStorage: {},
+  },
+  {
+    tag: 'v1.3.3',
+    // A hotfix off v1.3.2 (RELEASING.md §11a), not a cut from main. The tag
+    // is cut from release/v1.3.3: v1.3.2's commit, this one, plus #1710's
+    // change to site/ and the release commit. Neither touches client/src,
+    // so no writer differs from v1.3.2's.
+    commit: '8cb7f5d3',
+    // PLACEHOLDER: the day this entry was written, while v1.3.3 was being
+    // cut. Replace with the GitHub release's published date once it is
+    // published; the tests check only the YYYY-MM-DD shape.
+    published: '2026-09-29',
+    // Empty on purpose: `git diff v1.3.2..release/v1.3.3 -- client/src`
+    // names only this file and its test, so no writer changed and nothing
+    // a phone stores changed shape.
+    indexedDb: {},
+    localStorage: {},
+  },
+  {
+    tag: 'v1.3.4',
+    // A second hotfix (RELEASING.md §11a), cut from v1.3.3 (0066d7dc). It
+    // changes only site/src/pages/index.astro, so no writer differs from
+    // v1.3.2's or v1.3.3's.
+    commit: '0066d7dc',
+    // PLACEHOLDER: the day this entry was written, while v1.3.4 was being
+    // cut. Replace with the GitHub release's published date once it is
+    // published; the tests check only the YYYY-MM-DD shape.
+    published: '2026-09-29',
+    // Empty on purpose, for the same reason as v1.3.3's.
+    indexedDb: {},
+    localStorage: {},
+  },
+  {
+    tag: 'v1.3.5',
+    // The cut point: main's head (5424195b, #1411 - Bump
+    // actions/upload-artifact from 4 to 7) on 2026-10-20. The entry was read
+    // off the writers at d446febd; `git diff d446febd..5424195b -- client/src`
+    // touches only useArchiveDownload.ts's launch sweep (#1866) and a comment
+    // in map/style.ts, and neither writes a stored key.
+    commit: '5424195b',
+    // PLACEHOLDER: the day this entry was written, while v1.3.5 was being
+    // cut. Replace with the GitHub release's published date once it is
+    // published; the tests check only the YYYY-MM-DD shape.
+    published: '2026-10-20',
+    // Read off the writers with `git diff v1.3.4..d446febd -- client/src`:
+    // every `ourhike:` literal that appears between the two, and every
+    // writer of an older key whose diff touches what it stores. Nothing
+    // captured from a device.
+    //
+    // Left out on the rule at the top of this list, not missed:
+    //   - lib/trailGraphStore.ts's cell records. #1829 - Refuse to merge
+    //     trail-graph cells from two releases (mergeGraphShard, #1828) added
+    //     `alsoPublishedIn` to every `ourhike:trail-graph-cell:*` record, and
+    //     #1836 - Keep a stored route graph at one bar of signal, after an
+    //     identical or changed release, and when the release folder is gone
+    //     added a second record per half under `<key>:older`. Both are still
+    //     hash-checked copies of published bytes; `asStoredCopy` reads a
+    //     record with no `alsoPublishedIn` as an empty list, and a record it
+    //     cannot read is refetched. That costs signal, not a hiker's work.
+    //   - lib/conditionsCache.ts's `rememberPublished` gained three callers
+    //     (challenges.json, podcasts/episodes.json, the weather cells). Each
+    //     stores a published document behind the same shape-checked record
+    //     it always has.
+    //   - `ourhike:podcast-app-changed` is a window event name
+    //     (lib/podcastApp.ts). Nothing stores it.
+    indexedDb: {
+      // Three new outbox cargoes, from #1798 - Challenges: a club's list of
+      // places on its own trails, joined and tagged at camp, starting with
+      // the ATC's Summer Bucket List (lib/outbox.ts's enqueueChallengeTag,
+      // enqueueChallengeEntry and enqueueChallengeUntag; the drafts are
+      // lib/challengeDrafts.ts's). One of each, behind v1.3.2's queue.
+      'ourhike:outbox': [
+        ...OUTBOX_V1_1_1,
+        {
+          id: '4b5c6d7e-9f00-4112-b3c4-d5e6f708192a',
+          authoredAt: '2026-08-28T14:00:00.000Z',
+          payload: {
+            type: 'blowdown',
+            reporter_type: 'day',
+            note: 'Across the trail at the switchback.',
+            mile: 1406.4,
+          },
+          holdUntil: '2026-08-28T14:00:08.000Z',
+        },
+        REPORT_V1_3_1,
+        REPORT_V1_3_2,
+        {
+          id: '7e8f9001-2233-4445-b6f7-08192a3b4c5d',
+          authoredAt: '2026-10-18T22:10:00.000Z',
+          challengeTag: {
+            challenge_id: 'atc-summer-bucket-list-2027',
+            item_id: 'shelter-logbook',
+            how: 'gps',
+          },
+        },
+        {
+          id: '8f900112-3344-4556-87f8-192a3b4c5d6e',
+          authoredAt: '2026-10-18T22:12:00.000Z',
+          challengeUntag: {
+            challenge_id: 'atc-summer-bucket-list-2027',
+            item_id: 'white-blaze-photo',
+          },
+        },
+        {
+          id: '90011223-4455-4667-98a9-2a3b4c5d6e7f',
+          authoredAt: '2026-10-19T08:30:00.000Z',
+          challengeEntry: {
+            challenge_id: 'atc-summer-bucket-list-2027',
+            org_domain: 'appalachiantrail.org',
+            name: 'Pat Example',
+            email: 'pat@example.org',
+            item_ids: ['shelter-logbook', 'springer-mountain', 'trivia-quiz'],
+            consented: true,
+          },
+        },
+      ],
+      // Three optional POI fields, each absent on any older download:
+      // `waterDistanceSource` and the water part's `source` in `nearby` from
+      // #1788 - Publish where each water distance came from, and mark an
+      // estimate (#1728); `trailsClosedWithinM`, on trailheads only, from
+      // #1705 - Cross out a trailhead whose trails within 100 m are all
+      // closed; and `waterCaution`, on water only, from #1805 - dlt → dbt
+      // re-platform as one go/no-go change. lib/trailData.ts's readPois
+      // writes them; the list is rewritten whole by a download, so it is
+      // v1.2.1's waypoints as this build would store them.
+      'ourhike:pois': [
+        ...(STORED_SHAPES['ourhike:pois'] as readonly unknown[]),
+        {
+          ...SHELTER_V1_1_1,
+          waterDistanceFt: 250,
+          waterDistanceSource: 'OSA_Field_Estimate',
+          nearby: [
+            { phrase: 'privy', distance_ft: 140 },
+            { phrase: 'water', distance_ft: 250, source: 'OSA_Field_Estimate' },
+          ],
+        },
+        PRIVY_V1_1_1,
+        {
+          id: 'oprhp_facilities:8812',
+          type: 'trailhead',
+          name: 'Reeves Meadow Trailhead',
+          lat: 41.2352,
+          lon: -74.1583,
+          confidence: 'high',
+          source: 'oprhp_facilities',
+          trailsClosedWithinM: 100,
+        },
+        {
+          id: 'oprhp_facilities:9020',
+          type: 'water',
+          name: 'Lake Welch Beach tap',
+          lat: 41.2238,
+          lon: -74.0563,
+          confidence: 'low',
+          source: 'oprhp_facilities',
+          waterCaution: 'no_shutoff_season',
+        },
+      ],
+      // The download record now names the release folder its bytes came
+      // from and whether the pointer chose it (#1805; lib/dataRefresh.ts's
+      // rememberRelease spreads SESSION_RELEASE and SESSION_FOLLOWS_POINTER
+      // under the caller's record).
+      'ourhike:trail-data-release': {
+        release: '2026-10-10-2',
+        fromPointer: true,
+        version: '2026-10-10',
+        hashes: {
+          'trails.geojson': SOME_SHA256,
+          'poi_shelter.geojson':
+            '3f2a1c0d1e2f39b74c9897bac770ffc029102a200c5de9e5b0c6aa6b3a2c5b8f',
+        },
+        at: 1791633600000,
+      },
+      // The pointer entry this phone last verified (#1805; lib/dataChannel.ts's
+      // readDataChannel and firstRunRelease write a ChannelRecord from
+      // lib/dataRelease.ts). `production` is what BASE_ENVIRONMENT reads for
+      // a base with no `environments/<name>/` in it, which is what the tests
+      // build with.
+      'ourhike:data-channel': {
+        release: '2026-10-10-2',
+        schema: 'v1',
+        environment: 'production',
+        at: 1791633500000,
+      },
+    },
+    localStorage: {
+      // The pointer record's mirror, the same record as JSON
+      // (lib/dataChannel.ts's writeMirror), read synchronously on the next
+      // launch to fix the session's release before the first URL is built.
+      'ourhike:data-channel':
+        '{"release":"2026-10-10-2","schema":"v1","environment":"production","at":1791633500000}',
+      // Everything a hiker did about the challenges they joined (#1798), as
+      // JSON.stringify of lib/challengeProgress.ts's ChallengeState
+      // (writeChallengeState). A `places_all` tag carries its `poi`, every
+      // other tag none; `sectionWalked` is keyed `challengeId/itemId`;
+      // `hiddenSuggestions` is keyed by App.tsx's challengeHikeKey, a trip id
+      // or `plan`; `sent[].outboxId` is the queued entry above.
+      'ourhike:challenge-state': JSON.stringify({
+        joined: [
+          { challengeId: 'atc-summer-bucket-list-2027', at: '2026-10-12T15:00:00.000Z' },
+        ],
+        tags: [
+          {
+            challengeId: 'atc-summer-bucket-list-2027',
+            itemId: 'shelter-logbook',
+            at: '2026-10-18T22:10:00.000Z',
+            how: 'gps',
+            note: 'Signed it for the whole crew.',
+          },
+          {
+            challengeId: 'atc-summer-bucket-list-2027',
+            itemId: 'virginia-triple-crown',
+            poi: 'atc_viewpoints:95a18f95-b78f-43bb-843a-4b9b82fecb76',
+            at: '2026-10-14T17:45:00.000Z',
+            how: 'hand',
+          },
+        ],
+        sectionWalked: {
+          'atc-summer-bucket-list-2027/walk-harriman': [
+            { startMile: 1385.2, endMile: 1391.7 },
+          ],
+        },
+        hiddenSuggestions: { 'trip-0001': ['atc-summer-bucket-list-2027'] },
+        answeredDay: '2026-10-18',
+        layerShown: true,
+        sent: [
+          {
+            challengeId: 'atc-summer-bucket-list-2027',
+            at: '2026-10-19T08:30:00.000Z',
+            kind: 'entry',
+            outboxId: '90011223-4455-4667-98a9-2a3b4c5d6e7f',
+          },
+        ],
+      }),
+      // A dismissal of a club notice that gave no date of its own, under
+      // its own `:seen` watermark (#1805; lib/noticeSelection.ts's
+      // SEEN_WATERMARK, written by lib/notices.ts's silenceNewNotices).
+      'ourhike:notices-silenced-through:gmc_trail_conditions:seen':
+        '2026-10-17T12:00:00.000Z',
+      // The hiker's podcast app (lib/podcastApp.ts, from #1686 - Offer
+      // podcast episodes picked for a hike or tagged to a place, in the
+      // hiker's own podcast app, with Spotify's player and a one-tap save).
+      // A bare PODCAST_APPS value, not JSON.
+      'ourhike:podcast-app': 'pocket_casts',
+      // Spotify's PKCE tokens, a round trip left mid-way, and the episodes
+      // saved from this phone (lib/spotify.ts, #1686), each as JSON. The
+      // tokens are not real ones. `expiresAt` is an hour after the 2026-10-19
+      // 18:00 UTC sign-in.
+      'ourhike:spotify:tokens':
+        '{"accessToken":"BQ-fixture-access","refreshToken":"AQ-fixture-refresh","expiresAt":1792436400000}',
+      'ourhike:spotify:pending':
+        '{"state":"st4teSt4teSt4teSt4teSt4teSt4teSt","verifier":"v3rifierv3rifierv3rifierv3rifierv3rifierv3rifierv3rifierv3rifier","episode":{"spotifyId":"4rOoJ6Egrf8K2IrywzwOMk","title":"Walking the Highlands"}}',
+      'ourhike:spotify:saved': '["4rOoJ6Egrf8K2IrywzwOMk"]',
     },
   },
 ])

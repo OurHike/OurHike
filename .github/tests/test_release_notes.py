@@ -224,13 +224,20 @@ class TestTheReleaseWorkflows:
         assert push.get("branches") == ["main"]
 
     def test_ua_builds_for_its_own_origin(self):
-        """IndexedDB is per-origin, not per-path. A UA build made for a subpath
-        of the production host shares one IndexedDB with the installed app and
-        can evict a hiker's 1.18 GB archive - so the base path being `/` is a
-        storage-isolation assertion, not a cosmetic one."""
+        """IndexedDB is per-origin, not per-path. A UA build served from a
+        subpath of the production host would share one IndexedDB with the
+        installed app and could evict a hiker's 1.18 GB archive - so UA's
+        isolation is its own hostname, the Cloudflare `ua` alias.
+
+        This asserted `VITE_BASE_PATH: /` until #1887, which read the path as
+        the isolation. It never was: the origin is, and the path is now
+        production's own `/app/` on that separate origin, so UA exercises the
+        base path hikers are served on."""
         steps = _workflow("ua.yml")["jobs"]["ua"]["steps"]
         build = next(step for step in steps if step.get("name") == "Build the app")
-        assert build["env"]["VITE_BASE_PATH"] == "/"
+        assert build["env"]["VITE_BASE_PATH"] == "/app/"
+        deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        assert "--branch=ua" in deploy["with"]["command"]
 
     def test_ua_never_reaches_the_production_backend(self):
         """`API_BASE_URL` names the backend that writes the moderation queue a

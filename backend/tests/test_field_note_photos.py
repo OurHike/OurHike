@@ -30,10 +30,12 @@ import uuid
 
 import boto3
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
 
 from app.config import settings
-from app.core.photos import note_photo_key
+from app.core import photos as photos_core
+from app.core.photos import STORAGE_UNAVAILABLE_DETAIL, note_photo_key
 from app.models.field_note import FieldNote
 from app.models.profile import Role
 from tests.factories import make_profile
@@ -248,3 +250,55 @@ def test_a_server_with_no_bucket_says_so_and_keeps_the_note(client):
     assert response.status_code == 503
     assert _public_note(client, note_id)["observation"] == "dry"
     assert _public_note(client, note_id)["photo_url"] is None
+
+
+class _UnreachableR2:
+    """Every write fails the way an unreachable R2 fails: with the endpoint
+    URL - account id, bucket, key - in the message. test_report_photos.py
+    has the measurement; this is the same `store_photo_object`, reached
+    from the note upload."""
+
+    def put_object(self, **_kwargs):
+        raise EndpointConnectionError(
+            endpoint_url="https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/ourhike-photos"
+        )
+
+
+def test_a_bucket_that_cannot_be_reached_is_not_named_to_the_author(client, db_session, r2, monkeypatch):
+    author = str(uuid.uuid4())
+    note_id = _file_note(client, author)
+    monkeypatch.setattr(photos_core, "_client", lambda: _UnreachableR2())
+
+    response = _upload(client, note_id, author)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == STORAGE_UNAVAILABLE_DETAIL
+    assert "cloudflarestorage" not in response.text
+    # The sentence still stands, and no photo is claimed for it.
+    assert db_session.get(FieldNote, note_id).photo_uploaded_at is None
+    assert _public_note(client, note_id)["photo_url"] is None
+
+
+def test_the_bucket_put_for_a_note_photo_runs_off_the_event_loop(client, r2, monkeypatch):
+    """A 2 MiB R2 put on the loop thread stalls every other request (#1753)."""
+    import asyncio
+
+    from app.routers import field_notes as field_notes_router
+
+    on_loop: list[bool] = []
+    real = field_notes_router.store_photo_object
+
+    def watching(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(field_notes_router, "store_photo_object", watching)
+    author = str(uuid.uuid4())
+    note_id = _file_note(client, author)
+
+    assert _upload(client, note_id, author).status_code == 200
+    assert on_loop == [False]

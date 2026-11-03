@@ -78,6 +78,13 @@ jobs:
   keepalive:
     name: Give the database a query to run
     runs-on: ubuntu-latest
+    # Five minutes against 11-18 seconds measured over the last five scheduled
+    # runs (2026-09-15 to 2026-09-17). Without a cap a project that accepts the
+    # connection and never answers holds this job for GitHub's six-hour
+    # default, and `cancel-in-progress: false` queues the next fire behind it -
+    # a keepalive that has stopped keeping anything alive while the Actions tab
+    # shows one long green run. Reaching this cap is the failure worth seeing.
+    timeout-minutes: 5
     defaults:
       run:
         working-directory: backend

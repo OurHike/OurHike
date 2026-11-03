@@ -1,0 +1,2472 @@
+{
+ "_comment": "What each trail-maintaining organisation actually publishes, beyond the geometry already in trail_orgs.json (#1543 follow-on). The A.T. reaches a hiker with shelters, water, closures and a club section map; every other trail in the catalogue reaches them as a line and a name. This file is the survey of what would close that gap, harvested 2026-09-29 from each organisation's own site.",
+ "_method": "Each organisation's homepage was read and every same-host link classified by what it leads to. The pages behind the map, conditions and places links were then read one level deeper for anything a pipeline could ingest without a human in the middle - a feed, a GPX or KML file, an ArcGIS item id, a CalTopo or Avenza map. Nothing here was fetched from a third-party aggregator, and nothing was inferred: a row lists a link only where that link is on the organisation's own page.",
+ "_what_this_is_not": "NOT a licence finding and NOT a decision to load anything. trail_orgs.json's `licence_basis` and `load` still govern what may be fetched, and a published page is not a grant. This says what exists; that file says what may be taken.",
+ "_the_gap_this_measures": "MEASURED across the 46 stewards: 38 publish maps or a guidebook, 36 a membership or join page, 30 a conditions or closures page, 25 a page about shelters, campsites, water or parking, and 26 a store. 31 yielded something machine-readable one level down. The A.T. is not unusual in what its steward publishes - it is unusual in that OurHike already reads it.",
+ "_closure_feeds_are_the_short_path": "Four organisations publish trail closures as an RSS feed on their own site: ATC (already read), the Arizona Trail Association, Connecticut Forest & Park Association for the New England Trail, and the Florida Trail Association. A feed is a closure the app could carry without anybody transcribing it, which is the same shape as the A.T. update path this app already has.",
+ "_third_party_guide_is_somebody_elses": "Ten organisations link to a FarOut guide, several of them water reports. Those are a commercial publisher's data under its own terms, not the steward's, and they are recorded here only so nobody mistakes the link on an org's page for the org publishing the data. @unvalidated - nobody has read FarOut's terms.",
+ "_org_count": 46,
+ "_coverage": {
+  "maps_and_guides": 38,
+  "membership": 36,
+  "conditions_and_closures": 30,
+  "events_and_workdays": 36,
+  "store": 26,
+  "places": 25,
+  "machine_readable": 29
+ },
+ "orgs": [
+  {
+   "org": "adk",
+   "name": "Adirondack Mountain Club",
+   "site": "adk.org",
+   "trails": [
+    "Northville-Placid Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://adk.org/get-involved/membership/login/",
+     "label": "Login"
+    },
+    {
+     "url": "https://adk.org/get-involved/membership/",
+     "label": "Become a Member"
+    },
+    {
+     "url": "https://adk.org/get-involved/membership/renew/",
+     "label": "Renew"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://adk.org/programs-events/guided-trips/"
+    },
+    {
+     "url": "https://adk.org/shop/high-peaks-adirondack-trail-map/"
+    },
+    {
+     "url": "https://adk.org/get-involved/chapters/north-jersey-ramapo/",
+     "label": "View"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://adk.org/explore/high-peaks-conditions-report/"
+    },
+    {
+     "url": "https://adk.org/high-peaks-conditions-report/",
+     "label": "Current Conditions"
+    },
+    {
+     "url": "https://adk.org/terms-conditions/",
+     "label": "Terms &#038; Conditions"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://adk.org/conservation/route-73-trailhead-stewardship-program/"
+    },
+    {
+     "url": "https://adk.org/tips-for-hiker-parking-adirondak-loj/"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://adk.org/programs-events/workshops-trainings/"
+    },
+    {
+     "url": "https://adk.org/shop/",
+     "label": "Shop"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://adk.org/get-involved/volunteer/"
+    },
+    {
+     "url": "https://adk.org/programs-events/",
+     "label": "Programs &#038; Events"
+    }
+   ]
+  },
+  {
+   "org": "ata",
+   "name": "Arizona Trail Association",
+   "site": "aztrail.org",
+   "trails": [
+    "Arizona Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://aztrail.org/get-involved/donate/",
+     "label": "DONATE"
+    },
+    {
+     "url": "https://aztrail.org/get-involved/join/",
+     "label": "JOIN"
+    },
+    {
+     "url": "https://aztrail.org/get-involved/ways-to-give/",
+     "label": "Ways to Give"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://aztrail.org/explore/maps/",
+     "label": "Maps of the Trail"
+    },
+    {
+     "url": "https://aztrail.org/explore/day-hikers-guide/",
+     "label": "Day Hikers Guide"
+    },
+    {
+     "url": "https://aztrail.org/explore/databooks/",
+     "label": "Databooks"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://aztrail.org/the-trail/trail-conditions-form/",
+     "label": "Report Trail Conditions"
+    },
+    {
+     "url": "https://aztrail.org/category/closures-reroutes/",
+     "label": "Current Closures, Restrictions, and Reroutes"
+    },
+    {
+     "url": "https://aztrail.org/arizona-trail-closed-in-grand-canyon/"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://aztrail.org/explore/permits/",
+     "label": "Permits"
+    },
+    {
+     "url": "https://aztrail.org/explore/water-sources/",
+     "label": "Water Sources"
+    },
+    {
+     "url": "https://aztrail.org/explore/shuttles/",
+     "label": "Shuttles"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://aztrail.org/the-trail/thru-hiker-gear-list/",
+     "label": "Thru-Hiker Gear List"
+    },
+    {
+     "url": "https://aztrail.org/youth/gear-girls/",
+     "label": "Gear Girls"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://aztrail.org/get-involved/volunteer/",
+     "label": "VOLUNTEER"
+    },
+    {
+     "url": "https://aztrail.org/events/calendar/",
+     "label": "CALENDAR"
+    }
+   ],
+   "machine_readable": {
+    "closure_feed": [
+     "https://aztrail.org/category/closures-reroutes/feed/"
+    ],
+    "gpx_or_kml": [
+     "https://aztrailmedia.s3.us-west-1.amazonaws.com/wp-content/uploads/2018/04/Arizona-National-Scenic-Trail.kmz"
+    ],
+    "registered_endpoint": "https://azgeo-open-data-agic.hub.arcgis.com/maps/7219ab5c70f545a6a7d88357ff0be5a0"
+   },
+   "third_party_guide": [
+    "https://app.faroutguides.com/guides/Arizona%20Trail%20Water%20Report",
+    "https://faroutguides.com/arizona-trail-map/"
+   ]
+  },
+  {
+   "org": "atc",
+   "name": "Appalachian Trail Conservancy",
+   "site": "appalachiantrail.org",
+   "trails": [
+    "Appalachian Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://appalachiantrail.org/get-involved/become-a-member/",
+     "label": "Become a Member"
+    },
+    {
+     "url": "https://appalachiantrail.org/get-involved/ways-to-give/",
+     "label": "Ways to Give"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://appalachiantrail.org/experience/interactive-map/",
+     "label": "Interactive Map"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://appalachiantrail.org/trail-updates",
+     "label": "Trail Updates"
+    },
+    {
+     "url": "https://appalachiantrail.org/news-events/share-your-experience/media-terms-conditions-policies/",
+     "label": "Media Terms, Conditions, &#038; Policies"
+    },
+    {
+     "url": "https://appalachiantrail.org/terms-and-conditions/",
+     "label": "Terms &amp; Conditions"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://appalachiantrail.org/get-involved/volunteer/",
+     "label": "Volunteer"
+    },
+    {
+     "url": "https://appalachiantrail.org/events",
+     "label": "Events"
+    }
+   ],
+   "machine_readable": {
+    "closure_feed": [
+     "https://appalachiantrail.org/trail-updates/feed/"
+    ],
+    "registered_endpoint": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Centerline/FeatureServer/0"
+   },
+   "third_party_guide": [
+    "https://app.faroutguides.com/guides/Appalachian%20Trail"
+   ]
+  },
+  {
+   "org": "bartram",
+   "name": "Bartram Trail Conference",
+   "site": "bartramtrail.org",
+   "trails": [
+    "Bartram Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://bartramtrail.org/page-1655351",
+     "label": "Join or Renew Membership"
+    },
+    {
+     "url": "https://bartramtrail.org/Remembering-Joel-Fry",
+     "label": "Remembering Joel Fry"
+    },
+    {
+     "url": "https://bartramtrail.org/Donate-to-the-BTC",
+     "label": "Donate to the BTC"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://bartramtrail.org/page-1647832",
+     "label": "Historical Markers Map"
+    },
+    {
+     "url": "https://bartramtrail.org/page-1647833",
+     "label": "Bartram Trail Map"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://bartramtrail.org/Sys/Store/Cart",
+     "label": "Cart\n        ()"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://bartramtrail.org/News-&amp;-Events",
+     "label": "News &amp; Events"
+    }
+   ]
+  },
+  {
+   "org": "black-hills",
+   "name": "Black Hills Trails",
+   "site": "blackhillstrails.org",
+   "trails": [
+    "South Dakota Centennial Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.blackhillstrails.org/donate/",
+     "label": "Donate"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://www.blackhillstrails.org/news/2021/11/23/status-report-black-hills-trail-fund/",
+     "label": "November 23, 2021November 23, 2021"
+    }
+   ]
+  },
+  {
+   "org": "blm",
+   "name": "Bureau of Land Management",
+   "site": "blm.gov",
+   "trails": [
+    "Black Canyon Trail"
+   ],
+   "reachable": true,
+   "maps_and_guides": [
+    {
+     "url": "https://blm.gov/maps",
+     "label": "Maps"
+    },
+    {
+     "url": "https://blm.gov/about/data/National-Datasets",
+     "label": "Data"
+    },
+    {
+     "url": "https://blm.gov/programs/energy-and-minerals/renewable-energy/solar-energy/solar-mapper",
+     "label": "Solar Mapper"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://blm.gov/get-involved/resource-advisory-council",
+     "label": "Resource Advisory Councils"
+    },
+    {
+     "url": "https://blm.gov/alerts",
+     "label": "Alerts"
+    },
+    {
+     "url": "https://blm.gov/info/notices",
+     "label": "Website Disclaimer"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://blm.gov/programs/recreation/camping",
+     "label": "Camping"
+    },
+    {
+     "url": "https://blm.gov/programs/land-and-water-conservation-fund",
+     "label": "Land and Water Conservation Fund"
+    },
+    {
+     "url": "https://blm.gov/programs/energy-and-minerals/renewable-energy/solar-energy/permitting-and-development/land-use-planning-old",
+     "label": "Land Use Planning"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://blm.gov/announcement/seed-mud-roll-toss-restore-lets-bring-desert-back-life",
+     "label": "Oct 17: Seed, Mud, Roll, Toss, Restore - Let’s Bring the Des"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://blm.gov/get-involved/blm-2026-anniversaries",
+     "label": "Freedom 250 Events"
+    },
+    {
+     "url": "https://blm.gov/get-involved/volunteers",
+     "label": "Volunteers"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://gis.blm.gov/arcgis/rest/services/transportation/BLM_Natl_GTLF_Public_Display/MapServer/7"
+   }
+  },
+  {
+   "org": "bmta",
+   "name": "Benton MacKaye Trail Association",
+   "site": "bmta.org",
+   "trails": [
+    "Benton MacKaye Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://bmta.org/join-us/",
+     "label": "Join"
+    },
+    {
+     "url": "https://bmta.org/donate/",
+     "label": "Donate"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://bmta.org/thru-hikers-guide/",
+     "label": "Thru Hikers' guide to the Benton MacKaye Trail"
+    },
+    {
+     "url": "https://bmta.org/product/benton-mackaye-trail-guide-ga/",
+     "label": "Benton MacKaye Trail Guide – Georgia Section"
+    },
+    {
+     "url": "https://bmta.org/product/benton-mackaye-trail-guide-tn-nc/",
+     "label": "Benton MacKaye Trail Guide – Tennessee / North Carolina Sect"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://bmta.org/hikes-with-waterfalls/",
+     "label": "Hikes with splendid waterfalls"
+    },
+    {
+     "url": "https://bmta.org/events/gahuti-lite-6/",
+     "label": "Gahuti Lite"
+    },
+    {
+     "url": "https://bmta.org/events/shady-falls-trailhead-to-lake-blue-ridge/",
+     "label": "Shady Falls Trailhead to Lake Blue Ridge"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://bmta.org/shop/",
+     "label": "Trail Store"
+    },
+    {
+     "url": "https://bmta.org/product/benton-mackaye-trail-guide-ga/",
+     "label": "Benton MacKaye Trail Guide – Georgia Section"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://bmta.org/trail-maintenance/",
+     "label": "Trail Maintenance"
+    },
+    {
+     "url": "https://bmta.org/events",
+     "label": "view all events"
+    }
+   ],
+   "third_party_guide": [
+    "https://faroutguides.com/benton-mackaye-trail-map/"
+   ]
+  },
+  {
+   "org": "buckeye",
+   "name": "Buckeye Trail Association",
+   "site": "buckeyetrail.org",
+   "trails": [
+    "Buckeye Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://buckeyetrail.org/give",
+     "label": "Give"
+    },
+    {
+     "url": "https://buckeyetrail.org/give/ways-to-give",
+     "label": "Ways to give"
+    },
+    {
+     "url": "https://buckeyetrail.org/give/corporate-giving",
+     "label": "Corporate giving"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://buckeyetrail.org/hike/maps",
+     "label": "Trail maps"
+    },
+    {
+     "url": "https://buckeyetrail.org/hike/alerts",
+     "label": "Trail Alerts and Map Updates"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://buckeyetrail.org/hike/alerts",
+     "label": "Trail Alerts and Map Updates"
+    },
+    {
+     "url": "https://buckeyetrail.org/terms",
+     "label": "Terms and conditions"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://buckeyetrail.org/volunteer",
+     "label": "Volunteer"
+    },
+    {
+     "url": "https://buckeyetrail.org/volunteer/opportunities",
+     "label": "Volunteer opportunities"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://buckeyetrail.org/hike/maps"
+   }
+  },
+  {
+   "org": "catamount",
+   "name": "Catamount Trail Association",
+   "site": "catamounttrail.org",
+   "trails": [
+    "Catamount Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://catamounttrail.org/membership/",
+     "label": "Membership"
+    },
+    {
+     "url": "https://catamounttrail.org/membership-benefits/",
+     "label": "Membership Benefits"
+    },
+    {
+     "url": "https://catamounttrail.org/ways-to-give/",
+     "label": "Giving"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://catamounttrail.org/CTA_TrailMap/",
+     "label": "Interactive CT Map"
+    },
+    {
+     "url": "https://catamounttrail.org/ski-the-trail/faq/staying-found/",
+     "label": "Staying Found - GPX/KML Download"
+    },
+    {
+     "url": "https://catamounttrail.org/vtbchandbook/",
+     "label": "-->\n\n\nA Guide to Backcountry Ski Zone Management & Use on Pu"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://catamounttrail.org/cta-events/",
+     "label": "Events"
+    },
+    {
+     "url": "https://catamounttrail.org/events-tours/",
+     "label": "-->\nCTA Tours"
+    }
+   ]
+  },
+  {
+   "org": "cdtc",
+   "name": "Continental Divide Trail Coalition",
+   "site": "continentaldividetrail.org",
+   "trails": [
+    "Continental Divide Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://continentaldividetrail.org/donate/",
+     "label": "Donate Today"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://cdtc.maps.arcgis.com/apps/instant/basic/index.html?appid=1ddce45fa58b4ba39a2125c61fd394e8",
+     "label": "Interactive Map"
+    },
+    {
+     "url": "https://continentaldividetrail.org/explore-the-trail/maps-and-data/",
+     "label": "Hiking Resources"
+    },
+    {
+     "url": "https://www.arcgis.com/apps/instant/basic/index.html?appid=1ddce45fa58b4ba39a2125c61fd394e8",
+     "label": "Interactive Map"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://continentaldividetrail.org/closures-and-alerts/",
+     "label": "Closures and Alerts"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://continentaldividetrail.org/explore-the-trail/southern-terminus-shuttle/",
+     "label": "Southern Terminus &amp; Shuttle"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://continentaldividetrail.org/volunteer/",
+     "label": "Volunteer"
+    },
+    {
+     "url": "https://continentaldividetrail.org/news-events/",
+     "label": "News &amp; Events"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://hub.arcgis.com/datasets/79de12d605ca401492734e3952455a8e_0"
+   },
+   "third_party_guide": [
+    "https://app.faroutguides.com/guides/CDT%20Water%20Report/geo",
+    "https://faroutguides.com/continental-divide-trail-map/"
+   ]
+  },
+  {
+   "org": "cfpa",
+   "name": "Connecticut Forest & Park Association",
+   "site": "ctwoodlands.org",
+   "trails": [
+    "New England Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://ctwoodlands.org/get-involved/donate/",
+     "label": "Donate"
+    },
+    {
+     "url": "https://ctwoodlands.org/support/membership/become-a-member/",
+     "label": "Become a Member"
+    },
+    {
+     "url": "https://ctwoodlands.org/support/ways-to-give/sponsorships/",
+     "label": "Sponsorships"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://ctwoodlands.org/explore-trails/interactive-map/",
+     "label": "Interactive Trails Map"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://ctwoodlands.org/trail-notices/",
+     "label": "Trail Notices"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://ctwoodlands.org/product/connecticut-walk-book/",
+     "label": "Connecticut Walk Book"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://ctwoodlands.org/get-involved/volunteer/",
+     "label": "Volunteer"
+    },
+    {
+     "url": "https://ctwoodlands.org/get-involved/volunteer/volunteer-portal/",
+     "label": "Volunteer Portal"
+    }
+   ],
+   "machine_readable": {
+    "closure_feed": [
+     "https://ctwoodlands.org/trail-notices/feed/"
+    ]
+   }
+  },
+  {
+   "org": "cohos",
+   "name": "The Cohos Trail Association",
+   "site": "cohostrail.org",
+   "trails": [
+    "Cohos Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.cohostrail.org/board-members/",
+     "label": "Board Members"
+    },
+    {
+     "url": "https://www.cohostrail.org/product-category/membership/",
+     "label": "Memberships"
+    },
+    {
+     "url": "https://www.cohostrail.org/donate/",
+     "label": "Donate"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://www.cohostrail.org/guide-book/",
+     "label": "Guide Book"
+    },
+    {
+     "url": "https://www.cohostrail.org/product-category/maps/",
+     "label": "Maps"
+    },
+    {
+     "url": "https://www.cohostrail.org/product-category/books/",
+     "label": "Digital Databooks"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://www.cohostrail.org/shuttle-options/",
+     "label": "Shuttle Options"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://www.cohostrail.org/shop/",
+     "label": "Shop"
+    },
+    {
+     "url": "https://www.cohostrail.org/product-category/maps/",
+     "label": "Maps"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://www.cohostrail.org/news/",
+     "label": "News/Events"
+    },
+    {
+     "url": "https://www.cohostrail.org/events/",
+     "label": "Events"
+    }
+   ],
+   "machine_readable": {
+    "avenza_map": [
+     "https://www.avenzamaps.com/maps/1111063/cohos-trail-map-2020-4-sections"
+    ]
+   }
+  },
+  {
+   "org": "condor",
+   "name": "Condor Trail Association",
+   "site": "condortrail.com",
+   "trails": [
+    "Condor Trail"
+   ],
+   "reachable": true,
+   "maps_and_guides": [
+    {
+     "url": "https://www.condortrail.com/maps-trail-descriptions/",
+     "label": "Maps &#038; Trail Descriptions"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://www.condortrail.com/volunteer-and-donation/",
+     "label": "Volunteer and Donation"
+    }
+   ],
+   "machine_readable": {
+    "gpx_or_kml": [
+     "http://www.condortrail.com/wp-content/uploads/kml/CT2020_MontereyCounty.kml",
+     "http://www.condortrail.com/wp-content/uploads/kml/CT2020_SanLuisObispoCounty.kml",
+     "http://www.condortrail.com/wp-content/uploads/kml/CT2020_SantaBarbaraCounty.kml"
+    ]
+   }
+  },
+  {
+   "org": "ctf",
+   "name": "Colorado Trail Foundation",
+   "site": "coloradotrail.org",
+   "trails": [
+    "Colorado Trail"
+   ],
+   "reachable": true,
+   "machine_readable": {
+    "registered_endpoint": "https://coloradotrail.org/"
+   }
+  },
+  {
+   "org": "cumberland",
+   "name": "Cumberland Trail / Tennessee State Parks",
+   "site": "tnstateparks.com",
+   "trails": [
+    "Cumberland Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://tnstateparks.com/get-involved/support-tennessee-state-parks",
+     "label": "Donate"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://tnstateparks.com/parks/park-trail-maps",
+     "label": "Park Trail Maps"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://tnstateparks.com/overnight-stays/cabins",
+     "label": "Cabins"
+    },
+    {
+     "url": "https://tnstateparks.com/overnight-stays/camping",
+     "label": "Camping"
+    },
+    {
+     "url": "https://tnstateparks.com/activities/waterfall-viewing",
+     "label": "Waterfall Viewing"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://tnstateparks.com/groups/corporate-events",
+     "label": "Corporate Events"
+    },
+    {
+     "url": "https://tnstateparks.com/get-involved/volunteer",
+     "label": "Volunteering"
+    }
+   ],
+   "machine_readable": {
+    "arcgis_item_id": [
+     "ae4ff34c7bc742e7a6c6e5b738f65c2c"
+    ]
+   }
+  },
+  {
+   "org": "fltc",
+   "name": "Finger Lakes Trail Conference",
+   "site": "fingerlakestrail.org",
+   "trails": [
+    "Finger Lakes Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://fingerlakestrail.org/members/give/",
+     "label": "Donate"
+    },
+    {
+     "url": "https://fingerlakestrail.org/product-category/memberships/",
+     "label": "Become A Member"
+    },
+    {
+     "url": "https://fingerlakestrail.org/members/",
+     "label": "Members"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://fingerlakestrail.org/map/",
+     "label": "FLT Interactive Trail Map"
+    },
+    {
+     "url": "https://fingerlakestrail.org/store/maps-and-gps/",
+     "label": "Maps and GPS"
+    },
+    {
+     "url": "https://fingerlakestrail.org/product-category/maps/map-sets/",
+     "label": "Map Sets"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/trail-conditions/",
+     "label": "Trail Conditions"
+    },
+    {
+     "url": "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/trail-conditions/?sortby=date&archive=New",
+     "label": "Sep-26: Map M3/CT3 - Ellicottville"
+    },
+    {
+     "url": "https://fingerlakestrail.org/plan-hikes-finger-lakes-trail/trail-conditions/reporting-trail-conditions/",
+     "label": "learn how to report it"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://fingerlakestrail.org/lean-tos-bivouac-areas-campgrounds/",
+     "label": "Lean-tos, Bivouacs, and Campgrounds"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://fingerlakestrail.org/store/checkout/",
+     "label": "Checkout"
+    },
+    {
+     "url": "https://fingerlakestrail.org/store/cart/",
+     "label": "Cart"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://fingerlakestrail.org/events",
+     "label": "Calendar"
+    },
+    {
+     "url": "https://fingerlakestrail.org/whats-happening/hiking-programs/",
+     "label": "Programs &#038; Events"
+    }
+   ],
+   "machine_readable": {
+    "gpx_or_kml": [
+     "https://fingerlakestrail.org/FLTC/Interactive/Help/M09sample.gpx",
+     "https://fingerlakestrail.org/wp-content/uploads/2017/05/M09.gpx"
+    ]
+   }
+  },
+  {
+   "org": "fmst",
+   "name": "Friends of the Mountains-to-Sea Trail",
+   "site": "mountainstoseatrail.org",
+   "trails": [
+    "Mountains-to-Sea Trail"
+   ],
+   "reachable": false,
+   "why": "the site refused every request from this session"
+  },
+  {
+   "org": "foothills",
+   "name": "Foothills Trail Conservancy",
+   "site": "foothillstrail.org",
+   "trails": [
+    "Foothills Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://foothillstrail.org/join-now/",
+     "label": "Join Now"
+    },
+    {
+     "url": "https://foothillstrail.org/benefits",
+     "label": "Join Us"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://foothillstrail.org/maps-coordinates-2/",
+     "label": "Maps &amp; Coordinates"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://foothillstrail.org/trail-conditions/",
+     "label": "Trail Conditions"
+    },
+    {
+     "url": "https://foothillstrail.org/trail-conditions",
+     "label": "Check Trail Conditions"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://foothillstrail.org/registration/",
+     "label": "Registration and Parking"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://foothillstrail.org/shop/",
+     "label": "Store"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://foothillstrail.org/events/",
+     "label": "Events"
+    },
+    {
+     "url": "https://foothillstrail.org/volunteer/",
+     "label": "Volunteer"
+    }
+   ],
+   "third_party_guide": [
+    "https://www.avantlink.com/click.php?tt=cl&amp;merchant_id=233df86d-6145-4467-8f5d-7423ebb09de8&amp;website_id=5df75b77-dcb7-494d-8e2f-66ecc043339f&amp;url=https://app.faroutguides.com/guides"
+   ]
+  },
+  {
+   "org": "fta",
+   "name": "Florida Trail Association",
+   "site": "floridatrail.org",
+   "trails": [
+    "Florida Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://floridatrail.org/contribute/",
+     "label": "Contribute"
+    },
+    {
+     "url": "http://floridatrail.org/contribute/",
+     "label": "✅Become a Member/Renew"
+    },
+    {
+     "url": "https://floridatrail.org/join",
+     "label": "new member"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://floridatrail.org/maps-and-databook/",
+     "label": "🗺️Maps and Databook"
+    },
+    {
+     "url": "https://floridatrail.org/product-category/maps/",
+     "label": "🗺️Maps"
+    },
+    {
+     "url": "https://floridatrail.org/product-category/guides/",
+     "label": "📗Guides"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://floridatrail.org/trail-closures-and-notices/",
+     "label": "⚠️Trail Closures and Notices"
+    },
+    {
+     "url": "https://floridatrail.org/7-28-26-map-14-sugar-creek-closure-along-suwannee-river/"
+    },
+    {
+     "url": "https://floridatrail.org/category/closures-and-nth-north/",
+     "label": "Closures and NTH North"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://floridatrail.org/permits/",
+     "label": "📝Permits for hikers"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://floridatrail.org/shop/",
+     "label": "SHOP"
+    },
+    {
+     "url": "https://floridatrail.org/product-category/apparel/shirts/",
+     "label": "👕Shirts"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://floridatrail.org/volunteer-resources/",
+     "label": "Volunteer"
+    },
+    {
+     "url": "https://floridatrail.org/volunteer-awards/",
+     "label": "🥇Volunteer Awards"
+    }
+   ],
+   "machine_readable": {
+    "closure_feed": [
+     "https://floridatrail.org/7-28-26-map-14-sugar-creek-closure-along-suwannee-river/feed/",
+     "https://floridatrail.org/category/closures-and-nth-north/feed/"
+    ],
+    "arcgis_item_id": [
+     "f6a24fe0d6e94690b42a7a167900a36c"
+    ],
+    "registered_endpoint": "https://www.arcgis.com/home/item.html?id=2c24002d6c204f1b859b8ab51259ec0d"
+   }
+  },
+  {
+   "org": "gmc",
+   "name": "Green Mountain Club",
+   "site": "greenmountainclub.org",
+   "trails": [
+    "Long Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://greenmountainclub.org/donate/",
+     "label": "Donate"
+    },
+    {
+     "url": "https://greenmountainclub.org/donate/ways-to-give/",
+     "label": "Ways to Give"
+    },
+    {
+     "url": "https://greenmountainclub.org/donate-now/",
+     "label": "Donate Now"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://greenmountainclub.org/hike/plan-and-prepare/guidebooks-maps-more/",
+     "label": "Guidebooks, Maps &amp; More"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://greenmountainclub.org/hike/plan-and-prepare/trail-updates/",
+     "label": "Trail Updates"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://greenmountainclub.org/hike/gmc-rental-cabins/",
+     "label": "GMC Rental Cabins"
+    },
+    {
+     "url": "https://greenmountainclub.org/hike/gmc-rental-cabins/rental-info/",
+     "label": "Rental Info"
+    },
+    {
+     "url": "https://greenmountainclub.org/fall-things-to-do/",
+     "label": "Autumn with GMC: Fall Things To Do Near Stowe and Waterbury"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://greenmountainclub.org/get-involved/learn-and-engage/workshops-and-outings/",
+     "label": "Workshops and Outings"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://greenmountainclub.org/get-involved/learn-and-engage/calendar-of-events/",
+     "label": "Calendar of Events"
+    },
+    {
+     "url": "https://greenmountainclub.org/get-involved/volunteer/",
+     "label": "Volunteer"
+    }
+   ]
+  },
+  {
+   "org": "gwta",
+   "name": "Great Western Trail Association",
+   "site": "americantrails.org",
+   "trails": [
+    "Great Western Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.americantrails.org/trail-champion-members",
+     "label": "Trail Champion Members"
+    },
+    {
+     "url": "https://www.americantrails.org/ways-to-give",
+     "label": "Ways to Support"
+    },
+    {
+     "url": "https://americantrails.org/join",
+     "label": "Become a Member"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://www.americantrails.org/resource-library/search?docsOnly=1",
+     "label": "Documents and Guides"
+    },
+    {
+     "url": "https://www.americantrails.org/resources/technology-and-data-hub",
+     "label": "Technology and Data Hub"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://www.americantrails.org/action-alerts",
+     "label": "Action Alerts and News"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://americantrails.org/store",
+     "label": "Store"
+    }
+   ]
+  },
+  {
+   "org": "hoosier",
+   "name": "Hoosier Hikers Council",
+   "site": "hoosierhikerscouncil.org",
+   "trails": [
+    "Knobstone Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://hoosierhikerscouncil.org/donate/",
+     "label": "Donate to HHC"
+    },
+    {
+     "url": "https://hoosierhikerscouncil.org/become-a-member/",
+     "label": "Learn More"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://hoosierhikerscouncil.org/hhc-trail-building-guide-2/",
+     "label": "HHC Trail Building Guide"
+    },
+    {
+     "url": "https://hoosierhikerscouncil.org/maple-tree-at-jimmy-nash/"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://hoosierhikerscouncil.org/category/trail-conditions/",
+     "label": "Trail Conditions"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://hoosierhikerscouncil.org/adena-trace-in-spring/"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://hoosierhikerscouncil.org/hhc-items-for-sale/",
+     "label": "Store"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://hoosierhikerscouncil.org/category/events/work-days/",
+     "label": "Work Dates"
+    },
+    {
+     "url": "https://hoosierhikerscouncil.org/volunteer/",
+     "label": "Volunteer"
+    }
+   ]
+  },
+  {
+   "org": "iata",
+   "name": "Ice Age Trail Alliance",
+   "site": "iceagetrail.org",
+   "trails": [
+    "Ice Age Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.iceagetrail.org/volunteer-resource-center/",
+     "label": "Members"
+    },
+    {
+     "url": "https://www.iceagetrail.org/get-involved/contribute/",
+     "label": "Donate"
+    },
+    {
+     "url": "https://www.iceagetrail.org/memberships-support-alliance-goals/",
+     "label": "Become a Member"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://www.iceagetrail.org/HikerResourceMap",
+     "label": "Trail Map"
+    },
+    {
+     "url": "https://www.iceagetrail.org/hiker-resources-map-guidebook-and-more/",
+     "label": "Trail Resources"
+    },
+    {
+     "url": "https://www.iceagetrail.org/MapGallery",
+     "label": "Map Gallery"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://www.iceagetrail.org/Trail-Alerts",
+     "label": "Trail Alerts"
+    },
+    {
+     "url": "https://iceagetrail.maps.arcgis.com/apps/dashboards/5cb8ca63f0e447dea9dc29afb5ed12e6",
+     "label": "Check Trail Alerts or Submit a Report!"
+    },
+    {
+     "url": "https://www.iceagetrail.org/hiker-resources/",
+     "label": "Get info on trail conditions, thru-hiker resources, itinerar"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://iceagetrail.org/volunteer/chapters/",
+     "label": "Trail Shuttles and Volunteer Help"
+    },
+    {
+     "url": "https://www.iceagetrail.org/kettle-moraine-trailside-shelters/"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://www.iceagetrail.org/store/cart/"
+    },
+    {
+     "url": "https://www.iceagetrail.org/store/",
+     "label": "Shop"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://www.iceagetrail.org/volunteer-resource-center/",
+     "label": "Members"
+    },
+    {
+     "url": "https://iceagetrail.org/volunteer/chapters/",
+     "label": "Trail Shuttles and Volunteer Help"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://www.arcgis.com/home/item.html?id=735b25ad50e74520b7396d9168f53cfc"
+   },
+   "third_party_guide": [
+    "https://app.faroutguides.com/guides/Ice%20Age%20Trail?avad=339081_b331712ed"
+   ]
+  },
+  {
+   "org": "kta",
+   "name": "Keystone Trails Association",
+   "site": "kta-hike.org",
+   "trails": [
+    "Baker Trail",
+    "Donut Hole Trail",
+    "Loyalsock Trail",
+    "Mason-Dixon Trail",
+    "Quehanna Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://kta-hike.org/donate.html",
+     "label": "Donate\n\t\t&gt;"
+    },
+    {
+     "url": "https://kta-hike.org/membership.html",
+     "label": "Membership"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://kta-hike.org/southcentralaccessible.html",
+     "label": "South Central Pennsylvania Accessible Adventure Guidebook"
+    },
+    {
+     "url": "https://kta-hike.org/maps.html",
+     "label": "Maps"
+    },
+    {
+     "url": "https://kta-hike.org/2026-20-gpsp.html",
+     "label": "2026 #20 GPSP"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://kta-hike.org/kta-gear-loaner-program.html",
+     "label": "KTA Gear Loaner Program"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://kta-hike.org/hikeharrisburg2026postevent.html",
+     "label": "Hike Harrisburg Post Event Release"
+    },
+    {
+     "url": "https://kta-hike.org/volunteer.html",
+     "label": "Volunteer with KTA"
+    }
+   ],
+   "machine_readable": {
+    "caltopo_map": [
+     "https://caltopo.com/m/28V9AS6",
+     "https://caltopo.com/m/DUMMFCS",
+     "https://caltopo.com/m/FEH1A8K"
+    ]
+   }
+  },
+  {
+   "org": "laurel",
+   "name": "Laurel Highlands Hiking Trail (PA DCNR)",
+   "site": "dcnr.pa.gov",
+   "trails": [
+    "Laurel Highlands Hiking Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://dcnr.pa.gov/services/dmva/subscribe-to-veterans--registry-and-monthly-publication",
+     "label": "Join the Veterans Registry"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://dcnr.pa.gov/agencies/dcnr/conservation/geology/digital-base-maps",
+     "label": "Digital Base Maps"
+    },
+    {
+     "url": "https://dcnr.pa.gov/agencies/dcnr/conservation/geology/publications-and-data",
+     "label": "Geologic Publications and Data"
+    },
+    {
+     "url": "https://dcnr.pa.gov/agencies/dcnr/interactive-maps",
+     "label": "Interactive Maps"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://dcnr.pa.gov/services/dcnr/apply-for-wild-plant-sanctuary-status",
+     "label": "Apply for Wild Plant Sanctuary Status"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://dcnr.pa.gov/agencies/dcnr/recreation/what-to-do/whitewater-boating",
+     "label": "Whitewater Boating"
+    },
+    {
+     "url": "https://dcnr.pa.gov/agencies/dcnr/recreation/permits-registration-and-titles",
+     "label": "Permits, Registration and Titles"
+    },
+    {
+     "url": "https://dcnr.pa.gov/agencies/dcnr/education/water-education",
+     "label": "Water Education"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://dcnr.pa.gov/services/dcnr/register-for-pennsylvania-land-choices-workshop",
+     "label": "Pennsylvania Land Choices"
+    },
+    {
+     "url": "https://dcnr.pa.gov/services/dcnr/register-for-a-project-learning-tree-workshop",
+     "label": "Project Learning Tree"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://dcnr.pa.gov/services/dcnr/request-to-hold-group-events-and-special-activities-in-state-parks-and-forests",
+     "label": "Organized Group Events"
+    },
+    {
+     "url": "https://dcnr.pa.gov/services/dcnr/become-a-dcnr-conservation-volunteer",
+     "label": "Volunteer"
+    }
+   ]
+  },
+  {
+   "org": "lsht",
+   "name": "Lone Star Hiking Trail Club",
+   "site": "lonestartrail.org",
+   "trails": [
+    "Lone Star Hiking Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://lonestartrail.org/content.aspx?page_id=31&club_id=738078&action=login&user=5",
+     "label": "Member Login"
+    },
+    {
+     "url": "https://lonestartrail.org/content.aspx?page_id=22&club_id=738078&module_id=676069",
+     "label": "Membership"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://lonestartrail.org/content.aspx?page_id=22&club_id=738078&module_id=675540",
+     "label": "LSHT Maps"
+    },
+    {
+     "url": "https://lonestartrail.org/content.aspx?page_id=22&club_id=738078&module_id=677565",
+     "label": "LSHT Burn Maps"
+    },
+    {
+     "url": "https://lonestartrail.org/handlers/celinks.ashx?id=29815",
+     "label": "detailed LSHT Maps"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://lonestartrail.org/content.aspx?page_id=22&club_id=738078&module_id=676900",
+     "label": "LSHT Parking"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://lonestartrail.org/content.aspx?page_id=587&club_id=738078",
+     "label": "Shop"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://lonestartrail.org/content.aspx?page_id=22&club_id=738078&module_id=676479",
+     "label": "Volunteer"
+    },
+    {
+     "url": "https://lonestartrail.org/content.aspx?page_id=4001&club_id=738078",
+     "label": "Events"
+    }
+   ],
+   "machine_readable": {
+    "arcgis_item_id": [
+     "b196b5958480421fa7b5ee2a6ce91d31"
+    ]
+   }
+  },
+  {
+   "org": "mdhta",
+   "name": "Maah Daah Hey Trail Association",
+   "site": "mdhta.com",
+   "trails": [
+    "Maah Daah Hey Trail"
+   ],
+   "reachable": true
+  },
+  {
+   "org": "msgtc",
+   "name": "Monadnock-Sunapee Greenway Trail Club",
+   "site": "msgtc.org",
+   "trails": [
+    "Monadnock-Sunapee Greenway"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.msgtc.org/membership/",
+     "label": "Membership"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://www.msgtc.org/the-map/",
+     "label": "The Map"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://www.msgtc.org/trail-conditions/",
+     "label": "Trail Conditions"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://www.msgtc.org/shelters/",
+     "label": "Shelters"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://www.msgtc.org/store/",
+     "label": "Store"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://www.msgtc.org/volunteer-work-crew-hours/",
+     "label": "Volunteer Work Crew Hours"
+    }
+   ]
+  },
+  {
+   "org": "mst-pa",
+   "name": "Mid State Trail Association (PA)",
+   "site": "hike-mst.org",
+   "trails": [
+    "Mid State Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://hike-mst.org/index.php/the-organization/join-the-msta",
+     "label": "Join The MSTA"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://hike-mst.org/index.php/guide-and-maps",
+     "label": "Guide/Maps"
+    },
+    {
+     "url": "https://hike-mst.org/index.php/guide-and-maps/section-updates",
+     "label": "Section Updates"
+    },
+    {
+     "url": "https://hike-mst.org/index.php/resources/overseer-guides",
+     "label": "Overseer Guides"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://hike-mst.org/index.php/the-organization/volunteer-hours",
+     "label": "Volunteer Hours"
+    },
+    {
+     "url": "https://hike-mst.org/index.php/events",
+     "label": "Events"
+    }
+   ],
+   "third_party_guide": [
+    "https://www.avantlink.com/click.php?tt=cl&amp;merchant_id=233df86d-6145-4467-8f5d-7423ebb09de8&amp;website_id=33e918a2-65ac-454b-a5e5-660f6d35831c&amp;url=https://app.faroutguides.com/guides/Mid%20State%20Trail"
+   ]
+  },
+  {
+   "org": "ncta",
+   "name": "North Country Trail Association",
+   "site": "northcountrytrail.org",
+   "trails": [
+    "North Country Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://northcountrytrail.org/support/join/",
+     "label": "Join"
+    },
+    {
+     "url": "https://northcountrytrail.org/support/gift/",
+     "label": "Donate"
+    },
+    {
+     "url": "https://northcountrytrail.org/support/renew/",
+     "label": "Renew Membership"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://northcountrytrail.org/the-trail/trail-maps/online/",
+     "label": "Explore the Trail"
+    },
+    {
+     "url": "https://northcountrytrail.org/the-trail/trail-maps/",
+     "label": "Trail Maps + Data"
+    },
+    {
+     "url": "https://northcountrytrail.org/events/map",
+     "label": "Events"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://northcountrytrail.org/the-trail/trail-alerts/",
+     "label": "Trail Alerts"
+    },
+    {
+     "url": "https://northcountrytrail.org/the-trail/report-trail-conditions/",
+     "label": "Report Trail Conditions"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://northcountrytrail.org/volunteer/volunteer-interest-form/",
+     "label": "Volunteer"
+    },
+    {
+     "url": "https://northcountrytrail.org/volunteer-resources/",
+     "label": "Volunteer Resources"
+    }
+   ],
+   "machine_readable": {
+    "gpx_or_kml": [
+     "https://northcountrytrail.org/wp-content/plugins/events-manager-ncta/js/nct.geojson"
+    ],
+    "arcgis_item_id": [
+     "23a2c0d674cb443ea9835af2e8c5f13a",
+     "247bfb7befd64180a4471533b937ec25"
+    ],
+    "registered_endpoint": "https://gis.northcountrytrail.org/"
+   },
+   "third_party_guide": [
+    "https://app.faroutguides.com/guides/North%20Country%20Trail%3A%20E.%20New%20York",
+    "https://app.faroutguides.com/guides/North%20Country%20Trail%3A%20Michigan%20LP%20%26%20NW%20Ohio"
+   ]
+  },
+  {
+   "org": "nps",
+   "name": "National Park Service",
+   "site": "nps.gov",
+   "trails": [
+    "Backbone Trail",
+    "High Sierra Trail",
+    "John Muir Trail",
+    "Natchez Trace Trail",
+    "Potomac Heritage Trail"
+   ],
+   "reachable": true,
+   "conditions_and_closures": [
+    {
+     "url": "https://www.nps.gov/aboutus/notices.htm",
+     "label": "Notices"
+    },
+    {
+     "url": "https://www.nps.gov/aboutus/vulnerability-disclosure-policy.htm",
+     "label": "Vulnerability Disclosure Policy"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://nps.gov/subjects/erosion/index.htm",
+     "label": "Erosion: Water, Wind & Weather"
+    },
+    {
+     "url": "https://nps.gov/subjects/watersheds/index.htm",
+     "label": "Watersheds"
+    },
+    {
+     "url": "https://nps.gov/subjects/underwater/index.htm",
+     "label": "Underwater Wonders"
+    }
+   ],
+   "machine_readable": {
+    "arcgis_item_id": [
+     "1a72876ce6e24a74a732a80875ed33bf"
+    ],
+    "registered_endpoint": "https://mapservices.nps.gov/arcgis/rest/services/NationalDatasets/NPS_Public_Trails/FeatureServer/0"
+   }
+  },
+  {
+   "org": "nynjtc",
+   "name": "New York–New Jersey Trail Conference",
+   "site": "nynjtc.org",
+   "trails": [
+    "Long Path"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://nynjtc.org/2026-nynjtc-annual-gala/",
+     "label": "Join Us at the 2026 Trail Conference Annual Gala, Thursday, "
+    },
+    {
+     "url": "https://nynjtc.org/member-hiking-clubs/",
+     "label": "Member Clubs"
+    },
+    {
+     "url": "https://nynjtc.org/membership/",
+     "label": "Membership"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://nynjtc.org/digital-trail-maps-on-mobile-devices/",
+     "label": "Digital Trail Maps"
+    },
+    {
+     "url": "https://nynjtc.org/free-trail-maps/",
+     "label": "Free Trail Maps"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://nynjtc.org/category/trail-alerts/",
+     "label": "Trail Alerts"
+    },
+    {
+     "url": "https://www.nynjtc.org/trail-alerts/a-t-detour-at-harriman-state-park/"
+    },
+    {
+     "url": "https://www.nynjtc.org/trail-alerts/highlands-trail-section-closed-rt-605-lackawanna-drive/"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://www.nynjtc.org/trail-alerts/breakneck-ridge-and-wilkinson-memorial-trailhead-closures/"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://nynjtc.org/volunteer/",
+     "label": "Volunteer"
+    },
+    {
+     "url": "https://nynjtc.org/volunteer",
+     "label": "Join Our Volunteer Community"
+    }
+   ],
+   "machine_readable": {
+    "closure_feed": [
+     "https://www.nynjtc.org/category/trail-alerts/feed/",
+     "https://www.nynjtc.org/trail-alerts/a-t-detour-at-harriman-state-park/feed/"
+    ],
+    "avenza_map": [
+     "http://www.avenzamaps.com/a/wwgfydd",
+     "https://www.avenzamaps.com/a/1uitbpd"
+    ]
+   }
+  },
+  {
+   "org": "ohta",
+   "name": "Ozark Highlands Trail Association",
+   "site": "ozarkhighlandstrail.com",
+   "trails": [
+    "Ozark Highlands Trail"
+   ],
+   "reachable": true,
+   "conditions_and_closures": [
+    {
+     "url": "https://ozarkhighlandstrail.com/trail-alerts/",
+     "label": "Trail Alerts!"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://ozarkhighlandstrail.com/store/",
+     "label": "Shop"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://ozarkhighlandstrail.com/events/",
+     "label": "Events"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://ozarkhighlandstrail.com/trail/"
+   }
+  },
+  {
+   "org": "onda",
+   "name": "Oregon Natural Desert Association",
+   "site": "onda.org",
+   "trails": [
+    "Oregon Desert Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://onda.org/donate/",
+     "label": "Donate"
+    },
+    {
+     "url": "https://onda.org/give/",
+     "label": "View More\n        \t\t\n        \t\tJoin, Renew, Give\n        \t\tF"
+    },
+    {
+     "url": "https://onda.org/give/financials/",
+     "label": "Financials"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://onda.org/guides/",
+     "label": "Visitor&#8217;s Guides"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://onda.org/our-approach/restore/",
+     "label": "View More\n        \t\t\n        \t\tRestoring Lands and Waters\n  "
+    },
+    {
+     "url": "https://onda.org/event/beatys-butte-spring-restoration-2/",
+     "label": "Beatys Butte Spring Restoration #2\n\t\t\t\t\t1 - 4 Oct\n\t\t\t\t\tLocat"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://onda.org/our-approach/restore/",
+     "label": "View More\n        \t\t\n        \t\tRestoring Lands and Waters\n  "
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://onda.org/events/",
+     "label": "View More\n        \t\t\n        \t\tFind an Upcoming Event\n      "
+    },
+    {
+     "url": "https://onda.org/volunteer/",
+     "label": "View More\n        \t\t\n        \t\tVolunteer\n        \t\tGet hands"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://onda.org/regions/oregon-desert-trail/"
+   }
+  },
+  {
+   "org": "ota",
+   "name": "Ozark Trail Association",
+   "site": "ozarktrail.com",
+   "trails": [
+    "Ozark Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.ozarktrail.com/donate",
+     "label": "Donate"
+    },
+    {
+     "url": "https://www.ozarktrail.com/membership",
+     "label": "Become a Member"
+    },
+    {
+     "url": "https://www.ozarktrail.com/donate/"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://ozarktrail.com/maps/",
+     "label": "Maps"
+    },
+    {
+     "url": "https://ozarktrail.com/safety-and-guidelines/",
+     "label": "Safety + Guidelines"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://ozarktrail.com/event/oct-3-2026-the-ota-sponsored-devils-toll-race-event-at-johnson-shutins/"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://ozarktrail.com/shop",
+     "label": "Shop"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://ozarktrail.com/events/",
+     "label": "Events"
+    },
+    {
+     "url": "https://ozarktrail.com/volunteer-on-trail/",
+     "label": "Volunteer On-Trail"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://www.ozarktrail.com/"
+   }
+  },
+  {
+   "org": "ouachita",
+   "name": "Friends of the Ouachita Trail",
+   "site": "friendsoftheouachita.org",
+   "trails": [
+    "Ouachita Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.friendsoftheouachita.org/adopter-info/volunteer-membereship-agreement/",
+     "label": "Volunteer Membership Agreement"
+    },
+    {
+     "url": "https://www.friendsoftheouachita.org/membership-and-donations/",
+     "label": "Membership and Donations"
+    },
+    {
+     "url": "https://www.friendsoftheouachita.org/membership-and-donations/donate/",
+     "label": "Donate"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://www.friendsoftheouachita.org/hiker-info/maps-and-trail-guide/",
+     "label": "Maps and Trail Guide"
+    },
+    {
+     "url": "https://www.friendsoftheouachita.org/adopter-info/trail-maintenance-guidelines/",
+     "label": "Trail Maintenance Guidelines and Training"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://www.friendsoftheouachita.org/hiker-info/trail-condition-report/",
+     "label": "Trail Condition Report"
+    },
+    {
+     "url": "https://www.friendsoftheouachita.org/foot-organization/foot-tax-status/",
+     "label": "FoOT Tax Status"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://www.friendsoftheouachita.org/hiker-info/shuttles/",
+     "label": "Shuttles"
+    },
+    {
+     "url": "https://www.friendsoftheouachita.org/hiker-info/water-sources/",
+     "label": "Water Sources"
+    },
+    {
+     "url": "https://www.friendsoftheouachita.org/hiker-info/trail-shelters/",
+     "label": "Trail Shelters"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://www.friendsoftheouachita.org/store/",
+     "label": "Store"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://www.friendsoftheouachita.org/adopter-info/volunteer-membereship-agreement/",
+     "label": "Volunteer Membership Agreement"
+    },
+    {
+     "url": "https://www.friendsoftheouachita.org/adopter-info/trail-maintenance-guidelines/",
+     "label": "Trail Maintenance Guidelines and Training"
+    }
+   ]
+  },
+  {
+   "org": "palmetto",
+   "name": "Palmetto Conservation Foundation",
+   "site": "palmettoconservation.org",
+   "trails": [
+    "Palmetto Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://palmettoconservation.org/donate",
+     "label": "Support Us"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://palmettoconservation.org/trails",
+     "label": "Go to map"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://palmettoconservation.org/updates/post/trail-closures-updated-2-5-26",
+     "label": "More"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://palmettoconservation.org/store",
+     "label": "Store"
+    },
+    {
+     "url": "https://palmettoconservation.org/store/cart",
+     "label": "My Cart"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://palmettoconservation.org/calendar",
+     "label": "Events"
+    },
+    {
+     "url": "https://palmettoconservation.org/get-involved",
+     "label": "Volunteer"
+    }
+   ]
+  },
+  {
+   "org": "pcta",
+   "name": "Pacific Crest Trail Association",
+   "site": "pcta.org",
+   "trails": [
+    "Pacific Crest Trail"
+   ],
+   "reachable": true,
+   "machine_readable": {
+    "registered_endpoint": "https://services5.arcgis.com/ZldHa25efPFpMmfB/arcgis/rest/services/PCTA_Centerline/FeatureServer/0"
+   }
+  },
+  {
+   "org": "pinhoti",
+   "name": "Pinhoti Trail Alliance",
+   "site": "pinhotitrailalliance.org",
+   "trails": [
+    "Pinhoti Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.pinhotitrailalliance.org/",
+     "label": "Ubuy Membership"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://www.pinhotitrailalliance.org/",
+     "label": "Sitemap"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://www.pinhotitrailalliance.org/",
+     "label": "Terms & Conditions"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://www.pinhotitrailalliance.org/",
+     "label": "Baby Care & Gear"
+    }
+   ]
+  },
+  {
+   "org": "pnta",
+   "name": "Pacific Northwest Trail Association",
+   "site": "pnt.org",
+   "trails": [
+    "Pacific Northwest Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.pnt.org/ways-to-give/",
+     "label": "Get Involved"
+    },
+    {
+     "url": "https://www.pnt.org/donate/",
+     "label": "Donate"
+    },
+    {
+     "url": "https://www.pnt.org/donate",
+     "label": "Donate"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://www.pnt.org/pnta/maps/",
+     "label": "Maps"
+    },
+    {
+     "url": "https://www.pnt.org/pnta/know-before-you-go/plan-your-trip/guidebooks/",
+     "label": "Guidebooks"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://www.pnt.org/pnta/know-before-you-go/plan-your-trip/trail-alerts/",
+     "label": "Closures and Alerts"
+    },
+    {
+     "url": "https://www.pnt.org/pnta/know-before-you-go/plan-your-trip/trail-conditions/",
+     "label": "Trail Conditions"
+    },
+    {
+     "url": "https://www.pnt.org/an-increase-in-fire-activity-leads-to-three-closures-along-the-pnt/"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://www.pnt.org/backcountry-permits/",
+     "label": "Backcountry Permits"
+    },
+    {
+     "url": "https://www.pnt.org/pnta/know-before-you-go/plan-your-trip/permits-fees/",
+     "label": "Camping &#038; Fees"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://www.pnt.org/performance-crew/",
+     "label": "Performance Trail Crews"
+    },
+    {
+     "url": "https://www.pnt.org/pnta/about-us/pnta-wbl-trail-crews/",
+     "label": "WBL Trail Crews"
+    }
+   ],
+   "machine_readable": {
+    "closure_feed": [
+     "https://www.pnt.org/an-increase-in-fire-activity-leads-to-three-closures-along-the-pnt/feed/"
+    ],
+    "arcgis_item_id": [
+     "2f5351d70b0d4ed9b13d372e9d109fcb"
+    ]
+   },
+   "third_party_guide": [
+    "https://app.faroutguides.com/guides/Pacific",
+    "https://app.faroutguides.com/guides/Pacific%20Northwest%20Trail"
+   ]
+  },
+  {
+   "org": "ridgetrail",
+   "name": "Bay Area Ridge Trail Council",
+   "site": "ridgetrail.org",
+   "trails": [
+    "Bay Area Ridge Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://ridgetrail.org/support/",
+     "label": "Ways to Give"
+    },
+    {
+     "url": "https://ridgetrail.org/agency/",
+     "label": "Agency Membership"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://ridgetrail.org/trip-planning-tools/",
+     "label": "Maps &#038; Tools"
+    },
+    {
+     "url": "https://ridgetrail.org/trail-maps/",
+     "label": "Trail Maps"
+    },
+    {
+     "url": "https://ridgetrail.org/interactive-trail-map/",
+     "label": "Interactive Trail Map"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://ridgetrail.org/national-scenic-trail/",
+     "label": "National Scenic Trail Status"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://ridgetrail.org/trail-section/skyline-watershed-ridge-trail/",
+     "label": "Learn More"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://ridgetrail.org/events/",
+     "label": "Events"
+    },
+    {
+     "url": "https://ridgetrail.org/volunteer-2/",
+     "label": "Volunteer"
+    }
+   ],
+   "machine_readable": {
+    "arcgis_item_id": [
+     "cf3673d959524bd7b25f855ca8beb8ae"
+    ]
+   },
+   "third_party_guide": [
+    "https://faroutguides.com/bay-area-ridge-trail/"
+   ]
+  },
+  {
+   "org": "sheltowee",
+   "name": "Sheltowee Trace Association",
+   "site": "sheltoweetrace.org",
+   "trails": [
+    "Sheltowee Trace"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://sheltoweetrace.org/membership",
+     "label": "Become a Member"
+    },
+    {
+     "url": "https://sheltoweetrace.org/giving",
+     "label": "Donate"
+    },
+    {
+     "url": "https://sheltoweetrace.org/home/join-crlc-volunteers"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://sheltoweetrace.org/shop/p/guidebook",
+     "label": "Sheltowee Trace Guidebook"
+    },
+    {
+     "url": "https://sheltoweetrace.org/maps",
+     "label": "Maps"
+    },
+    {
+     "url": "https://sheltoweetrace.org/home/explore-the-sheltowee-trace-your-ultimate-guidebook-is-here"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://sheltoweetrace.org/alerts",
+     "label": "Alerts and Conditions"
+    },
+    {
+     "url": "https://sheltoweetrace.org/home/opportunity-alert-keep-the-sheltowee-trace-geared-up"
+    },
+    {
+     "url": "https://sheltoweetrace.org/home/category/Trail+Conditions",
+     "label": "Trail Conditions"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://sheltoweetrace.org/shuttle-services",
+     "label": "Shuttle Services"
+    },
+    {
+     "url": "https://sheltoweetrace.org/passes-and-permits",
+     "label": "Passes and Permits"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://sheltoweetrace.org/shop/p/guidebook",
+     "label": "Sheltowee Trace Guidebook"
+    },
+    {
+     "url": "https://sheltoweetrace.org/shop",
+     "label": "Shop"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://sheltoweetrace.org/volunteer",
+     "label": "Find a Volunteer Opportunity"
+    },
+    {
+     "url": "https://sheltoweetrace.org/trail-maintenance-volunteers",
+     "label": "Trail Maintenance Volunteers"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://www.outragegis.com/trails/product/sheltowee-trace-gps-trail-and-mile-markers/"
+   }
+  },
+  {
+   "org": "shta",
+   "name": "Superior Hiking Trail Association",
+   "site": "superiorhiking.org",
+   "trails": [
+    "Superior Hiking Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://superiorhiking.org/join/",
+     "label": "Become a Member"
+    },
+    {
+     "url": "https://superiorhiking.org/donate/",
+     "label": "Donate to the SHTA"
+    },
+    {
+     "url": "https://superiorhiking.org/ways-to-give-back/",
+     "label": "Ways To Give Back"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://superiorhiking.org/guidebooks-and-maps/",
+     "label": "Publications"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://superiorhiking.org/trail-conditions/",
+     "label": "Trail Conditions"
+    }
+   ],
+   "places": [
+    {
+     "url": "https://superiorhiking.org/shuttles/",
+     "label": "Parking and Shuttles"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://superiorhiking.org/large-groups-and-events/",
+     "label": "Large Groups on the SHT"
+    },
+    {
+     "url": "https://superiorhiking.org/volunteer/",
+     "label": "Volunteer"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://hub.arcgis.com/datasets/DuluthMN::superior-hiking-trail"
+   }
+  },
+  {
+   "org": "standing-stone",
+   "name": "Standing Stone Trail Club",
+   "site": "standingstonetrail.org",
+   "trails": [
+    "Standing Stone Trail"
+   ],
+   "reachable": true,
+   "membership": [
+    {
+     "url": "https://www.standingstonetrail.org/copy-of-support-membership",
+     "label": "Support/Membership"
+    }
+   ],
+   "maps_and_guides": [
+    {
+     "url": "https://www.standingstonetrail.org/trail-guides",
+     "label": "Trail Guides"
+    },
+    {
+     "url": "https://www.standingstonetrail.org/trail-in-kml-format-for-google-eart",
+     "label": "Trail in KML format for Google Earth"
+    },
+    {
+     "url": "https://www.standingstonetrail.org/lessons-and-guides",
+     "label": "Maps"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://www.standingstonetrail.org/trail-alerts",
+     "label": "Trail Alerts"
+    },
+    {
+     "url": "https://www.standingstonetrail.org/copy-of-trail-relocation-notice"
+    }
+   ],
+   "events_and_workdays": [
+    {
+     "url": "https://www.standingstonetrail.org/events",
+     "label": "Events"
+    },
+    {
+     "url": "https://www.standingstonetrail.org/charters",
+     "label": "Upcoming Events"
+    }
+   ],
+   "machine_readable": {
+    "gpx_or_kml": [
+     "https://www.facebook.com/download/1835920486712094/SST_KML.kmz"
+    ]
+   }
+  },
+  {
+   "org": "tahoe-rim",
+   "name": "Tahoe Rim Trail Association",
+   "site": "tahoerimtrail.org",
+   "trails": [
+    "Tahoe Rim Trail"
+   ],
+   "reachable": true,
+   "machine_readable": {
+    "registered_endpoint": "https://tahoerimtrail.org/maps-trail-info/"
+   }
+  },
+  {
+   "org": "utah-sgid",
+   "name": "Utah UGRC — SGID Trails and Pathways",
+   "site": "gis.utah.gov",
+   "trails": [
+    "Bonneville Shoreline Trail"
+   ],
+   "reachable": true,
+   "maps_and_guides": [
+    {
+     "url": "https://gis.utah.gov/blog/2026-07-17-utah-sgid-statewide-roads-data-layer-updates/",
+     "label": "Jul   17         Utah SGID Statewide Roads Data Layer Update"
+    },
+    {
+     "url": "https://gis.utah.gov/blog/2026-06-05-utah-sgid-statewide-roads-data-layer-updates/",
+     "label": "Jun   5         Utah SGID Statewide Roads Data Layer Updates"
+    }
+   ],
+   "conditions_and_closures": [
+    {
+     "url": "https://gis.utah.gov/ThirdPartyNotices.txt",
+     "label": "Third-party Notices"
+    }
+   ],
+   "store": [
+    {
+     "url": "https://gis.utah.gov/products/",
+     "label": "See more &#x2192;"
+    }
+   ],
+   "machine_readable": {
+    "registered_endpoint": "https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/TrailsAndPathways/FeatureServer/0"
+   }
+  }
+ ]
+}

@@ -39,6 +39,20 @@ on:
         description: "Space-separated Geofabrik state names. Empty = the 14 AT states."
         type: string
         default: ""
+      # Which GROUND to build, as pipeline/lib/build_regions.py names it
+      # (#1458). Empty = `at`, today's corridor shape, so a dispatch that
+      # names nothing builds exactly what it always built. `at nyc` adds New
+      # York City - the first case where the app draws other organizations'
+      # trail lines over ground the basemap does not cover.
+      #
+      # Orthogonal to `states` on purpose: states bound what is FETCHED and
+      # regions bound what is KEPT, so a region needs its states present (NYC
+      # is inside `new-york` and `new-jersey`, both already in the default
+      # fourteen) and adding one does not change the fetch.
+      regions:
+        description: "Space-separated build regions (at, nyc). Empty = at."
+        type: string
+        default: ""
       max_zoom:
         description: "Tile pyramid depth (14 = OpenMapTiles convention)"
         type: string
@@ -105,11 +119,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          # Split rather than `&&`: `apt-get update` exits non-zero when any
-          # repository preinstalled on the runner image fails, which stopped
-          # the install running at all. See backend-tests.yml for the measured
-          # case and the trade (#1361).
-          sudo apt-get update -qq || true
+          # Ask apt only about Ubuntu's own archives, so a bad index in a
+          # repository the runner image ships and this project never uses
+          # cannot fail the install - while a failure in the archive we DO
+          # depend on stays loud. backend-tests.yml holds the measured case
+          # and the argument against the `|| true` this replaces (#1366).
+          sudo mkdir -p /etc/apt/sources.list.d
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
+            ! -name 'ubuntu.sources' ! -name 'ubuntu.list' -print -delete
+          sudo apt-get update -qq
           sudo apt-get install -y -qq osmium-tool
           osmium --version | head -1
 
@@ -120,6 +138,19 @@ jobs:
       # the only producer - same step build-raster.yml runs.
       - name: Fetch ArcGIS sources
         run: python fetch_all.py
+
+      # The `nyc` region is a buffer around the city's own registered lines
+      # rather than a box drawn around a city (build_regions.py says why), so
+      # the build needs those lines on disk. Skipped entirely when no region
+      # asks for them.
+      #
+      # --only, because the first run of this step fetched all 22 external
+      # sources and took 9m28s to get the two a region reads. The unselected
+      # layers keep their manifest entries, so the next full fetch still
+      # knows which of them are unchanged.
+      - name: Fetch the external layers a region is built from
+        if: contains(inputs.regions, 'nyc')
+        run: python fetch_external_layers.py --only nyc_parks_trails nyc_dot_greenways nyc_cscl_paths nyc_park_drives
 
       - name: Fetch the Planetiler jar
         env:
@@ -134,11 +165,22 @@ jobs:
           echo "$JAR_SHA256  planetiler.jar" | sha256sum -c -
           ls -la planetiler.jar
 
+      # Through env, never pasted into the script: a free-text dispatch input
+      # interpolated into `run:` is shell the dispatcher wrote (#660's rule,
+      # held by .github/tests/test_run_steps_take_inputs_through_env.py).
+      # STATES and REGIONS stay unquoted on purpose: they are space-separated
+      # lists and the split is the point, exactly as the format() was.
       - name: Build the basemap
+        env:
+          MAX_ZOOM: ${{ inputs.max_zoom }}
+          STATES: ${{ inputs.states }}
+          REGIONS: ${{ inputs.regions }}
         run: |
+          # shellcheck disable=SC2086
           python export_basemap.py --planetiler-jar planetiler.jar \
-            --max-zoom "${{ inputs.max_zoom }}" \
-            ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }}
+            --max-zoom "$MAX_ZOOM" \
+            ${STATES:+--states $STATES} \
+            ${REGIONS:+--regions $REGIONS}
 
       - name: Cut the AT package from the build
         run: |
@@ -178,18 +220,36 @@ jobs:
             --out data/processed/at_basemap_package_z12.pmtiles \
             --name "OurHike AT corridor basemap (z12)"
 
-      # The 1-degree coverage cells (#1175): the corridor package partitioned
+      # The ground the cells are cut from, which is the WHOLE build rather
+      # than the A.T.'s share of it (#1458). With the default region set this
+      # shape IS the corridor, so the cut below is the corridor package under
+      # another name and the published cells do not move. With `at nyc` it is
+      # both, and the cells covering New York City stop being a thin band
+      # across one corner of a square they claim whole.
+      #
+      # Its own extract rather than reusing at_basemap_package.pmtiles above,
+      # because that package's advertised size is a published promise about
+      # the A.T. and must keep being exactly the A.T.'s ground. A cell is the
+      # unit of offline coverage and belongs to no trail.
+      - name: Cut the coverage package from the build
+        run: |
+          python extract_package.py data/processed/basemap.pmtiles \
+            --region data/processed/basemap_region_coverage.geojson \
+            --out data/processed/basemap_coverage.pmtiles \
+            --name "OurHike coverage basemap"
+
+      # The 1-degree coverage cells (#1175): the coverage package partitioned
       # by graticule cell, plus one shared context archive and the coverage
-      # index. Cut from the package rather than the build because the package
-      # is already corridor-clipped - every tile in it belongs to some cell.
+      # index. Cut from a package rather than the build because a package is
+      # already region-clipped - every tile in it belongs to some cell.
       #
       # This replaces the 50-mile stretch cut (#556), which built the unit the
       # maintainer's #552 decision superseded on 2026-08-25. Needs no
       # centerline and no half-mile markers: cell membership is a rectangle
       # overlap, not a projection onto a calibrated mile axis.
-      - name: Cut the coverage cells from the package
+      - name: Cut the coverage cells from the coverage package
         run: |
-          python cut_cells.py data/processed/at_basemap_package.pmtiles \
+          python cut_cells.py data/processed/basemap_coverage.pmtiles \
             --family at_basemap
 
       # The whole point of the spike: real numbers where estimates were. To
@@ -217,12 +277,13 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           df -h /
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: basemap-archives
           path: |
             pipeline/data/processed/basemap.pmtiles
             pipeline/data/processed/basemap_region.geojson
+            pipeline/data/processed/basemap_region_coverage.geojson
           retention-days: 7
           if-no-files-found: error
 
@@ -230,7 +291,7 @@ jobs:
       # it ships and not the source build beside it. The coverage cells and
       # their manifest ride here too - publish.py's collect_artifacts reads
       # at_basemap_cells_manifest.json out of PROCESSED_DIR (#1175).
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: basemap-package
           path: |
@@ -257,6 +318,14 @@ jobs:
     # Every writer of latest.json shares this group: publish() does a
     # read-modify-write of the manifest, and two concurrent publishes could
     # interleave and clobber each other's entries.
+    #
+    # `environment:` and `concurrency:` on the same job means a run left
+    # `waiting` on the reviewer above holds this group for as long as it
+    # waits, not however long the job itself takes once approved - the same
+    # shape as `publish-vector-data.yml`'s `publish` job, whose header has
+    # the 2026-09-08 measurement (#1271) and the fix options nobody has
+    # picked between yet. Dispatch a real publish only when somebody can
+    # approve it within the hour.
     concurrency:
       group: publish-data
       cancel-in-progress: false
@@ -269,11 +338,34 @@ jobs:
       # corridor build's z0-14 cut, measured size). A states-subset build
       # would publish a package with most of the trail missing from it -
       # refused loudly rather than quietly skipped.
+      #
+      # REGIONS ARE NOT IN THIS GUARD, and the asymmetry is the point (#1458).
+      # A narrower `states` makes the A.T. package SMALLER than its published
+      # promise; a wider `regions` leaves that package untouched - it is still
+      # cut against basemap_region.geojson, the A.T.'s own ground - and widens
+      # only the coverage cells, which advertise their own size per cell in
+      # the index they publish. So `at nyc` may ship and a states subset may
+      # not, because only one of them makes an existing promise false.
       - name: Refuse a non-canonical shape
         if: inputs.states != '' || inputs.max_zoom != '14'
         working-directory: .
+        env:
+          STATES: ${{ inputs.states }}
+          MAX_ZOOM: ${{ inputs.max_zoom }}
         run: |
-          echo "::error::publish is only for the full corridor build (states empty, z0-14); this run built states='${{ inputs.states }}' at z0-${{ inputs.max_zoom }}"
+          echo "::error::publish is only for the full corridor build (states empty, z0-14); this run built states='$STATES' at z0-$MAX_ZOOM"
+          exit 1
+
+      # What regions MUST include, for the same reason: the A.T. package is
+      # cut against the `at` region, so a run without it publishes a release
+      # whose headline download was never built.
+      - name: Refuse a publish that did not build the A.T.
+        if: inputs.regions != '' && !contains(inputs.regions, 'at')
+        working-directory: .
+        env:
+          REGIONS: ${{ inputs.regions }}
+        run: |
+          echo "::error::publish needs the at region; this run built regions='$REGIONS'"
           exit 1
 
       - uses: actions/checkout@v7
@@ -291,7 +383,7 @@ jobs:
       # publish.py hashes archives from PROCESSED_DIR at publish time rather
       # than reading a baked manifest, so nothing depends on this being the
       # runner that produced them - and the build job never holds a secret.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: basemap-package
           path: pipeline/data/processed/

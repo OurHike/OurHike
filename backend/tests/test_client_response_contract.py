@@ -192,12 +192,21 @@ def response_schema(document: dict, path: str, *, unwrap: str | None = None) -> 
 # moderation queue's own wrapper is part of what is checked.
 SEAMS = [
     ("ReportSummary", "/reports", None),
+    # The reporter's own reports, which `fetchMyReports` reads and
+    # client/src/lib/useConditions.ts merges into the shared list (#1916 - A
+    # signed-in hiker's app sends its token on the three edge-cached reads, so
+    # they either skip the cache or hide the hiker's own queued report).
+    ("ReportSummary", "/reports/mine", None),
     ("ClosureSummary", "/closures", None),
     ("ProfileSummary", "/profiles/me", None),
     ("QueuedReport", "/moderation/queue", "reports"),
     ("QueuedClosure", "/moderation/queue", "closures"),
     ("PoiPhotoSummary", "/waypoints/{poi_id}/photos", None),
     ("PoiPhotoQueueEntry", "/moderation/poi-photos", None),
+    # Supporting OurHike (#1876): the answer the day-5 ask reads to decide
+    # whether to ask, so a field it declares and the server drops would make
+    # it ask somebody who already pays.
+    ("SupportSummary", "/support/me", None),
 ]
 
 
@@ -206,7 +215,7 @@ def document() -> dict:
     return current_document()
 
 
-@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[s[0] for s in SEAMS])
+@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[f"{s[0]} {s[1]}" for s in SEAMS])
 def test_every_field_the_client_reads_is_one_the_server_sends(document, interface, path, unwrap):
     """The core assertion, in the one direction that is a defect.
 
@@ -228,7 +237,7 @@ def test_every_field_the_client_reads_is_one_the_server_sends(document, interfac
     )
 
 
-@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[s[0] for s in SEAMS])
+@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[f"{s[0]} {s[1]}" for s in SEAMS])
 def test_a_field_the_client_declares_non_null_is_required_and_never_null(document, interface, path, unwrap):
     """Nullability, which is the same failure one step further in.
 
@@ -262,7 +271,7 @@ def test_a_field_the_client_declares_non_null_is_required_and_never_null(documen
     )
 
 
-@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[s[0] for s in SEAMS])
+@pytest.mark.parametrize(("interface", "path", "unwrap"), SEAMS, ids=[f"{s[0]} {s[1]}" for s in SEAMS])
 def test_the_scalar_types_agree_where_they_are_inferable(document, interface, path, unwrap):
     """`number` against `number`, and so on - the coarse check, deliberately.
 
@@ -282,6 +291,15 @@ def test_the_scalar_types_agree_where_they_are_inferable(document, interface, pa
         types |= {option.get("type") for option in property_schema.get("anyOf", [])}
         types.discard("null")
         types.discard(None)
+        # OpenAPI's `integer` is TypeScript's `number`, because TypeScript has
+        # no other spelling for it (#1439, where `photo_count: int` was the
+        # first integer to cross one of these seams). Narrowing `number`
+        # further is not something a client CAN do, so refusing it here would
+        # be asking for a type that does not exist rather than catching a
+        # disagreement.
+        if "integer" in types:
+            types.discard("integer")
+            types.add("number")
 
         # An empty set is a `$ref` - an enum, which is a string on the wire
         # and is compared by value in the enum tests below.
@@ -383,6 +401,30 @@ def test_the_parser_is_actually_reading_the_client(document):
     assert "visibility" in queued
 
     assert len(_client_union(_read(CLOSURE_BANNER), "ClosureReason")) >= 5
+
+    # The integer widening above, asserted rather than assumed. A field the
+    # server types `int` is `number` on the client because TypeScript has no
+    # other spelling, and `photo_count` (#1439) is the first one to cross
+    # here - so the day it stops being declared, this line says so.
+    assert queued["photo_count"].scalar == "number"
+    assert queued["photo_count"].nullable, (
+        "a server on the previous release sends no photo_count at all, and the client type has to admit that"
+    )
+
+
+def test_an_integer_field_is_satisfied_by_the_client_saying_number(document):
+    """The widening in `test_the_scalar_types_agree_where_they_are_inferable`,
+    checked against the real document rather than trusted.
+
+    It would be an easy thing to write so loosely that it stopped catching a
+    genuine disagreement, so what is asserted is both halves: the response
+    really does type this field `integer`, and the client really does say
+    `number` - which is the pair the widening exists to reconcile.
+    """
+    schema = response_schema(document, "/moderation/queue", unwrap="reports")
+
+    assert schema["properties"]["photo_count"]["type"] == "integer"
+    assert interface_fields(_read(API), "QueuedReport")["photo_count"].scalar == "number"
 
 
 def test_the_document_really_describes_this_build(document):

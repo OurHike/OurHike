@@ -25,6 +25,34 @@
 # happen twice. A new project would need both updated before UA could sign
 # anyone in or download anything.
 #
+# UA IS LAID OUT LIKE PRODUCTION: THE SITE AT `/`, THE APP AT `/app/`
+#
+# pages.yml and pr-preview.yml both assemble `_site/` with the Astro site at
+# the root, the app under `app/` built with `VITE_BASE_PATH: /app/`, and the
+# dbt docs at `data/`. Until #1887 this uploaded `client/dist` alone, built
+# for `/`, so UA was the one environment between a pull request and a tag
+# that could not show a change to ourhike.org at all - its site paths
+# answered with the app's shell, measured 2026-10-24 on /organizations/ -
+# and the one serving the app at a path production does not. The maintainer
+# chose this layout by poll, 2026-10-24, over a second alias that would have
+# left UA's app at `/`, knowing what the move costs: the app's address is
+# `/app/` now (retire_root_service_worker.js, below, keeps an old install's
+# icon opening it, offline too), and Spotify's and UA Supabase's registered
+# addresses move to `/app/` (RELEASING.md §3b).
+#
+# The assembly is the preview's, step for step, with three differences: the
+# status page is pointed at UA's data as pages.yml points production's, since
+# UA is meant to be checked; the CSP in `_headers` names UA's backend, which a
+# preview has none of; and `sw.js` at the root, which only UA needs, because
+# only UA ever served the app there.
+#
+# THE DOCS JOB RUNS ONLY WHERE UA CAN DEPLOY: a job-level `if:` cannot read
+# secrets, so it reads the one setting it can, CLOUDFLARE_PAGES_PROJECT. With
+# that unset the docs are skipped and the deploy job still runs, to say why it
+# is skipping (below) - the promise this header makes, kept. A docs build that
+# fails where UA can deploy stops the deploy, as it stops production's and a
+# preview's: a broken /data/ is a defect to see, not to ship around.
+#
 # SETUP: the same Pages project and token as pr-preview.yml (LAUNCH_CHECKLIST.md
 # 3a), plus the optional UA_* settings below. Until the Cloudflare settings
 # exist this workflow says so and skips rather than failing every merge.
@@ -47,7 +75,37 @@ permissions:
   contents: read
 
 jobs:
+  # The dbt docs for /data/, built exactly as pr-preview.yml and pages.yml
+  # build theirs: by .github/actions/dbt-docs-site, in a job that holds no
+  # secret, handed to the deploy as an artifact.
+  docs:
+    name: Build the data docs
+    if: vars.CLOUDFLARE_PAGES_PROJECT != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build the data docs
+        id: docs
+        uses: ./.github/actions/dbt-docs-site
+
+      - name: Hand the docs to UA
+        uses: actions/upload-artifact@v7
+        with:
+          name: data-docs
+          path: ${{ steps.docs.outputs.dir }}
+          retention-days: 1
+          if-no-files-found: error
+
   ua:
+    needs: docs
+    # Skipped docs - no Pages project - still reach the step that says so.
+    if: ${{ !cancelled() && needs.docs.result != 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -73,12 +131,27 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          cache-dependency-path: |
+            client/package-lock.json
+            site/package-lock.json
 
       - name: Install
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
         run: npm ci
+
+      # The site's own toolchain and build, exactly as pr-preview.yml has
+      # them: no UA-specific configuration, because the site is static HTML
+      # whose `/app/...` links are root-relative.
+      - name: Install the site's toolchain
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: site
+        run: npm ci
+
+      - name: Build the site
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: site
+        run: npm run build
 
       # UA points at its own published data: DATA_BASE_URL plus
       # `/environments/ua`, the prefix a UA publish writes to
@@ -188,14 +261,19 @@ jobs:
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
         env:
-          # The root: UA has a hostname to itself, so the installed PWA's scope
-          # is the whole origin, which is also how production is served.
-          VITE_BASE_PATH: /
+          # `/app/`, the path production serves the app at (pages.yml) and
+          # every preview builds it for. It was `/` until #1887, with a
+          # comment saying that was "also how production is served", which
+          # stopped being true when #733 moved the app to ourhike.org/app/.
+          VITE_BASE_PATH: /app/
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
           VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
-          VITE_AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
           VITE_API_BASE_URL: ${{ steps.api.outputs.url }}
+          # The same Spotify app as production (#1683): one client id can
+          # carry a redirect URI per origin, and UA's is registered beside
+          # production's.
+          VITE_SPOTIFY_CLIENT_ID: ${{ vars.SPOTIFY_CLIENT_ID }}
         run: npm run build
 
       # The same proof pages.yml makes about production, for the same reason:
@@ -224,6 +302,15 @@ jobs:
       # holds different ids - measured 2026-09-09, 31 against production's 14,
       # with 10 in common. Checking each base separately turns "the pin must
       # exist in both" into a red deploy rather than something to remember.
+      # The pin is the compiled floor a first run reads when it cannot read
+      # a channels.json entry (lib/dataRelease.ts).
+      #
+      # AND WHAT IT HOLDS MUST FIT A LAUNCH: check 22 on the manifest just
+      # fetched (.github/scripts/check_launch_budget.py). Release 2026-10-03-2
+      # resolved here and carried a network_overview.geojson over the launch
+      # budget, so every UA phone declined it and its opening map drew the
+      # A.T. alone (review 5528343443 on PR #1805). The step below weighs
+      # the release the uploaded pointer names the same way.
       - name: Confirm the pinned data release exists
         if: steps.can.outputs.deploy == 'true'
         working-directory: client
@@ -240,17 +327,152 @@ jobs:
             exit 1
           fi
           manifest="${DATA_URL%/}/releases/${release}/manifest.json"
-          if curl -fsS --retry 3 --max-time 30 -o /dev/null "$manifest"; then
+          pinned="${RUNNER_TEMP:-/tmp}/pinned-manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o "$pinned" "$manifest"; then
             echo "Pinned release ${release} resolves at ${DATA_URL%/}."
           else
             echo "::error::DATA_RELEASE is pinned to ${release}, but ${manifest} does not resolve. UA would deploy unable to fetch anything."
             exit 1
           fi
+          python3 ../.github/scripts/check_launch_budget.py "$pinned" --release "$release"
+
+      # THE POINTER, if one is uploaded at this build's base: the release a
+      # phone of this build takes on its first launch, when it can read it,
+      # and on every launch after (lib/dataRelease.ts, lib/dataChannel.ts).
+      # It must resolve here and fit a launch, as the floor must above. The
+      # bucket copy is the only copy (pipeline/channels.py moves it), so this
+      # reads it at the base, never a file in this commit. A 404 passes with
+      # a notice: phones then read the compiled DATA_RELEASE, checked above.
+      # The environment comes off the base as the client reads it:
+      # `.../environments/<name>`, else production.
+      - name: Confirm the uploaded pointer's release exists
+        if: steps.can.outputs.deploy == 'true'
+        working-directory: client
+        env:
+          DATA_URL: ${{ steps.data.outputs.url }}
+        run: |
+          if [ -z "$DATA_URL" ]; then
+            echo "No data source configured - skipping the check."
+            exit 0
+          fi
+          schema=$(sed -n "s/^export const DATA_SCHEMA_VERSION = '\\(.*\\)'$/\\1/p" src/lib/dataRelease.ts)
+          if [ -z "$schema" ]; then
+            echo "::error::Could not read DATA_SCHEMA_VERSION out of client/src/lib/dataRelease.ts. It has been restructured, and this guard must be updated rather than left checking nothing."
+            exit 1
+          fi
+          base="${DATA_URL%/}"
+          environment=production
+          case "$base" in */environments/*) environment="${base##*/environments/}" ;; esac
+          uploaded="${RUNNER_TEMP:-/tmp}/uploaded-channels.json"
+          code=$(curl -sS --retry 3 --max-time 30 -o "$uploaded" -w '%{http_code}' "${base}/channels.json") || code="no answer"
+          case "$code" in
+            200) ;;
+            404)
+              echo "::notice::No channels.json is uploaded at ${base}, so every phone of this build reads the compiled DATA_RELEASE, checked one step earlier, until ${environment}'s pointer is first moved (pipeline/channels.py)."
+              exit 0 ;;
+            *)
+              echo "::error::${base}/channels.json answered ${code}, so this deploy cannot tell which release phones follow."
+              exit 1 ;;
+          esac
+          # The entry is remote text, so it is printed only once it has a
+          # release id's shape: this line is a workflow command.
+          release=$(python3 -c 'import json, re, sys; entry = json.load(open(sys.argv[1]))[sys.argv[2]][sys.argv[3]]; assert re.fullmatch(r"\d{4}-\d{2}-\d{2}(-\d+)?", entry); print(entry)' "$uploaded" "$environment" "$schema" 2>/dev/null) || release=""
+          if [ -z "$release" ]; then
+            echo "::error::${base}/channels.json names no ${schema} release id for ${environment}, so phones of this build would ignore it. Move ${environment}'s pointer with pipeline/channels.py (RELEASING.md §10)."
+            exit 1
+          fi
+          manifest="${base}/releases/${release}/manifest.json"
+          pointed="${RUNNER_TEMP:-/tmp}/pointed-manifest.json"
+          if curl -fsS --retry 3 --max-time 30 -o "$pointed" "$manifest"; then
+            echo "The uploaded channels.json at ${base} points ${environment}'s ${schema} at ${release}, which resolves."
+          else
+            echo "::error::${base}/channels.json points ${environment}'s ${schema} at ${release}, but ${manifest} does not resolve. Phones would refuse it and stay on the release they hold."
+            exit 1
+          fi
+          python3 ../.github/scripts/check_launch_budget.py "$pointed" --release "$release"
+
+      - name: Fetch the data docs
+        if: steps.can.outputs.deploy == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: data-docs
+          path: ${{ runner.temp }}/data-docs
+
+      # check_docs_site.py, in the assembly, reads the docs' Parquet files
+      # with duckdb, at the pipeline's own pin - pr-preview.yml has the run
+      # that failed without it.
+      - uses: actions/setup-python@v7
+        if: steps.can.outputs.deploy == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Install the docs check's duckdb
+        if: steps.can.outputs.deploy == 'true'
+        run: python -m pip install --quiet "$(grep -m1 '^duckdb==' pipeline/requirements.txt)"
+
+      # pr-preview.yml's "Assemble the preview" is the reference for every
+      # line below that is not commented here, and its comments carry the
+      # measurements: why 404.html and `_redirects` both, why `_headers` sits
+      # at the root, why the docs are checked on the copy.
+      - name: Assemble UA
+        if: steps.can.outputs.deploy == 'true'
+        env:
+          VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+          VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
+          VITE_API_BASE_URL: ${{ steps.api.outputs.url }}
+          DOCS_DIR: ${{ runner.temp }}/data-docs
+          DATA_URL: ${{ steps.data.outputs.url }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          mkdir -p _site/app
+          cp -r site/dist/. _site/
+          cp -r client/dist/. _site/app/
+          cp client/public/favicon.svg _site/favicon.svg
+          if [ -e _site/data ]; then
+            strays=$(find _site/data -mindepth 1 -maxdepth 1 ! -name quality ! -name how -printf '%f ')
+            if [ -n "$strays" ]; then
+              echo "::error::site/dist holds data/${strays% } beside data/quality/ and data/how/, and data/ is the dbt docs' path. Move one of them."
+              exit 1
+            fi
+          fi
+          mkdir -p _site/data
+          # Never empty: `cp -r "/." _site/data/` would copy the runner's root.
+          : "${DOCS_DIR:?the docs step named no directory}"
+          if [ -e "$DOCS_DIR/quality" ]; then
+            echo "::error::The dbt docs hold a quality/ of their own, which is the data-quality page's path. Move one of them."
+            exit 1
+          fi
+          if [ -e "$DOCS_DIR/how" ]; then
+            echo "::error::The dbt docs hold a how/ of their own, which is the How the data is built page's path. Move one of them."
+            exit 1
+          fi
+          cp -r "$DOCS_DIR"/. _site/data/
+          python pipeline/check_docs_site.py _site/data --served
+          printf '/app/*  /app/index.html  200\n' > _site/_redirects
+          cp _site/app/index.html _site/404.html
+          # UA's own, and the one file here no other build has: the script
+          # the worker UA's root app registered before #1887 finds as its
+          # update. It replaces that worker with a door to /app/, so an old
+          # install's icon still opens the map, offline too. The file says
+          # how, and what it leaves alone.
+          cp .github/scripts/retire_root_service_worker.js _site/sw.js
+          # /status/ pointed at UA's data, as pages.yml points production's:
+          # UA is meant to be checked, where a preview's status page is left
+          # saying it is unconfigured on purpose.
+          if [ -n "$DATA_URL" ]; then
+            python3 -c 'import os, pathlib; p = pathlib.Path("_site/status/index.html"); p.write_text(p.read_text().replace("__DATA_BASE_URL__", os.environ["DATA_URL"]))'
+            echo "Status page points at $DATA_URL"
+          else
+            echo "::warning::No data source, so /status/ will say it is unconfigured rather than checking anything."
+          fi
+          python .github/scripts/configure_quality_page.py _site/data/quality/index.html
+          node client/scripts/csp.mjs --headers > _site/_headers
+          echo "Uploading $(find _site -type f | wc -l) files: $(find _site/app -type f | wc -l) of them the app, $(find _site/data -type f | wc -l) the dbt docs."
 
       - name: Publish UA
         id: deploy
         if: steps.can.outputs.deploy == 'true'
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0 - SHA-pinned: this step holds the Cloudflare token (#660)
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.0.0 - SHA-pinned: this step holds the Cloudflare token (#660)
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -260,7 +482,7 @@ jobs:
           # `pr-<n>`, and the cleanup action that removes them on close matches
           # that shape rather than every alias in the project.
           command: >-
-            pages deploy client/dist
+            pages deploy _site
             --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }}
             --branch=ua
             --commit-dirty=true
@@ -284,6 +506,10 @@ jobs:
             code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
             if [ "$code" = "200" ]; then
               echo "UA answered 200 on attempt $attempt: $URL"
+              app="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${URL%/}/app/" || echo 000)"
+              if [ "$app" != "200" ]; then
+                echo "::warning::The site answers, but ${URL%/}/app/ answered $app."
+              fi
               exit 0
             fi
             echo "Attempt $attempt: $code. Waiting for the alias to route."
@@ -300,7 +526,10 @@ jobs:
           {
             echo "### UA"
             echo
-            echo "**${URL:-$IMMUTABLE}**"
+            echo "**${URL:-$IMMUTABLE}** - the site, as ourhike.org serves it"
+            echo
+            BASE="${URL:-$IMMUTABLE}"
+            echo "**${BASE%/}/app/** - the app, as ourhike.org/app/ serves it"
             echo
             echo "Built from \`$GITHUB_SHA\`. This is what a release candidate looks like;"
             echo "production is whatever tag was last deployed (RELEASING.md §2)."

@@ -11,15 +11,63 @@ an empty string standing in for a real credential.
 """
 
 import os
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Where plain http is what a developer actually has: a Supabase on this machine.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+# The shape of a project ref, which is what the default API host carries. A
+# paid project can also answer at a vanity subdomain, `my-example-brand.supabase.co`
+# beside "the default, randomly assigned `abcdefghijklmnopqrst.supabase.co`"
+# (supabase.com/docs/guides/platform/custom-domains, read 2026-10-29), and that
+# label is no ref. Supabase's docs show a ref only by example, never by rule;
+# that example and both real refs LAUNCH_CHECKLIST.md §5 names are 20 lowercase
+# letters. Digits are let through so a ref carrying one is still compared, at
+# the cost that a 20-character vanity label with no hyphen would be compared
+# too. The default host keeps working beside a vanity one, by the same page.
+_PROJECT_REF = re.compile(r"[a-z0-9]{20}")
+
+
+def _supabase_ref_from_api_url(url: str) -> str | None:
+    """`abcdefghijklmnopqrst` out of `https://abcdefghijklmnopqrst.supabase.co`,
+    or None for any host that is not a project ref on `supabase.co`, a vanity
+    subdomain included."""
+    host = (urlsplit(url.strip()).hostname or "").lower()
+    ref = host.removesuffix(".supabase.co") if host.endswith(".supabase.co") else ""
+    return ref if _PROJECT_REF.fullmatch(ref) else None
+
+
+def _supabase_ref_from_database_url(url: str) -> str | None:
+    """The project a Supabase connection string names, or None for any other host.
+
+    The pooler carries it in the user name (`postgres.abcd1234` at
+    `*.pooler.supabase.com`), a direct connection in the host
+    (`db.abcd1234.supabase.co`).
+    """
+    parts = urlsplit(url.strip())
+    host = (parts.hostname or "").lower()
+    if host.endswith(".pooler.supabase.com"):
+        _, _, ref = (parts.username or "").lower().partition(".")
+        return ref or None
+    if host.startswith("db.") and host.endswith(".supabase.co"):
+        return host.removeprefix("db.").removesuffix(".supabase.co") or None
+    return None
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # `hide_input_in_errors`: a refusal from any validator below would otherwise
+    # print pydantic's `input_value=`, which for this model is every setting it
+    # was given, DATABASE_URL and its password included, cut down to its two
+    # ends. A refusal at startup lands in the host's log. check_schema_drift.py's
+    # load_settings() says how the cut-down form leaked a connection string's
+    # fragments from a migration job once already.
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True)
 
     # Local dev default only, and deliberately a real Postgres rather than an
     # embedded stand-in: everything this backend writes ends up in Supabase's
@@ -123,6 +171,346 @@ class Settings(BaseSettings):
     # a deployment told to stop accepting uploads should still be able to show
     # a moderator the photo attached to the report they are deciding on.
     r2_photo_write_enabled: bool = False
+
+    # The management-console embed, and it is OFF unless a deployment says
+    # otherwise - deliberately, and for a different reason from the photo
+    # switch above.
+    #
+    # `POST /console/session` mints a token that renders an organization's own
+    # roster inside a page on THEIR domain. That is a first-party credential
+    # crossing to a third-party origin, and the six guards around it
+    # (app/models/console_key.py) are a design nobody has security-reviewed -
+    # the maintainer's call on 2026-09-17 was to build it anyway, against a
+    # recommendation to ship only the three public embeds. Both halves of that
+    # decision are honoured by making it real and making it inert: the code
+    # exists, the endpoint answers 503 while this is false, and switching it
+    # on is a deliberate act after a review rather than a consequence of a
+    # merge.
+    #
+    # The three PUBLIC embeds - hike finder, workdays, coverage badge - are
+    # not gated on this. They read a published registry and hold no
+    # credential, so there is nothing about them to review in this sense.
+    console_embed_enabled: bool = False
+
+    # The assist panels (#1540, #1541 and the nominate form), and the three
+    # settings that decide whether they can run, what they cost and who pays.
+    #
+    # OFF BY DEFAULT, for a different reason from the console embed above.
+    # That one is off pending a security review; this one is off because it
+    # spends money on somebody else's API key, and a deployment that has not
+    # deliberately chosen to spend it should not start doing so because a
+    # branch merged. With no key set the endpoints answer 503 and the panels
+    # say so on screen rather than spinning.
+    assist_enabled: bool = False
+    anthropic_api_key: str = ""
+
+    # THE MODEL IS A SETTING AND NOT A PARAMETER, which is the whole of the
+    # abuse story. A client that could name the model could name the most
+    # expensive one and bill an organization - or us - for it. Nothing in the
+    # request body reaches this value; `app/routers/assist.py` reads it here
+    # and nowhere else, and the tests assert a model in a request body is
+    # ignored rather than honoured. Sonnet by decision, not by default: these
+    # are short structured reads of a GIS layer or a public web page, and the
+    # maintainer's instruction on 2026-09-17 was Sonnet only.
+    assist_model: str = "claude-sonnet-5"
+
+    # What one organization may spend in a day, in tokens across all panels.
+    #
+    # @unvalidated. Nobody has measured what a real registry read costs,
+    # because no organization has run one - the number is a ceiling chosen to
+    # be obviously survivable rather than a budget derived from usage. What
+    # would settle it is the token counts of the first ten real registry
+    # reads, which `assist_usage` records precisely so that the question can
+    # be answered rather than re-guessed.
+    assist_daily_token_budget: int = 400_000
+
+    # The same for the PUBLIC nominate form, per IP per day. Smaller by two
+    # orders of magnitude because it is the one assist surface with no account
+    # behind it: anybody on the internet can reach it, so the only thing
+    # standing between it and a bill is this number.
+    assist_public_daily_token_budget: int = 20_000
+
+    # THE CEILING ACROSS EVERY CALLER TOGETHER, checked in addition to the two
+    # above. `register_org` lets anybody create an organization, and each one
+    # gets its own `assist_daily_token_budget` - so before this existed, the
+    # number of budgets was unbounded even though each budget was capped, and
+    # so was the day's total bill on the Anthropic key (#1641 finding 4).
+    #
+    # @unvalidated. Picked to be far above what real usage plausibly costs in
+    # a day - large enough that no deployment with a handful of registered
+    # organizations trips it during ordinary use - rather than measured
+    # against one: no organization has run a real registry read yet, which is
+    # the same gap `assist_daily_token_budget`'s own note names. What would
+    # settle it: a week of real `AssistUsage` rows once organizations are
+    # actually using the panels, the same evidence that would settle the
+    # per-organization number.
+    assist_global_daily_token_budget: int = 5_000_000
+
+    # THE NOMINATE PANEL IS NOT PUBLIC ANY MORE. The maintainer's 2026-09-17
+    # decision: a signed-in hiker, and a proof of work on top, before this
+    # server fetches a website a stranger typed. The budget above still
+    # applies - it is now the third bound rather than the only one.
+    #
+    # The secret signs a challenge; it never leaves this process and is never
+    # in one. Empty means the panel answers 503 rather than issuing
+    # challenges anybody could mint, which is the same posture as an absent
+    # API key: refuse loudly rather than run insecurely.
+    nominate_challenge_secret: str = ""
+
+    # Bits of leading zeroes a browser must find. MEASURED on a CI-class
+    # container with a synchronous JS SHA-256: 18 bits is a 437 ms median and
+    # a 1.2 s p90. See app/core/challenge.py for the table and for what is
+    # still @unvalidated about it (nobody has run it on a phone).
+    nominate_challenge_difficulty: int = 18
+
+    # Whether the fetcher insists on confirming the address it actually
+    # reached against the ones the guard approved. ON, because a check that
+    # passes when it cannot run is not a check - see app/core/sitefetch.py.
+    #
+    # An egress proxy makes this impossible: the socket's peer is the proxy
+    # and the name was resolved by something we are not asking. A deployment
+    # behind one has to turn this off deliberately and knows what it gave up
+    # - the DNS-rebinding window between the guard's check and the socket.
+    site_fetch_require_peer_match: bool = True
+
+    # Mail. Nothing in this repository sent any until 2026-09-17, and the
+    # nominate flow writes to people who never asked to hear from us - see
+    # app/core/mail.py's four promises.
+    #
+    # OFF BY DEFAULT AND THAT IS LOAD-BEARING. A preview deployment holding a
+    # fixture with a real club's address must not be one variable away from
+    # writing to them.
+    mail_enabled: bool = False
+    # Comma-separated address suffixes this environment may write to. Empty
+    # means anywhere, which is only correct in production; UA sets this to
+    # "@ourhike.org" so the flow can be exercised end to end without reaching
+    # a club.
+    mail_allowed_suffixes: str = ""
+
+    # OPENING AN ORGANIZATION'S REGISTRY PULL REQUEST, and the same
+    # off-by-default argument mail makes one line up: a preview deployment
+    # holding a fixture must not be one variable away from opening pull
+    # requests against a public repository.
+    #
+    # The token is a SERVICE IDENTITY'S and never a person's - see
+    # app/core/registry_pr.py for why opening needs write access where
+    # approving does not. Write should be scoped to the registry directory
+    # GitHub-side; this process cannot assert that, so it asserts the thing
+    # it can and refuses any path outside the organization's own directory.
+    registry_pr_enabled: bool = False
+    registry_pr_token: str = ""
+    registry_pr_repo: str = "OurHike/OurHike"
+    # WHERE A LINK WE MAIL POINTS. A preview deployment must mail a preview
+    # link rather than a production one - the club-facing proposal screen is
+    # reached only by the address in the message, so getting this wrong means
+    # three people at an organization following a link to somebody else's
+    # deployment, or to a page that does not exist yet.
+    public_site_url: str = "https://ourhike.org"
+    mail_sender: str = "OurHike <hello@ourhike.org>"
+    mail_reply_to: str = "hello@ourhike.org"
+    # SES, because boto3 is already here for report photos going to R2. One
+    # vendor library rather than two.
+    ses_region: str = "us-east-1"
+
+    # SUPPORTING OURHIKE (#1876), through Stripe since the maintainer chose it
+    # over Buy Me a Coffee (2026-10-27). Each empty value switches its half
+    # off, and says so rather than half-working:
+    #   - no payment links: a choice is refused (503), because a hiker sent
+    #     nowhere is worse than one told it is not ready;
+    #   - no webhook secret: every webhook delivery is refused (503), because
+    #     without it this cannot tell Stripe from anybody else posting
+    #     "checkout.session.completed" for an address of their choosing;
+    #   - no secret key: Stop cannot call Stripe, so it emails
+    #     `support_notify_address` to cancel by hand instead; with neither,
+    #     the Stop is recorded and waits in the retry queue
+    #     (`stop_notified_at` empty) until somebody can be reached.
+    #
+    # `support_provider` names where NEW choices go - a key in
+    # app/core/support_providers/. Changing it is how OurHike moves provider:
+    # every provider there keeps receiving its own webhooks, so supporters on
+    # the old one are still recorded until they move.
+    support_provider: str = "stripe"
+    # One Stripe Payment Link per yearly tier, as `cents=url` pairs:
+    # "1200=https://buy.stripe.com/...,6000=https://...,12000=https://...".
+    # A link rather than a Checkout Session made per choice because a link
+    # never expires - the store apps' setup email can sit unread for a week -
+    # and needs no secret key to make.
+    stripe_payment_links: str = ""
+    # The endpoint's signing secret (`whsec_...`), from the webhook's page in
+    # the Stripe dashboard.
+    stripe_webhook_secret: str = ""
+    # A RESTRICTED key with Subscriptions: Write and nothing else - all this
+    # backend ever asks Stripe to do is stop a subscription renewing, or
+    # cancel one whose renewal is failing.
+    stripe_secret_key: str = ""
+    # "live" or "test": which of Stripe's two worlds this backend believes.
+    # Explicit, because a test-mode UA must not lose every event to a key it
+    # does not hold (the #1885 architecture review), and production must
+    # never believe a test event. A key from the other mode switches support
+    # off rather than half-working (Stripe.ready()).
+    stripe_mode: str = "live"
+    support_notify_address: str = ""
+    # This API's own public address, e.g. https://api.ourhike.org - where a
+    # support email's one-click unsubscribe link points (RFC 8058 wants a
+    # URL that takes a POST, which the static app pages cannot). Empty sends
+    # the link to the app's "Your support" page instead, which stops the
+    # payment but not the mail.
+    api_public_url: str = ""
+
+    # USAGE MEASUREMENT (#1902, features/EVENTING.md). The key the account id
+    # is hashed under before a usage event is stored, so a report reads
+    # `user_key` and never an account (app/core/analytics_seal.py).
+    #
+    # EMPTY MEANS NO ROW IS EVER LINKED TO AN ACCOUNT, and that is a valid
+    # deployment rather than a broken one: every event is stored as if the
+    # hiker had said no, the counts still work, and the User table stays
+    # empty. The same posture as `nominate_challenge_secret` - refuse the
+    # feature rather than run it with a guessable key.
+    #
+    # ROTATING IT: put the new secret here and move the old one into
+    # `analytics_user_key_previous_secrets` below - never drop an old secret
+    # while any row stored under it exists. New events are keyed under the
+    # new secret only, so a hiker's old rows and their old User-table row stop
+    # matching their new events (the User table then holds two rows for one
+    # hiker); account deletion, the export and unlinking find the old ones
+    # through the previous list. Raw rows go within seven months, but a
+    # User-table row lasts until its account is deleted, so in practice an
+    # old secret stays on the list for good.
+    analytics_user_key_secret: str = ""
+    # Every secret the key above was made with before, comma-separated (a
+    # secret holding a comma cannot go on this list). Never used to key a new
+    # row - only to find old ones (app/core/analytics_accounts.py).
+    analytics_user_key_previous_secrets: str = ""
+
+    # HOW MUCH `POST /usage-events` WILL STORE. The endpoint takes no account,
+    # so without a ceiling anybody could fill this database with made-up rows.
+    # Two bounds, checked before a batch is read (app/routers/analytics.py):
+    # rows stored in one UTC day, read from that day's `stored` count in
+    # `analytics_intake`, and rows held at all, against the ceiling below
+    # turned into rows (app/core/analytics_storage.py, which says why it
+    # counts rows and not the table's size on disk). Past either, a batch is
+    # counted as `over_budget` and answered 503, and the phone keeps its rows
+    # and sends them later (client/src/lib/usageQueue.ts `sendUsageBatch`).
+    #
+    # @unvalidated, both. The budget is about one and a half times
+    # EVENTING.md §8's estimate of 33,000 rows a day, itself never measured.
+    # The ceiling is half the 500 MB LAUNCH_CHECKLIST.md 4.1 gives the free
+    # plan, so usage rows alone cannot fill the database the rest of the app
+    # lives in: about 690,000 rows at the measured 380-382 bytes a row, which
+    # is three weeks at §8's estimate against six months of retention.
+    #
+    # The maintainer's decision (poll, 2026-10-27): keep six months of raw
+    # rows, and move to a paid database plan before daily phones near 300 -
+    # roughly where six months of rows outgrow 250 MB at 6 to 11 rows a phone
+    # a day - raising this ceiling to the new plan's room. The nightly checks
+    # warn at `STORAGE_WARN_SHARE` of it (app/core/analytics_quality.py), so
+    # the move is prompted before a batch is turned away. Poll 5 the same day:
+    # a closed month's unlinked rows move to Parquet in a private R2 bucket
+    # (#1923, app/core/analytics_archive.py). Once an environment's archive is
+    # configured, that moves the point to about 600-1,100 phones a day -
+    # reasoned in the issue on the same unmeasured rows a phone, and 35% of
+    # rows linked, also @unvalidated. The ceiling then counts only what
+    # Postgres holds: open months and linked rows.
+    #
+    # Change these here, not as an environment variable on one side: the
+    # intake gate runs in the API server and the warning below in the nightly
+    # workflow (.github/workflows/analytics-rollup.yml), and only this default
+    # reaches both. Set in one place alone, the warning measures a ceiling the
+    # gate is not using.
+    analytics_daily_row_budget: int = 50_000
+    analytics_storage_ceiling_mb: int = 250
+
+    # The whole database's size at which writes stop. Supabase turns a Free
+    # plan project read-only once its database size - every database in the
+    # project, data and indexes, not the disk - passes 500 MB
+    # (supabase.com/docs/guides/platform/database-size, read 2026-10-27), and
+    # every write the app makes fails with it, not only usage rows. The
+    # nightly checks raise `database_near_quota` at `STORAGE_WARN_SHARE` of
+    # it (app/core/analytics_quality.py), and the usage report draws it
+    # beside the usage ceiling (app/core/analytics_storage.py). A warning
+    # only: nothing is refused at this line. On a paid plan the limit is the
+    # disk instead - 8 GB on Pro with its spend cap on, which also holds the
+    # write-ahead log - so moving plans means changing this with the ceiling
+    # above, here, for the same reason.
+    database_quota_mb: int = 500
+
+    # NOTHING IS COLLECTED THAT NOTHING WOULD DELETE. Six-month retention is a
+    # promise the nightly rollup keeps (app/core/analytics_rollup.py deletes a
+    # month's raw rows), so `POST /usage-events` reads that job's heartbeat -
+    # the newest `analytics_months.computed_at`, which every run refreshes,
+    # rows or none - and once it is older than this many days, counts each
+    # batch as `paused` and answers 503. The phone keeps the rows, so nothing
+    # is lost while the job is mended; what stops is collection with no delete
+    # behind it.
+    #
+    # Reasoned from the schedule: the job runs once a day
+    # (.github/workflows/analytics-rollup.yml), so three days from the last
+    # good run is two missed nights and a third run that is late, or three
+    # missed nights. @unvalidated as a trade: how late GitHub actually starts
+    # this cron, and how long a broken run goes unnoticed, would settle it.
+    analytics_rollup_stale_days: int = 3
+
+    @property
+    def analytics_user_key_secrets(self) -> tuple[str, ...]:
+        """The current user-key secret, then every previous one: empty ones skipped, none twice.
+
+        The current one exactly as set, because that is how app/routers/
+        analytics.py keys a row with it; the previous ones trimmed of the
+        spaces a comma-separated list collects.
+        """
+        previous = (part.strip() for part in self.analytics_user_key_previous_secrets.split(","))
+        return tuple(dict.fromkeys(secret for secret in (self.analytics_user_key_secret, *previous) if secret))
+
+    @property
+    def mail_allowed(self) -> tuple[str, ...]:
+        """The suffix list as `app/core/mail.py` wants it."""
+        return tuple(part.strip().lower() for part in self.mail_allowed_suffixes.split(",") if part.strip())
+
+    @field_validator("supabase_url")
+    @classmethod
+    def _signing_keys_come_over_https(cls, value: str) -> str:
+        """Refuse a `SUPABASE_URL` the signing keys would travel over in the clear.
+
+        app/core/auth.py fetches the project's signing keys (its JWKS) from this
+        URL and checks every token against whatever comes back. Over plain http,
+        anyone on the network path could answer with keys of their own and sign
+        in as anybody, moderators included. The one place plain http is what a
+        developer actually has is a Supabase on this machine.
+        """
+        parts = urlsplit(value.strip())
+        if parts.scheme == "https" or (parts.scheme == "http" and (parts.hostname or "") in _LOCAL_HOSTS):
+            return value
+        raise ValueError(
+            "SUPABASE_URL has to be https://. The backend fetches the project's signing keys from it, "
+            "and over plain http anyone on the way could hand it their own and sign in as anybody. "
+            "Plain http is accepted only for a Supabase on this machine (localhost)."
+        )
+
+    @model_validator(mode="after")
+    def _one_supabase_project(self) -> "Settings":
+        """Refuse to start when the database and the sign-in are two different projects.
+
+        LAUNCH_CHECKLIST.md §6 has `DATABASE_URL` pasted by hand from a
+        dashboard that lists production and UA side by side. Pasted from the
+        wrong one, this process boots cleanly, `SELECT 1` passes, and hikers
+        with signal are served the other project's closures as live, while a
+        moderator's verifications land where the published baseline never
+        reads them. Every online spot-check looks fine. Both strings name their
+        project, so the mismatch is checkable here; a host that is not
+        Supabase's (local Postgres, a self-hosted Supabase) names none and is
+        not checked, and nor is a `SUPABASE_URL` on a vanity subdomain, whose
+        label is not the project's ref (`_PROJECT_REF`). The message names the
+        two projects and nothing else - never the credentials.
+        """
+        database = _supabase_ref_from_database_url(self.database_url)
+        api = _supabase_ref_from_api_url(self.supabase_url)
+        if database and api and database != api:
+            raise ValueError(
+                f"DATABASE_URL is Supabase project {database}, but SUPABASE_URL is project {api}. "
+                "They have to be the same project: one is where hikers sign in, the other is where "
+                "their reports and every moderator's verifications are kept."
+            )
+        return self
 
     @model_validator(mode="after")
     def _photos_do_not_go_in_the_published_bucket(self) -> "Settings":

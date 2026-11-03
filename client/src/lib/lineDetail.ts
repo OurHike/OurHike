@@ -28,11 +28,12 @@
 //   spur's own elevation profile, which does not exist.
 
 import { blazeLabel } from './blaze'
+import type { LineClimb } from './lineClimb'
 import { describeSpur, type SpurRecord } from './spurDestination'
-import { trailForName } from './trails'
+import { displayTrailName, trailForName } from './trails'
 import { STANDARD_PACE, type PaceProfile } from './pace'
 import type { StoredPoi } from './trailData'
-import { formatDistance } from './units'
+import { formatDistance, formatElevation } from './units'
 import type { UnitSystem } from './units'
 
 /** The tapped feature's published properties, as map/lineTaps.ts reports
@@ -83,6 +84,25 @@ export interface TappedLineFacts {
   /** The other trail sharing this stretch of treadway, from a shared-ground
    *  half's `concurrent_with` (#1384, map/sharedGround.ts). */
   sharedWith?: string | null
+  /** `club` on a club's own line (the maintainer's poll of
+   *  2026-10-04: "draw now, route later"), from nearby_trails.geojson's
+   *  `line_kind`; absent on every other line, and on any release cut before
+   *  the field existed. */
+  lineKind?: string | null
+}
+
+/**
+ * One paper map the tapped point is on, as the sheet prints it (#1574): the
+ * words before the linked title, the product title verbatim, and its page on
+ * the organization's own store. PLAIN DATA rather than lib/paperMaps.ts's
+ * match, deliberately: this module is in the launch bundle, and the join
+ * that produces these lines is loaded on the first tap instead
+ * (chrome/tappedLinePanel.tsx), so nothing here may import it.
+ */
+export interface PaperMapLine {
+  lead: string
+  title: string
+  url: string
 }
 
 export interface LineDetail {
@@ -102,10 +122,40 @@ export interface LineDetail {
   /** "From the Appalachian Trail Conservancy’s …" - the provenance line,
    *  same shape as PoiCard's. */
   sourceLine: string | null
+  /**
+   * Which paper maps hold the tapped point (#1574): for each, the words
+   * before the linked title ("This spot is on sheet 119 of the New York-New
+   * Jersey Trail Conference’s"), the product title verbatim, and its page on
+   * the organization's own store. Empty for a point outside every sheet, on
+   * a phone without the archive, and where the organization has not granted
+   * the trail sheet - each of which renders as no line. Usually one; two
+   * where two sets' footprints overlap at a margin, and both are true.
+   */
+  paperMaps: readonly PaperMapLine[]
   /** "24.0 mi · Harriman State Park" - §2's length and park, on one line
    *  because they answer one question (what and where this trail is), and
    *  collapsing to whichever half is known when the other is not. */
   extentLine: string | null
+  /**
+   * "+4,900 ft / −4,870 ft" - how much this trail climbs and drops (#1476),
+   * or null whenever no honest total exists. The sheet has always said how
+   * FAR a trail goes and never how much it climbs, and nineteen flat miles
+   * and nineteen miles over five knobs are not the same walk.
+   *
+   * Written in DayHikeCard's own vocabulary - `+x / −y` through
+   * formatElevation - rather than a second one, because a hiker meeting the
+   * same fact on two screens should not have to translate between them.
+   */
+  climbLine: string | null
+  /**
+   * The sentence under it, and the one doing the safety work: either the
+   * estimate disclosure that must accompany every climb figure, or the
+   * reason there is no figure - which is never "unknown" alone, because
+   * three different absences send a hiker to three different places
+   * (lib/lineClimb.ts). Null only where nothing at all is known and nothing
+   * would be gained by saying so.
+   */
+  climbNote: string | null
   /** §3's closure sentence, kept in the SHEET rather than in the line, which
    *  is where the whole distinction lives: the taped band on the map says
    *  "do not walk this" for both kinds, and only the sheet says which kind
@@ -122,6 +172,11 @@ export interface LineDetail {
    *  half (#1384); null on every plain line. The sentence is the point of
    *  tapping the two-tone: the line says two trails, and this says which. */
   sharedLine: string | null
+  /** A club's own line, drawn and never routed: the sheet
+   *  heads it with a "Club line" tag and LineSheet.tsx's CLUB_LINE_SENTENCE,
+   *  and offers no day-hike point on it. The sentence lives with the sheet,
+   *  which is deferred, so the launch does not carry it (LAUNCH_BUDGET.md). */
+  isClubLine: boolean
   /** "Not the trail you chose. Switching happens in the picker." - §2's
    *  refusal, said rather than implied. Null on the chosen trail's own lines,
    *  where there is nothing to refuse. */
@@ -281,6 +336,14 @@ export function buildLineDetail(
    *  what an A.T.-only release has and what every existing caller passes by
    *  omission - the two ATC feeds are named without it. */
   sources: TrailSourceTable = {},
+  /** What this phone can honestly say about the line's climb (#1476).
+   *  Defaults to the absence every caller written before it had, so a sheet
+   *  on a release with no elevation renders exactly as it did. */
+  climb: LineClimb = { kind: 'none' },
+  /** The paper maps holding the tapped point (#1574), already resolved
+   *  and worded by lib/paperMaps.ts in the shell. Defaults to none, which
+   *  is what every caller written before it passed by omission. */
+  paperMaps: readonly PaperMapLine[] = [],
 ): LineDetail {
   const throughRoute = line.source !== null && THROUGH_ROUTE_SOURCES.includes(line.source)
   // Whether this line belongs to somebody else's network - the same question
@@ -307,7 +370,12 @@ export function buildLineDetail(
   const kind = chosenThroughRoute
     ? trailName
     : throughRoute
-      ? (line.name ?? trailName)
+      ? // By the name this build shows, not the published one. Today this
+        // branch is the Long Path's alone and renames nothing - see the
+        // trail-mark lookup below for why an A.T. line never reaches it -
+        // so this is the heading agreeing with the badge in advance, not a
+        // heading anybody has seen change (lib/trails.ts).
+        (displayTrailName(line.name) ?? trailName)
       : spur !== undefined
         ? 'spur'
         : 'side trail'
@@ -357,6 +425,52 @@ export function buildLineDetail(
       ? null
       : [lengthLabel, park].filter((part) => part !== null).join(' · ')
 
+  // #1476: how much this climbs, and - whenever it cannot be said - which
+  // KIND of silence it is. Three absences, three different things for a hiker
+  // to do about them, and reporting any of them as another is the failure
+  // this whole shape exists to avoid:
+  //
+  //   unmeasured  a hole in the DEM. Downloading nothing fixes it, so the
+  //               sentence must not offer a download. It says how much of
+  //               the trail has no figure, because "some of it" is the part
+  //               a hiker can plan around.
+  //   partial     the line runs past the cells this phone holds. This one IS
+  //               fixable, and pointing at the download is the whole value
+  //               of telling somebody.
+  //   none        no climb figures here at all - a release published without
+  //               the elevation leg, or a cell with no climb half. Nothing
+  //               to say and nothing to do, so nothing is said: a permanent
+  //               "unknown" on every line would be the caveat-on-every-line
+  //               that buries the two that matter.
+  //
+  // The estimate disclosure is not optional decoration on the measured case.
+  // The maintainer's decision of 2026-08-25 was to ship the figure AND frame
+  // it as an estimate; the pipeline's own check reads +18.8% against a
+  // maintaining club on rolling ground (pipeline/reference/published_gain.json),
+  // and chopping at junctions pulls the other way by a median 6.9%
+  // (export_network_profile.py). Nobody has measured the net of the two, so
+  // the figure goes out with the same sentence DayHikeCard gives it, minus
+  // the half about walking time that this sheet does not print.
+  const climbLine =
+    climb.kind === 'measured' || climb.kind === 'unverified'
+      ? `+${formatElevation(climb.gainFt, units)} / −${formatElevation(climb.lossFt, units)}`
+      : null
+  const climbNote =
+    climb.kind === 'measured'
+      ? 'Climb is an estimate from the best elevation data available — expect other sources to differ.'
+      : // The figure is real for the distance it was summed over; what nobody
+        // can say is whether that distance is the whole trail (#1516). So the
+        // sentence states the extent rather than hedging the number - a scope,
+        // not a caveat. When this phone does hold the whole line the sentence
+        // is merely informative, and when it does not it is the warning.
+        climb.kind === 'unverified'
+        ? `Climb over the ${formatDistance(climb.miles, units)} of this trail on this phone, which may not be all of it.`
+        : climb.kind === 'unmeasured'
+          ? `Climb is not measured on ${formatDistance(climb.unmeasuredMiles, units)} of this trail, so no total is shown.`
+          : climb.kind === 'partial'
+            ? `Only ${formatDistance(climb.heldMiles, units)} of this trail is downloaded, so its climb would be low.`
+            : null
+
   // §3: the closure, in the voice of whoever actually closed it (#1142).
   //
   // Two kinds ship under one `trail_status` and they part ways here. A
@@ -384,10 +498,14 @@ export function buildLineDetail(
       return attribution !== null && attribution.trim() !== '' ? attribution : null
     }
 
-    if (line.closureKind === 'area') {
+    // `section`: an organization's own notice named this
+    // line's section closed, so the sentence is theirs and carries their own
+    // words verbatim, as an area's does - with no "temporarily", which their
+    // notice may not say.
+    if (line.closureKind === 'area' || line.closureKind === 'section') {
       const steward = attributionOf(line.closureSource)
-      const who =
-        steward === null ? 'Temporarily closed' : `Temporarily closed by ${steward}`
+      const closed = line.closureKind === 'area' ? 'Temporarily closed' : 'Closed'
+      const who = steward === null ? closed : `${closed} by ${steward}`
       const reason =
         typeof line.closureReason === 'string' && line.closureReason.trim() !== ''
           ? line.closureReason.trim()
@@ -409,6 +527,16 @@ export function buildLineDetail(
   // the app's own name for the through-route it chose, the steward's own
   // name for anything else, including a through-route it did not choose. A
   // spur's record name is a spur's, never a trail's.
+  //
+  // `trailForName` reads the published spellings too (lib/trails.ts), so
+  // ATC's "Appalachian National Scenic Trail" finds the A.T.'s mark on the
+  // `line.name` branch. THAT BRANCH CANNOT TAKE THE A.T. TODAY and this is
+  // insurance rather than a fix: `centerline` is in CHOSEN_SYSTEM_SOURCES
+  // unconditionally above, so an A.T. line is always `chosenThroughRoute`
+  // and always looked up by `trailName`. What would make it reachable is
+  // this module learning which trail the hiker actually took - the split
+  // map/nearbyTrails.ts already makes, and the reason its
+  // CHOSEN_SYSTEM_SOURCES is restated here rather than parameterised.
   const trail = trailForName(chosenThroughRoute ? trailName : line.name)
 
   const sharedWith =
@@ -419,33 +547,47 @@ export function buildLineDetail(
   // the A.T. by the name this build calls it, not the published one, since
   // "Appalachian National Scenic Trail" is nobody's word for it on a sheet
   // headed "Appalachian Trail".
+  //
+  // This line held that rename on its own as a string comparison until
+  // 2026-09-16, and it now reads the same table every display path does
+  // (lib/trails.ts's PUBLISHED_ALIASES). The rendered sentence is unchanged:
+  // the old branch printed `trailName`, which App.tsx supplies as the
+  // constant TRAILS.AT.name, so both spell "the Appalachian Trail". What
+  // moves is where the fact lives - one table instead of a literal here, so
+  // the sheet and the badge cannot disagree the next time a spelling is
+  // added.
+  const sharedDisplay = displayTrailName(sharedWith)
   const sharedName =
-    sharedWith === null
+    sharedDisplay === null
       ? null
-      : sharedWith === 'Appalachian National Scenic Trail'
-        ? `the ${trailName}`
-        : /^(the|a|an) /i.test(sharedWith)
-          ? sharedWith
-          : `the ${sharedWith}`
+      : /^(the|a|an) /i.test(sharedDisplay)
+        ? sharedDisplay
+        : `the ${sharedDisplay}`
   const sharedLine =
     sharedName === null ? null : `Shares this stretch with ${sharedName}.`
 
   return {
     heading: `${blazeLabel(line.blazeColor)} · ${kind}`,
     // A CHOSEN through-route's name is already the heading (kind IS
-    // trailName); repeating ATC's formal name under it ("Appalachian
-    // National Scenic Trail") would be the same fact twice in adjacent
-    // lines. Any other through-route - the Long Path, since #1307 - keeps
-    // its name here: its heading is the data's own name, not a synonym for
-    // it, and #1288 is where a hiker was first shown one at all.
-    name: chosenThroughRoute ? null : (spur?.name ?? line.name),
+    // trailName), so printing it again under itself would be the same fact
+    // twice in adjacent lines. Any other through-route - the Long Path,
+    // since #1307 - keeps its name here: its heading is the data's own name,
+    // not a synonym for it, and #1288 is where a hiker was first shown one
+    // at all. Shown as this build names it, which for an untaken A.T. means
+    // "Appalachian Trail" rather than ATC's formal designation - the
+    // repetition this line refuses is the same repetition either way.
+    name: chosenThroughRoute ? null : (spur?.name ?? displayTrailName(line.name)),
     destinationLine,
     roundTripLine: detail.roundTripLabel,
     junctionLine,
     sourceLine: source === null ? null : `From ${source}.`,
+    paperMaps: [...paperMaps],
     extentLine,
+    climbLine,
+    climbNote,
     closureLine,
     sharedLine,
+    isClubLine: line.lineKind === 'club',
     // §2's refusal, and the sheet is where it is SAID rather than merely
     // enacted. The argument, from the doc: making a nearby trail the chosen
     // one swaps the mile frame, the elevation ribbon, the Naismith numbers and

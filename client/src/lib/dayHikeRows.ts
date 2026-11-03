@@ -17,23 +17,34 @@
 //     produced it from two taps, and removing it would leave a walk with a
 //     hole the router would immediately fill back in. A delete control that
 //     silently did nothing, or did something else, is worse than no control.
-//   - A TURN (one of the hiker's taps) IS deletable - that is genuinely the
-//     design's per-row delete, and `removeTap` is new for it - but it does
-//     not appear in this list. It has no honest mile: `routeThrough` merges
-//     legs across tap joins, so the walk knows how far it is to the end of a
-//     LEG and does not, without re-routing every pair on every render, know
-//     how far it is to a tap in the middle of one. A row printing "mile 1.8"
-//     next to a number nobody computed is exactly what CLAUDE.md's standard
-//     is about, and a row in a mile-ordered list with no mile is a row in the
-//     wrong place. So turns are listed apart, as {@link turnMarks}, where
-//     ordinal is the only claim made and it is one the draft can back.
+//   - A TURN ROW is one of the hiker's own taps, and it IS deletable - the
+//     design's per-row delete, which `removeTap` exists for. It carries the
+//     mile it sits at and the number the map draws beside it.
 //
 // The gap between stretches is a row, because it is a real thing the walk
 // contains and the one thing in it the app declines to describe.
+//
+// WHY THE TAPS MOVED INTO THIS LIST (2026-09-15)
+//
+// They were listed apart until then, under "Your taps", and the reason was
+// arithmetic rather than design: `routeThrough` merged legs across tap joins,
+// so the walk knew the mile at the end of a LEG and not the mile at a tap
+// inside one, and a row with no mile in a mile-ordered list is a row in the
+// wrong place.
+//
+// The maintainer's rule ended that. A tap is a leg boundary now - a point a
+// hiker placed is not a seam a publisher drew - so its mile is exactly
+// `toMile` of the row above it, which this function is computing anyway.
+//
+// AND THE SAME RULE IS WHY THEY HAD TO MOVE, not merely why they could. Two
+// consecutive rows naming one trail and one blaze are legal now, and the ONLY
+// thing that distinguishes them is the tap between them. Listed apart, that
+// tap is off-screen from the two rows it explains, and the list reads as the
+// duplicate rows #1433 was about. In the list, it reads as the walk.
 
 import type { RouteLeg } from './trailGraph'
 import type { DayHikeStop } from './dayHikeStops'
-import type { DayHikeDraft, DraftGap } from './dayHikeDraft'
+import type { DayHikeDraft, DraftGap, DraftTurn } from './dayHikeDraft'
 import { draftPoints } from './dayHikeDraft'
 
 export interface LegRow {
@@ -62,7 +73,21 @@ export interface GapRow {
   miles: number
 }
 
-export type RouteRow = LegRow | StopRow | GapRow
+/** One of the hiker's own taps, in the list where they placed it. */
+export interface TurnRow {
+  kind: 'turn'
+  key: string
+  /** Index into `draftPoints(draft)` - what `removeTap` takes. */
+  ordinal: number
+  /** 1-based, matching the numbered mark this tap wears on the map. */
+  label: number
+  /** Miles from the first step of the walk to this tap. */
+  mile: number
+  /** Whether a gap starts after this tap. */
+  endsStretch: boolean
+}
+
+export type RouteRow = LegRow | StopRow | GapRow | TurnRow
 
 /**
  * The legs and stops of a walk, in the order it reaches them.
@@ -89,11 +114,34 @@ export function routeRows(
   legs: readonly RouteLeg[],
   stops: readonly DayHikeStop[],
   gaps: readonly DraftGap[] = [],
+  turns: readonly DraftTurn[] = [],
 ): RouteRow[] {
   const rows: RouteRow[] = []
   let mile = 0
   let placed = 0
   let crossed = 0
+  let tapped = 0
+
+  /** Every tap the walk reaches by the time `walked` legs are behind it.
+   *
+   *  AFTER the leg's stops and BEFORE its gap, which is the order a hiker
+   *  reads: you walk the trail, you are at the shelter on it, you are at the
+   *  point you placed, and then you cross the ground nobody maintains. */
+  const tapsThrough = (walked: number) => {
+    while (tapped < turns.length && turns[tapped].afterLegs <= walked) {
+      rows.push({
+        kind: 'turn',
+        // The ordinal repeats on a walk that passes one tap twice - an
+        // out-and-back, a loop - so the position is in the key as well.
+        key: `turn-${tapped}-${turns[tapped].ordinal}`,
+        ordinal: turns[tapped].ordinal,
+        label: turns[tapped].label,
+        mile,
+        endsStretch: turns[tapped].endsStretch,
+      })
+      tapped += 1
+    }
+  }
 
   /** Every gap the walk reaches by the time `walked` legs are behind it. */
   const gapsThrough = (walked: number) => {
@@ -102,6 +150,9 @@ export function routeRows(
       crossed += 1
     }
   }
+
+  // Where the walk starts, before the first row of trail.
+  tapsThrough(0)
 
   legs.forEach((leg, at) => {
     const fromMile = mile
@@ -129,6 +180,7 @@ export function routeRows(
       })
       placed += 1
     }
+    tapsThrough(at + 1)
     gapsThrough(at + 1)
   })
 
@@ -142,6 +194,7 @@ export function routeRows(
   // Anything left: a gap the hiker has tapped across but not yet walked any
   // trail beyond, and - defensively - a gap positioned past the legs it was
   // measured against, which lists last rather than silently vanishing.
+  tapsThrough(Number.POSITIVE_INFINITY)
   gapsThrough(Number.POSITIVE_INFINITY)
 
   return rows
@@ -158,12 +211,18 @@ export interface TurnMark {
 }
 
 /**
- * The hiker's taps, as removable marks.
+ * The hiker's taps, read straight off the draft.
+ *
+ * FOR THE WALK THAT HAS NOT ROUTED YET, which is the one case
+ * `DraftStatus.turns` cannot cover: a draft with one tap is `started` rather
+ * than `routed`, so there are no legs to place a tap against - and somebody
+ * who has placed exactly one point still has to be able to take it back.
+ * Everything else reads the placed turns, which carry a mile.
  *
  * Numbered to match `dayHikeDrawing`'s point labels exactly - App.tsx numbers
  * those across the whole walk, gaps included, so these do too. A hiker
  * looking at "3" on the map and "3" in the panel is looking at one tap, and
- * that correspondence is the only thing making a delete control here
+ * that correspondence is the only thing making a delete control
  * comprehensible at all.
  */
 export function turnMarks(draft: DayHikeDraft): TurnMark[] {

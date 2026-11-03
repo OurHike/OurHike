@@ -19,9 +19,10 @@ import { CLOSURE_LAYER_ID } from './lib/closureStyle'
 import { CLOSURE_ID_PROPERTY } from './map/closureLayers'
 import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './map/warningLayers'
 import { renderedMap } from './test/liveMap'
-import { appHarness, openMapTab } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { CLOSURE_SOURCE_ID } from './map/closureLayers'
 import { WARNING_SOURCE_ID } from './map/warningLayers'
+import { DAY_HIKES_KEY } from './lib/dayHikes'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -111,6 +112,7 @@ vi.mock('./lib/api', () => ({
   // Disputes ride the same read as the notes they are computed from (#876).
   fetchDisputes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => REPORTS),
+  fetchMyReports: vi.fn(async () => []),
 }))
 
 // No fetch stub: this file mocks lib/api and lib/config, so nothing here
@@ -217,13 +219,11 @@ describe('what the shell draws once the reads land', () => {
   })
 })
 
-// The alerts switch, end to end (#1047).
-//
-// Covered here rather than only in chrome/Legend.test.tsx and
-// chrome/alertLayerPanel.test.ts because the thing worth proving spans all
-// three: a tap in the legend has to reach the two GeoJSON sources on the
-// canvas, and the app has to take the hide back on its own. Either half tested
-// alone would pass with the wiring cut.
+// THE ALERTS SWITCH WAS COVERED HERE END TO END (#1047), because what it did
+// spanned three files: a tap in the legend reaching two GeoJSON sources on the
+// canvas, and the app taking the hide back on its own. The maintainer removed
+// the switch on 2026-09-20 and the describe below is what replaced those
+// three tests - the same span, asserting that the tap has nowhere to happen.
 
 describe('tapping the tape and the pin (#1373, F12)', () => {
   // The two marks #232 drew and left for a tap that never came. Through the
@@ -259,52 +259,47 @@ describe('tapping the tape and the pin (#1373, F12)', () => {
   })
 })
 
-describe('taking the alerts off the map, and getting them back (#1047)', () => {
-  async function openLegendAndToggleAlerts(): Promise<void> {
-    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
-    await userEvent.click(await screen.findByRole('checkbox', { name: /alerts/i }))
-  }
-
-  it('clears the bands and the warning pins on one tap', async () => {
+describe('nothing in the running app can take the alerts off the map', () => {
+  it('draws the bands and the warning pins with no control anywhere to clear them', async () => {
+    // The whole span in one test, which is what this file is for. Three tests
+    // stood here: one that cleared both sources on a tap, one that printed
+    // "Alerts hidden" on the map, and one that put everything back on
+    // `visibilitychange` - the maintainer's own constraint on #1047 ("The map
+    // should always open to the alerts being shown").
+    //
+    // The resume rule is the one worth saying out loud now, because removing
+    // the switch is what made it unnecessary rather than what broke it: there
+    // is no hidden state left to restore, so there is nothing for a resume to
+    // put back.
     const map = await renderApp()
     // Waited on rather than assumed: the closure needs the centerline index
-    // AND the backend read, so the source is empty for a beat at first render
-    // and a test that toggled straight away would pass on the wrong emptiness.
+    // AND the backend read, so the source is empty for a beat at first render.
     await waitFor(() => {
       expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
       expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
     })
 
-    await openLegendAndToggleAlerts()
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+    const legend = await screen.findByRole('dialog', { name: /legend/i })
 
-    await waitFor(() => {
-      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(0)
-      expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(0)
-    })
+    expect(within(legend).queryByRole('checkbox', { name: /alerts/i })).toBe(null)
+    expect(within(legend).queryByRole('switch', { name: /alerts/i })).toBe(null)
+    expect(screen.queryByText('Alerts hidden')).toBe(null)
+
+    // And still drawn with the legend open, which is the state a hiker would
+    // have been in to reach the switch.
+    expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+    expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
   })
 
-  it('says on the map that it is withholding them', async () => {
+  it('survives a resume with the marks still on the map', async () => {
+    // `visibilitychange` was what put the alerts back, via a listener in
+    // chrome/alertLayerPanel.ts. That file is deleted, so this asserts the
+    // event now changes nothing rather than that it restores something - a
+    // resume that emptied the sources would be a listener nobody remembered.
     const map = await renderApp()
     await waitFor(() => {
       expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
-    })
-
-    await openLegendAndToggleAlerts()
-
-    expect(await screen.findByText('Alerts hidden')).toBeInTheDocument()
-  })
-
-  it('puts them back when the hiker comes back to the app', async () => {
-    // The maintainer's constraint on #1047, at the only level that can show
-    // it: "The map should always open to the alerts being shown." On a phone
-    // that keeps this app alive for days, opening it is this event.
-    const map = await renderApp()
-    await waitFor(() => {
-      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
-    })
-    await openLegendAndToggleAlerts()
-    await waitFor(() => {
-      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(0)
     })
 
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
@@ -314,7 +309,6 @@ describe('taking the alerts off the map, and getting them back (#1047)', () => {
       expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
       expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
     })
-    expect(screen.queryByText('Alerts hidden')).toBe(null)
   })
 })
 
@@ -453,6 +447,79 @@ describe('every ATC notice is readable, drawn or not', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /trail notice/ })).toBe(null)
     })
+  })
+})
+
+// Option A of the maintainer's poll of 2026-10-09, end to end. What only this
+// file can catch is App.tsx handing lib/useConditions.ts's
+// `clubNoticesMissing` to chrome/noticesPanel.tsx: each half has its own
+// suite, and a shell that dropped the prop between them would leave both green.
+describe('a planned hike whose conditions/notices.json is not on this phone', () => {
+  /** An invented day hike, planned: nobody's walk. */
+  const PLANNED_HIKE = {
+    id: 'planned-1',
+    name: 'Fixture loop',
+    date: '2026-08-29',
+    segments: [
+      [
+        { coord: [-77, latOfMile(2)], poiId: null },
+        { coord: [-77, latOfMile(3)], poiId: null },
+      ],
+    ],
+    figures: {
+      miles: 1,
+      legs: [
+        { name: 'Fixture Trail', source: 'centerline', blaze_color: null, miles: 1 },
+      ],
+    },
+    looped: false,
+    recorded: 'planned',
+  }
+
+  it('labels the legend row "Notices for your planned hikes: not on this phone yet" and opens the warning over ATC’s list', async () => {
+    app.store.set(DAY_HIKES_KEY, { hikes: [PLANNED_HIKE], openId: null })
+    // ATC's file arrives; conditions/notices.json fails as in a dead spot,
+    // and this phone kept no copy of it.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.endsWith('conditions/notices.json'))
+          throw new TypeError('Failed to fetch')
+        if (!url.endsWith('conditions/atc_updates.json')) {
+          return new Response(null, { status: 404 })
+        }
+        return new Response(
+          JSON.stringify({
+            generated_at: '2026-08-12T00:00:00Z',
+            reviewed_at: '2026-08-12T00:00:00Z',
+            atc_updates: [UNDRAWN_UPDATE],
+          }),
+          { status: 200 },
+        )
+      }),
+    )
+    await renderApp()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+    await userEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Notices for your planned hikes: not on this phone yet' },
+        { timeout: 5_000 },
+      ),
+    )
+
+    const list = screen.getByRole('dialog', { name: 'Trail notices this phone has' })
+    expect(
+      within(list).getByText(
+        'This phone has no notices for your planned hikes yet. Connect once to get them. Until then, a closure on your hike will not show here.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(list).getByRole('heading', { name: 'Trail notices this phone has' }),
+    ).toBeInTheDocument()
+    expect(within(list).getByText('Hurricane Helene Storm Damage')).toBeInTheDocument()
   })
 })
 

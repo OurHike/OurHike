@@ -92,21 +92,16 @@ inspection, 2026-07-28):
     town drinking fountain eight miles east draw a pin that says *there is
     water here*. Unlike the fetch, a MISSING verdict file is not tolerated -
     read_sources refuses rather than export the ungated set.
-  - trail_water.json: the two sources below, and the reason `crossing`
-    stopped being an empty-but-present layer after shipping as one since it
-    was declared.
+  - trail_water.json: the site water below.
 
-Where the trail meets water (#529, fetch_trail_water.py): two more sources,
-both read from data/raw/trail_water.json, both derived by
+Which sites have water they can reach (#529, fetch_trail_water.py): one more
+source, read from data/raw/trail_water.json and derived by
 fetch_trail_water.py from USGS's hydrography and the OSM state extracts this
-pipeline already downloads.
+pipeline already downloads. The same file carried stream CROSSINGS, published
+as the `crossing` poi_type, until #1674 removed them at the maintainer's
+request; a file written before that still holds a `crossings` array, and
+nothing here reads it.
 
-  - CROSSINGS fill `crossing`, the poi_type declared in lib/poi_schema.py and
-    empty since it was declared. Each is an exact geometric intersection of
-    ATC's centerline with a stream line from either hydrography - the two
-    lines cross, so a hiker walking the trail walks through the water. Not a
-    proximity guess, which is what #97 measured overshooting into thousands
-    of near-misses.
   - SITE WATER folds into `water`: for each shelter and campsite, the nearest
     point on a stream, published ONLY where a hiker could reach it - inside
     100 ft and under a 15% grade, measured from real USGS elevations at both
@@ -114,7 +109,7 @@ pipeline already downloads.
     close the map says it is. fetch_trail_water.py holds both gates and every
     rejection's numbers.
 
-Neither needs a matching rule here: a published point sits at its real
+It needs no matching rule here: a published point sits at its real
 coordinates, so lib/poi_sites.py's 60 m proximity fold attaches the site's
 water to its pin exactly as it does an opentrail or OSM point, and #694's
 synthesized CSI member yields to it automatically.
@@ -135,17 +130,24 @@ how far ATC's Campsite Sustainability Index puts the nearest water source,
 from reference/water_distance.json - the same checked-in-and-reviewed shape
 as capacity, built by build_water_distance.py, whose docstring holds the
 join, the provenance rule and the licence position. Feet because ATC's
-figure is (CONTRIBUTING.md, "store canonical"). Where the site has no actual
+figure is (CONTRIBUTING.md, "store canonical"). Beside the figure travels
+`water_distance_source`, CSI's own provenance value verbatim (#1728): 42 of
+the 305 published distances are a steward's round-number estimate rather
+than a measurement against a mapped point (measured 2026-09-30 against
+reference/water_distance.json), the phone prints an estimate in a different
+voice, and a provenance that stops at this file is provenance no hiker has.
+Where the site has no actual
 water point folded in, a close-enough distance is also named among the nearby
 parts - see attach_nearby - so the answer to "is there water" stops depending
-on the 9 opentrail points that happen to fold. 305 of 512 features publish one
+on the opentrail points that happen to fold (9 at the time of #668, undated since - re-measure before relying on it). 305 of 512 features publish one
 (the FarOut-measured rows joined on the maintainer's 2026-08-13
 authorisation, sources.json's atc_licence block / #688); the rest have no
 CSI neighbour (most of Maine) or an unreadable value, and publish nothing
 rather than a neighbour's number. Wherever that entry fires, the site also
 gains a water POI riding its pin - synthesize_csi_water (#694), a member at
-inherited coordinates whose description says whose measurement it is and
-that the spot is unmapped, yielding to any real mapped point that folds in.
+inherited coordinates whose description says how ATC arrived at the figure
+(measured, or a steward's estimate) and that the spot is unmapped, yielding
+to any real mapped point that folds in.
 
 Description: every ATC facility layer carries `description`, one sentence
 about the place -
@@ -234,6 +236,7 @@ import json
 import sys
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 import duckdb
 import numpy as np
@@ -252,11 +255,11 @@ from lib.photo_screen import gate_photos
 from lib.photo_screen import load_decisions as load_screen_decisions
 from lib.photo_store import photo_key
 from lib.poi_description import (
+    NearbyMember,
     describe_campsite,
     describe_parking,
     describe_privy,
     describe_shelter,
-    describe_stream_point,
     describe_viewpoint,
     describe_water,
     nearby_parts,
@@ -311,9 +314,9 @@ OSM_WATER_REACH_FILENAME = "osm_water_reach.json"
 # absent on any run whose network export was skipped or held back, in which case
 # the corridor is the A.T.'s thirty miles exactly as it always was.
 #
-# NOT a filename-resolved-at-call-time like the constants above: nothing in this
-# module's tests redirects the processed directory, and build_corridor takes a
-# path rather than a name.
+# NOT a filename-resolved-at-call-time like the constants above: build_corridor
+# takes a path rather than a name, and patching OUT_DIR does not move this one.
+# tests/test_export_poi.py's no_real_network_lines redirects it (#1669).
 NETWORK_LINES_PATH = OUT_DIR.parent / "nearby_trails.geojson"
 
 # Metres per foot, for the places the two units meet: a site member's
@@ -386,6 +389,18 @@ POI_COLUMNS = (
     # NULL wherever reference/water_distance.json states a refusal instead of
     # a number (#668, build_water_distance.py).
     ("water_distance_ft", "INTEGER"),
+    # How ATC arrived at that figure: CSI's own `Nearest_Water_Source` value,
+    # verbatim from the same reference file (#1728). `FarOut`,
+    # `NHDP_HR_Stream` and `NHDP_HR_Pond` are measured against a mapped point;
+    # `OSA_Field_Estimate` is a steward's round number. NULL wherever the
+    # distance is, and beside a distance from a reference file written before
+    # the field travelled. Published because a display may not outrun its
+    # source: the phone prints an estimate with a tilde and a measurement
+    # without one, and it can only do that if the difference reaches it as a
+    # column. Measured 2026-09-30 against reference/water_distance.json: 42 of
+    # the 305 published distances are estimates, 33 of those within
+    # NEARBY_WATER_MAX_FT and so on a card's nearby line.
+    ("water_distance_source", "VARCHAR"),
     # One sentence about the place, composed from ATC's own inventory by
     # lib/poi_description.py - every ATC facility layer, which is DESCRIBERS
     # below; NULL on water and resupply, which have no inventory to compose
@@ -455,13 +470,14 @@ ATC_NOTE_FIELD = "Comments"
 # composes every other id.
 SHELTER_SOURCE = "atc_shelters"
 
-# The campsite twin, for the same reason: water_distance.json stores bare
-# GlobalIDs against a `layer` name, and load_water_distances composes the
-# unified id from these two constants.
+# The campsite twin. build_water_distance.py looks each feature up in the
+# ledger as `(source, GlobalID)` with these two constants, and falls back to
+# `{source}:{GlobalID}` only for a feature the ledger does not carry (#1729).
 CAMPSITE_SOURCE = "atc_campsites"
 
-# water_distance.json's `layer` values (sources.json keys) -> the source name
-# unified ids are built from.
+# water_distance.json's `layer` values (sources.json keys) -> the ledger
+# `source` of that layer's features. build_water_distance.py resolves each
+# record's `poi_id` through it; load_water_distances reads only these layers.
 WATER_DISTANCE_SOURCES = {"shelters": SHELTER_SOURCE, "campsites": CAMPSITE_SOURCE}
 
 # The source stamped on the water POIs synthesize_csi_water builds from those
@@ -474,6 +490,24 @@ WATER_DISTANCE_SOURCES = {"shelters": SHELTER_SOURCE, "campsites": CAMPSITE_SOUR
 # real members, synthesis yields to a real member, and
 # client/src/chrome/poiSources.ts turns it into words on the card.
 CSI_WATER_SOURCE = "atc_csi"
+
+# The first clause of a synthesized member's sentence, by how ATC arrived at
+# the figure - CSI's `Nearest_Water_Source` value as build_water_distance.py
+# copies it (#1728). The verb is the claim's real size: a distance taken
+# against a mapped point is measured, a steward's round number is estimated.
+# "ATC measured" was the one wording for every row until #1728, and on the 42
+# `OSA_Field_Estimate` rows it was not true. The unknown-provenance line below
+# asserts only what holds of every row - that ATC's index holds the figure -
+# and covers both a reference file written before the provenance travelled
+# and a value build_water_distance.py's allowlist admits before this table
+# learns it. The maintainer chose the wording family by poll, 2026-09-30.
+WATER_PROVENANCE_CLAIMS = {
+    "FarOut": "ATC measured how far the nearest water waypoint in FarOut is from {placed_on}",
+    "NHDP_HR_Stream": "ATC measured how far the nearest USGS-mapped stream is from {placed_on}",
+    "NHDP_HR_Pond": "ATC measured how far the nearest USGS-mapped pond is from {placed_on}",
+    "OSA_Field_Estimate": "An ATC steward estimated how far water is from {placed_on}",
+}
+UNKNOWN_WATER_PROVENANCE_CLAIM = "ATC's index gives how far water is from {placed_on}"
 
 # (raw filename stem, poi_type, source name used in unified ids, field_map)
 # - the ATC sources that map ~1:1 onto one poi_type each.
@@ -518,29 +552,17 @@ OSM_WATER_SOURCE = "osm_water"
 OSM_WATER_FILENAME = "osm_water.geojson"
 OSM_WATER_FIELD_MAP = {"id_field": "osm_id", "name_field": "name", "confidence": CONFIDENCE_LOW}
 
-# fetch_trail_water.py's two products (#529). Both CONFIDENCE_LOW, and for
-# the same reason as OSM's points rather than a weaker one: nobody stood at
-# either. A crossing is where two independently digitised lines meet, and a
-# site's water is where geometry says a stream runs nearest a shelter - both
-# are derivations, and the dashed rim plus the card's "Unverified" line is
-# exactly what a derivation is worth until somebody walks it.
-NHD_CROSSING_SOURCE = "nhd_crossing"
+# fetch_trail_water.py's product (#529). CONFIDENCE_LOW, and for the same
+# reason as OSM's points rather than a weaker one: nobody stood there. A site's
+# water is where geometry says a stream runs nearest a shelter - a derivation,
+# and the dashed rim plus the card's "Unverified" line is exactly what a
+# derivation is worth until somebody walks it.
+#
+# Its sibling `nhd_crossing` went with the crossing type (#1674). The name
+# stays in lib/source_registry.UNREGISTERED_POI_SOURCES, because the identity
+# ledger keeps those rows as tombstones forever and a dispute raised against
+# one must still read as an expected source.
 NHD_STREAM_SOURCE = "nhd_stream"
-
-# A crossing's identity is WHERE it is, not which reach it belongs to: NHD
-# splits reaches at confluences, so one reach can cross the trail twice and
-# a reach id alone would collide. Five decimal places is about a metre -
-# finer than the geometry, coarse enough that the id is stable while BOTH
-# lines that make the point hold still. The stream half does: the NHD
-# snapshot is frozen forever (fetch_trail_water.py). The trail half does not
-# - a re-measure of the centerline moves the meeting point, and #1028 found
-# the one such move the 2026-08-25 ledger recorded had re-minted an unnamed
-# crossing 24.7 m from its retired self, because a nameless point had no
-# other evidence to be carried on. That is why the stream's own id rides
-# RAW_PROPERTIES_KEY below: reconcile_poi_identity.py carries a moved
-# crossing on the half of the meeting that cannot have moved
-# (SCORE_STREAM_INTACT there).
-CROSSING_ID_PRECISION = 5
 
 # How close an OSM water point must sit to an opentrail one to be its twin.
 # Measured before choosing (2026-08-13, 174 opentrail water points against
@@ -616,9 +638,32 @@ def attach_capacity(records: list[dict], capacities: dict[str, int]) -> int:
     return attached
 
 
-def load_water_distances(path: Path) -> dict[str, int]:
-    """water_distance.json's known distances, keyed by the same unified POI
-    id this export writes.
+class WaterDistance(NamedTuple):
+    """One published water distance and how ATC arrived at it (#1728).
+
+    `provenance` is CSI's `Nearest_Water_Source` value as build_water_distance.py
+    copied it - `FarOut`, `NHDP_HR_Stream`, `NHDP_HR_Pond` or
+    `OSA_Field_Estimate` - or None from a reference file written before the
+    field travelled, which publishes as NULL rather than as a guess at which
+    of the four it was."""
+
+    distance_ft: int
+    provenance: str | None
+
+
+def load_water_distances(path: Path) -> dict[str, WaterDistance]:
+    """water_distance.json's known distances, with their provenance, keyed by
+    each record's `poi_id` - the ledger id build_water_distance.py resolved
+    for it, which is the id apply_ledger_ids publishes (#1729). Before #1729
+    the file carried a bare `atc_global_id` and this composed
+    `{source}:{atc_global_id}`; once ATC re-keys a feature and the ledger
+    carries its old id across, that composed id names nobody, and the
+    distance, the synthesized water member and the nearby sentence would have
+    gone without a log line. int_points_of_interest__water reads the same
+    column the same way.
+
+    Only the shelters and campsites layers are read, as the dbt model reads
+    them: a record on any other layer names no POI this attaches a distance to.
 
     Only records that state a distance are returned - the file lists every
     shelter and campsite, the blanks carrying the reason there is no number
@@ -634,24 +679,28 @@ def load_water_distances(path: Path) -> dict[str, int]:
     document = json.loads(path.read_text(encoding="utf-8"))
     distances = {}
     for record in document.get("sites", []):
-        source = WATER_DISTANCE_SOURCES.get(record.get("layer"))
-        if source is None or record.get("distance_ft") is None:
+        if record.get("layer") not in WATER_DISTANCE_SOURCES or record.get("distance_ft") is None:
             continue
-        distances[f"{source}:{record['atc_global_id']}"] = record["distance_ft"]
+        distances[record["poi_id"]] = WaterDistance(record["distance_ft"], record.get("provenance") or None)
     return distances
 
 
-def attach_water_distance(records: list[dict], distances: dict[str, int]) -> int:
-    """Copy each matched feature's water distance onto its unified POI
-    record, returning how many matched - same contract as attach_capacity,
-    and NULL means the same thing: nobody has said, which is not the same as
-    a dry site."""
+def attach_water_distance(records: list[dict], distances: dict[str, WaterDistance]) -> int:
+    """Copy each matched feature's water distance, and where it came from,
+    onto its unified POI record, returning how many matched - same contract
+    as attach_capacity, and NULL means the same thing: nobody has said, which
+    is not the same as a dry site."""
     attached = 0
     for record in records:
         distance = distances.get(record["id"])
         if distance is None:
             continue
-        record["water_distance_ft"] = distance
+        record["water_distance_ft"] = distance.distance_ft
+        # Beside the figure, never in place of it. A file that did not say
+        # leaves the key off, and write_poi_type's .get publishes NULL - the
+        # phone then prints the figure in the voice it always has (#1728).
+        if distance.provenance is not None:
+            record["water_distance_source"] = distance.provenance
         attached += 1
     return attached
 
@@ -723,6 +772,8 @@ def synthesize_csi_water(records: list[dict]) -> int:
 
         anchor_name = record.get("name")
         placed_on = f"the {record['poi_type']}" if not anchor_name else anchor_name
+        provenance = record.get("water_distance_source")
+        claim = WATER_PROVENANCE_CLAIMS.get(provenance, UNKNOWN_WATER_PROVENANCE_CLAIM)
         synthesized.append(
             {
                 "id": f"{CSI_WATER_SOURCE}:{record['source_feature_id']}",
@@ -735,6 +786,10 @@ def synthesize_csi_water(records: list[dict]) -> int:
                 "lon": record["lon"],
                 "confidence": CONFIDENCE_LOW,
                 "water_distance_ft": distance_ft,
+                # The same provenance the anchor carries, so the chip that
+                # prints this member's figure can print it as an estimate
+                # where it is one (#1728) - and absent where the anchor's is.
+                **({"water_distance_source": provenance} if provenance is not None else {}),
                 # THE DISTANCE IS NOT IN THE SENTENCE, and that is #625 applied
                 # to #694 rather than a change of mind about either. This read
                 # "About 37 m from Chairback Gap Lean-to." until the merge, and
@@ -746,10 +801,11 @@ def synthesize_csi_water(records: list[dict]) -> int:
                 # this member as its own column, so the chip directly above this
                 # sentence prints the same figure in the hiker's own units, and
                 # so does the anchor's nearby line. What stays here is what only
-                # this sentence can say - whose measurement it is, and that the
-                # spot itself is unmapped.
+                # this sentence can say - how ATC arrived at the figure, which
+                # WATER_PROVENANCE_CLAIMS words by provenance (#1728), and that
+                # the spot itself is unmapped.
                 "description": (
-                    f"ATC measured how far water is from {placed_on}; the spot itself is not mapped, "
+                    f"{claim.format(placed_on=placed_on)}; the spot itself is not mapped, "
                     f"so this point sits on the {record['poi_type']}."
                 ),
                 "site_id": record["site_id"],
@@ -785,7 +841,6 @@ DESCRIBERS = {
     # flow class); an opentrail point has an icon and a title and composes
     # None, exactly as before this entry existed.
     "water": lambda properties, _capacity, _note: describe_water(properties),
-    "crossing": lambda properties, _capacity, _note: describe_stream_point(properties),
 }
 
 
@@ -890,7 +945,7 @@ def attach_nearby(records: list[dict]) -> int:
                 # no coordinate worth measuring - it SITS on the anchor
                 # (#694), and reading its position as a distance would print
                 # "water 3 ft" on a card whose truth is the entry below.
-                (
+                NearbyMember(
                     member["poi_type"],
                     distance_m(record["lat"], record["lon"], member["lat"], member["lon"]) / M_PER_FT,
                     member.get(RAW_PROPERTIES_KEY) or {},
@@ -900,7 +955,8 @@ def attach_nearby(records: list[dict]) -> int:
             ]
         # ATC's own distance-to-water fills in where no actual water point
         # folded into the site (#668) - which is nearly everywhere, since only
-        # 9 opentrail points fold over the whole corridor. Anchors and POIs in
+        # few opentrail points fold over the whole corridor (9 at the time of #668,
+        # not re-measured since). Anchors and POIs in
         # no site both take it; a member does not, because its site's anchor
         # already answers "is there water" for the one pin a hiker can see.
         # Never beside a real water member: one site, one water distance.
@@ -910,14 +966,26 @@ def attach_nearby(records: list[dict]) -> int:
             record["poi_type"] in ANCHOR_TYPES
             and record.get("site_role") != ROLE_MEMBER
             and record.get("water_distance_ft") is not None
-            and not any(poi_type == "water" for poi_type, _, _ in parts)
+            and not any(part.poi_type == "water" for part in parts)
         ):
             # Straight through in ATC's own feet. Beyond the widest radius a
             # site can reach, "Nearby" would be a word meaning something
             # different on this one card; the column still publishes, the
             # sentence stays honest.
             if record["water_distance_ft"] <= NEARBY_WATER_MAX_FT:
-                parts.append(("water", float(record["water_distance_ft"]), {}))
+                parts.append(
+                    NearbyMember(
+                        "water",
+                        float(record["water_distance_ft"]),
+                        {},
+                        # Where the figure came from rides beside it, so the
+                        # sentence can print an estimate as one (#1728). The
+                        # measured members above carry none: their distance
+                        # is their position, and a position has no provenance
+                        # beyond its coordinates.
+                        record.get("water_distance_source"),
+                    )
+                )
         if not parts:
             continue
         # JSON on the record, for the reason attach_photos writes a string:
@@ -1060,12 +1128,13 @@ def unify_all_sources(trail_id: str = TRAIL_ID, skipped: list[str] | None = None
 
 
 def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
-    """fetch_trail_water.py's crossings and site water, as unified POIs.
+    """fetch_trail_water.py's site water, as unified `water` POIs.
 
-    Two poi_types out of one file because they answer the same question in
-    two places: where the walking route meets water, and which overnight
-    sites have water they can reach. Both are derived from the same frozen
-    NHD snapshot and both enter at CONFIDENCE_LOW.
+    Derived from the frozen NHD snapshot and the OSM extracts, and entered at
+    CONFIDENCE_LOW. The file's `crossings` array, which a file written before
+    #1674 still carries, is deliberately not read: crossings are withdrawn
+    (lib/poi_schema.WITHDRAWN_POI_TYPES), and reading it here would publish
+    them under a type no release serves.
 
     A record whose `water` is null is a site the gates REFUSED - too far, too
     steep, or no stream at all - and it publishes nothing here. Its reason
@@ -1073,49 +1142,13 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
     a gate is wrong, which is the whole point of writing rejections down.
 
     A missing file is a normal state, exactly as it is for capacities,
-    distances and photos: the export ships without crossings rather than
+    distances and photos: the export ships without site water rather than
     failing.
     """
     if not path.exists():
         return []
     document = json.loads(path.read_text(encoding="utf-8"))
     records = []
-
-    for crossing in document.get("crossings", []):
-        lat, lon = crossing["lat"], crossing["lon"]
-        feature = {
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
-            "properties": {
-                "crossing_id": f"{lat:.{CROSSING_ID_PRECISION}f},{lon:.{CROSSING_ID_PRECISION}f}",
-                # The stream the crossing is made of - NHD's permanent
-                # identifier where USGS saw it, the OSM way id otherwise. Not
-                # a column (write_poi_type never publishes it); it rides
-                # RAW_PROPERTIES_KEY so reconcile_poi_identity.py can carry a
-                # nameless crossing across a trail re-measure on the one half
-                # of the intersection that cannot have moved (#1028).
-                "stream_id": crossing.get("stream_id"),
-                "sources": crossing.get("sources"),
-                "name": crossing.get("name"),
-                "flow": crossing.get("flow"),
-                "flow_source": crossing.get("flow_source"),
-                # Which trail the stream crosses (#1016). Absent on every
-                # crossing derived before that landed, which is why this reads
-                # `.get` and why False is the right reading of absence here:
-                # the only trail this file held until then was the A.T.
-                "on_network_trail": bool(crossing.get("on_network")),
-                "network_source": crossing.get("network_source"),
-                "trail_name": crossing.get("trail_name"),
-            },
-        }
-        record = unify_poi(
-            feature,
-            "crossing",
-            NHD_CROSSING_SOURCE,
-            trail_id,
-            {"id_field": "crossing_id", "name_field": "name", "confidence": CONFIDENCE_LOW},
-        )
-        record[RAW_PROPERTIES_KEY] = {**feature["properties"], "crossing": True}
-        records.append(record)
 
     for site in document.get("sites", []):
         water = site.get("water")
@@ -1128,8 +1161,10 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
                 # id stable: one reachable stream point per site by
                 # construction, so the site's own GlobalID names it.
                 "site_global_id": site["atc_global_id"],
-                # The same passport a crossing carries, for the same reader
-                # (#1028): a site's water point is derived from a stream too.
+                # The stream it is on, as a passport for the identity ledger
+                # (#1028): reconcile_poi_identity.py carries a derived point
+                # across a re-measure on the stream id when nothing else
+                # about it survives. Crossings carried it first, until #1674.
                 "stream_id": water.get("stream_id"),
                 "sources": water.get("sources"),
                 "name": water.get("name"),
@@ -1235,13 +1270,10 @@ def mark_off_trail_records(records: list[dict], anchors: dict[str, str]) -> int:
         anchor = None
         if record["poi_type"] == "water" and record["source"] == OSM_WATER_SOURCE:
             anchor = anchors.get(str(record["source_feature_id"]))
-        elif record.get(RAW_PROPERTIES_KEY, {}).get("on_network_trail"):
-            # fetch_trail_water.py's own answer for a crossing: this stream
-            # crosses somebody else's trail, not the A.T. The fallback keeps
-            # the value a string in the one case the artifact carried the flag
-            # without a source key, so a caller counting by organization never
-            # has to handle a bool among the names.
-            anchor = record[RAW_PROPERTIES_KEY].get("network_source") or "an unnamed network source"
+        # fetch_trail_water.py's crossings were the other kind of record this
+        # marked - a stream crossing somebody else's trail - until #1674
+        # removed them. Its site water hangs off an ATC shelter or campsite
+        # and never carried the flag, so it was never marked here either.
         if anchor:
             record[NOT_ON_AT_KEY] = anchor
             marked += 1
@@ -1368,7 +1400,9 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
 
     The example used to be `crossing, pending NHD ingestion`. That ingestion
     landed: production release 2026-09-04 publishes 5,318 crossings (measured
-    off the live artifact, PR #1247). `trailhead` is the empty one now, at 0
+    off the live artifact, PR #1247), and #1674 later withdrew the type
+    altogether (lib/poi_schema.WITHDRAWN_POI_TYPES). `trailhead` is the empty
+    one now, at 0
     features on that same release, for the reason #1218 gives - USFS's 7,358
     trailheads ship as parking pins. The rule is unchanged; only which
     poi_type is currently demonstrating it."""
@@ -1404,6 +1438,7 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
                     # when a caller never ran the attach step.
                     r.get("capacity"),
                     r.get("water_distance_ft"),
+                    r.get("water_distance_source"),
                     r.get("description"),
                     # The parts as JSON - see attach_nearby, and note the same
                     # scalar-only reason the photo list below is a string.
@@ -1535,6 +1570,19 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     return deduped
 
 
+def live_ledger_ids(ledger_path: Path | None = None) -> dict[tuple[str, str], str]:
+    """The ledger's LIVE rows as `(source, source_feature_id) -> poi_id` - the
+    map apply_ledger_ids publishes under, and the one build_water_distance.py
+    keys its records by, so the two cannot disagree about whose id a feature
+    has. A retired row is left out, as apply_ledger_ids leaves it out. A
+    missing ledger file is the pre-#671 world: an empty map."""
+    path = LEDGER_PATH if ledger_path is None else ledger_path
+    if not path.exists():
+        return {}
+    pois = json.loads(path.read_text(encoding="utf-8"))["pois"]
+    return {(row["source"], row["source_feature_id"]): poi_id for poi_id, row in pois.items() if "retired" not in row}
+
+
 def apply_ledger_ids(records: list[dict], ledger_path: Path | None = None) -> int:
     """Publish every POI under its ledger id (#671) - the load-bearing line
     of features/POI_IDENTITY.md, a byte-for-byte no-op on the day the
@@ -1550,11 +1598,7 @@ def apply_ledger_ids(records: list[dict], ledger_path: Path | None = None) -> in
     printing, because a nonzero one means upstream re-keyed something and
     the ledger carried it.
     """
-    path = LEDGER_PATH if ledger_path is None else ledger_path
-    if not path.exists():
-        return 0
-    pois = json.loads(path.read_text(encoding="utf-8"))["pois"]
-    by_key = {(row["source"], row["source_feature_id"]): poi_id for poi_id, row in pois.items() if "retired" not in row}
+    by_key = live_ledger_ids(ledger_path)
     changed = 0
     for record in records:
         ledger_id = by_key.get((record["source"], record["source_feature_id"]))
@@ -1590,7 +1634,7 @@ def apply_ledger_ids(records: list[dict], ledger_path: Path | None = None) -> in
 # on a code change would be the sharper version of the bug this exists to
 # avoid. Scoped to one job's runner is the safe lifetime; within it, the
 # inputs are fetched once early and do not change again before the job ends.
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2  # 2: records carry water_distance_source (#1728)
 
 
 def _cache_path() -> Path:

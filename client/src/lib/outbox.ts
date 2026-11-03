@@ -38,6 +38,11 @@
 import { get, update } from 'idb-keyval'
 
 import { BUILD_INFO } from './buildInfo'
+import type {
+  ChallengeEntryDraft,
+  ChallengeTagDraft,
+  ChallengeUntagDraft,
+} from './challengeDrafts'
 import type { ClosureDraft } from './closureDraft'
 import type { FieldNoteDraft } from './fieldNotes'
 import type { VolunteerHoursDraft } from './volunteerHours'
@@ -78,7 +83,65 @@ export interface ReportDraft {
    * before the trail index has downloaded. Zero would be Springer Mountain.
    */
   mile?: number
-  photo_url?: string
+  /**
+   * Where the hiker says this was, in their own words (#1439, D16).
+   *
+   * Sent only when there is no fix AND no `poi_id` - the one state in which
+   * nothing else on the report can say where it happened. "The brook crossing
+   * about half a mile north of Fitzgerald Falls."
+   *
+   * **It is never turned into coordinates, on this phone or on the server.**
+   * A typed name geocoded into a lat/lon would be a confident wrong dot on
+   * every phone that downloads the report, which is the exact failure the
+   * omitted-not-zeroed rule above exists to prevent - so `lat`, `lon` and
+   * `mile` stay absent beside it and a moderator places it.
+   */
+  place_words?: string
+  /**
+   * How the report came by its coordinates (#1563): a named waypoint the
+   * hiker chose, the phone's own fix, or a spot marked by hand on the map.
+   * lib/reportLocation.ts is the one writer, so the three surfaces that let
+   * somebody place a report cannot come to spell this differently.
+   *
+   * The wire's vocabulary is the backend's `LocationSource`
+   * (backend/app/models/report.py), and
+   * backend/tests/test_client_report_contract.py holds the two together.
+   * Absent on a report with no coordinates, and on every report filed before
+   * this existed.
+   */
+  location_source?: 'poi' | 'gps' | 'map'
+  /**
+   * The radius the platform stated for the fix, in metres, exactly as
+   * `position.coords.accuracy` gave it - a 95% radius under the W3C
+   * definition. Sent only with a `gps` source: the coordinates of a waypoint
+   * or of a marked spot have no fix to state one for. Metres rather than feet
+   * because that is the unit the platform hands over; the display converts.
+   *
+   * NO APOSTROPHES IN THIS COMMENT OR THE NEXT, on purpose: the contract test
+   * reads the literals between one field and the next as the union of the
+   * field above, and a possessive would read as a quoted arm.
+   */
+  location_accuracy_m?: number
+  /**
+   * How many seconds old the fix was when the report took it. The watch keeps
+   * the last fix through a pocketed pause (lib/useGeolocation.ts, #313), so a
+   * report filed as the phone comes out of a pack can carry a fix from a mile
+   * back - and a radius of five metres on a fix that old is not five metres of
+   * anything. Floored at zero on the phone. Sent only with a `gps` source.
+   */
+  location_fix_age_s?: number
+  /**
+   * The name the hiker chose to sign this report with, and which of their
+   * names it is (#1563; lib/reporterSignature.ts): the trail name they hike
+   * under, or the real name they chose to put behind this one report so a
+   * club can address them by it. Both absent when they have no name set.
+   * Never shown to other hikers - the server withholds it like `reporter_id`.
+   */
+  signed_name?: string
+  signed_name_kind?: 'trail' | 'real'
+  /** "You can contact me for more information", ticked. Consent and only
+   *  consent; the account is how a club reaches them. Absent means no. */
+  contact_ok?: boolean
   /** Thanks only, and both optional - see SAYING_THANKS.md. Either may be
    *  absent: not knowing who to thank is the ordinary case, and the server
    *  resolves it from location and authored date instead. */
@@ -172,6 +235,15 @@ export const APP_FAILURE_MAX_CHARS = 8000
 
 /** The same, for the two short fields - where they were, how to reach them. */
 export const APP_FAILURE_SHORT_MAX_CHARS = 500
+
+/**
+ * How long a name a report may be signed with (#1563). Restates
+ * backend/app/schemas/report.py's SIGNED_NAME_MAX_CHARS, for the reason the
+ * two caps above restate theirs: the field is typed offline, and a server
+ * refusal at the wire is a report the outbox marks failed. Held together by
+ * backend/tests/test_client_report_contract.py.
+ */
+export const SIGNED_NAME_MAX_CHARS = 200
 
 /**
  * A report that this app failed somebody while they were out on the trail
@@ -276,13 +348,37 @@ export interface OutboxItem {
    */
   closure?: ClosureDraft
   /**
+   * One completed challenge item (#1780, features/CHALLENGES.md) - the
+   * seventh cargo. Tagged at camp, which is where there is no signal, so it
+   * queues like everything else here; `authoredAt` is the moment of the tag
+   * and travels as `authored_at`, because a tag queued on the last evening of
+   * the window and flushed in town a week later still happened in time.
+   */
+  challengeTag?: ChallengeTagDraft
+  /**
+   * The one entry a hiker chooses to send a club at a challenge's finish
+   * (#1780) - the eighth cargo. Queued rather than sent inline so "Enter the
+   * drawing" on a ridge works the same as in town.
+   */
+  challengeEntry?: ChallengeEntryDraft
+  /**
+   * A challenge tag taken back (#1780) - the ninth cargo. Queued behind the
+   * tag it undoes, and `flushOutbox` keeps one challenge's tags, removals and
+   * entry in queue order (`challengeOf`), so a tag made and removed with no
+   * signal goes out as a tag and then its removal, and the server ends where
+   * the phone did.
+   */
+  challengeUntag?: ChallengeUntagDraft
+  /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
-   * **The bytes and not a URL**, which is the whole reason this field exists
-   * rather than `payload.photo_url` carrying it. `photo_url` is the shape for
-   * a photo that has already been uploaded; out here the ordinary path is that
-   * the report is written with no signal at all and flushes days later, so the
-   * image has to survive in IndexedDB alongside the report it belongs to.
+   * **The bytes and not a URL**, which is the whole reason this field exists.
+   * A URL is the shape for a photo that has already been uploaded; out here
+   * the ordinary path is that the report is written with no signal at all and
+   * flushes days later, so the image has to survive in IndexedDB alongside the
+   * report it belongs to. The draft used to carry a `photo_url` beside these
+   * bytes and nothing ever set it; the server stopped storing the one a
+   * client sends (#1447 review), so there is no longer a URL worth carrying.
    * `idb-keyval` stores a `Blob` natively, so this costs nothing extra.
    *
    * Prepared at pick time rather than at flush time, deliberately: shrinking
@@ -291,6 +387,26 @@ export interface OutboxItem {
    * standing in front of the thing they photographed.
    */
   photo?: Blob
+  /**
+   * A report's photos, in the order they were picked (#1439).
+   *
+   * **A SEPARATE FIELD FROM `photo` ABOVE, AND DELIBERATELY SO.** `photo` is
+   * still exactly right for the two cargos that carry one - a field note's
+   * picture (#879) and a photo action (#577/#579) - and widening it to an
+   * array for them would let a surface attach three photos to a note that
+   * can send one. This is the report's set: `PUT /reports/{id}/photos/{n}`,
+   * one request each, numbered by position here.
+   *
+   * **`photo` is still read for a report, and that is not tidiness.** An item
+   * queued by the previous build is sitting in this phone's IndexedDB with a
+   * `photo` and no `photos`, and it is the only copy of something somebody
+   * wrote down on a ridge. lib/api.ts reads both; see `reportPhotos` there.
+   *
+   * Prepared at pick time for `photo`'s reason, and now independently: each
+   * pick is shrunk on its own, so one that fails costs its own tile and
+   * leaves the rest attached.
+   */
+  photos?: Blob[]
   /**
    * Set when the server refused this in a way retrying cannot fix.
    *
@@ -387,9 +503,17 @@ export type ClassifyFn = (error: unknown) => string | null
  *  a caller that has no opinion cannot accidentally discard a report. */
 const RETRY_EVERYTHING: ClassifyFn = () => null
 
+/** What is under the key, as a queue. A fresh install has never written
+ *  it, and that is not an error state. Nor is a key holding something that
+ *  is not a list: no item a hiker wrote can be inside a value that is not a
+ *  queue, and reading it as one used to throw from every later enqueue and
+ *  flush, which is the one failure the outbox exists to rule out (#1578). */
+function asQueue(stored: unknown): OutboxItem[] {
+  return Array.isArray(stored) ? (stored as OutboxItem[]) : []
+}
+
 async function readQueue(): Promise<OutboxItem[]> {
-  // A fresh install has never written the key; that is not an error state.
-  return (await get(OUTBOX_KEY)) ?? []
+  return asQueue(await get(OUTBOX_KEY))
 }
 
 /**
@@ -404,17 +528,104 @@ async function readQueue(): Promise<OutboxItem[]> {
 async function mutateQueue(
   transform: (queue: OutboxItem[]) => OutboxItem[],
 ): Promise<void> {
-  await update<OutboxItem[]>(OUTBOX_KEY, (queue) => transform(queue ?? []))
+  await update<OutboxItem[]>(OUTBOX_KEY, (queue) => transform(asQueue(queue)))
 }
 
 export async function listQueued(): Promise<OutboxItem[]> {
   return readQueue()
 }
 
+/** The fields a report can take on after it was filed - what the window's
+ *  receipt asks for (#1133's "detail is optional and comes after"; #1563). */
+export type ReportAmendment = Partial<
+  Pick<ReportDraft, 'note' | 'signed_name' | 'signed_name_kind' | 'contact_ok'>
+>
+
+/**
+ * The ids a flush is sending at this moment (review of #1571).
+ *
+ * `flushOutbox` reads the queue once, sends each item and then removes it,
+ * so an amendment written while an item's request is out lands on a row
+ * that is deleted the moment the request returns: the server stored the
+ * body from before the amendment and the queue no longer holds the words.
+ * `amendQueuedReport` and `attachQueuedPhotos` answer false for such an id,
+ * which is the truth - what was added did not go - and what lets the
+ * receipt say so. The PR body's claim that nothing reads the queue while
+ * the window is open was not quite true: `useOutboxSync` flushes when the
+ * phone comes online with the receipt open, and a previous window's
+ * follow-up timer can fire into a new one.
+ */
+const inFlight = new Set<string>()
+
+/**
+ * Change a report that is still waiting in the queue (#1563).
+ *
+ * WHAT THIS FIXES. The report window files on the tap and then offers "Add
+ * detail - optional" under the receipt, and the note typed there went
+ * nowhere: nothing read it back out of the window, so "detail comes after"
+ * (features/REPORT_A_PROBLEM.md) was true of the screen and false of the
+ * outbox. This is the write it lacked, and the signature and the consent
+ * the receipt now asks for travel the same way.
+ *
+ * TRUE WHEN THE REPORT WAS STILL HERE TO AMEND, false when it had already
+ * gone. A filed report is held for the undo window and sent by the next
+ * flush after it, so a receipt left open for a minute can lose the race -
+ * and a caller must say so rather than let the hiker believe the words were
+ * attached. Absent keys are left alone; an explicit `undefined` clears.
+ */
+export async function amendQueuedReport(
+  id: string,
+  amendment: ReportAmendment,
+): Promise<boolean> {
+  if (inFlight.has(id)) return false
+  let found = false
+  await mutateQueue((queue) =>
+    queue.map((item) => {
+      if (item.id !== id || item.payload === undefined) return item
+      found = true
+      const payload: ReportDraft = { ...item.payload }
+      for (const key of Object.keys(amendment) as (keyof ReportAmendment)[]) {
+        const value = amendment[key]
+        if (value === undefined) delete payload[key]
+        else Object.assign(payload, { [key]: value })
+      }
+      return { ...item, payload }
+    }),
+  )
+  return found
+}
+
+/**
+ * Give a report still waiting in the queue its photos (#1563): the receipt's
+ * tiles, picked after the tap. The whole set, replacing whatever the item
+ * held - a receipt is the only surface that attaches this way and it holds
+ * the full list - and an empty set removes the key rather than writing an
+ * empty array, for `enqueue`'s reason. True when the report was still here
+ * to take them; false when it had gone, or is going right now.
+ */
+export async function attachQueuedPhotos(
+  id: string,
+  photos: readonly Blob[],
+): Promise<boolean> {
+  if (inFlight.has(id)) return false
+  let found = false
+  await mutateQueue((queue) =>
+    queue.map((item) => {
+      if (item.id !== id || item.payload === undefined) return item
+      found = true
+      const next: OutboxItem = { ...item }
+      delete next.photos
+      return photos.length === 0 ? next : { ...next, photos: [...photos] }
+    }),
+  )
+  return found
+}
+
 export async function enqueue(
   payload: ReportDraft,
   authoredAt: Date = new Date(),
-  photo?: Blob,
+  /** The report's photos, in pick order (#1439). Empty and none is stored. */
+  photos?: readonly Blob[],
   /** Hold it back until this moment, for the report window's Undo (#1133).
    *  Absent means sendable now, which is what every caller but that one
    *  wants and what every item written before it had. */
@@ -424,10 +635,12 @@ export async function enqueue(
     id: crypto.randomUUID(),
     authoredAt: authoredAt.toISOString(),
     payload,
-    // Spread rather than `photo` outright so an item without one has no key
+    // Spread rather than `photos` outright so an item without any has no key
     // at all. The queue is compared and rewritten in several places, and an
-    // explicit `photo: undefined` is a difference that reads as one.
-    ...(photo !== undefined ? { photo } : {}),
+    // explicit `photos: undefined` is a difference that reads as one. An
+    // EMPTY array is the same difference wearing a value, so it is dropped
+    // too.
+    ...(photos !== undefined && photos.length > 0 ? { photos: [...photos] } : {}),
     ...(holdUntil !== undefined ? { holdUntil: holdUntil.toISOString() } : {}),
   }
 
@@ -494,6 +707,21 @@ export async function enqueueAppFailure(
  */
 export async function hasWorkThatNeedsNoAccount(): Promise<boolean> {
   return (await readQueue()).some((item) => item.appFailure !== undefined)
+}
+
+/**
+ * How many queued items the outbox would send now, which usage measurement
+ * waits behind (lib/useUsageMeasurement.ts `reportsWaiting`). Signed out,
+ * that is only the app-failure reports (#848): a report saved before signing
+ * in waits for an account, and counted as waiting it held every usage row
+ * back for as long as its hiker stayed signed out - 0 sends in 24 online
+ * hours (#1903's second review). An item already marked failed is not
+ * waiting to send, signed in or out.
+ */
+export function sendableNow(items: readonly OutboxItem[], signedIn: boolean): number {
+  return items.filter(
+    (item) => item.failure === undefined && (signedIn || item.appFailure !== undefined),
+  ).length
 }
 
 /**
@@ -570,6 +798,58 @@ export async function enqueueClosure(
   return item
 }
 
+/**
+ * Queue a completed challenge item (#1780). Same queue, same four
+ * properties - `POST /challenges/tags` takes the id as its idempotency key.
+ */
+export async function enqueueChallengeTag(
+  challengeTag: ChallengeTagDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeTag,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/**
+ * Queue a challenge entry (#1780). The id is the server's idempotency key,
+ * so a flush that commits and loses its response cannot send a club the
+ * same hiker twice.
+ */
+export async function enqueueChallengeEntry(
+  challengeEntry: ChallengeEntryDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeEntry,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
+/** Queue a challenge tag's removal (#1780) - see `challengeUntag`. */
+export async function enqueueChallengeUntag(
+  challengeUntag: ChallengeUntagDraft,
+  authoredAt: Date = new Date(),
+): Promise<OutboxItem> {
+  const item: OutboxItem = {
+    id: crypto.randomUUID(),
+    authoredAt: authoredAt.toISOString(),
+    challengeUntag,
+  }
+
+  await mutateQueue((queue) => [...queue, item])
+  return item
+}
+
 export async function removeQueued(id: string): Promise<void> {
   await mutateQueue((queue) => queue.filter((item) => item.id !== id))
 }
@@ -615,7 +895,23 @@ export async function flushOutbox(
   // become sendable partway down a list because the loop got to it late.
   const now = Date.now()
 
+  // Challenges whose earlier item did not go this pass. The loop otherwise
+  // skips past an item that failed for want of signal and carries on, which
+  // is right for reports and wrong here: a removal that overtook the tag it
+  // undoes would land first, and the tag after it would leave the server
+  // holding a tag the phone took back. An entry likewise waits behind its
+  // challenge's tags, because the server reads them as the entry arrives
+  // (`untagged_item_ids`). Per challenge, so one stuck list holds back
+  // nothing else.
+  const waiting = new Set<string>()
+
   for (const item of queue) {
+    const challenge = challengeOf(item)
+    if (challenge !== null && waiting.has(challenge)) {
+      failed += 1
+      continue
+    }
+
     // Inside a live undo window (#1133). Skipped without touching it: the
     // hiker has not retracted it and nothing is wrong with it, it is simply
     // not eligible yet. The next flush - and there is always a next flush,
@@ -642,8 +938,22 @@ export async function flushOutbox(
       continue
     }
 
+    // Marked while its request is out, so an amendment landing mid-send is
+    // refused rather than written to a row the success path is about to
+    // delete (review of #1571).
+    inFlight.add(item.id)
     try {
-      await send(item)
+      // Sent as it is stored NOW, not as it was when this pass read the
+      // queue. An amendment or photo attached to this item while an earlier
+      // item was sending was accepted and written (it was not in flight
+      // then), and sending the snapshot would deliver the report without it
+      // and then delete the row that held it - the hiker's added detail
+      // gone, with the receipt having said it was kept (v1.3.2 release
+      // review). Re-read after `inFlight.add`, so anything accepted before
+      // this line is in the row and anything after it is refused.
+      const current = (await readQueue()).find((queued) => queued.id === item.id)
+      if (current === undefined) continue
+      await send(current)
       // Removed one at a time, and this is the fix rather than a tidy-up.
       // The old loop collected survivors and wrote the whole key at the end
       // (`set(OUTBOX_KEY, unsent)`), so a report written DURING a flush was
@@ -658,14 +968,30 @@ export async function flushOutbox(
       const reason = classify(error)
       if (reason === null) {
         // The usual cause is simply no signal. Left exactly as it was.
+        if (challenge !== null) waiting.add(challenge)
         continue
       }
       await markFailed(item.id, reason)
       stuck += 1
+    } finally {
+      inFlight.delete(item.id)
     }
   }
 
   return { sent, failed, stuck, held }
+}
+
+/** The challenge a tag, a removal or an entry belongs to, or null for every
+ *  other cargo - the key `flushOutbox` keeps in order. A refused item (a
+ *  4xx, `stuck`) does not hold the rest back: the server never took it, so
+ *  nothing behind it can land out of order against it. */
+function challengeOf(item: OutboxItem): string | null {
+  return (
+    item.challengeTag?.challenge_id ??
+    item.challengeUntag?.challenge_id ??
+    item.challengeEntry?.challenge_id ??
+    null
+  )
 }
 
 async function markFailed(id: string, reason: string): Promise<void> {

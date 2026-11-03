@@ -161,6 +161,16 @@ describe('the recipe contract', () => {
     expect(() => normaliseRecipe({ default: 'tap the thing' }, 'x')).toThrow('recipe x')
     expect(() => normaliseRecipe({ caption: 42 }, 'x')).toThrow('caption')
     expect(() => normaliseRecipe({ wait: 'soon' }, 'x')).toThrow('wait')
+    expect(() => normaliseRecipe({ before: 'hold the chunk' }, 'x')).toThrow('before')
+  })
+
+  it('carries a hand on the page before the app loads, when a recipe has one', () => {
+    // `before` is how a recipe photographs a frame the launch passes through
+    // on its own (#1560): a route that holds a chunk back has to be in place
+    // before the request it is for, so the runner calls it ahead of goto.
+    const before = async () => {}
+    expect(normaliseRecipe({ before }, 'x').before).toBe(before)
+    expect(normaliseRecipe({}, 'x').before).toBeUndefined()
   })
 })
 

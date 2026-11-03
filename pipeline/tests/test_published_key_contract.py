@@ -48,7 +48,11 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
+import archive_nynjtc_sheet_extents
+import export_podcasts
+import export_suggested_hikes
 import publish
 from lib.poi_schema import POI_TYPES
 from lib.r2_keys import validate_key
@@ -56,8 +60,14 @@ from lib.r2_keys import validate_key
 CLIENT_SRC = Path(__file__).resolve().parents[2] / "client" / "src"
 CONFIG = CLIENT_SRC / "lib" / "config.ts"
 PUBLISHED_CONDITIONS = CLIENT_SRC / "lib" / "publishedConditions.ts"
+#: The conditions/notices.json reader, behind import() for the launch budget, which declares the keys of the files it
+#: reads beside that one: conditions/notice_states.json and conditions/hazard_areas.json.
+PUBLISHED_NOTICES = CLIENT_SRC / "lib" / "publishedNotices.ts"
 HIKING_DETAIL = CLIENT_SRC / "lib" / "hikingDetail.ts"
 PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
+MAP_SHEETS = CLIENT_SRC / "lib" / "mapSheets.ts"
+PODCASTS = CLIENT_SRC / "lib" / "podcasts.ts"
+DBT_PUBLISH = Path(__file__).resolve().parents[1] / "dbt" / "models" / "publish"
 
 # Named as a set rather than left implicit in the calls below, because
 # tests/test_ci_scope.py reads it: the pipeline workflow lists these files
@@ -65,7 +75,7 @@ PACKAGES = CLIENT_SRC / "lib" / "packages.ts"
 # suite, and a narrow list is only honest while it is complete. Add a client
 # file to this module and it belongs here in the same edit - the scope test is
 # what makes forgetting a failure rather than a silent hole.
-CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, HIKING_DETAIL, PACKAGES)
+CLIENT_FILES_READ = (CONFIG, PUBLISHED_CONDITIONS, PUBLISHED_NOTICES, HIKING_DETAIL, PACKAGES, MAP_SHEETS, PODCASTS)
 
 
 def _read(path: Path) -> str:
@@ -151,7 +161,13 @@ def client_conditions_keys() -> dict[str, str]:
         "pattern here rather than leaving this matching nothing - an empty census "
         "passes silently, which is the failure this file exists to prevent."
     )
-    return {key: f"publishedConditions.ts {name}" for name, key in found}
+    keys = {key: f"publishedConditions.ts {name}" for name, key in found}
+    # publishedNotices.ts, which the conditions hook loads behind import(), declares the one key it reads beside
+    # conditions/notices.json there rather than here, so that it adds no launch byte.
+    lazy = re.findall(r"export const (PUBLISHED_\w+_KEY) = '(conditions/[^']+)'", _read(PUBLISHED_NOTICES))
+    assert lazy, "publishedNotices.ts declares no `PUBLISHED_..._KEY = 'conditions/...'`; fix the pattern here"
+    keys.update({key: f"publishedNotices.ts {name}" for name, key in lazy})
+    return keys
 
 
 def client_background_archives() -> dict[str, str]:
@@ -186,6 +202,21 @@ def client_keys() -> dict[str, str]:
         # exporter wrote it (#1284) - so a respelling on either end would
         # read as "nobody has published a route" for ever.
         _string_const(config, "SUGGESTED_HIKES_KEY"): "config.ts SUGGESTED_HIKES_KEY",
+        # The clubs' challenges (#1780). Optional on the phone, which reads
+        # an absent artifact as "no challenges yet" - so a respelling on
+        # either end would read as no club having published one, for ever.
+        _string_const(config, "CHALLENGES_KEY"): "config.ts CHALLENGES_KEY",
+        # The one-time archive of NYNJTC's paper-sheet footprints (#1574),
+        # read at the bucket root like the conditions family and written by
+        # its own script rather than by the publisher - which is why the
+        # publisher's census below is joined by that script's key before the
+        # comparison, and why this file reads a fifth client module.
+        _string_const(_read(MAP_SHEETS), "NYNJTC_MAP_SHEETS_KEY"): "mapSheets.ts NYNJTC_MAP_SHEETS_KEY",
+        # The podcast episodes picked for each hike (#1683), at the root
+        # like the archive above and written the same way - by its own
+        # script on a person's dispatch, never by publish.py - so it joins
+        # the census the same way too.
+        _string_const(_read(PODCASTS), "PODCAST_EPISODES_KEY"): "podcasts.ts PODCAST_EPISODES_KEY",
         # The corridor-view sketch of the other organizations' lines (#1135) -
         # what the opening camera draws so the whole network shows without
         # fetching the whole-file artifact, which no client declares a key
@@ -228,6 +259,15 @@ def client_keys() -> dict[str, str]:
     # profile only when a chart opens - which is exactly why a rename would
     # go unnoticed here until somebody opened a day hike.
     keys.update(client_graph_cell_keys())
+
+    # One hike's prose (#1473), named per hike by `suggestedHikeDetailKey`.
+    # THE QUIETEST 404 IN THIS FILE, quieter even than the graph cells: a
+    # missing detail is indistinguishable from a publisher who said nothing
+    # more, which is a state the screen was deliberately built around. So a
+    # spelling drift between the exporter's DETAIL_KEY and config.ts's builder
+    # would 404 every hike's prose forever, on every phone, and NOTHING would
+    # look wrong - not a console error, not an empty list, not a suite.
+    keys.update(client_suggested_hike_detail_keys())
 
     for poi_type in client_poi_types():
         keys[poi_format.format(type=poi_type)] = f"config.ts poiKey('{poi_type}')"
@@ -273,6 +313,30 @@ def client_graph_cell_keys(cell: str = "n41w075") -> dict[str, str]:
     return keys
 
 
+#: The hike whose detail both halves of the suggested-hikes contract name.
+#: Arbitrary and shared, the way `n41w075` is for the graph cells: the
+#: question is the SPELLING either side builds, not which hike it is.
+SAMPLE_HIKE_NUMBER = "50"
+
+
+def client_suggested_hike_detail_keys(number: str = SAMPLE_HIKE_NUMBER) -> dict[str, str]:
+    """The key `suggestedHikeDetailKey` builds for one hike, read from its
+    template literal rather than restated - a third copy of the spelling is
+    the thing this file guards against. The other end is the `published`
+    fixture below, which writes export_suggested_hikes.DETAIL_KEY's own
+    answer for the same hike."""
+    source = _read(CONFIG)
+    match = re.search(
+        r"export const suggestedHikeDetailKey = \([^)]*\)[^`]*`([^`]+)`",
+        source,
+        re.DOTALL,
+    )
+    assert match, "config.ts no longer defines suggestedHikeDetailKey where this test can read it"
+    key = match.group(1).replace("${id}", number)
+    assert "${" not in key, f"suggestedHikeDetailKey's template has a placeholder this test does not fill: {match.group(1)}"
+    return {key: f"config.ts suggestedHikeDetailKey('{number}')"}
+
+
 @pytest.fixture
 def published(tmp_path, monkeypatch) -> set[str]:
     """The keys a fully-populated pipeline run would upload.
@@ -309,7 +373,16 @@ def published(tmp_path, monkeypatch) -> set[str]:
     # The suggested hikes (#1290): one manifest, one root artifact, the
     # shape highlights_manifest.json takes.
     (tmp_path / "suggested_hikes_manifest.json").write_text(json.dumps(manifest_entry("suggested_hikes.json")))
+    # ...and one hike's prose beside it (#1473), named by the exporter's own
+    # DETAIL_KEY rather than by a spelling typed here, so this end of the
+    # contract cannot drift from the exporter either.
+    detail_name = export_suggested_hikes.DETAIL_KEY.format(id=SAMPLE_HIKE_NUMBER)
+    (tmp_path / "suggested_hikes_detail_manifest.json").write_text(
+        json.dumps({"artifacts": {detail_name: manifest_entry(detail_name)}, "generated_at": "2026-09-15T00:00:00Z"})
+    )
     (tmp_path / "spurs_manifest.json").write_text(json.dumps(manifest_entry("spurs.json")))
+    # The clubs' challenges (#1780): highlights_manifest.json's shape.
+    (tmp_path / "challenges_manifest.json").write_text(json.dumps(manifest_entry("challenges.json")))
     # The tombstones (#673). This fixture is "one of every artifact" and was
     # missing this one, so the key looked unpublished the moment the client
     # started asking for it (#831) - publish.collect_artifacts has emitted it
@@ -432,6 +505,38 @@ def published(tmp_path, monkeypatch) -> set[str]:
     return set(publish.collect_artifacts())
 
 
+def dbt_exposure_keys() -> set[str]:
+    """Every key a dbt writer's exposure names (`config.meta.r2_keys`), read from the
+    publish folder's YAML - the same files publish.collect_dbt_phone_files
+    reads through dbt's manifest, so no third spelling."""
+    keys: set[str] = set()
+    for path in sorted(DBT_PUBLISH.glob("*.yml")):
+        for exposure in yaml.safe_load(path.read_text(encoding="utf-8")).get("exposures") or []:
+            keys.update(((exposure.get("config") or {}).get("meta") or {}).get("r2_keys") or [])
+    assert keys, f"No exposure in {DBT_PUBLISH} names an r2_key; the reader above matched nothing."
+    return keys
+
+
+#: Client keys only a dbt writer writes: a 404 on a bucket the exporters
+#: still publish (production until the cutover), so each must be
+#: one the client reads as optional and falls back from. conditions/notices.json
+#: (#1805) is: lib/useConditions.ts keeps the panel on
+#: atc_updates.json and nynjtc_alerts.json while it is absent. Named rather
+#: than derived, so a second dbt-only key is a decision somebody writes here.
+#: conditions/notice_states.json is too: lib/publishedNotices.ts reads a 404 as no states' shapes, and
+#: the planned-hike panel then shows no state-wide notice.
+#: conditions/hazard_areas.json is too: lib/publishedNotices.ts reads a 404 as no answer, and
+#: chrome/noticesPanel.tsx then draws the hazard areas from notices.json where that file has reached the phone.
+#: conditions/trail_closures.json is too: lib/publishedNotices.ts reads a 404 as no answer,
+#: keeping the copy the phone already holds, and the map draws no club closure it does not hold.
+DBT_ONLY_CLIENT_KEYS = {
+    "conditions/notices.json",
+    "conditions/notice_states.json",
+    "conditions/hazard_areas.json",
+    "conditions/trail_closures.json",
+}
+
+
 def test_every_key_the_app_fetches_is_a_key_the_pipeline_publishes(published):
     """The whole point of the file, in one assertion.
 
@@ -440,7 +545,17 @@ def test_every_key_the_app_fetches_is_a_key_the_pipeline_publishes(published):
     both real and neither is fetched by this build - while a client asking
     for something the pipeline does not write is a 404 on a mountain.
     """
-    missing = {key: asked_by for key, asked_by in client_keys().items() if key not in published}
+    # Everything publish.py writes, plus the two keys a script writes on a
+    # person's dispatch rather than through publish.py: the archive
+    # (archive_nynjtc_sheet_extents.py) and the podcast list
+    # (export_podcasts.py, #1683). Joined here rather than folded into
+    # collect_artifacts(), because neither is part of a release.
+    written = published | {archive_nynjtc_sheet_extents.ARCHIVE_KEY, export_podcasts.PODCASTS_KEY}
+    # And the keys the dbt writers publish on OURHIKE_PHONE_FILES=dbt, which
+    # the exporters' census above cannot see (DBT_ONLY_CLIENT_KEYS says which
+    # client keys only they write, and the test below holds that list).
+    written |= dbt_exposure_keys()
+    missing = {key: asked_by for key, asked_by in client_keys().items() if key not in written}
 
     assert not missing, (
         "The app fetches keys publish.py does not write. A key in this bucket "
@@ -517,6 +632,8 @@ def test_this_is_actually_reading_the_client(published):
     keys = client_keys()
 
     assert "trails.geojson" in keys
+    assert archive_nynjtc_sheet_extents.ARCHIVE_KEY in keys
+    assert export_podcasts.PODCASTS_KEY in keys
     assert "poi_shelter.geojson" in keys
     assert "conditions/closures.json" in keys
     assert "dem.pmtiles" in keys
@@ -524,3 +641,17 @@ def test_this_is_actually_reading_the_client(published):
     assert len(keys) >= 12
     assert len(client_background_archives()) == 3
     assert len(published) >= 15
+
+
+def test_a_client_key_only_dbt_writes_is_one_the_client_can_do_without(published):
+    """The keys the app fetches that only a dbt writer publishes, against the
+    list a person wrote down: each is a 404 on production until the cutover,
+    so a new one needs the client to fall back from it, and a line above."""
+    written = published | {archive_nynjtc_sheet_extents.ARCHIVE_KEY, export_podcasts.PODCASTS_KEY}
+    dbt_only = {key for key in client_keys() if key not in written and key in dbt_exposure_keys()}
+    assert dbt_only == DBT_ONLY_CLIENT_KEYS, (
+        "The client keys only a dbt writer publishes have changed. Each is a 404 on a "
+        "bucket the exporters publish, so the client has to read it as optional; say "
+        "how in DBT_ONLY_CLIENT_KEYS's comment and update the set.\n"
+        f"  now: {sorted(dbt_only)}\n  listed: {sorted(DBT_ONLY_CLIENT_KEYS)}"
+    )

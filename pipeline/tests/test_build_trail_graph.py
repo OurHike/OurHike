@@ -27,6 +27,7 @@ fail by connecting MORE is not obviously an improvement.
 import json
 
 import pytest
+from pyproj import Geod
 
 import build_trail_graph as graph_builder
 
@@ -149,6 +150,25 @@ def test_a_closed_trail_is_never_routable_and_the_refusal_is_counted():
     # A router that paths down a trail NYS OPRHP marks closed is the failure
     # this assertion exists to prevent.
     assert all(edge["trail_id"] != "oprhp_trails:9" for edge in graph["edges"])
+
+
+def test_a_club_line_is_drawn_and_never_an_edge():
+    """nearby_trails.geojson carries the clubs' own lines with `line_kind` 'club', and none routes,
+    even where it meets a network line end to end, until a dedupe step has checked it against the network."""
+    network = _feature([(LON, LAT), (LON + 0.01, LAT)])
+    club = _feature(
+        [(LON + 0.01, LAT), (LON + 0.02, LAT)],
+        feature_id="fltc_flt_main:abc",
+        source="fltc_flt_main",
+        trail_status=None,
+        line_kind="club",
+    )
+
+    graph, stats = _build(network, club)
+
+    assert stats["lines_routable"] == 1
+    assert stats["refused"]["club_line"] == 1
+    assert all(edge["trail_id"] != "fltc_flt_main:abc" for edge in graph["edges"])
 
 
 def test_closed_matching_ignores_case_and_padding_because_stewards_publish_both():
@@ -339,6 +359,27 @@ def test_edge_lengths_are_metres_and_roughly_the_ground_distance():
     assert 700 < graph["edges"][0]["length_m"] < 950
 
 
+def _geodesic_kilometre(lon, lat, azimuth):
+    """Two points 1,000 m apart along `azimuth` on the WGS84 ellipsoid, placed with pyproj's Geod."""
+    end_lon, end_lat, _ = Geod(ellps="WGS84").fwd(lon, lat, azimuth, 1000.0)
+    return [(lon, lat), (end_lon, end_lat)]
+
+
+@pytest.mark.parametrize(
+    ("lon", "lat", "azimuth", "conus_albers_m"),
+    [(-149.9, 61.2, 0, 887.73), (LON, LAT, 90, 992.04)],
+    ids=["a north-south kilometre at Anchorage, Alaska", "an east-west kilometre at Harriman, New York"],
+)
+def test_an_edges_length_m_is_its_wgs84_geodesic_not_its_epsg5070_length(lon, lat, azimuth, conus_albers_m):
+    """The maintainer, 2026-10-06: EPSG:5070 is equal-area for the lower 48 only, and its metre is not
+    the ground's. These two kilometres read `conus_albers_m` there (measured 2026-10-06 with pyproj), which is what
+    length_m published before; the phone sums length_m for a route's miles and its Naismith time."""
+    graph, _ = _build(_feature(_geodesic_kilometre(lon, lat, azimuth)))
+
+    (edge,) = graph["edges"]
+    assert edge["length_m"] == pytest.approx(1000.0, abs=0.005), f"EPSG:5070 reads {conus_albers_m} m"
+
+
 def test_an_empty_collection_builds_an_empty_graph_rather_than_failing():
     graph, stats = graph_builder.build({"type": "FeatureCollection", "features": []})
 
@@ -484,3 +525,69 @@ def test_write_artifact_splits_geometry_out_and_the_manifest_binds_the_pair(tmp_
     # The licence gate travels with the derivation - publish.py holds BOTH
     # halves back on the same reaches_hikers check as their parent's.
     assert sidecar["sources"] == {"oprhp_trails": {"reaches_hikers": False}}
+
+
+def _split_one_piece_at_a_time(line, points):
+    """The cutter as it was before #1659, kept here as the reference: one
+    `shapely.ops.substring` call per piece. `_split_all` has to reproduce it
+    exactly, because edge geometry and length feed a day hike's distance."""
+    from shapely.geometry import LineString
+    from shapely.ops import substring
+
+    cuts = [
+        distance
+        for distance in (line.project(point) for point in points)
+        if graph_builder.NODE_QUANT_M < distance < line.length - graph_builder.NODE_QUANT_M
+    ]
+    if not cuts:
+        return [line]
+    bounds = [0.0] + sorted(cuts) + [line.length]
+    pieces = []
+    for start, end in zip(bounds, bounds[1:]):
+        if end - start <= graph_builder.NODE_QUANT_M:
+            continue
+        piece = substring(line, start, end)
+        if isinstance(piece, LineString) and piece.length > 0:
+            pieces.append(piece)
+    return pieces or [line]
+
+
+def test_split_all_matches_shapely_ops_substring_to_the_bit_on_awkward_lines():
+    import random
+
+    from shapely.geometry import LineString, Point
+
+    rng = random.Random(1659)
+    lines, cut_points = [], []
+    for _ in range(300):
+        x, y = rng.uniform(0, 1e5), rng.uniform(0, 1e5)
+        coordinates = [(x, y)]
+        for _ in range(rng.randint(1, 40)):
+            if rng.random() < 0.1:
+                coordinates.append(coordinates[-1])  # a zero-length segment
+            else:
+                x, y = x + rng.uniform(-60, 60), y + rng.uniform(-60, 60)
+                coordinates.append((x, y))
+        line = LineString(coordinates)
+        points = []
+        for _ in range(rng.randint(0, 8)):
+            kind = rng.random()
+            if kind < 0.5:
+                points.append(line.interpolate(rng.uniform(0, line.length)))
+            elif kind < 0.6:
+                points.append(Point(line.coords[rng.randrange(len(line.coords))]))  # a cut on a vertex
+            elif kind < 0.7:
+                points.append(line.interpolate(rng.uniform(0, graph_builder.NODE_QUANT_M)))  # inside the end margin
+            elif kind < 0.8 and points:
+                points.append(points[-1])  # the same cut twice
+            else:
+                points.append(Point(x + rng.uniform(-30, 30), y + rng.uniform(-30, 30)))  # off the line
+        lines.append(line)
+        cut_points.append(points)
+
+    batched = graph_builder._split_all(lines, cut_points)
+
+    assert len(batched) == len(lines)
+    for line, points, pieces in zip(lines, cut_points, batched):
+        expected = _split_one_piece_at_a_time(line, points)
+        assert [list(piece.coords) for piece in pieces] == [list(piece.coords) for piece in expected]

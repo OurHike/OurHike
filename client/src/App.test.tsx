@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { FIT_PADDING } from './map/MapView'
+import { FIT_PADDING } from './map/fitPadding'
 import { TRAIL_BADGE_LAYER_ID } from './map/trailBadges'
 import { BLAZE_UNTAKEN_LAYER_ID } from './map/style'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
@@ -8,6 +8,7 @@ import { get, getMany, set, setMany, update } from 'idb-keyval'
 import App from './App'
 import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { loadMapEngine } from './map/mapEngineLoader'
+import { preloadScreens } from './screens/deferred'
 // The shared helper this file's own copy became (#331) - two other suites had
 // written the same wait by hand, and one of them had written it wrong.
 import { liveMap } from './test/liveMap'
@@ -65,6 +66,11 @@ beforeEach(async () => {
   // before the deferral. After this file's `vi.mock('maplibre-gl', ...)`, so
   // the engine closes over the mock rather than the real library.
   await loadMapEngine()
+  // And the screens that arrive through import() (#1302), as appHarness.ts
+  // does: without it the first test of a cold run raced the map screen's
+  // chunk and missed the "trail map" region (2 of 9 isolated runs here,
+  // 2026-10-16, each the first after a pause).
+  await preloadScreens()
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
   // `getMany` follows whatever `get` is doing right now, so #1303's one
   // transaction in lib/trailData.ts reads this file's store like every other
@@ -244,11 +250,16 @@ describe('App shell', () => {
     await screen.findByRole('region', { name: /trail map/i })
   })
 
-  it('opens on the whole corridor once the steps are done, the map screen view', async () => {
+  it('opens on the whole United States once the steps are done, not the A.T. corridor', async () => {
     // The camera assertion #721 made about the backdrop map, moved to the map
-    // a hiker now actually gets. `CORRIDOR_BOUNDS` unchanged: what first run
-    // opens on is still the whole trail, which is the claim the first step
-    // makes in words.
+    // a hiker now actually gets, and widened on 2026-09-30: "We should start
+    // showing the entire US, not just the at corridor" - the maintainer. This
+    // was [[-84.73, 34.2], [-68.3, 46.34]], the A.T.'s own extent.
+    //
+    // CORRIDOR_BOUNDS still exists and still holds those numbers; what moved
+    // is only the opening camera, which is UNITED_STATES_BOUNDS now. The test
+    // below that hands the elevation chart its `wholeTrailBounds` is the other
+    // half of that split and must keep answering the corridor.
     const user = userEvent.setup()
     render(<App />)
 
@@ -257,8 +268,8 @@ describe('App shell', () => {
     const map = await liveMap()
 
     expect(map.options.bounds).toEqual([
-      [-84.73, 34.2],
-      [-68.3, 46.34],
+      [-125.0, 24.5],
+      [-66.9, 49.4],
     ])
   })
 
@@ -659,17 +670,19 @@ describe('App shell', () => {
     expect(survivor.zoom).toBe(15)
   })
 
-  it('opens on the whole corridor when there is no view to come back to', async () => {
+  it('opens on the whole United States when there is no view to come back to', async () => {
     returningHiker()
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     // Before a fix or a pan the app genuinely does not know where the hiker
-    // is, and the whole trail is the honest opening answer.
+    // is, and everything it covers is the honest opening answer. That argument
+    // did not change when the frame widened on 2026-09-30 - it is why the
+    // frame is the whole country rather than a guess at a region.
     expect((await liveMap()).options.bounds).toEqual([
-      [-84.73, 34.2],
-      [-68.3, 46.34],
+      [-125.0, 24.5],
+      [-66.9, 49.4],
     ])
   })
 
@@ -870,10 +883,16 @@ describe('App shell', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // No GPS in jsdom, so the tap is refused and opens the location sheet
+    // (#1563) - words are the place, when there is nothing else, the same
+    // words a hiker with no fix would type - and the tap that was refused
+    // files by itself when the sheet closes.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.type(await screen.findByTestId('location-words'), 'by the gap')
+    await user.click(screen.getByTestId('location-sheet-done'))
     // The tap files (#1133); this closes the window, which is when the
     // account question is asked rather than during the receipt's undo.
-    await user.click(screen.getByTestId('report-done'))
+    await user.click(await screen.findByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{ payload: { type: string } }>
@@ -896,18 +915,26 @@ describe('App shell', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // No GPS in jsdom, so the tap is refused and opens the location sheet
+    // (#1563) - words are the place, when there is nothing else, the same
+    // words a hiker with no fix would type - and the tap that was refused
+    // files by itself when the sheet closes.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.type(await screen.findByTestId('location-words'), 'by the gap')
+    await user.click(screen.getByTestId('location-sheet-done'))
     // The tap files (#1133); this closes the window, which is when the
     // account question is asked rather than during the receipt's undo.
-    await user.click(screen.getByTestId('report-done'))
+    await user.click(await screen.findByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{
-        payload: { lat?: number; lon?: number }
+        payload: { lat?: number; lon?: number; place_words?: string }
       }>
       expect(queued).toHaveLength(1)
       expect(queued[0].payload.lat).toBeUndefined()
       expect(queued[0].payload.lon).toBeUndefined()
+      // The words travel instead, as prose (#1563) - never a pin.
+      expect(queued[0].payload.place_words).toBe('by the gap')
     })
   })
 
@@ -1105,6 +1132,9 @@ describe('App shell', () => {
 })
 
 describe('taking a trail (#1306)', () => {
+  // ATC's own spelling, because this is a feature off the map: the rename
+  // to "Appalachian Trail" is map/trailsInView.ts's, on the way to the
+  // legend row clicked below (lib/trails.ts's PUBLISHED_ALIASES).
   const AT_LINE = {
     properties: {
       id: 'centerline:chain:0',
@@ -1146,7 +1176,6 @@ describe('taking a trail (#1306)', () => {
         properties: {
           ...AT_LINE.properties,
           mark: 'trail-mark-AT',
-          chip: 'blaze-chip-White',
         },
         geometry: { type: 'Point', coordinates: [200, 400] },
       },
@@ -1179,9 +1208,7 @@ describe('taking a trail (#1306)', () => {
     })
 
     await user.click(await screen.findByRole('button', { name: /legend/i }))
-    await user.click(
-      await screen.findByRole('button', { name: /Appalachian National Scenic Trail/ }),
-    )
+    await user.click(await screen.findByRole('button', { name: /Appalachian Trail/ }))
 
     expect(
       await screen.findByRole('dialog', { name: 'Which long hike?' }),

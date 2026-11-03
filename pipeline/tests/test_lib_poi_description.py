@@ -11,6 +11,7 @@ import pytest
 from lib.poi_description import (
     MIN_PART_FT,
     NEARBY_ORDER,
+    NearbyMember,
     describe_campsite,
     describe_parking,
     describe_privy,
@@ -402,6 +403,26 @@ def test_water_composes_from_nothing_because_there_is_nothing_to_compose_from():
     assert nearby_parts([WATER]) == [{"phrase": "water", "distance_ft": 294.0}]
 
 
+def test_a_stated_water_distance_carries_where_atc_got_it_and_a_measured_part_does_not():
+    """ATC's distance-to-water is the one part that is a published figure
+    rather than a measured position, and 42 of the 305 figures the reference
+    file publishes are a steward's round-number estimate (#1728). The
+    provenance rides that part - CSI's own value, verbatim - so the phone can
+    write "water ~150 ft" for an estimate and "water 339 ft" for a
+    measurement. A measured part has no provenance beyond its coordinates and
+    publishes no key rather than a null, the export's omit-don't-write rule."""
+    stated = NearbyMember("water", 120.0, {}, "OSA_Field_Estimate")
+
+    assert nearby_parts([stated, MULTI_SEAT_PRIVY]) == [
+        {"phrase": "a multi-seat moldering privy", "distance_ft": 136.8},
+        {"phrase": "water", "distance_ft": 120.0, "source": "OSA_Field_Estimate"},
+    ]
+    # A bare three-tuple is still a member - the shape every other test here
+    # builds - and so is a NearbyMember with nothing to say about provenance.
+    assert nearby_parts([WATER]) == [{"phrase": "water", "distance_ft": 294.0}]
+    assert nearby_parts([NearbyMember("water", 294.0, {}, None)]) == [{"phrase": "water", "distance_ft": 294.0}]
+
+
 def test_a_member_type_this_release_has_no_phrase_for_is_still_named():
     """A fallback rather than a skip: a type a later release publishes would
     otherwise vanish from the only line that mentions it, which is the bug this
@@ -499,20 +520,21 @@ def test_a_stream_point_says_where_it_is_and_who_mapped_it():
     assert "ft" not in sentence
 
 
-def test_a_crossing_says_the_trail_crosses_it():
+def test_a_leftover_crossing_flag_no_longer_says_the_trail_crosses_it():
+    """#1674 removed crossings. A stream point is site water now, whatever a
+    stale property says, so it is described as the site's water."""
     assert describe_stream_point({"name": "Stony Brook", "sources": ["nhd"], "crossing": True}) == (
-        "Where the trail crosses Stony Brook. Mapped by USGS."
+        "Stony Brook, where it runs closest to the site. Mapped by USGS."
     )
 
 
 def test_an_unnamed_stream_still_composes():
     assert describe_stream_point({"sources": ["osm"]}).startswith("A stream, where it runs closest")
-    assert describe_stream_point({"sources": ["nhd"], "crossing": True}).startswith("Where the trail crosses a stream.")
 
 
 def test_a_merged_point_names_both_hydrographies():
-    assert describe_stream_point({"name": "Stony Brook", "sources": ["nhd", "osm"], "crossing": True}) == (
-        "Where the trail crosses Stony Brook. Mapped by USGS and OpenStreetMap contributors."
+    assert describe_stream_point({"name": "Stony Brook", "sources": ["nhd", "osm"]}) == (
+        "Stony Brook, where it runs closest to the site. Mapped by USGS and OpenStreetMap contributors."
     )
 
 
@@ -521,8 +543,10 @@ def test_the_flow_claim_is_attributed_to_whoever_made_it():
     classified the reach, so the sentence names that one rather than
     spreading the claim over both - and the other is still credited."""
     assert describe_stream_point(
-        {"name": "Stony Brook", "sources": ["nhd", "osm"], "flow": "perennial", "flow_source": "nhd", "crossing": True}
-    ) == ("Where the trail crosses Stony Brook. USGS maps it as year-round. Also mapped by OpenStreetMap contributors.")
+        {"name": "Stony Brook", "sources": ["nhd", "osm"], "flow": "perennial", "flow_source": "nhd"}
+    ) == (
+        "Stony Brook, where it runs closest to the site. USGS maps it as year-round. Also mapped by OpenStreetMap contributors."
+    )
     assert describe_stream_point({"sources": ["osm"], "flow": "intermittent", "flow_source": "osm"}) == (
         "A stream, where it runs closest to the site. OpenStreetMap contributors tag it as seasonal."
     )

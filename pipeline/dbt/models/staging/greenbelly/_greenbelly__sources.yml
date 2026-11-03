@@ -1,0 +1,60 @@
+version: 2
+
+sources:
+  - name: greenbelly
+    description: >
+      Shelter capacities from Greenbelly's hiker-maintained list, joined to
+      ATC's shelters by name and reviewed into git as
+      reference/shelter_capacity.json, landed by the extract's
+      _shared/greenbelly/ folder (pipeline/extract/_shared/greenbelly/
+      shelter_capacity.py). build_shelter_capacity.py builds the file; the
+      scrape is not rebuilt here (an edge rule).
+    schema: raw
+    config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      meta:
+        cadence: monthly
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
+    tables:
+      - name: raw_greenbelly__shelter_capacity
+        data_tests:
+          # Rows sharing base_greenbelly__shelter_capacity's key must be exact copies.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/shelter_capacity.json'", "poi_id"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
+          - elementary.volume_anomalies:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          reference/shelter_capacity.json's `shelters`, one row per ATC
+          shelter (280 on 2026-10-01), keyed by the POI id the shelter
+          publishes under. 262 carry a capacity; a shelter the list names only
+          as half of a pair, or not at all, carries none and a reason
+          (`unresolved`), and publishes no capacity rather than a guessed one.
+          Key: poi_id, 280 of 280.
+        columns:
+          - name: poi_id
+            description: The published POI id, `atc_shelters:<GlobalID>`, as the identity ledger holds it.
+            data_tests: [not_null, unique]
+          - name: capacity
+            description: How many the shelter sleeps, where the list says. Null means nobody has said, never zero.

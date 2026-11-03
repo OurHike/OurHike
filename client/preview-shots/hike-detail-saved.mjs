@@ -38,6 +38,11 @@ export default async function drive(page) {
 
   await page.getByRole('button', { name: /Wapiti to Docs Knob/ }).click()
   await page.getByRole('heading', { name: 'Wapiti to Docs Knob' }).waitFor()
+  // The prose arrives on its own object since #1473, and the saving below
+  // re-renders this screen - so wait for it to have landed before pressing
+  // anything, or the shot catches a half-arrived screen for a reason that
+  // has nothing to do with what it is evidence for.
+  await page.getByText(/says 8\.5 mi/).waitFor()
 
   // Save, then log. Each press is awaited on the label the NEXT state
   // shows, so the second click cannot land on the first render - the

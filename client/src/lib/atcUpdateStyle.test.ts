@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
+import { createExpression, latest } from '@maplibre/maplibre-gl-style-spec'
 import {
-  ATC_TAPE_IMAGE_ID,
+  ATC_UPDATE_BAND_LAYER_IDS,
   ATC_UPDATE_CASING_WIDTH,
   ATC_UPDATE_COLOR,
   ATC_NOTICE_CASING_RATIO,
@@ -8,21 +9,21 @@ import {
   ATC_NOTICE_GLYPH_BOX,
   ATC_NOTICE_ICON_ID,
   ATC_UPDATE_LAYER_ID,
-  ATC_UPDATE_LINE_WIDTH,
   ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
   ATC_UPDATE_POINT_MIN_ZOOM,
-  ATC_UPDATE_TAPE_CADENCE,
-  ATC_UPDATE_TAPE_SCALE,
+  ATC_UPDATE_SPACING_SCALE,
   buildAtcUpdateLayers,
 } from './atcUpdateStyle'
 import {
   CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
-  CLOSURE_TAPE_CADENCE,
-  CLOSURE_TAPE_IMAGE_ID,
-  CLOSURE_TAPE_WIDTH,
-  tapeRedFraction,
+  CLOSURE_INK,
+  CLOSURE_LAYER_ID,
+  CLOSURE_PAPER_WIDTH,
+  buildClosureLayers,
+  closureCrossesId,
+  closureLayerIds,
 } from './closureStyle'
 
 // #461 asks that an ATC update not look like an OurHike closure. This file
@@ -33,18 +34,29 @@ import {
 // learned something false. Both mean the trail is shut. Whose claim it is
 // gets answered where a hiker can read an answer - the banner and the sheet.
 
-function paintOf(id: string): Record<string, unknown> {
-  const layer = buildAtcUpdateLayers('atc-updates').find(
-    (candidate) => candidate.id === id,
+/** The field day sheet's paper and the closure ink, the ground and ink every
+ *  band here is built with. */
+const GROUND = '#ffffff'
+const INK = CLOSURE_INK
+
+/** The ATC's layers as the style builds them. */
+const atcLayers = () => buildAtcUpdateLayers('atc-updates', GROUND, INK)
+
+/** A zoom-dependent `symbol-spacing` as MapLibre's own engine resolves it, so
+ *  a cadence this file compares is one the map would draw rather than an
+ *  expression that merely looks equal. */
+function spacingAt(value: unknown, zoom: number): number {
+  const compiled = createExpression(
+    value as never,
+    latest.layout_symbol['symbol-spacing'] as never,
   )
-  expect(layer).toBeDefined()
-  return (layer as { paint: Record<string, unknown> }).paint
+  if (compiled.result === 'error')
+    throw new Error('symbol-spacing is not a valid expression')
+  return compiled.value.evaluate({ zoom }, {} as never) as number
 }
 
 function layoutOf(id: string): Record<string, unknown> {
-  const layer = buildAtcUpdateLayers('atc-updates').find(
-    (candidate) => candidate.id === id,
-  )
+  const layer = atcLayers().find((candidate) => candidate.id === id)
   expect(layer).toBeDefined()
   return (layer as { layout: Record<string, unknown> }).layout
 }
@@ -90,92 +102,87 @@ function drawnWidthAt(id: string, zoom: number): number {
 const WALKING_ZOOM = 13
 
 describe('an ATC band carries the same weight as a closure', () => {
-  it('is exactly as wide', () => {
-    // A narrower band would be the severity distinction this module refuses
-    // to draw, arrived at by drift rather than by decision.
-    expect(ATC_UPDATE_LINE_WIDTH).toBe(CLOSURE_TAPE_WIDTH)
-    expect(paintOf(ATC_UPDATE_LAYER_ID)['line-width']).toBe(CLOSURE_TAPE_WIDTH)
+  it('is the closure\u2019s own crossed-out mark, layer for layer', () => {
+    // ONE MARK FOR "DO NOT WALK THIS" (features/NEARBY_TRAILS.md 3), as a
+    // claim about the layer stack rather than about a few numbers: the band
+    // is buildClosureLayers itself, so the paper, the trace, the cross size,
+    // the halo and every colour are the closure's by construction (#1677).
+    // Only the ids and the chain's spacing may differ.
+    const band = atcLayers().slice(0, ATC_UPDATE_BAND_LAYER_IDS.length)
+    const closure = buildClosureLayers('atc-updates', { ground: GROUND, ink: INK })
+    const strip = (layers: typeof band) =>
+      layers.map((layer) => {
+        const {
+          id: _id,
+          layout,
+          ...rest
+        } = layer as {
+          id: string
+          layout?: Record<string, unknown>
+        }
+        return { ...rest, layout: { ...layout, 'symbol-spacing': undefined } }
+      })
+
+    expect(strip(band)).toEqual(strip(closure))
   })
 
-  it('is the same colour', () => {
+  it('draws its point notice in the closure red', () => {
     expect(ATC_UPDATE_COLOR).toBe(CLOSURE_COLOR)
   })
 
-  it('lays down the same amount of red', () => {
-    // The equality that makes "the same tape, slower" true rather than merely
-    // intended. Scaling only the pitch would leave the ATC's band a third as
-    // red as a closure's, and a fainter barrier reads as a softer claim -
-    // which is the severity distinction this module exists to refuse.
-    expect(tapeRedFraction(ATC_UPDATE_TAPE_CADENCE)).toBeCloseTo(
-      tapeRedFraction(CLOSURE_TAPE_CADENCE),
-      6,
-    )
-  })
-
   it('holds its notice mark lighter than the casing the band used to carry', () => {
-    // WHAT IS LEFT OF CLOSURE_CASING_WIDTH, which now paints nothing on this
-    // map: the tape edges its own stripes, and #1071 took the point notice off
-    // the disc that was the other consumer. It survives as the weight both
-    // successors are held under, and this is the ATC half of that comparison.
+    // WHAT IS LEFT OF CLOSURE_CASING_WIDTH, which paints nothing on this map
+    // now. It survives as the weight the notice's hairline is held under.
     expect(ATC_UPDATE_CASING_WIDTH).toBe(CLOSURE_CASING_WIDTH)
     expect(ATC_NOTICE_CASING_WIDTH).toBeLessThan(ATC_UPDATE_CASING_WIDTH)
   })
 })
 
 describe('and is still distinguishable', () => {
-  it('runs a different cadence, and paints from its own image', () => {
-    expect(ATC_UPDATE_TAPE_CADENCE).not.toEqual(CLOSURE_TAPE_CADENCE)
-    expect(paintOf(ATC_UPDATE_LAYER_ID)['line-pattern']).toBe(ATC_TAPE_IMAGE_ID)
-    expect(ATC_TAPE_IMAGE_ID).not.toBe(CLOSURE_TAPE_IMAGE_ID)
-  })
-
-  it('is still tape rather than a solid line', () => {
-    // A solid line is what a trail looks like, and the one thing this must
-    // never resemble is a route. Held on the cadence rather than on the
-    // pixels: a stripe with no thickness or no gap is not tape.
-    expect(ATC_UPDATE_TAPE_CADENCE.stripe).toBeGreaterThan(0)
-    expect(ATC_UPDATE_TAPE_CADENCE.pitch).toBeGreaterThan(ATC_UPDATE_TAPE_CADENCE.stripe)
-  })
-
-  it('reads as the same treatment at a glance', () => {
-    // The intended reading order is "barrier" first and "whose" second, so the
-    // two cadences are the SAME tape at different scales rather than two
-    // unrelated patterns - which here is not a resemblance but an identity,
-    // since one is derived from the other by a single factor.
-    expect(ATC_UPDATE_TAPE_CADENCE.stripe).toBe(
-      CLOSURE_TAPE_CADENCE.stripe * ATC_UPDATE_TAPE_SCALE,
-    )
-    expect(ATC_UPDATE_TAPE_CADENCE.pitch).toBe(
-      CLOSURE_TAPE_CADENCE.pitch * ATC_UPDATE_TAPE_SCALE,
-    )
+  it('spaces its crosses further apart than a closure\u2019s, at every zoom', () => {
+    // The same crosses, the same size, at twice the spacing: "barrier" at a
+    // glance, and "whose" only on a closer look. Compared zoom by zoom, so a
+    // cadence that matched up close and drifted far out is caught.
+    const atc = layoutOf(closureCrossesId(ATC_UPDATE_LAYER_ID))['symbol-spacing']
+    const closure = (
+      buildClosureLayers('c', { ground: GROUND, ink: INK }).find(
+        (layer) => layer.id === closureCrossesId(CLOSURE_LAYER_ID),
+      ) as { layout: Record<string, unknown> }
+    ).layout['symbol-spacing']
+    for (const zoom of [11, 12, 13, 16]) {
+      expect(spacingAt(atc, zoom), `z${zoom}`).toBe(
+        ATC_UPDATE_SPACING_SCALE * spacingAt(closure, zoom),
+      )
+    }
   })
 
   it('is coarser than a closure, never finer', () => {
     // The direction matters: the ATC's band is the slower of the two, so a
     // change that inverted the scale would swap which feed reads as the
     // detailed one without failing anything above.
-    expect(ATC_UPDATE_TAPE_SCALE).toBeGreaterThan(1)
+    expect(ATC_UPDATE_SPACING_SCALE).toBeGreaterThan(1)
   })
 })
 
 describe('the layers themselves', () => {
-  it('draws the band as one layer, with no casing beneath it', () => {
-    // Same reason buildClosureLayers does: a solid casing under tape with
-    // transparent gaps shows through every one of them.
-    const ids = buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)
-
-    expect(ids.filter((id) => id === ATC_UPDATE_LAYER_ID)).toHaveLength(1)
-    expect(ids.some((id) => id.includes('casing'))).toBe(false)
+  it('names the band\u2019s layers the way the closure names its own', () => {
+    expect(ATC_UPDATE_BAND_LAYER_IDS).toEqual(closureLayerIds(ATC_UPDATE_LAYER_ID))
+    for (const layer of atcLayers()) {
+      expect(
+        (layer as { paint?: Record<string, unknown> }).paint?.['line-pattern'],
+      ).toBeUndefined()
+    }
   })
 
   it('binds them all to the source it was given', () => {
-    for (const layer of buildAtcUpdateLayers('atc-updates')) {
+    for (const layer of atcLayers()) {
       expect((layer as { source: string }).source).toBe('atc-updates')
     }
   })
 
   it('does not collide with the closure layer ids', () => {
-    expect(ATC_UPDATE_LAYER_ID).not.toBe('closure-band')
+    const closureIds = closureLayerIds(CLOSURE_LAYER_ID)
+    for (const id of ATC_UPDATE_BAND_LAYER_IDS) expect(closureIds).not.toContain(id)
   })
 })
 
@@ -189,7 +196,7 @@ describe('a point notice', () => {
     // and that made the ATC's own word about the trail the smallest mark on a
     // map full of 38px waypoint pins. src/test/atcAlertProminence.test.ts is
     // where that comparison is actually held, against the pins themselves.
-    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
+    expect(ATC_UPDATE_POINT_DRAWN_WIDTH).toBeGreaterThan(CLOSURE_PAPER_WIDTH)
     expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)).toBe(
       ATC_UPDATE_POINT_DRAWN_WIDTH,
     )
@@ -216,7 +223,7 @@ describe('a point notice', () => {
     const atSeam = drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, ATC_UPDATE_POINT_MIN_ZOOM)
 
     expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 0)).toBe(atSeam)
-    expect(atSeam).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
+    expect(atSeam).toBeGreaterThan(CLOSURE_PAPER_WIDTH)
   })
 
   it('stops growing once everything else has', () => {
@@ -232,7 +239,7 @@ describe('a point notice', () => {
     // #1071. A MapLibre circle has no paint property that empties its middle,
     // so the open centre is not something the old layer could have been tuned
     // into - it is why this became a symbol layer at all.
-    const layer = buildAtcUpdateLayers('atc-updates').find(
+    const layer = atcLayers().find(
       (candidate) => candidate.id === ATC_UPDATE_POINT_LAYER_ID,
     )
 
@@ -258,12 +265,10 @@ describe('a point notice', () => {
   it('stops the point at the seam, like every other mark on the map (#1292)', () => {
     // The opening camera shows trail lines only, by the maintainer's call of
     // 2026-09-08. The tape stays: a closure band is trail line, not a mark.
-    const point = buildAtcUpdateLayers('atc-updates').find(
+    const point = atcLayers().find(
       (candidate) => candidate.id === ATC_UPDATE_POINT_LAYER_ID,
     )
-    const band = buildAtcUpdateLayers('atc-updates').find(
-      (candidate) => candidate.id === ATC_UPDATE_LAYER_ID,
-    )
+    const band = atcLayers().find((candidate) => candidate.id === ATC_UPDATE_LAYER_ID)
     expect(point?.minzoom).toBe(ATC_UPDATE_POINT_MIN_ZOOM)
     expect(band).not.toHaveProperty('minzoom')
   })
@@ -271,17 +276,16 @@ describe('a point notice', () => {
   it('draws from the same source as the bands', () => {
     // A `line` layer ignores Point features and a `symbol` layer ignores
     // lines, so one source carries both - and the tap has one place to look.
-    const layers = buildAtcUpdateLayers('atc-updates')
+    const layers = atcLayers()
 
-    expect(layers.map((layer) => (layer as { source: string }).source)).toEqual([
-      'atc-updates',
-      'atc-updates',
-    ])
+    expect(new Set(layers.map((layer) => (layer as { source: string }).source))).toEqual(
+      new Set(['atc-updates']),
+    )
   })
 
-  it('is drawn last, over both bands', () => {
-    expect(buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)).toEqual([
-      ATC_UPDATE_LAYER_ID,
+  it('is drawn last, over the whole band', () => {
+    expect(atcLayers().map((layer) => layer.id)).toEqual([
+      ...ATC_UPDATE_BAND_LAYER_IDS,
       ATC_UPDATE_POINT_LAYER_ID,
     ])
   })
@@ -314,14 +318,15 @@ describe('the mark geometry (#1071, and the triangle since 2026-09-10)', () => {
     // Deleted rather than dimmed (#1071): a 54px wash of red behind an open
     // burst is the solid disc back in a softer spelling. Asserted as an absence
     // because the next pass to reach for "make it louder" will reach here.
-    const ids = buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)
+    const ids = atcLayers().map((layer) => layer.id)
 
-    // Two, not the three this asserted when it was written: the casing line
-    // under the band went the same way and for the same reason, once the band
-    // became tape with transparent gaps for a casing to show through.
-    expect(ids).toHaveLength(2)
+    // Five: the band's paper, trace, chain and far mark, and the point. The
+    // count has been three, two, three, four and five as the band was
+    // respelled around it - which is exactly why this test names the GLOW
+    // rather than trusting a count to catch its return.
+    expect(ids).toHaveLength(5)
     expect(ids.some((id) => id.includes('halo'))).toBe(false)
-    for (const layer of buildAtcUpdateLayers('atc-updates')) {
+    for (const layer of atcLayers()) {
       expect(
         (layer as { paint?: Record<string, unknown> }).paint?.['circle-blur'],
       ).toBeUndefined()

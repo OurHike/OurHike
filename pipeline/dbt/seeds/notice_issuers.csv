@@ -1,0 +1,9 @@
+source_key,field,code,label,why
+utah_ffsl_fire_restrictions,Agency,1-FFSL,State of Utah,"The layer's own coded-value domain on Agency, read 2026-10-15: FFSL compiles the orders of USFS (19 of its 24 active rows that day), BLM (3), the Ute Indian Tribe (1), the Navajo Nation (1) and its own (1), each row naming its issuer in Agency"
+utah_ffsl_fire_restrictions,Agency,2-USFS,US Forest Service,"As 1-FFSL"
+utah_ffsl_fire_restrictions,Agency,3-BLM,Bureau of Land Management,"As 1-FFSL"
+utah_ffsl_fire_restrictions,Agency,4-NPS,National Park Service,"As 1-FFSL"
+utah_ffsl_fire_restrictions,Agency,5-Navajo,Navajo Nation,"As 1-FFSL"
+utah_ffsl_fire_restrictions,Agency,6-Ute,Ute Indian Tribe,"As 1-FFSL"
+idpr_emergency_route_closures,JURISDICTION,,,"IDPR compiles the orders of the national forests, BLM and the state's own agencies; JURISDICTION names the issuer in words on each row ('Boise National Forest', 'BLM', 'Idaho Department of Lands'; 41 rows read 2026-10-15), so no code needs a label. It was staged as the row's locality until the rule 21, an issuer and not a place"
+idpr_area_restrictions,JURISDICTION,,,"As idpr_emergency_route_closures (16 rows read 2026-10-15)"

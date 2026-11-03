@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { MockMap } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   attachTrailsInView,
   badgeFeatures,
   badgePlateWidth,
+  badgeTextSize,
+  indexObstacles,
   trailsInView,
 } from './trailsInView'
 import {
@@ -18,13 +20,16 @@ import {
 import {
   BADGE_ANCHOR_PROPERTY,
   TRAIL_BADGE_ANCHORS,
-  BADGE_CHIP_PROPERTY,
+  BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
+  TRAIL_BADGE_MARK_GAP,
+  TRAIL_BADGE_MARK_SIZE,
   TRAIL_BADGE_SOURCE_ID,
-  blazeChipImageId,
+  stewardMarkImageId,
   trailMarkImageId,
 } from './trailBadges'
 import { POI_LAYER_ID } from './poiLayers'
+import { SETTLE_MS } from './settle'
 import { WARNING_LAYER_ID } from './warningLayers'
 
 // Which named trails the map is drawing, and where each through-route's
@@ -59,6 +64,36 @@ function line(
   }
 }
 
+/** A map framed on a real place, for a line whose badge depends on WHERE
+ *  it is (#1781): the box map/longTrailNames.ts checks a vertex against.
+ *  One degree either side, so the mock's degree-space frame holds it. */
+function mapOver(
+  [lon, lat]: [number, number],
+  byLayer: Record<string, unknown[]>,
+): MockMap {
+  const map = mapWith(byLayer)
+  map.bounds = { west: lon - 1, south: lat - 1, east: lon + 1, north: lat + 1 }
+  return map
+}
+
+/** Three vertices a tenth of a degree apart, starting at a real place. */
+function near([lon, lat]: [number, number]): Array<[number, number]> {
+  return [
+    [lon, lat],
+    [lon + 0.1, lat + 0.05],
+    [lon + 0.2, lat + 0.1],
+  ]
+}
+
+/** Places inside each trail's box, measured 2026-09-30 (the rows' `extent`
+ *  in pipeline/reference/trail_name_aliases.json). */
+const IN_KENTUCKY: [number, number] = [-84.2, 37.6] // Sheltowee Trace
+const IN_MICHIGAN: [number, number] = [-85.9, 44.3] // North Country Trail
+const IN_GEORGIA: [number, number] = [-84.3, 34.7] // Benton MacKaye
+const IN_ALABAMA_TALLADEGA: [number, number] = [-85.7, 33.6] // Pinhoti
+const IN_ARKANSAS: [number, number] = [-93.5, 34.7] // Ouachita
+const IN_UTAH: [number, number] = [-111.7, 37.9] // Great Western Trail
+
 /** The A.T. through Harriman, every vertex in view. */
 const AT = line(
   'Appalachian National Scenic Trail',
@@ -85,7 +120,7 @@ describe('trailsInView', () => {
     })
 
     expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
-      'Appalachian National Scenic Trail',
+      'Appalachian Trail',
       'Long Path',
       'Ramapo-Dunderberg Trail',
     ])
@@ -168,14 +203,38 @@ describe('trailsInView', () => {
     expect(trailsInView(map as unknown as MapLibreMap)).toEqual([])
   })
 
-  it('lets the data’s own name beat the registry’s', () => {
-    // ATC's feed says "Appalachian National Scenic Trail"; the registry says
-    // "Appalachian Trail". The feed is what a hiker reads on the badge, and
-    // the fallback must never quietly rename a trail that arrived named.
+  it('shows ATC’s centerline as "Appalachian Trail", not its federal designation', () => {
+    // ATC publishes "Appalachian National Scenic Trail" on all 3,025
+    // centerline segments (the count is in map/trailLabels.test.ts). Nobody
+    // says that on a sheet headed "Appalachian Trail", so the badge and the
+    // legend row - both measured off this one pass - read the registry's
+    // name instead (lib/trails.ts's PUBLISHED_ALIASES, the maintainer's ask
+    // of 2026-09-16). The fixture stays as ATC spells it: the point of the
+    // test is that the rename happens here rather than in the data.
     const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
 
     expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
-      'Appalachian National Scenic Trail',
+      'Appalachian Trail',
+    ])
+  })
+
+  it('leaves a steward’s own name exactly as published, however formal it looks', () => {
+    // The other half of the rename and the one worth guarding: only a
+    // spelling the registry already knows is swapped. A name this app does
+    // not recognise is somebody else's data, and renaming it would be a
+    // claim about that data nobody here can stand behind - the same refusal
+    // `trailForName` makes about substrings, where "Long Path Link Trail" is
+    // a different trail from the Long Path and must not wear its mark.
+    const map = mapWith({
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
+        line('Ramapo-Dunderberg Trail', 'oprhp_trails', [[-74.06, 41.21]], 'Red'),
+        line('Long Path Link Trail', 'oprhp_trails', [[-74.05, 41.22]], 'Aqua'),
+      ],
+    })
+
+    expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
+      'Long Path Link Trail',
+      'Ramapo-Dunderberg Trail',
     ])
   })
 
@@ -190,7 +249,7 @@ describe('trailsInView', () => {
 
     const trails = trailsInView(map as unknown as MapLibreMap)
     expect(trails.map((t) => [t.name, t.throughRoute, t.chosen])).toEqual([
-      ['Appalachian National Scenic Trail', true, true],
+      ['Appalachian Trail', true, true],
       ['Zebra Spur', false, true],
       ['Arden-Surebridge Trail', false, false],
       ['Beech Trail', false, false],
@@ -328,6 +387,189 @@ describe('trailsInView', () => {
   })
 })
 
+describe("a long trail inside somebody else's layer (#1543)", () => {
+  // THE DEFECT THIS WHOLE TABLE FIXES. Badge status was
+  // `BADGE_SOURCES.includes(source)`, so ATC's centerline and NYNJTC's Long
+  // Path feed were the only two trails on the map that could wear a pill -
+  // while Sheltowee Trace, Ozark Highlands, Bartram, Ouachita, Maah Daah Hey
+  // and the Tahoe Rim were already downloaded and drawn as anonymous lines
+  // inside the Forest Service's nationwide layer.
+
+  it('earns a badge and its steward mark, from a source that badges nothing by itself', () => {
+    const map = mapOver(IN_KENTUCKY, {
+      [BLAZE_LAYER_ID]: [
+        line(
+          'SHELTOWEE TRACE',
+          'usfs_trails',
+          // In Kentucky since #1781: the badge now checks where the line is
+          // as well as what it is called, so a fixture has to be inside the
+          // trail's box. What is under test here is still the NAME.
+          near(IN_KENTUCKY),
+          'White',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].throughRoute).toBe(true)
+    expect(trails[0].longTrail).toBe('sheltowee')
+
+    const { features } = badgeFeatures(trails)
+    expect(features).toHaveLength(1)
+    expect(features[0].properties?.[BADGE_MARK_PROPERTY]).toBe(
+      stewardMarkImageId('sheltowee'),
+    )
+  })
+
+  it('draws ONE badge for a trail that arrives under several spellings', () => {
+    // THE DEFECT A SCREENSHOT CAUGHT AND THE SUITE DID NOT. The first frame
+    // of this shipping put NORTH COUNTRY TRAIL and NORTH COUNTRY NATIONAL
+    // SCENIC on the map side by side, and PINHOTI beside PINHOTI NRT - the
+    // map telling a hiker there are two trails where there is one. The
+    // dedupe was keyed on the published name; it is keyed on the resolved
+    // trail now.
+    const [one, two, three] = near(IN_MICHIGAN)
+    const map = mapOver(IN_MICHIGAN, {
+      [BLAZE_LAYER_ID]: [
+        line('NORTH COUNTRY TRAIL', 'usfs_trails', [one, two], 'Blue'),
+        line('NORTH COUNTRY NATIONAL SCENIC', 'usfs_trails', [two, three], 'Blue'),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].longTrail).toBe('nct')
+    expect(badgeFeatures(trails).features).toHaveLength(1)
+  })
+
+  it("prints the steward's name rather than the publisher's shout-case", () => {
+    // USFS publishes a GIS table's spelling. A hiker reads a trail's name.
+    for (const [published, printed, where] of [
+      ['SHELTOWEE TRACE', 'Sheltowee Trace', IN_KENTUCKY],
+      ['BENTON MACKAYE', 'Benton MacKaye Trail', IN_GEORGIA],
+      ['PINHOTI NRT', 'Pinhoti Trail', IN_ALABAMA_TALLADEGA],
+      ['NORTH COUNTRY NATIONAL SCENIC', 'North Country Trail', IN_MICHIGAN],
+      ['OUACHITA NRT', 'Ouachita Trail', IN_ARKANSAS],
+    ] as const) {
+      const map = mapOver(where, {
+        [BLAZE_LAYER_ID]: [line(published, 'usfs_trails', near(where), 'White')],
+      })
+      const trails = trailsInView(map as unknown as MapLibreMap)
+      expect(trails[0].name).toBe(printed)
+    }
+  })
+
+  it('keeps the A.T. takeable when the Forest Service piece is seen first', () => {
+    // THE REGRESSION THE DEDUPE NEARLY SHIPPED. Since the key became the
+    // resolved trail, the A.T. arrives as two pieces: ATC's `centerline`,
+    // which is takeable, and USFS's own APPALACHIAN TRAIL segments, which
+    // are not. queryRenderedFeatures does not promise an order, so the merge
+    // has to prefer the takeable piece rather than the first one - otherwise
+    // a frame where USFS came back first left the A.T. un-takeable, which is
+    // the whole subject of #1306.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'APPALACHIAN TRAIL',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.1, 41.25],
+          ],
+          'White',
+        ),
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [-74.1, 41.25],
+            [-74.0, 41.3],
+          ],
+          'White',
+          { id: 'centerline:chain:0' },
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].name).toBe('Appalachian Trail')
+    expect(trails[0].takeable).toBe(true)
+    expect(trails[0].source).toBe('centerline')
+    // And it wears ATC's own mark, not a steward copy keyed off usfs_trails.
+    expect(badgeFeatures(trails).features[0].properties?.[BADGE_MARK_PROPERTY]).toBe(
+      trailMarkImageId('centerline'),
+    )
+  })
+
+  it('leaves a connector in the same layer as an ordinary line', () => {
+    // The refusal is what keeps the badge count honest: USFS publishes
+    // SHELTOWEE CONNECTOR and SHELTOWEE SPUR beside the trail itself.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'SHELTOWEE CONNECTOR',
+          'usfs_trails',
+          [
+            [-74.2, 41.2],
+            [-74.0, 41.3],
+          ],
+          'White',
+        ),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].throughRoute).toBe(false)
+    expect(badgeFeatures(trails).features).toEqual([])
+  })
+
+  it('badges a trail with no steward marker as a plate and a name', () => {
+    // 7 of the 20 badged trails have no marker anybody could find. They are
+    // still trails worth naming on a map.
+    const map = mapOver(IN_UTAH, {
+      [BLAZE_LAYER_ID]: [
+        line('GREAT WESTERN TRAIL', 'usfs_trails', near(IN_UTAH), 'White'),
+      ],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails[0].throughRoute).toBe(true)
+    const { features } = badgeFeatures(trails)
+    expect(features[0].properties?.[BADGE_MARK_PROPERTY]).toBe('')
+    expect(features[0].properties?.[BADGE_FIT_PROPERTY]).toBe('full')
+  })
+})
+
+describe('a long trail name somewhere the trail is not (#1781)', () => {
+  // THE DEFECT. The Forest Service publishes "BARTRAM" for the Georgia-North
+  // Carolina Bartram Trail and for Tuskegee National Forest's own Bartram
+  // trail in Alabama, and a badge keyed on the name alone put the first
+  // trail's name and its steward's marker on the second. Measured 2026-09-30:
+  // usfs_trails:8251537 and :8280457, 7.8 miles at lon -85.65..-85.56, lat
+  // 32.45..32.48.
+  const TUSKEGEE: [number, number] = [-85.65, 32.45]
+  const RABUN_COUNTY: [number, number] = [-83.37, 34.86]
+
+  it('lists the Alabama BARTRAM as an ordinary line, with no badge', () => {
+    const map = mapOver(TUSKEGEE, {
+      [BLAZE_LAYER_ID]: [line('BARTRAM', 'usfs_trails', near(TUSKEGEE), 'Unknown')],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails).toHaveLength(1)
+    expect(trails[0].longTrail).toBeNull()
+    expect(trails[0].throughRoute).toBe(false)
+    expect(badgeFeatures(trails).features).toHaveLength(0)
+  })
+
+  it('still badges the Georgia BARTRAM, which is the trail', () => {
+    const map = mapOver(RABUN_COUNTY, {
+      [BLAZE_LAYER_ID]: [line('BARTRAM', 'usfs_trails', near(RABUN_COUNTY), 'Unknown')],
+    })
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails[0].longTrail).toBe('bartram')
+    expect(trails[0].name).toBe('Bartram Trail')
+    expect(badgeFeatures(trails).features).toHaveLength(1)
+  })
+})
+
 describe('badgeFeatures', () => {
   it('makes one point per through-route with somewhere to sit, carrying the line’s own facts', () => {
     const map = mapWith({
@@ -341,11 +583,13 @@ describe('badgeFeatures', () => {
     expect(features[0].geometry).toEqual({ type: 'Point', coordinates: [-74, 41.3] })
     expect(features[0].properties).toMatchObject({
       id: 'centerline:chain:0',
-      name: 'Appalachian National Scenic Trail',
+      // What the plate prints, so the registry's name rather than ATC's -
+      // and note it beats the feed's `name` the spread carries in, which is
+      // the one property of the line's own facts the badge overrides.
+      name: 'Appalachian Trail',
       source: 'centerline',
       blaze_color: 'White',
       [BADGE_MARK_PROPERTY]: trailMarkImageId('centerline'),
-      [BADGE_CHIP_PROPERTY]: blazeChipImageId('White'),
     })
   })
 
@@ -353,8 +597,9 @@ describe('badgeFeatures', () => {
     expect(
       badgeFeatures([
         {
-          name: 'Appalachian National Scenic Trail',
+          name: 'Appalachian Trail',
           source: 'centerline',
+          longTrail: null,
           blazeColor: 'White',
           throughRoute: true,
           takeable: true,
@@ -367,6 +612,84 @@ describe('badgeFeatures', () => {
       ]).features,
     ).toEqual([])
   })
+
+  it('writes an empty mark id for a source the registry has no mark for', () => {
+    // WHAT THE EMPTY SLOT IS MADE OF. map/trailBadges.ts reads this one
+    // property and renders nothing for an id the style does not hold, so `''`
+    // here is the whole mechanism on the data side. Until 2026-09-29 this
+    // feature also carried a `chip` id and the layer coalesced onto it.
+    const [feature] = badgeFeatures([
+      {
+        name: 'Great Western Trail',
+        source: 'usfs_trails',
+        longTrail: 'gwt',
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: false,
+        anchor: [-93.5, 35.7],
+        badgeFit: 'full',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    // The Great Western Trail earns a badge through map/longTrailNames.ts
+    // and no steward marker was found for it, so the slot is the empty
+    // string - which is the case this whole mechanism exists for.
+    expect(trailMarkImageId('usfs_trails')).toBeNull()
+    expect(feature.properties?.[BADGE_MARK_PROPERTY]).toBe('')
+    expect(Object.keys(feature.properties ?? {})).not.toContain('chip')
+  })
+
+  it('refuses the bare-mark form for a markless trail, since that form IS the mark', () => {
+    // THE ONE WAY THE EMPTY SLOT COULD STILL DRAW NOTHING. An empty mark id
+    // renders as nothing, which is the point - but the bare form asks the
+    // layer for `<mark>-bare`, and for an empty mark that is the string
+    // `-bare`: a NON-empty image id the style does not hold. Measured through
+    // the style-spec parser, that section evaluates to
+    // `{image: '-bare', available: false}` rather than to no image at all, so
+    // the badge would be one unavailable image and no text - and with
+    // `text-optional: false` it draws nothing rather than falling back.
+    //
+    // anchorWithRoom already never picks 'mark' without a mark; this asserts
+    // the same invariant where a test can reach it, because the anchor chooser
+    // is module-private and no source in BADGE_SOURCES lacks a mark.
+    const [feature] = badgeFeatures([
+      {
+        name: 'Great Western Trail',
+        source: 'usfs_trails',
+        longTrail: 'gwt',
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: false,
+        anchor: [-93.5, 35.7],
+        badgeFit: 'mark',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    expect(feature.properties?.[BADGE_FIT_PROPERTY]).toBe('full')
+
+    // A trail that HAS a mark keeps the bare form, which is the fallback the
+    // third preview frame over Harriman exists for.
+    const [marked] = badgeFeatures([
+      {
+        name: 'Appalachian Trail',
+        source: 'centerline',
+        longTrail: null,
+        blazeColor: 'White',
+        throughRoute: true,
+        takeable: true,
+        chosen: true,
+        anchor: [-74, 41.3],
+        badgeFit: 'mark',
+        badgeAnchor: 'left',
+        properties: {},
+      },
+    ]).features
+    expect(marked.properties?.[BADGE_FIT_PROPERTY]).toBe('mark')
+  })
 })
 
 describe('attachTrailsInView', () => {
@@ -378,7 +701,7 @@ describe('attachTrailsInView', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1)
     expect(onChange.mock.calls[0][0].map((t: { name: string }) => t.name)).toEqual([
-      'Appalachian National Scenic Trail',
+      'Appalachian Trail',
     ])
     const pushed = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as { features: unknown[] }
     expect(pushed.features).toHaveLength(1)
@@ -419,7 +742,55 @@ describe('attachTrailsInView', () => {
 
     detach()
     expect(map.listenerCount('idle')).toBe(0)
+    expect(map.listenerCount('render')).toBe(0)
     expect(map.listenerCount('moveend')).toBe(0)
+  })
+})
+
+describe('a list that cannot stay empty while a tile hangs (#1696)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('fills the list and the badge once the map stops drawing, with no idle and no moveend', () => {
+    // THE BUG, as traced 2026-09-26 over Manhattan at z11 with one basemap
+    // tile's request left hanging: measured once at 2.1 s before any line
+    // had drawn, then nothing - `idle` waits on the hung tile, and a phone
+    // got no `moveend` once the lines were in.
+    vi.useFakeTimers()
+    const map = mapWith({ [BLAZE_LAYER_ID]: [] })
+    const onChange = vi.fn()
+    attachTrailsInView(map as unknown as MapLibreMap, onChange)
+    expect(onChange).toHaveBeenLastCalledWith([])
+
+    // The trail lines arrive and draw; the frames stop.
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [AT])
+    map.emit('render')
+    vi.advanceTimersByTime(SETTLE_MS)
+
+    expect(onChange.mock.lastCall?.[0].map((t: { name: string }) => t.name)).toEqual([
+      'Appalachian Trail',
+    ])
+    const pushed = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as { features: unknown[] }
+    expect(pushed.features).toHaveLength(1)
+  })
+
+  it('measures after the frames stop, not on each one', () => {
+    // A pan is dozens of frames, and each measurement here is a rendered
+    // feature query plus the badge's placement search.
+    vi.useFakeTimers()
+    const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
+    attachTrailsInView(map as unknown as MapLibreMap, vi.fn())
+    const afterAttach = map.featureQueries.length
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      map.emit('render')
+      vi.advanceTimersByTime(16)
+    }
+    expect(map.featureQueries.length).toBe(afterAttach)
+
+    vi.advanceTimersByTime(SETTLE_MS)
+    expect(map.featureQueries.length).toBeGreaterThan(afterAttach)
   })
 })
 
@@ -553,22 +924,43 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(taken.chosen).toBe(true)
   })
 
+  /** Five shelters along the trail from x = 38 to x = 230, each a 48 px box,
+   *  the boxes touching: together they cover x = 14 to 254 and leave 136 px
+   *  of clear frame east of them. Measured 2026-09-16 with the plate
+   *  geometry this file also pins below: the full plate's box is 148 px
+   *  wide (130 px of text, 3 left, 9 right, 3 of border and symbol padding
+   *  each side), so it fits in neither the 136 px gap nor anywhere behind
+   *  the row, and the mark's 36 px box fits the gap with room to spare.
+   *  That is the two-rung search this block exists to drive. */
+  const CROWDED = [38, 86, 134, 182, 230].map((x) => pin(x, 400))
+
   it('fans out from the centre to the first vertex with room, and takes the mark where the full plate has none', () => {
-    // A shelter on the trail just short of the middle, its box reaching
-    // from x = 161 to 209. The full plate is some 240 px wide on a 390 px
-    // frame, so no position anywhere keeps it both inside the frame and
-    // clear of that box - hung to either side it runs off an edge, centred
-    // above or below it still spans the pin's column - and the search
-    // falls to the mark. The mark's 36 px box, hung off the right of the
-    // vertex at 228 (33 px from the centre, one vertex nearer than 152 on
-    // the other side), starts at 223.6, clear of the pin by 14 px; at 209
-    // and 171 every position of it touches the box. The margins are the
-    // geometry the placer tests, to the decimal (the fifth preview frame,
-    // 2026-09-08).
+    // The mark goes on 266 - the eighth candidate out from the frame's
+    // centre (195, 422), and the first whose box clears the pins: hung off
+    // the right of that vertex it spans 263.6 to 299.6, clear of the last
+    // pin box by 9.6 px, where at 247 it would start at 244.6 and still be
+    // inside it. The margins are the geometry the placer tests, to the
+    // decimal (the fifth preview frame, 2026-09-08).
+    const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: CROWDED })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.anchor).toEqual([266, 400])
+    expect(at.badgeFit).toBe('mark')
+  })
+
+  it('keeps the name beside a single shelter, which the longer one lost it to', () => {
+    // A row is what it now takes, and this is the pin that used to be
+    // enough on its own: one shelter just short of the middle, box from
+    // x = 161 to 209. ATC's "Appalachian National Scenic Trail" needed a
+    // 240 px plate and had nowhere on a 390 px frame to hang it clear of
+    // that box, so the badge fell to the bare mark and the trail went
+    // unnamed on screen. "Appalachian Trail" needs 144 px (both measured
+    // 2026-09-16, and badgePlateWidth is asserted on below), which fits
+    // beside the pin at the vertex at 228 - so the rename buys back the
+    // name on exactly the screen #1283's third preview frame was about.
     const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
     const [at] = trailsInView(map as unknown as MapLibreMap)
     expect(at.anchor).toEqual([228, 400])
-    expect(at.badgeFit).toBe('mark')
+    expect(at.badgeFit).toBe('full')
   })
 
   it('reads every pin layer placed before the badge, not the waypoints alone', () => {
@@ -583,7 +975,7 @@ describe('the pins in view (#1283, the third preview frame)', () => {
   it('reads the chrome’s bands as the frame too, and lands in the same place', () => {
     // The plate and the tab bar take the top and the foot; the line at
     // y = 400 is between them, so the answer is the one above.
-    const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
+    const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: CROWDED })
     const [at] = trailsInView(map as unknown as MapLibreMap, {
       top: 110,
       right: 0,
@@ -591,7 +983,7 @@ describe('the pins in view (#1283, the third preview frame)', () => {
       left: 0,
     })
     expect(at.badgeFit).toBe('mark')
-    expect(at.anchor).toEqual([228, 400])
+    expect(at.anchor).toEqual([266, 400])
   })
 
   it('hands over the mark on the nearest vertex where not even the mark has room', () => {
@@ -696,9 +1088,272 @@ describe('the pins in view (#1283, the third preview frame)', () => {
   it('estimates the plate wide enough for the name it will carry', () => {
     // Measured on the stand-alone render: 33 characters set 185 px of text;
     // the estimate must not come out narrower than what will be drawn.
+    //
+    // "Appalachian National Scenic Trail" is the CALIBRATION here, not a
+    // name this badge still prints - since 2026-09-16 the A.T.'s plate reads
+    // "Appalachian Trail" (lib/trails.ts). The measured pair is kept because
+    // it is the only chars-to-px datum anybody produced, and the estimator
+    // has to hold for whatever name a steward publishes next, not just for
+    // the four the registry knows.
     expect(badgePlateWidth('Appalachian National Scenic Trail')).toBeGreaterThan(185 + 42)
     expect(badgePlateWidth('A.T.')).toBeLessThan(badgePlateWidth('Long Path'))
     // The mark alone: the mark and its paper, whatever the name.
     expect(badgePlateWidth('Appalachian National Scenic Trail', 'mark')).toBe(32)
+
+    // The two figures the badge-fit tests above reason with, measured
+    // 2026-09-16: the rename took the A.T.'s plate from 240 px to 144 px on
+    // a 390 px frame, which is why one shelter no longer costs the trail its
+    // name and it takes a row of five.
+    expect(badgePlateWidth('Appalachian National Scenic Trail')).toBe(240)
+    expect(badgePlateWidth('Appalachian Trail')).toBe(144)
+  })
+
+  it('reserves no room for a mark on a trail that has none', () => {
+    // THE PLACER'S HALF OF THE EMPTY SLOT. map/trailBadges.ts leaves the mark
+    // slot empty for a source with no registry mark, so measuring the plate as
+    // if the mark and its gap were still there would reserve 28 px that
+    // nothing draws into - and `anchorWithRoom` would refuse anchors that do
+    // in fact fit, dropping the badge on a screen where it had room.
+    //
+    // 28 px exactly: TRAIL_BADGE_MARK_SIZE (18) plus TRAIL_BADGE_MARK_GAP (10).
+    const gap = TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP
+    for (const name of ['Appalachian Trail', 'A.T.', 'Ozark Highlands Trail']) {
+      expect(badgeTextSize(name, 'full', false).width).toBe(
+        badgeTextSize(name, 'full', true).width - gap,
+      )
+      expect(badgePlateWidth(name, 'full', false)).toBe(
+        badgePlateWidth(name, 'full', true) - gap,
+      )
+    }
+    // The same calibration pair as above, so the markless plate has a figure
+    // of its own rather than only a difference: 144 - 28.
+    expect(badgePlateWidth('Appalachian Trail', 'full', false)).toBe(116)
+
+    // The height is the mark's size either way - the plate is one text line
+    // tall whether or not a mark sits in it, which is what keeps a markless
+    // badge the same height as its neighbours.
+    expect(badgeTextSize('Appalachian Trail', 'full', false).height).toBe(
+      TRAIL_BADGE_MARK_SIZE,
+    )
+
+    // A MARK IS STILL ASSUMED BY DEFAULT, so every other test in this file and
+    // every caller that predates the parameter keeps its old answer.
+    expect(badgePlateWidth('Appalachian Trail', 'full')).toBe(144)
+  })
+})
+
+// THE OBSTACLE GRID (#1415)
+//
+// `anchorWithRoom` is `fits x candidates x anchors x obstacles`. It returns
+// on the first position that fits, so the ordinary frame is cheap - but the
+// case it cannot return early from is the one the "always finds a place"
+// fallback exists for: when NOTHING fits, every candidate is tried at every
+// anchor in both fits, and each of those must look at every obstacle to
+// conclude there is no room.
+//
+// These tests hold the index to its contract (a superset, never a subset)
+// and then COUNT the work it removes over the issue's own numbers. The count
+// is not a frame time and is not offered as one - nobody has profiled this
+// on a phone and #1415's `@unvalidated` note stands. It is the arithmetic
+// that decides how much there is to profile.
+describe('indexObstacles', () => {
+  const box = (x: number, y: number, width = 48, height = 48) => ({
+    x1: x,
+    y1: y,
+    x2: x + width,
+    y2: y + height,
+  })
+
+  const overlaps = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) =>
+    a.x1 <= b.x2 && a.x2 >= b.x1 && a.y1 <= b.y2 && a.y2 >= b.y1
+
+  /** A pin every 40 px over a 390x844 phone screen - 200 of them, the order
+   *  #1415 describes as "a few hundred on a shelter-and-spring-lined
+   *  screen". */
+  function pinnedScreen() {
+    const pins = []
+    for (let x = 0; x < 390; x += 40) {
+      for (let y = 0; y < 844; y += 40) pins.push(box(x - 24, y - 24))
+    }
+    return pins
+  }
+
+  it('never loses an overlap - the property the whole thing rests on', () => {
+    const pins = pinnedScreen()
+    const index = indexObstacles(pins)
+
+    // Every query the sweep below makes, checked against the honest answer.
+    let checked = 0
+    for (let x = -60; x < 450; x += 7) {
+      for (let y = -60; y < 900; y += 11) {
+        const query = box(x, y, 225, 32)
+        const truth = pins.some((pin) => overlaps(query, pin))
+        const viaIndex = index.near(query).some((pin) => overlaps(query, pin))
+        expect(viaIndex).toBe(truth)
+        checked += 1
+      }
+    }
+    expect(checked).toBeGreaterThan(5000)
+  })
+
+  it('holds the superset direction for a box projected far off screen', () => {
+    // Coordinates outside the grid's addressable range clamp into the edge
+    // bucket rather than wrapping, so a pin MapLibre projected a long way
+    // off screen is still found rather than silently skipped.
+    const far = box(9_000_000, 9_000_000)
+    const index = indexObstacles([far])
+
+    expect(index.near(box(9_000_000, 9_000_000, 10, 10)).length).toBeGreaterThan(0)
+  })
+
+  it('is empty rather than undefined where nothing was indexed', () => {
+    const index = indexObstacles([])
+
+    expect(index.size).toBe(0)
+    expect(index.near(box(10, 10))).toEqual([])
+  })
+
+  // THE COUNT. CANDIDATE_LIMIT is 600 and TRAIL_BADGE_ANCHORS has 8 entries,
+  // in two fits - 9,600 positions per named trail on the frame where nothing
+  // fits. Half of that (one fit) is swept below, twice, at two pin densities,
+  // because the saving is a ratio between the plate's footprint and the pin
+  // spacing rather than a constant.
+  function examinations(spacingPx: number) {
+    const pins = []
+    for (let x = 0; x < 390; x += spacingPx) {
+      for (let y = 0; y < 844; y += spacingPx) pins.push(box(x - 24, y - 24))
+    }
+    const index = indexObstacles(pins)
+    const plate = badgeTextSize('Appalachian National Scenic Trail', 'full')
+
+    let examined = 0
+    let positions = 0
+    for (let candidate = 0; candidate < 600; candidate += 1) {
+      const at = { x: (candidate * 13) % 390, y: (candidate * 29) % 844 }
+      for (let anchor = 0; anchor < 8; anchor += 1) {
+        examined += index.near(box(at.x, at.y, plate.width, plate.height)).length
+        positions += 1
+      }
+    }
+    return { pins: pins.length, positions, before: positions * pins.length, examined }
+  }
+
+  it('cuts what a nothing-fits frame examines, most where the pins are thinnest', () => {
+    // A pin every 40 px is denser than the 64 px bucket, so each plate's
+    // buckets hold two or three and the saving is at its smallest.
+    const dense = examinations(40)
+    expect(dense.positions).toBe(4800)
+    expect(dense.pins).toBe(220)
+    expect(dense.before).toBe(1_056_000)
+    // MEASURED 2026-09-15: 1,056,000 -> 147,360, a factor of 7.2.
+    // Stated as a factor rather than an order: #1415 guessed the saving was
+    // the whole product, and it is not - the plate's own footprint is a real
+    // floor and the grid cannot go under it.
+    expect(dense.examined).toBeLessThan(dense.before / 5)
+
+    // A pin every 80 px - still "a few hundred" by #1415's description, and
+    // the shape of an ordinary shelter-and-spring screen rather than a wall.
+    const ordinary = examinations(80)
+    expect(ordinary.pins).toBe(55)
+    // MEASURED the same day: 264,000 -> 33,504, a factor of 7.9.
+    expect(ordinary.examined).toBeLessThan(ordinary.before / 6)
+
+    // The ratio improves as the field thins, which is the property worth
+    // pinning: the grid's cost tracks what the plate actually covers, where
+    // the scan's tracked how many pins were on the screen at all.
+    expect(ordinary.examined / ordinary.before).toBeLessThan(
+      dense.examined / dense.before,
+    )
+  })
+
+  it('leaves the floor where it belongs - what the plate itself covers', () => {
+    // Not zero, and it should not be. A 225 px name lies across four 64 px
+    // buckets and a pin box reaches 48 px, so the pins in those buckets are
+    // genuinely candidates for overlapping it. The index removes the pins
+    // elsewhere on the screen, which is all it claims to do.
+    const { examined, positions } = examinations(40)
+
+    expect(examined).toBeGreaterThan(positions)
+  })
+})
+
+describe('two badges wanting the same ground', () => {
+  /** Two through-routes whose lines run within a few pixels of each other, so
+   *  every anchor either wants overlaps the other's plate. `centerline` and
+   *  `nynjtc_long_path` are the two BADGE_SOURCES, so both earn a badge
+   *  without needing the name table. */
+  function twoOnTopOfEachOther() {
+    return mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [-74.1, 41.5],
+            [-74.0, 41.5],
+          ],
+          'White',
+          { id: 'centerline:chain:0' },
+        ),
+        line(
+          'Long Path',
+          'nynjtc_long_path',
+          [
+            [-74.1, 41.5001],
+            [-74.0, 41.5001],
+          ],
+          'Aqua',
+        ),
+      ],
+    })
+  }
+
+  it('drops the second badge rather than stacking it on the first', () => {
+    // WHAT THIS IS FOR. Until 2026-09-30 `anchorWithRoom` never returned null:
+    // its last resort placed the badge at TRAIL_BADGE_ANCHORS[0] whatever was
+    // already there, because #1374 made this layer always-drawn against PINS.
+    // Below the pin seam there are no pins, so every badge took that fallback
+    // and they stacked. CI's whole-US frame showed roughly fifteen plates
+    // written through each other, which names no trail at all - so the reason
+    // #1374 gave for always drawing had stopped applying to what it produced.
+    const trails = trailsInView(twoOnTopOfEachOther() as unknown as MapLibreMap)
+    expect(trails).toHaveLength(2)
+
+    const anchored = trails.filter((trail) => trail.anchor !== null)
+    expect(anchored).toHaveLength(1)
+    // The one that is dropped keeps everything except the pill: it is still
+    // listed, still named, still tappable on its own line.
+    const dropped = trails.find((trail) => trail.anchor === null)
+    expect(dropped?.throughRoute).toBe(true)
+    expect(dropped?.name).toBeTruthy()
+  })
+
+  it('gives the badge to the takeable trail, whichever order the features arrive in', () => {
+    // queryRenderedFeatures promises no order, and a badge is now an obstacle
+    // to the next one - so without a decided order, which trail keeps its pill
+    // would be a coin toss that changes between settles. The same class of
+    // defect as the takeable-piece merge above, one layer up.
+    const forward = twoOnTopOfEachOther()
+    const reversed = twoOnTopOfEachOther()
+    reversed.renderedFeatures.set(
+      BLAZE_LAYER_ID,
+      [...(reversed.renderedFeatures.get(BLAZE_LAYER_ID) as unknown[])].reverse(),
+    )
+
+    const keeps = (map: MockMap) =>
+      trailsInView(map as unknown as MapLibreMap).find((trail) => trail.anchor !== null)
+        ?.name
+
+    expect(keeps(forward)).toBe('Appalachian Trail')
+    expect(keeps(reversed)).toBe('Appalachian Trail')
+  })
+
+  it('still places a lone badge with nowhere clear, because that half of #1374 stands', () => {
+    // The change is narrow on purpose: a plate over a WAYPOINT is readable and
+    // is still drawn. Only a plate over another PLATE is refused. With one
+    // trail on screen there is nothing to collide with, so it is placed.
+    const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.anchor).not.toBeNull()
   })
 })

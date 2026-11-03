@@ -1,0 +1,175 @@
+---
+// docs.ourhike.org/data/how/ - "How the data is built", in plain words, in
+// front of dbt's own docs (#1805 — dlt → dbt re-platform as one
+// go/no-go change: the maintainer chose "All three as drawn", 2026-10-15,
+// from q24_frames.html's part 3). One paragraph, the three steps as a
+// diagram, then the link into dbt's docs app at /data/ for anyone who wants
+// the tables.
+//
+// DBT'S APP STAYS AT /data/. The frame suggested moving it one step down; it
+// stays, because every deep link into it is /data/#/... and the docs host's
+// redirects (.github/scripts/docs_host.py) carry those fragments to the same
+// address. This page is the site's, under /data/ like /data/quality/, and
+// both workflows allow it there beside quality/.
+//
+// THE NUMBERS ARE COUNTED, NOT TYPED (src/lib/dataBuilt.mjs), from the
+// checkout the site is built from. The cadence sentence is Reasoned: notices
+// are fetched on a 4-hourly schedule and the conditions lane on an hourly
+// one, which ran at a median of one run per 4 h when measured
+// (publish-conditions.yml, 2026-09-25) - so "several times a day", not
+// "hourly"; and trail data reaches phones only in a release a maintainer
+// merges (pipeline/DATA_RELEASES.md §4), which #1793 set at about monthly.
+import { resolve } from 'node:path'
+import Base from '../../../layouts/Base.astro'
+import DataNav from '../../../components/DataNav.astro'
+import { countModels, countSourceFolders } from '../../../lib/dataBuilt.mjs'
+
+const repo = resolve(process.cwd(), '..')
+const sources = countSourceFolders(resolve(repo, 'pipeline/extract'))
+const models = countModels(resolve(repo, 'pipeline/dbt/models'))
+const n = (x: number) => x.toLocaleString('en-US')
+
+const title = 'How the data is built — OurHike'
+const description =
+  'Where OurHike’s trail data comes from, how it is checked, and how it becomes the files your phone downloads.'
+---
+
+<Base title={title} description={description}>
+  <DataNav />
+  <div class="wrap how">
+    <header class="how__intro">
+      <p class="eyebrow">docs.ourhike.org/data</p>
+      <h1>How the data is built</h1>
+      <p class="how__lede">
+        OurHike does not survey trails. It gathers what parks, forests, agencies and
+        trail clubs publish, checks it, and turns it into the files your phone
+        downloads. Closures, warnings and other notices are rebuilt several times a
+        day. Trail lines, waypoints and elevation reach your phone in a release,
+        about once a month.
+      </p>
+    </header>
+
+    <ol class="how__flow" aria-label="From what organizations publish to your phone">
+      <li class="how__step">
+        <b>1 · Gather</b>
+        <span>
+          {
+            sources === null
+              ? 'What each organization publishes'
+              : `What ${n(sources)} organizations and shared sources publish`
+          }, from national agencies to local trail clubs, fetched as published into a
+          private store.
+        </span>
+      </li>
+      <li class="how__arrow" aria-hidden="true"></li>
+      <li class="how__step">
+        <b>2 · Build and check</b>
+        <span>
+          {models === null ? 'dbt models' : `${n(models)} dbt models`} clean and join
+          it, and every build runs its checks. How the last ones went is on <a
+            href="/data/quality/">Data quality</a
+          >.
+        </span>
+      </li>
+      <li class="how__arrow" aria-hidden="true"></li>
+      <li class="how__step">
+        <b>3 · Phone files</b>
+        <span>
+          Map tiles and the files the app downloads, such as <code
+            >trail_closures.json</code
+          >, published at data.ourhike.org.
+        </span>
+      </li>
+    </ol>
+
+    <p><a class="btn how__cta" href="/data/">Every table, in dbt’s docs →</a></p>
+
+    <p class="how__note">
+      The counts on this page are taken from OurHike’s source code each time the
+      page is built: the organizations’ folders under <code>pipeline/extract/</code>
+      and the models under <code>pipeline/dbt/models/</code>.
+    </p>
+  </div>
+</Base>
+
+<style>
+  .how {
+    padding-block: 28px 64px;
+  }
+
+  .how__intro h1 {
+    font-size: clamp(32px, 4.5vw, 42px);
+    font-weight: 700;
+    margin: 10px 0 12px;
+  }
+
+  .how__lede {
+    max-width: 66ch;
+    font-size: 16.5px;
+    line-height: 1.6;
+    color: var(--fg-2);
+  }
+
+  /* The three steps: a column with arrows down on a phone, one row with
+     arrows across from 820px. */
+  .how__flow {
+    list-style: none;
+    margin: 28px 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .how__step {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-1);
+    border-radius: 14px;
+    padding: 16px 18px;
+    display: grid;
+    gap: 6px;
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--fg-2);
+  }
+
+  .how__step b {
+    color: var(--fg-1);
+    font-size: 16px;
+  }
+
+  .how__arrow {
+    align-self: center;
+    color: var(--fg-3);
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .how__arrow::before {
+    content: '↓';
+  }
+
+  @media (min-width: 820px) {
+    .how__flow {
+      flex-direction: row;
+      align-items: center;
+    }
+
+    .how__step {
+      flex: 1 1 0;
+      align-self: stretch;
+    }
+
+    .how__arrow::before {
+      content: '→';
+    }
+  }
+
+  .how__note {
+    margin-top: 28px;
+    max-width: 66ch;
+    font-size: 13px;
+    color: var(--fg-3);
+  }
+</style>

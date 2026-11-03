@@ -70,7 +70,12 @@
 import { useId, useRef, type ReactNode } from 'react'
 
 import { blazePaintColor } from '../lib/blaze'
-import type { DraftStatus, DayHikeDraft } from '../lib/dayHikeDraft'
+import {
+  routeTitle,
+  type DraftStatus,
+  type DayHikeDraft,
+  type DraftTurn,
+} from '../lib/dayHikeDraft'
 import { routeRows, turnMarks, type RouteRow } from '../lib/dayHikeRows'
 import {
   STOP_FAR_OFF_COURSE_FEET,
@@ -85,13 +90,10 @@ import {
   type LabelLayerKey,
 } from '../lib/mapLabelLayers'
 import type { PaceEstimate } from '../lib/pace'
-import {
-  formatDistance,
-  formatElevation,
-  formatShortDistance,
-  MIN_STATED_FEET,
-} from '../lib/units'
+import { legLabel } from '../lib/planDisplay'
+import { formatDistance, formatElevation, formatShortDistance } from '../lib/units'
 import type { UnitSystem } from '../lib/units'
+import { formatWaterDistance } from '../lib/waterProvenance'
 import { HIKER_MODE_LABELS } from '../lib/hikerMode'
 import { StepRail } from './StepRail'
 import { SheetGripLoader } from './SheetGripLoader'
@@ -146,16 +148,6 @@ export interface DayHikePanelProps {
  * cannot resolve, and inventing "Reeves -> somewhere" here would be the same
  * invention one screen earlier.
  */
-export function routeTitle(status: DraftStatus): string {
-  if (status.kind !== 'routed' || status.legs.length === 0) return 'A new day hike'
-  const named = status.legs.map((leg) => leg.name).filter((name) => name !== null)
-  if (named.length === 0) return 'A new day hike'
-  if (named.length === 1) return named[0] as string
-  const first = named[0] as string
-  const last = named[named.length - 1] as string
-  if (first === last) return first
-  return `${first} to ${last}`
-}
 
 /** "3 legs · 1 shelter · 2 campsites", with zero clauses omitted. */
 function routeSummary(status: DraftStatus, stops: readonly DayHikeStop[]): string {
@@ -171,6 +163,11 @@ function routeSummary(status: DraftStatus, stops: readonly DayHikeStop[]): strin
   }
   return parts.length > 0 ? parts.join(' · ') : 'Nothing picked yet'
 }
+
+// routeTitle lives in lib/dayHikeDraft.ts since #1735, beside DraftStatus;
+// the shell reads it from there so this panel can be deferred. Re-exported
+// for the readers that knew it here.
+export { routeTitle }
 
 export function DayHikePanel({
   draft,
@@ -200,8 +197,19 @@ export function DayHikePanel({
   const sheet = useRef<HTMLElement | null>(null)
   const bodyId = useId()
   const routed = status.kind === 'routed' ? status : null
-  const rows = routed === null ? [] : routeRows(routed.legs, stops, routed.gaps)
-  const turns = turnMarks(draft)
+  // THE TAPS LIST EVEN BEFORE THE WALK ROUTES, which is the half `DraftStatus`
+  // cannot supply. Two states reach it and the second is the one that matters:
+  // one tap is `started`, not `routed`, so there are no legs to place it
+  // against; and an `unroutable` draft has taps the network cannot join, where
+  // removing one is the whole remedy and a hiker with no delete control is
+  // stuck. `turnMarks` reads the draft directly for both. `empty` is the only
+  // state with nothing to list, and it is nothing because it has no taps.
+  const turns: DraftTurn[] =
+    routed?.turns ??
+    (status.kind === 'empty'
+      ? []
+      : turnMarks(draft).map((mark) => ({ afterLegs: 0, ...mark })))
+  const rows = routeRows(routed?.legs ?? [], stops, routed?.gaps ?? [], turns)
   const stopping = stoppingMinutes(stops)
 
   return (
@@ -331,41 +339,20 @@ export function DayHikePanel({
                     row={row}
                     units={units}
                     onRemoveStop={onRemoveStop}
+                    onRemoveTurn={onRemoveTurn}
                   />
                 ))}
               </ol>
             )}
           </div>
 
-          {/* The turns, apart from the ordered list and deliberately so -
-            lib/dayHikeRows.ts explains that a tap in the middle of a leg has
-            no honest mile, and a row with no mile in a mile-ordered list is a
-            row in the wrong place. Numbered to match the marks on the map. */}
-          {turns.length > 0 && (
-            <div className="day-hike-panel__turns">
-              <p className="day-hike-panel__section-head">Your taps</p>
-              <ul className="day-hike-panel__turn-list">
-                {turns.map((turn) => (
-                  <li key={turn.ordinal}>
-                    <button
-                      type="button"
-                      className="day-hike-panel__turn"
-                      onClick={() => onRemoveTurn(turn.ordinal)}
-                    >
-                      <span aria-hidden="true">{turn.label}</span>
-                      <span className="day-hike-panel__sr">
-                        Remove tap {turn.label}
-                        {turn.endsStretch ? ', which ends a stretch' : ''}
-                      </span>
-                      <span className="day-hike-panel__turn-x" aria-hidden="true">
-                        &times;
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* THE SEPARATE "Your taps" BLOCK IS GONE (2026-09-15). It existed
+            because a tap had no mile to sort it by, so it could not sit in a
+            mile-ordered list; `routeThrough` stops merging legs across a tap
+            now, which gives every tap the mile of the leg boundary it makes.
+            A hiker deleting a point no longer hunts for it in a second list -
+            and the taps a route with no legs yet cannot place still list,
+            because `routeRows` sweeps them up at the end. */}
         </div>
 
         {/* OUTSIDE the collapsible body on purpose: the label row is how a
@@ -414,11 +401,48 @@ function RouteRowItem({
   row,
   units,
   onRemoveStop,
+  onRemoveTurn,
 }: {
   row: RouteRow
   units: UnitSystem
   onRemoveStop: (poiId: string) => void
+  onRemoveTurn: (ordinal: number) => void
 }) {
+  // THE HIKER'S OWN POINT, in the list rather than beside it. Two rows naming
+  // one trail are legible only if the thing between them is on the screen -
+  // and since 2026-09-15 that is the only way to get two of them, because
+  // `routeThrough` stops its squash at a tap. It carries the delete because
+  // this is the one row that is genuinely the hiker's to remove: a leg is
+  // what the router made of two taps, a tap is what they chose.
+  if (row.kind === 'turn') {
+    return (
+      <li className="day-hike-panel__row day-hike-panel__row--turn">
+        <span className="day-hike-panel__row-index day-hike-panel__turn-mark">
+          <span aria-hidden="true">{row.label}</span>
+          <span className="day-hike-panel__sr">Your tap {row.label}</span>
+        </span>
+        <span className="day-hike-panel__row-name">Your tap</span>
+        <span className="day-hike-panel__row-detail">
+          mile {row.mile.toFixed(1)}
+          {/* Named on the row that starts it rather than only on the gap row
+              below, so a hiker deleting this tap knows what else goes. */}
+          {row.endsStretch && <> &middot; ends this stretch</>}
+        </span>
+        <button
+          type="button"
+          className="day-hike-panel__row-remove"
+          onClick={() => onRemoveTurn(row.ordinal)}
+        >
+          <span className="day-hike-panel__sr">
+            Remove tap {row.label}
+            {row.endsStretch ? ', which ends a stretch' : ''}
+          </span>
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </li>
+    )
+  }
+
   if (row.kind === 'gap') {
     return (
       <li className="day-hike-panel__row day-hike-panel__row--gap">
@@ -459,12 +483,14 @@ function RouteRowItem({
             <>
               {' '}
               &middot; water{' '}
-              {formatShortDistance(
-                // The floor the card applies to the same published column, from
-                // the one home both now read (lib/units.ts). A stop claiming a
-                // hiker walks zero feet to water reads as a bug rather than as
-                // the very short walk it asserts.
-                Math.max(MIN_STATED_FEET, row.stop.waterDistanceFt),
+              {/* Floored and marked in the one home the card reads too
+                  (lib/waterProvenance.ts): a stop claiming a hiker walks
+                  zero feet to water reads as a bug rather than as the very
+                  short walk it asserts, and a steward's estimate reads as
+                  "~250 ft" here exactly as it does on the card (#1728). */}
+              {formatWaterDistance(
+                row.stop.waterDistanceFt,
+                row.stop.waterDistanceSource,
                 units,
               )}
             </>
@@ -505,7 +531,7 @@ function RouteRowItem({
             : { background: blazePaintColor(row.blazeColor) }
         }
       />
-      <span className="day-hike-panel__row-name">{row.name ?? 'Unnamed trail'}</span>
+      <span className="day-hike-panel__row-name">{legLabel(row.name)}</span>
       <span className="day-hike-panel__row-detail">
         {formatDistance(row.miles, units)} &middot; mile {row.fromMile.toFixed(1)}&ndash;
         {row.toMile.toFixed(1)}

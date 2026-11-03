@@ -3,8 +3,20 @@ import { MockMap, MockVectorSource, resetMapLibreMock } from '../test/mocks/mapl
 import { CONTOUR_SOURCE_ID, CONTOUR_THRESHOLDS, DEM_MAX_ZOOM } from './terrain'
 import { demGetTile } from './demTiles'
 import { WorkerDemManager } from './demRpc'
+import { setDemCells } from './demTiles'
+import type { CellIndex } from '../lib/coverageCells'
 
 vi.mock('maplibre-gl', () => import('../test/mocks/maplibre-gl'))
+
+// demTiles is a seam here rather than a subject: what these tests assert is
+// that contours.ts hands the local-first getTile to whichever manager it
+// built, and that the shell's cells reach the no-Worker path. Both are
+// identity questions, and mocking keeps the answer to the second observable
+// without reaching into another module's state.
+vi.mock('./demTiles', () => ({
+  demGetTile: vi.fn(),
+  setDemCells: vi.fn(),
+}))
 
 // maplibre-contour is stubbed rather than run: the real DemSource opens a Web
 // Worker, which jsdom does not have, and what is worth asserting here is not
@@ -38,13 +50,47 @@ vi.mock('maplibre-contour', () => {
 
 const { attachContourUnits, registerTerrain, resetTerrainForTests } =
   await import('./contours')
+const { setTerrainCells, resetDemCellsForTests } = await import('./demCells')
+
+/** A cell index in the published shape - two squares over the Hudson
+ *  Highlands, enough to be recognisable on the other side of a postMessage. */
+const DEM_INDEX: CellIndex = {
+  cellDegrees: 1,
+  seamMarginKm: 3,
+  contextZoom: 9,
+  context: 'dem_context.pmtiles',
+  cells: [
+    {
+      name: 'n41w075',
+      key: 'dem_cell_n41w075.pmtiles',
+      bounds: [-75, 41, -74, 42],
+      covered: [-75, 41, -74, 42],
+    },
+  ],
+}
+
+/** A Worker that records what it was posted, so the notification can be read
+ *  where a real page would have a thread. */
+function stubWorker(posted: unknown[]): void {
+  vi.stubGlobal(
+    'Worker',
+    class {
+      postMessage(message: unknown) {
+        posted.push(message)
+      }
+      addEventListener() {}
+    },
+  )
+}
 
 beforeEach(() => {
   constructed.length = 0
   instances.length = 0
   contourOptions.length = 0
   resetTerrainForTests()
+  resetDemCellsForTests()
   resetMapLibreMock()
+  vi.mocked(setDemCells).mockClear()
 })
 
 afterEach(() => {
@@ -144,6 +190,59 @@ describe('the local-first elevation seam (#187)', () => {
     expect(workers).toHaveLength(1)
     expect(String(workers[0])).toContain('demWorker')
     expect(instances[0].manager).toBeInstanceOf(WorkerDemManager)
+  })
+})
+
+describe('setTerrainCells (#1475)', () => {
+  it('posts the shell\u2019s held cells into the DEM worker', () => {
+    const posted: unknown[] = []
+    stubWorker(posted)
+    registerTerrain()
+
+    setTerrainCells(DEM_INDEX, new Set(['ourhike:dem-cell:n41w075']))
+
+    // An array, not a Set: this crosses a structured clone, and the worker
+    // side rebuilds the Set.
+    expect(posted).toEqual([
+      {
+        kind: 'setCells',
+        index: DEM_INDEX,
+        held: ['ourhike:dem-cell:n41w075'],
+      },
+    ])
+  })
+
+  it('replays the shell\u2019s answer into a source built afterwards', () => {
+    const posted: unknown[] = []
+    stubWorker(posted)
+
+    // The ordinary order, and the one that would silently lose the answer if
+    // this only forwarded: the cell index is fetched at launch, the map is
+    // built later.
+    setTerrainCells(DEM_INDEX, new Set(['ourhike:dem-cell:n41w075']))
+    expect(posted).toEqual([])
+
+    registerTerrain()
+
+    expect(posted).toEqual([
+      {
+        kind: 'setCells',
+        index: DEM_INDEX,
+        held: ['ourhike:dem-cell:n41w075'],
+      },
+    ])
+  })
+
+  it('sets the module variable directly where there is no worker to post to', () => {
+    const setDemCellsSpy = vi.mocked(setDemCells)
+    registerTerrain()
+
+    setTerrainCells(DEM_INDEX, new Set(['ourhike:dem-cell:n41w075']))
+
+    expect(setDemCellsSpy).toHaveBeenCalledWith(
+      DEM_INDEX,
+      new Set(['ourhike:dem-cell:n41w075']),
+    )
   })
 })
 

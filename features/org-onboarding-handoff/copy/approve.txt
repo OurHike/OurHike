@@ -1,0 +1,91 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Onboarding
+        ›
+          Admin approval
+          STAGE 1 OF 3 · Admin approval · admins only
+        [svg]
+            STAGE 1 OF 3
+        [h1] Your admins are approving
+    Three people have to say yes before
+      Ramapo Trail Conference
+    appears to hikers. Whoever answers first picks up the hike registry.
+                Maria Alvarez
+                Trails chair
+              ·
+                maria@ramapotrails.org
+                approved
+            Sep 14, 9:12am · from web · created the club
+                Joseph Okafor
+                Crew lead
+              ·
+                joseph@ramapotrails.org
+                approved
+            Sep 14, 6:40pm · from phone
+                Dana Whitfield
+                Secretary
+              ·
+                dana@ramapotrails.org
+                invited
+            Emailed Sep 14 · opened Sep 15, not answered
+            [button] Send a reminder
+            [button] Replace admin
+          [button] Continue to setup
+        AUDIT TRAIL
+              Sep 14
+              Club created by Maria Alvarez
+              Sep 14
+              ramapotrails.org verified by DNS record
+              Sep 14
+              Membership and donation pages linked
+              Sep 14
+              Approval emails sent to 3 admins
+              Sep 14
+              Approved by Maria Alvarez, then Joseph Okafor
+              Sep 15
+              Dana Whitfield opened the invite

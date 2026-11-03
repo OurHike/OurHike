@@ -24,6 +24,12 @@
 // the seam beats widening it.
 
 import { PMTiles } from 'pmtiles'
+import {
+  cellPackageKey,
+  cellsForTile,
+  DEM_CELLS,
+  type CellIndex,
+} from '../lib/coverageCells'
 import { DEM_PACKAGE } from '../lib/packages'
 import { IndexedDbArchiveSource } from './pmtilesSource'
 import { DEM_TILE_URL } from './terrain'
@@ -52,16 +58,117 @@ const TILE_URL = new RegExp(
 )
 
 /**
- * The downloaded DEM package, wrapped for reading - and dropped on any
- * failure, for the reason basemap.ts documents: pmtiles' SharedPromiseCache
- * never evicts a rejected header promise, so keeping the instance would
- * keep answering from a stale error after a mid-session download completes.
+ * One reader per downloaded archive, by package key - the whole DEM package,
+ * and since #1475 each held DEM cell and the shared context beside it.
+ *
+ * Dropped on any failure, for the reason basemap.ts documents: pmtiles'
+ * SharedPromiseCache never evicts a rejected header promise, so keeping the
+ * instance would keep answering from a stale error after a mid-session
+ * download completes.
  */
-let archive: PMTiles | null = null
+const readers = new Map<string, PMTiles>()
 
-function packageArchive(): PMTiles {
-  archive ??= new PMTiles(new IndexedDbArchiveSource(DEM_PACKAGE.idbKey))
-  return archive
+function reader(packageKey: string): PMTiles {
+  let existing = readers.get(packageKey)
+  if (existing === undefined) {
+    existing = new PMTiles(new IndexedDbArchiveSource(packageKey))
+    readers.set(packageKey, existing)
+  }
+  return existing
+}
+
+/** The shell's last word on the DEM's cells, or null until it has one -
+ *  which reads as "no cells", the state every phone was in before #1475. */
+let cells: { index: CellIndex; held: ReadonlySet<string> } | null = null
+
+/**
+ * What the shell knows about the DEM's cells - map/networkTiles.ts's
+ * `setNetworkCells`, for this family and across a worker boundary.
+ *
+ * THE BOUNDARY IS WHY THIS IS A SETTER AND NOT A READ. Everything else in
+ * this module runs wherever the contour machinery runs, which is the app's
+ * own DEM worker whenever Workers exist (map/demWorker.ts). A worker cannot
+ * see the shell's hooks, so the held set arrives as a message
+ * (map/demRpc.ts's `setCells`) and lands here; map/contours.ts forwards it,
+ * and calls this directly on the no-Worker path.
+ *
+ * `held` is package keys (lib/coverageCells.ts's `cellPackageKey` under
+ * DEM_CELLS, plus its context key), read on every tile rather than copied
+ * anywhere: a cell that finishes downloading mid-session answers the next
+ * tile the map asks for. A reader for a key no longer held is dropped - it
+ * would answer from bytes the hiker has removed, or from a directory cached
+ * before a re-download replaced them.
+ */
+export function setDemCells(index: CellIndex | null, held: ReadonlySet<string>): void {
+  cells = index === null ? null : { index, held }
+  for (const key of [...readers.keys()]) {
+    if (key !== DEM_PACKAGE.idbKey && !held.has(key)) readers.delete(key)
+  }
+}
+
+/**
+ * Which downloaded archives may hold this tile, in the order they are asked.
+ *
+ * THE STRETCH FIRST, then the whole package, and the order is a cost rather
+ * than a correctness choice: the cells are cut FROM `dem.pmtiles`, so on the
+ * corridor both hold the same bytes. A phone that took a stretch holds no
+ * whole package, and a phone that took the whole sheet holds no cells and
+ * gets an empty list here for one in-memory lookup - so asking the specific
+ * thing first is cheaper in both of the cases that actually occur, and
+ * matches the local-first order map/basemap.ts and map/networkTiles.ts walk.
+ *
+ * The shared context comes last and only at or under its own zoom: it is the
+ * z0-9 pyramid published once per sheet (features/OFFLINE_COVERAGE.md §6), so
+ * it is what answers when a hiker pans out past the piece they hold.
+ */
+function localCandidates(z: number, x: number, y: number): string[] {
+  const keys: string[] = []
+  if (cells !== null) {
+    for (const cell of cellsForTile(
+      cells.index.cells,
+      z,
+      x,
+      y,
+      cells.index.seamMarginKm,
+    )) {
+      const key = cellPackageKey(cell.name, DEM_CELLS)
+      if (cells.held.has(key)) keys.push(key)
+    }
+  }
+  keys.push(DEM_PACKAGE.idbKey)
+  if (
+    cells !== null &&
+    cells.index.context !== null &&
+    z <= cells.index.contextZoom &&
+    cells.held.has(DEM_CELLS.contextPackageKey)
+  ) {
+    keys.push(DEM_CELLS.contextPackageKey)
+  }
+  return keys
+}
+
+/**
+ * One tile out of one downloaded archive, or undefined for a miss.
+ *
+ * An unreadable archive is a miss too, and its reader is dropped so the next
+ * tile asks afresh - the SharedPromiseCache rule above. An abort is the
+ * caller cancelling and propagates as itself.
+ */
+async function readLocal(
+  packageKey: string,
+  z: number,
+  x: number,
+  y: number,
+  signal: AbortSignal,
+): Promise<ArrayBuffer | undefined> {
+  try {
+    const tile = await reader(packageKey).getZxy(z, x, y, signal)
+    return tile?.data
+  } catch (error) {
+    if (isAbort(error)) throw error
+    readers.delete(packageKey)
+    return undefined
+  }
 }
 
 /** Abort must propagate as itself, never be misread as an archive miss -
@@ -91,14 +198,13 @@ export async function demGetTile(
   if (match === null) throw new Error(`Not a DEM tile URL: ${url}`)
   const [z, x, y] = [Number(match[1]), Number(match[2]), Number(match[3])]
 
-  try {
-    const local = await packageArchive().getZxy(z, x, y, abortController.signal)
-    // undefined is a tile the archive never held - beyond the corridor, or
-    // above z13. A normal miss; only a held tile short-circuits.
-    if (local !== undefined) return { data: new Blob([local.data]) }
-  } catch (error) {
-    if (isAbort(error)) throw error
-    archive = null
+  // Every archive this phone holds that could carry the tile, in
+  // localCandidates' order. undefined is a tile none of them ever held -
+  // beyond the ground downloaded, or above z13. A normal miss; only a held
+  // tile short-circuits.
+  for (const key of localCandidates(z, x, y)) {
+    const local = await readLocal(key, z, x, y, abortController.signal)
+    if (local !== undefined) return { data: new Blob([local]) }
   }
 
   // The network stays the SECOND resort, ahead of the local ancestor below,
@@ -178,11 +284,24 @@ async function ancestorTile(
 
   for (let step = 1; step <= MAX_ANCESTOR_STEPS && z - step >= 0; step += 1) {
     const scale = 2 ** step
-    const held = await packageArchive().getZxy(z - step, x >> step, y >> step, signal)
+    const [az, ax, ay] = [z - step, x >> step, y >> step]
+
+    // Every archive again, re-asked at the shallower zoom (#1475). The
+    // candidates are recomputed per step rather than reused: a z10 tile
+    // covers four times the ground a z11 one does, so it can land in cells
+    // the deep tile never touched, and at or under the context zoom the
+    // shared archive joins the list. A phone holding a stretch and no whole
+    // package has to reach this path to get anything at all past its own
+    // deep-zoom band.
+    let held: ArrayBuffer | undefined
+    for (const key of localCandidates(az, ax, ay)) {
+      held = await readLocal(key, az, ax, ay, signal)
+      if (held !== undefined) break
+    }
     if (held === undefined) continue
 
     // Which quadrant of the ancestor this coordinate is, in ancestor pixels.
-    const source = await createImageBitmap(new Blob([held.data]))
+    const source = await createImageBitmap(new Blob([held]))
     const span = source.width / scale
     const bitmap = await createImageBitmap(
       source,
@@ -212,8 +331,9 @@ async function ancestorTile(
   return null
 }
 
-/** Test seam only - drops the archive memo so a test can observe a fresh
- *  read. Production never needs it. */
+/** Test seam only - drops the archive memos and the shell's cell state so a
+ *  test can observe a fresh read. Production never needs it. */
 export function resetDemTilesForTests(): void {
-  archive = null
+  readers.clear()
+  cells = null
 }

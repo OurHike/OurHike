@@ -14,6 +14,7 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
+import { afterSeamCrossing, setShown, NO_CHOICE_YET } from '../lib/showPoints'
 import {
   useCallback,
   useEffect,
@@ -24,10 +25,13 @@ import {
   type ReactNode,
 } from 'react'
 import { StatusStrip } from './StatusStrip'
+import type { GeolocationState } from '../lib/useGeolocation'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend } from './Legend'
+import type { HazardArea } from '../lib/hazardAreas'
+import type { TrailClosure } from '../lib/publishedConditions'
 import { InViewSheet } from './InViewSheet'
 import { useDesktop } from '../lib/useDesktop'
 import type { HikerMode } from '../lib/hikerMode'
@@ -55,6 +59,7 @@ import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { WorkdayPoint } from '../map/workdayLayers'
+import type { ChallengePinFeatureCollection } from '../map/challengePinData'
 import type { WorkdayRow, WorkdayWindowId } from '../lib/workProjects'
 import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
@@ -96,6 +101,7 @@ import {
 import type { SearchablePoi } from '../lib/searchPoi'
 import type { Place } from '../lib/places'
 import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
+import { PoiChallenges, type PoiChallengesProps } from './PoiChallenges'
 import './chrome.css'
 
 export interface MapScreenProps {
@@ -151,6 +157,19 @@ export interface MapScreenProps {
   /** Whether location is switched on, which decides whether the map offers
    *  its locate control at all (map/mapChrome.ts, #312). */
   locationEnabled?: boolean
+  /** Where the hiker is, for the canvas to draw (#1581, map/MapView.tsx):
+   *  the shell's one GPS watch, the same state `position` was printed from. */
+  fix?: GeolocationState
+  /** Puts the camera on that fix, for the map's locate button. Undefined
+   *  leaves the button off. Must be stable across renders (useCallback). */
+  onLocate?: (() => void) | undefined
+  /**
+   * Opens the report window (#1438, D15). Handed to the canvas rather than
+   * drawn here: the door belongs to the shared chrome, so every surface that
+   * mounts a map gets the same control in the same place - see
+   * map/mapChrome.ts. Undefined leaves it off.
+   */
+  onReport?: (() => void) | undefined
 
   time: Date
   online: boolean
@@ -199,10 +218,18 @@ export interface MapScreenProps {
   /** Which staleness ring each waypoint wears (#759's nudge surface, #256's
    *  consumer). Passed straight through to MapView; the policy lives in
    *  lib/stalenessDisplay.ts's `pinConditionFor`. */
-  pinCondition?: (poiId: string, poiType: string) => { ring: string; faded: boolean }
+  pinCondition?: (
+    poiId: string,
+    poiType: string,
+    confidence: 'high' | 'low',
+  ) => { ring: string; faded: boolean }
   /** The card's conditions section, passed straight through to PoiCard -
    *  the shell is what holds the notes and the write path. */
   noteContext?: FieldNoteContext
+  /** The waypoint card's "Listen here" section (#1718), passed straight
+   *  through to PoiCard: the shell renders the episodes tagged to one POI id,
+   *  or null where none is. */
+  poiListenHere?: (poiId: string) => ReactNode
   /** The corridor view's attribution, already in map coordinates (#598).
    *  Coordinates rather than mile ranges for the reason `closures` gives. */
   corridor?: CorridorFeatureCollection
@@ -242,6 +269,26 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /**
+   * The hunting areas, shooting sites and burned areas a trail on
+   * this phone runs through (#1805, lib/hazardAreas.ts). Drawn under the
+   * trail and never as a closure.
+   */
+  hazardAreas?: readonly HazardArea[]
+  /** A hazard area was tapped, and nothing drawn over it, by notice id. */
+  onSelectHazardArea?: (noticeId: string) => void
+  /** The tapped area's card, or null - the atcUpdateSheet pattern. */
+  hazardAreaSheet?: ReactNode
+  /**
+   * Every club closure that closes the trail today, from
+   * conditions/trail_closures.json (the maintainer's closure-map standard, 2026-10-11),
+   * crossed out on the map (map/clubClosureLayers.ts).
+   */
+  clubClosures?: readonly TrailClosure[]
+  /** A club closure was tapped, by notice id. */
+  onSelectClubClosure?: (noticeId: string) => void
+  /** The tapped club closure's sheet, or null - the atcUpdateSheet pattern. */
+  clubClosureSheet?: ReactNode
   /** The closure tape was tapped, by closure id (#1373, F12), and the sheet
    *  the shell renders for it - the atcUpdateSheet pattern, on the mark
    *  #245 drew and left for a tap. */
@@ -376,6 +423,23 @@ export interface MapScreenProps {
   /** The full list of notices, or null when it is closed. */
   noticeList?: ReactNode
   /**
+   * The Legend row's words when the list is the planned-hike panel (#1805),
+   * or undefined for today's "Read all N trail notices".
+   *
+   * Set, the row shows whatever `noticeCount` says - zero included - because
+   * the panel's honest empty state ("no hike planned in the next 7 days") is
+   * something a hiker has to be able to open and read.
+   */
+  noticeRowLabel?: string
+  /**
+   * The "Read all" door beside the planned-hike row (the
+   * maintainer's poll of 2026-10-15): its words, or undefined for no door, and
+   * what a tap does. Every club's notices that no map draws, planned or not
+   * (chrome/noticesPanel.tsx says which).
+   */
+  readAllNoticesLabel?: string
+  onReadAllNotices?: () => void
+  /**
    * How many notices this screen is holding that their publisher touched in
    * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
    * #687). Zero, or the shell not passing it, renders no dot.
@@ -421,31 +485,17 @@ export interface MapScreenProps {
   trailDataUpdate?: TrailDataUpdateProps
   warnings?: readonly WarningPoint[]
 
-  /**
-   * Whether the alert marks are drawn at all (#1047).
+  /* #1047 PUT A SWITCH OVER THE ALERT MARKS AND IT IS GONE (2026-09-20).
+   * `alertsShown` and `onToggleAlerts` were a pair of optional props here,
+   * and the four collections below were withheld from `<MapView>` when the
+   * flag was false. The maintainer removed the control rather than keep the
+   * one remaining way the app could take a closure off the canvas:
+   * lib/safetyLayersNeverHidden.test.ts is the table that now has no
+   * exception row in it.
    *
-   * One flag over `closures`, `atcUpdates`, `atcUpdatePoints` and `warnings` -
-   * chrome/alertLayerPanel.ts has why those four are one control and why the
-   * flag it comes from is never stored.
-   *
-   * IT WITHHOLDS AT ONE PLACE, the `<MapView>` call site, and that is the
-   * property worth keeping rather than a detail of where the ternaries went.
-   * Two other things read it and neither takes anything away: the status strip
-   * SAYS the marks are off, and the legend DISPLAYS the switch's own state.
-   * `closureAhead`, `advisoryAhead` and `warningsAhead` arrive here as
-   * finished sentences on their own props, so this flag has no route to them
-   * at all: a hiker who takes the bands off the canvas is still told what is
-   * in front of them, and that stays true by construction rather than by
-   * anyone remembering it.
-   *
-   * Defaults to drawn. A MapScreen rendered without a shell to hold the flag
-   * shows every alert it was given, which is the only default a safety layer
-   * may have.
+   * Nothing replaced them. `closures`, `atcUpdates`, `atcUpdatePoints` and
+   * `warnings` go to the map exactly as they arrive.
    */
-  alertsShown?: boolean
-  /** Flips it. Omitted, the legend draws no alert control - a switch that
-   *  goes nowhere is worse than no switch. */
-  onToggleAlerts?: () => void
 
   activeTab: TabId
   onSelectTab: (id: TabId) => void
@@ -666,6 +716,50 @@ export interface MapScreenProps {
   mapStyle?: MapStyle
   redLight?: boolean
   detail?: LayerDetailLevel
+  /**
+   * Whether the map's trail lines wear their blaze hues, or every one the
+   * same red (#1575). Read twice on this screen: passed to MapView, which
+   * paints by it, and to the legend, which displays it on its Blaze colors
+   * switch. Defaults to the hues like MapView's own prop; the shell passes
+   * the stored preference (chrome/waypointFiltersPanel.ts).
+   */
+  blazeColorsShown?: boolean
+  /** Flips it. Omitted, the legend draws no Blaze colors switch - a switch
+   *  that goes nowhere is worse than none, the legend's rule for every
+   *  control it offers. */
+  onToggleBlazeColors?: () => void
+  /**
+   * The challenge places (#1780 — Let a club publish a challenge — places on
+   * its own trails that hikers opt into and tag at camp — starting with the
+   * ATC's A.T. Summer Bucket List), all four from chrome/challengePanel.ts
+   * and passed straight through: the pins and whether they are drawn to the
+   * canvas, the switch's state and handler to the legend.
+   *
+   * NOTHING ELSE ON THIS SCREEN READS THEM, and that is the design's
+   * principle 2 rather than an omission: no banner, no count, no live
+   * region and no plate change near a challenge place.
+   * chrome/MapScreen.test.tsx renders with and without them and compares.
+   */
+  /** The challenge places this hiker joined (features/CHALLENGES.md, frame 1), drawn by
+   *  map/challengeLayers.ts. These four come from chrome/challengePanel.ts as
+   *  one spread; that file says when each is set. */
+  challengePins?: ChallengePinFeatureCollection
+  /** Whether the layer is drawn: the hiker's switch is on AND the row is
+   *  offered (a joined challenge on the chosen trail with a place to pin). */
+  showChallengePins?: boolean
+  /** The switch's own position, for the Legend row - true even while the
+   *  layer is not offered, so the row comes back as the hiker left it. */
+  challengePlacesShown?: boolean
+  /** Flips the switch; absent whenever the row is not offered. */
+  onToggleChallengePlaces?: () => void
+  /**
+   * What the place card's "On your challenges" section needs (#1780, frames
+   * #2 and #2c): every challenge on the phone, the hiker's record, and the
+   * three things a row can do. Data rather than a rendered node, so the
+   * section's component loads with this deferred screen instead of in front
+   * of the first frame. Absent, the card has no challenge section.
+   */
+  challengeCard?: Omit<PoiChallengesProps, 'poiIds'>
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -778,6 +872,10 @@ export interface MapScreenProps {
    * different conclusion than the download window's own notice.
    */
   trailLinesMissing?: boolean
+  /** The account, passed straight through to the header's button (#1596).
+   *  Undefined draws no button; null draws the way in. */
+  account?: { email: string } | null
+  onOpenAccount?: () => void
   /** What the archive's own header says it covers, for the opening camera. */
   archiveZooms?: ArchiveZooms | null
   /** Room to leave around the opening box, per side - see MapViewProps. The
@@ -843,6 +941,7 @@ export function MapScreen({
   closures,
   pinCondition,
   noteContext,
+  poiListenHere,
   corridor,
   maintainerLine,
   onSelectHighlight,
@@ -858,6 +957,12 @@ export function MapScreen({
   onChangeWorkdayWindow,
   disputes,
   atcUpdateSheet,
+  hazardAreas,
+  onSelectHazardArea,
+  hazardAreaSheet,
+  clubClosures,
+  onSelectClubClosure,
+  clubClosureSheet,
   onSelectClosure,
   closureSheet,
   onSelectWarning,
@@ -884,12 +989,13 @@ export function MapScreen({
   noticeCount = 0,
   onOpenNotices,
   noticeList,
+  noticeRowLabel,
+  readAllNoticesLabel,
+  onReadAllNotices,
   newNoticeCount = 0,
   newNoticeLabel,
   trailDataUpdate,
   warnings,
-  alertsShown = true,
-  onToggleAlerts,
   activeTab,
   onSelectTab,
   journal,
@@ -941,12 +1047,22 @@ export function MapScreen({
   hikerMile,
   position,
   locationEnabled = false,
+  fix,
+  onLocate,
+  onReport,
   showZoomButtons = false,
   units = 'imperial',
   theme = 'light',
   themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
+  blazeColorsShown = true,
+  onToggleBlazeColors,
+  challengePins,
+  showChallengePins = false,
+  challengePlacesShown = false,
+  onToggleChallengePlaces,
+  challengeCard,
   detail = 'standard',
   center,
   zoom,
@@ -970,6 +1086,8 @@ export function MapScreen({
   drawnCounts,
   belowPoiZoom = false,
   trailLinesMissing = false,
+  account,
+  onOpenAccount,
   archiveZooms = null,
   boundsPadding,
   entering = false,
@@ -1141,6 +1259,21 @@ export function MapScreen({
   // screen covers the held map (#1081), and the root is the highest box
   // that is - see PoiShareSheet.tsx's header. State rather than a plain
   // ref so the card re-renders with the element once it exists.
+  /**
+   * Whether the map is drawing waypoints, and who last said so (2026-09-20).
+   *
+   * Held HERE rather than in App.tsx, and that is what "for that map view"
+   * means in the maintainer's rule: the state lives as long as this screen
+   * does. lib/showPoints.ts carries the reasoning and the two movers.
+   */
+  const [showPoints, setShowPoints] = useState(NO_CHOICE_YET)
+  useEffect(() => {
+    // The auto-rule, which fires at most once per view and never over a
+    // choice the hiker made - both guards live in afterSeamCrossing, so this
+    // effect can run on every camera change without re-deciding anything.
+    setShowPoints((state) => afterSeamCrossing(state, !belowPoiZoom))
+  }, [belowPoiZoom])
+
   const [screenRoot, setScreenRoot] = useState<HTMLDivElement | null>(null)
   const handleMapReady = useCallback(
     (map: MapLibreMap | null) => {
@@ -1333,39 +1466,6 @@ export function MapScreen({
     hiddenTypes,
   )
 
-  // THE FOUR ALERT COLLECTIONS, AND THE ONLY PLACE #1047'S FLAG TAKES ANYTHING
-  // AWAY. (Two places below read it to describe what is happening - the status
-  // strip's "Alerts hidden" and the legend's own switch - and neither of those
-  // can withhold a mark.)
-  //
-  // Kept together here rather than as four ternaries down in the JSX, so that
-  // "what the Alerts switch withholds" is a list somebody can check against
-  // the map's own layer modules in one glance - and so that a fifth alert
-  // layer added later is a line in this block rather than a prop somewhere in
-  // a hundred-line element that nobody notices is ungated.
-  //
-  // `undefined` rather than a `[]` written here: MapView keeps a stable empty
-  // for each of these (NO_CLOSURES and friends) precisely so a fresh array per
-  // render cannot re-push a source every frame, and handing the prop away uses
-  // those rather than making a second set that behaves the same until it does
-  // not.
-  //
-  // WITHHOLDING THE DATA RATHER THAN HIDING THE LAYERS is the decision. An
-  // emptied source cannot be hit by `queryRenderedFeatures`, so a tap where a
-  // band used to be opens nothing at all - where a layer set to `visibility:
-  // none` would still answer taps and put a closure sheet over a map drawing
-  // no closure.
-  //
-  // Nothing in this block can reach `closureAhead`, `advisoryAhead` or
-  // `warningsAhead`: those arrive as finished sentences on their own props and
-  // are rendered above the map untouched. That is the guarantee the whole
-  // control rests on, and it is structural here rather than a rule anybody has
-  // to keep.
-  const drawnClosures = alertsShown ? closures : undefined
-  const drawnAtcUpdates = alertsShown ? atcUpdates : undefined
-  const drawnAtcUpdatePoints = alertsShown ? atcUpdatePoints : undefined
-  const drawnWarnings = alertsShown ? warnings : undefined
-
   return (
     // `inert` is what makes hiding the chrome safe rather than cosmetic: it
     // takes the whole subtree out of the tab order and the accessibility tree,
@@ -1445,6 +1545,8 @@ export function MapScreen({
                 first run without a list of names (chrome.css). */}
             <div className="map-screen__float" ref={floatRef}>
               <Header
+                account={account}
+                onOpenAccount={onOpenAccount}
                 trailName={trailName}
                 trailLogo={trailLogo}
                 state={state}
@@ -1505,7 +1607,6 @@ export function MapScreen({
                     belowArchiveZoom={belowArchiveZoom}
                     outsideDownload={outsideDownload}
                     trailLinesMissing={trailLinesMissing}
-                    alertsHidden={!alertsShown}
                   />
                 }
               />
@@ -1611,18 +1712,24 @@ export function MapScreen({
               drought={drought}
               showDrought={droughtShown}
               coverageSeams={coverageSeams}
-              closures={drawnClosures}
+              closures={closures}
               corridor={corridor}
               onSelectHighlight={onSelectHighlight}
-              atcUpdates={drawnAtcUpdates}
-              atcUpdatePoints={drawnAtcUpdatePoints}
+              atcUpdates={atcUpdates}
+              atcUpdatePoints={atcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
+              hazardAreas={hazardAreas}
+              onSelectHazardArea={onSelectHazardArea}
+              clubClosures={clubClosures}
+              onSelectClubClosure={onSelectClubClosure}
               onSelectClosure={onSelectClosure}
               onSelectWarning={onSelectWarning}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
+              challengePins={challengePins}
+              showChallengePins={showChallengePins}
               disputes={disputes}
-              warnings={drawnWarnings}
+              warnings={warnings}
               routeDrawing={routeDrawing}
               dayHikeDrawing={dayHikeDrawing}
               dayHikeTicks={dayHikeTicks}
@@ -1636,10 +1743,14 @@ export function MapScreen({
               showZoomButtons={showZoomButtons}
               units={units}
               locationEnabled={locationEnabled}
+              fix={fix}
+              onLocate={onLocate}
+              onReport={onReport}
               theme={theme}
               themeChoice={themeChoice}
               mapStyle={mapStyle}
               redLight={redLight}
+              blazeColorsShown={blazeColorsShown}
               detail={detail}
               center={center}
               zoom={zoom}
@@ -1652,6 +1763,10 @@ export function MapScreen({
               chosenTrailId={chosenTrailId}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}
+              // The switch, reaching the layers. Below the seam this is
+              // irrelevant - the layers' own floors draw nothing there - so
+              // the two gates stay independent and neither masks the other.
+              waypointsShown={showPoints.shown}
             />
             {/* On the canvas, so "is there anything here I am not being shown"
                 is answerable without opening the legend (#528).
@@ -1661,6 +1776,12 @@ export function MapScreen({
                 either true or not - and a number that changes on every pinch
                 does not belong beside them. It sits over the map instead,
                 where the thing it is about is. */}
+            {/* A "Show points" switch floated over this canvas for one day
+                (2026-09-20). It is the legend's Showing picker's "None" entry
+                now - the maintainer's pick from three drawn frames: "Maybe the
+                show points should be part of the legend. Can this be
+                integrated into the showing dropdown?" One control instead of
+                two, and the map keeps its corners. */}
             {droppedSummary !== null && (
               <p className="map-screen__dropped" aria-live="polite">
                 {droppedSummary.drawn} of {droppedSummary.present} waypoints fit
@@ -1695,10 +1816,22 @@ export function MapScreen({
                 map={liveMap}
                 units={units}
                 noteContext={noteContext}
+                {...(poiListenHere === undefined ? {} : { listenHere: poiListenHere })}
                 {...(hikerMile === undefined ? {} : { hikerMile })}
                 {...(direction === undefined ? {} : { direction })}
                 onClose={onClosePoi}
                 sheetContainer={screenRoot}
+                challengeSection={
+                  challengeCard === undefined ? undefined : (
+                    <PoiChallenges
+                      poiIds={[
+                        selectedPoi.id,
+                        ...(selectedSite ?? []).map((part) => part.id),
+                      ]}
+                      {...challengeCard}
+                    />
+                  )
+                }
               />
             )}
 
@@ -1714,9 +1847,15 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+            {/* The hazard area card (#1805), in the same slot: an area
+                anchors to no single point on the canvas either. */}
+            {hazardAreaSheet}
             {/* The two safety sheets (#1373, F12), in the same slot family:
                 a stretch of tape and a pin, neither anchored to a card. */}
             {closureSheet}
+            {/* A club closure's sheet (the maintainer's closure-map standard), beside the
+                tape's: the same mark, from a club's own notice. */}
+            {clubClosureSheet}
             {warningSheet}
             {workdaySheet}
 
@@ -1768,7 +1907,7 @@ export function MapScreen({
             head={railFaces}
             points={pointsShown}
             total={waypointTotal}
-            drawnNone={belowPoiZoom}
+            belowTheSeam={belowPoiZoom}
             currentMile={hikerMile ?? null}
             mileOf={waypointMileOf}
             stalenessFor={waypoints?.stalenessFor}
@@ -1821,8 +1960,11 @@ export function MapScreen({
             onTakeTrail={onTakeTrail}
             onDayHikesNearHere={onDayHikesNearHere}
             // The sheet the canvas beside it is drawn in, so each row's swatch
-            // inks its line the way the map does (#1283).
-            sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}
+            // inks its line the way the map does (#1283) - except for the
+            // blaze switch, which the swatch deliberately does not follow
+            // (map/MapIcon.tsx's TrailLineSwatch, #1575); the legend reads it
+            // for its own switch and for the red-light sentence under it.
+            sheetAppearance={{ theme, themeChoice, mapStyle, redLight, blazeColorsShown }}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onOnlyType={onOnlyType}
@@ -1830,10 +1972,12 @@ export function MapScreen({
             typesShown={typesShown}
             verifiedOnly={verifiedOnly}
             onToggleVerifiedOnly={onToggleVerifiedOnly}
-            alertsShown={alertsShown}
-            onToggleAlerts={onToggleAlerts}
             droughtShown={droughtShown}
             onToggleDrought={onToggleDrought}
+            blazeColorsShown={blazeColorsShown}
+            onToggleBlazeColors={onToggleBlazeColors}
+            challengePlacesShown={challengePlacesShown}
+            onToggleChallengePlaces={onToggleChallengePlaces}
             units={units}
             maintainerLine={maintainerLine}
             droughtSummary={
@@ -1853,10 +1997,19 @@ export function MapScreen({
             offlineBackgroundAvailable={offlineBackgroundAvailable}
             drawnCounts={drawnCounts}
             belowPoiZoom={belowPoiZoom}
+            // The waypoint master gate, which the legend's Showing picker
+            // owns since 2026-09-20. lib/showPoints.ts still holds the rule
+            // about when it moves on its own; what changed is only where a
+            // hiker reaches it.
+            waypointsShown={showPoints.shown}
+            onSetWaypointsShown={(next) => setShowPoints(setShown(next))}
             onOpenDownloads={onOpenDownloads}
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
             noticeCount={noticeCount}
+            noticeRowLabel={noticeRowLabel}
+            readAllNoticesLabel={readAllNoticesLabel}
+            onReadAllNotices={onReadAllNotices}
             newNoticeCount={newNoticeCount}
             onOpenNotices={onOpenNotices}
           />
@@ -1934,11 +2087,25 @@ export function MapScreen({
         {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
       </div>
 
+      {/* The same account and opener this screen already hands its Header
+          (#1596). BOTH get them and only one is ever drawn, because each
+          reads `useDesktop()` and decides - the Header above the breakpoint,
+          this bar below it. Handing it to one of them here instead would
+          mean this component working out which layout it is in, which is the
+          thing the two of them already know about themselves.
+
+          An earlier version of this comment described a `display: none` in
+          desktop.css. There is no such rule and there should not be: a
+          hidden button is still a button in the DOM, which is what put three
+          of them in front of App.flows.test.tsx. chrome/AccountButton.tsx
+          states the rule and the reasoning once. */}
       <TabBar
         active={activeTab}
         onSelect={onSelectTab}
         modeSwitch={modeSwitch}
         hikeSwitch={hikeSwitch}
+        account={account}
+        onOpenAccount={onOpenAccount}
         {...(mode === undefined ? {} : { mode, onOpenMode })}
       />
     </div>

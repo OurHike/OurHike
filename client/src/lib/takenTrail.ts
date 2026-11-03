@@ -31,9 +31,17 @@ import { TRAILS } from './trails'
 
 export const TAKEN_TRAIL_KEY = 'ourhike:taken-trail'
 
-/** A stored value made safe to use: a registry trail's id, or null. */
+/** A stored value made safe to use: a registry trail's id, or null.
+ *
+ * `Object.hasOwn` rather than `in`, because TRAILS is a plain object literal
+ * and `in` walks the prototype: `'constructor' in TRAILS` and `'toString' in
+ * TRAILS` are both true, so either would have passed this check and reached
+ * the plate as a trail id - `TRAILS[stored]?.shortName` then resolves to
+ * `Object` rather than undefined, which is the registry's own rule above
+ * ("a stored id this build's registry does not know falls back to null")
+ * failing on exactly the values a corrupted record is most likely to hold. */
 export function normaliseTakenTrail(stored: unknown): string | null {
-  return typeof stored === 'string' && stored in TRAILS ? stored : null
+  return typeof stored === 'string' && Object.hasOwn(TRAILS, stored) ? stored : null
 }
 
 export async function loadTakenTrail(): Promise<string | null> {

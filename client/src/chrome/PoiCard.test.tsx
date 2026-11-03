@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
@@ -158,6 +158,86 @@ describe('PoiCard', () => {
     renderCard({ ...SHELTER, confidence: 'low' })
 
     expect(screen.getByText(/nobody has confirmed/i)).toBeInTheDocument()
+  })
+
+  it('says in words why a trailhead wears the closed pin (#1695)', () => {
+    const trailhead: PoiDetail = {
+      ...SHELTER,
+      id: 'oprhp_facilities:10073',
+      name: 'Wilkonson Memorial',
+      type: 'trailhead',
+      trailsClosedWithinM: 100,
+    }
+
+    // On the peek, not only behind the expand: a hiker picking a start needs
+    // it before anything else on the card. 100 m is 328 ft, stated as "about
+    // 330" because the radius is a round pick nobody surveyed.
+    renderPeek(trailhead)
+    expect(screen.getByRole('note', { name: '' })).toHaveTextContent(
+      'Every trail OurHike tracks within about 330 ft of this trailhead is marked closed.',
+    )
+  })
+
+  it('states the radius the data carries, in the hiker\u2019s unit', () => {
+    render(
+      <PoiCard
+        poi={{ ...SHELTER, type: 'trailhead', trailsClosedWithinM: 150 }}
+        map={null}
+        onClose={vi.fn()}
+        units="metric"
+      />,
+    )
+
+    expect(
+      screen.getByText(
+        'Every trail OurHike tracks within about 150 m of this trailhead is marked closed.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  // The maintainer's poll of 2026-10-04: a plumbed tap whose
+  // publisher records no shutoff season is shown as unconfirmed water with a
+  // season caution, in a line of its own beside the unverified one.
+  const TAP: PoiDetail = {
+    ...SHELTER,
+    id: 'nps_points_of_interest:fixture-tap',
+    name: 'Spigot at the visitor center',
+    type: 'water',
+    confidence: 'low',
+    waterCaution: 'no_shutoff_season',
+  }
+  const SEASON_CAUTION =
+    'Tap water. Its listing doesn’t say when it’s turned off for the season, and taps like this are often off out of season. Carry enough to reach the next water.'
+
+  it('says on the peek that a plumbed tap may be shut off, apart from the unverified line', () => {
+    renderPeek(TAP)
+
+    const notes = screen.getAllByRole('note').map((note) => note.textContent)
+    expect(notes).toContain(SEASON_CAUTION)
+    expect(notes).toContain('Unverified — nobody has confirmed this one is really there.')
+  })
+
+  it('says it in the opened card too', () => {
+    renderCard(TAP)
+
+    expect(screen.getByText(SEASON_CAUTION)).toBeInTheDocument()
+  })
+
+  it('never cautions about a season on water nobody marked plumbed, or on a waypoint that is not water', () => {
+    renderCard({ ...TAP, waterCaution: undefined })
+    expect(screen.queryByText(/turned off for the season/)).not.toBeInTheDocument()
+    cleanup()
+
+    renderCard({ ...TAP, type: 'shelter' })
+    expect(screen.queryByText(/turned off for the season/)).not.toBeInTheDocument()
+  })
+
+  it('never says it of a waypoint that is not a trailhead, whatever it carries', () => {
+    renderCard({ ...SHELTER, trailsClosedWithinM: 100 })
+
+    expect(
+      screen.queryByText(/of this trailhead is marked closed/),
+    ).not.toBeInTheDocument()
   })
 
   it('does not cast doubt on a waypoint that came from facility data', () => {
@@ -328,6 +408,20 @@ describe('the photo slot', () => {
     })
 
     expect(screen.getByRole('link', { name: 'Photo: Public domain' })).toBeInTheDocument()
+  })
+
+  it('prints the credit as text, not a link, when the file page is not a web page (#1578)', () => {
+    // The page URL is Commons' own `descriptionurl`, kept as it arrived by
+    // pipeline/lib/commons.py; the card is where the scheme is checked. The
+    // credit is still owed, so it is still printed.
+    renderCard({ ...SHELTER, ...PHOTO, photoPage: 'data:text/html,<p>terms</p>' })
+
+    expect(
+      screen.getByText('Photo: A. Hiker · CC BY-SA 4.0 · Jun 2025'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Photo: A. Hiker · CC BY-SA 4.0 · Jun 2025' }),
+    ).toBeNull()
   })
 
   it('says nothing under a photo that carries no credit facts at all', () => {
@@ -661,10 +755,10 @@ describe('the parts of one site', () => {
 
   const SITE: readonly PoiDetail[] = [SHELTER, PRIVY, CAMPSITE]
 
-  /** Pulled open, for `renderCard`'s reason: the strip of parts is part of
-   *  the record rather than of the peek. A hiker who tapped a shelter pin is
-   *  answering a question about the shelter; picking a different part of the
-   *  site out of it is the next thing they do, not the first. */
+  /** Pulled open, for `renderCard`'s reason: most of what a chip swaps - the
+   *  photograph, the coordinates, the provenance - is in the record, so that
+   *  is where most of these tests look. The strip is on the peek too since
+   *  #1706, and the tests that are about the peek render it shut. */
   function renderSite(site: readonly PoiDetail[] = SITE, poi: PoiDetail = SHELTER) {
     const view = render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
     open()
@@ -672,6 +766,77 @@ describe('the parts of one site', () => {
   }
 
   const chips = () => screen.getAllByTestId('poi-card-chip')
+
+  /** The same site, left as the tap leaves it: peeking. */
+  function renderSitePeek(site: readonly PoiDetail[] = SITE, poi: PoiDetail = SHELTER) {
+    return render(<PoiCard poi={poi} site={site} map={null} onClose={vi.fn()} />)
+  }
+
+  it('lists every part of the place on the peek, before anything is pulled open', () => {
+    // #1706. #941 moved the strip into the opened card, and a tapped shelter's
+    // peek then named nothing of its privy or its water - which ride the
+    // shelter's pin and have no pin of their own to say they are there.
+    renderSitePeek()
+
+    const peek = screen.getByTestId('poi-card-peek')
+    expect(within(peek).getAllByTestId('poi-card-chip')).toHaveLength(3)
+    expect(within(peek).getByRole('button', { name: 'Shelter' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(within(peek).getByRole('button', { name: 'Privy 131 ft' })).toBeInTheDocument()
+    expect(
+      within(peek).getByRole('button', { name: 'Campsite 82 ft' }),
+    ).toBeInTheDocument()
+  })
+
+  it('swaps the peek to the part you tapped on it', () => {
+    renderSitePeek()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+
+    const peek = screen.getByTestId('poi-card-peek')
+    expect(
+      within(peek).getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(
+      within(peek).queryByRole('heading', { name: SHELTER.name }),
+    ).not.toBeInTheDocument()
+    // The privy is published unverified, and the peek says so for the part it
+    // is now showing - not the shelter's silence carried over.
+    expect(within(peek).getByText(/nobody has confirmed/i)).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Showing Chairback Gap Privy')
+  })
+
+  it('opens on the part picked on the peek, not back on the pin', () => {
+    // One `shownId` for both heights: a hiker who tapped the privy chip and
+    // then pulled is asking for the privy's record.
+    renderSitePeek()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privy 131 ft' }))
+    open()
+
+    expect(
+      screen.getByRole('heading', { name: 'Chairback Gap Privy' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Privy 131 ft' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    // One live region across the pull, still holding what it said, rather
+    // than one per height.
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+  })
+
+  it('links each chip on the peek to the peek it swaps', () => {
+    renderSitePeek()
+
+    for (const chip of chips()) {
+      expect(document.getElementById(chip.getAttribute('aria-controls') ?? '')).toBe(
+        screen.getByTestId('poi-card-peek'),
+      )
+    }
+  })
 
   it('lists every part of the place, the one you are already on included', () => {
     // The issue's own sketch listed the members only, on the reasoning that the
@@ -899,6 +1064,54 @@ describe('the parts of one site', () => {
     expect(screen.getByRole('button', { name: 'Water 37 m' })).toBeInTheDocument()
   })
 
+  it('prints a steward’s estimate as "~" and a measurement bare, on the chip and the meta line (#1728)', () => {
+    // 42 of the 305 water distances ATC publishes are a steward's round
+    // number rather than a measurement, and until #1728 this chip printed
+    // both as "Water 120 ft". The provenance rides the member from the
+    // artifact (lib/trailData.ts), and lib/waterProvenance.ts turns it into
+    // the one mark the maintainer chose by poll, 2026-09-30.
+    const water = (waterDistanceSource: string): PoiDetail => ({
+      id: 'atc_csi:xyz',
+      name: 'Water near Chairback Gap Lean-to',
+      type: 'water',
+      lat: SHELTER.lat,
+      lon: SHELTER.lon,
+      confidence: 'low',
+      source: 'atc_csi',
+      waterDistanceFt: 120,
+      waterDistanceSource,
+    })
+    const { container } = renderSite([SHELTER, PRIVY, water('OSA_Field_Estimate')])
+    const meta = () => container.querySelector('.poi-card__meta')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Water ~120 ft' }))
+
+    // The meta line prints the same figure through the same function, so the
+    // mark moves down with the distance when the chip's own words are hidden.
+    expect(meta()).toHaveTextContent('~120 ft away')
+
+    // A measurement against a mapped point earns no mark.
+    cleanup()
+    renderSite([SHELTER, PRIVY, water('FarOut')])
+
+    expect(screen.getByRole('button', { name: 'Water 120 ft' })).toBeInTheDocument()
+
+    // And in metres the mark stays in front of the converted figure.
+    cleanup()
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, water('OSA_Field_Estimate')]}
+        map={null}
+        units="metric"
+        onClose={vi.fn()}
+      />,
+    )
+    open()
+
+    expect(screen.getByRole('button', { name: 'Water ~37 m' })).toBeInTheDocument()
+  })
+
   it('carries the same icon the map draws for each part', () => {
     // One copy of the pin, which is the rule map/MapIcon.tsx is built on: a chip
     // that drew its own privy silhouette would drift from the map's the first
@@ -1024,22 +1237,22 @@ describe('the parts of one site', () => {
     expect(chips()[0]).toHaveAccessibleName('Shelter')
   })
 
-  it('carries each part’s own rim, broken where nobody has checked', () => {
-    // The chip's rim is a fact about ONE privy - which is where it parts company
+  it('draws each part hollow or filled by its own confidence', () => {
+    // The chip's pin is a fact about ONE privy - which is where it parts company
     // with the legend, whose pins carry no confidence at all because a key says
     // what a category's symbol is. Drop the prop and every chip claims the same
     // confidence: an unverified privy looks surveyed until you tap it, which is
     // the honesty-about-uncertainty channel (OurHikeValues.md #4) this card is
-    // built around, silently gone. Assertable because MapIcon gives a verified
-    // pin no `stroke-dasharray` attribute at all rather than a solid-looking
-    // one - see the comment on `broken` there.
+    // built around, silently gone. Hollow since #1682, a broken rim before it;
+    // MapIcon states which on the svg itself.
     renderSite()
 
-    const rim = (chip: HTMLElement) => chip.querySelector('.map-icon__halo')
+    const confidence = (chip: HTMLElement) =>
+      chip.querySelector('svg')?.getAttribute('data-confidence')
 
-    expect(rim(chips()[1])).toHaveAttribute('stroke-dasharray')
-    expect(rim(chips()[0])).not.toHaveAttribute('stroke-dasharray')
-    expect(rim(chips()[2])).not.toHaveAttribute('stroke-dasharray')
+    expect(confidence(chips()[1])).toBe('low')
+    expect(confidence(chips()[0])).toBe('high')
+    expect(confidence(chips()[2])).toBe('high')
   })
 
   it('lets a thumbless hiker reach every part and open one', async () => {
@@ -1687,5 +1900,64 @@ describe('how far ahead the place is (#953)', () => {
     )
 
     expect(screen.getByText('480 m ahead')).toBeInTheDocument()
+  })
+})
+
+describe('Listen here (#1718 - Tag podcast episodes to the places they talk about)', () => {
+  // The shell's renderer, reduced to what the card needs from it: something
+  // for an id that has episodes, and null for one that has none.
+  const listenHere = (poiId: string) =>
+    poiId === SHELTER.id ? <p>An episode about {poiId}</p> : null
+
+  it('is the last section on the opened card, below where the pin came from', () => {
+    render(<PoiCard poi={SHELTER} map={null} listenHere={listenHere} onClose={vi.fn()} />)
+    open()
+
+    const sections = screen
+      .getAllByRole('heading', { level: 3 })
+      .map((h) => h.textContent)
+    expect(sections.at(-1)).toBe('Listen here')
+    expect(sections.indexOf('About this place')).toBe(sections.length - 2)
+    expect(screen.getByText(`An episode about ${SHELTER.id}`)).toBeInTheDocument()
+  })
+
+  it('is absent where no episode is tagged, heading and all', () => {
+    const elsewhere = { ...SHELTER, id: 'atc_shelters:untagged' }
+    render(
+      <PoiCard poi={elsewhere} map={null} listenHere={listenHere} onClose={vi.fn()} />,
+    )
+    open()
+
+    expect(screen.queryByRole('heading', { name: 'Listen here' })).toBeNull()
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
+  })
+
+  it('stays off the peek, which holds only what a hiker standing there needs', () => {
+    render(<PoiCard poi={SHELTER} map={null} listenHere={listenHere} onClose={vi.fn()} />)
+
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
+  })
+
+  it('follows a chip to the part it names, whose tags are its own', () => {
+    const summit: PoiDetail = {
+      ...SHELTER,
+      id: 'atc_viewpoints:summit',
+      name: 'Summit',
+      type: 'viewpoint',
+    }
+    render(
+      <PoiCard
+        poi={SHELTER}
+        site={[SHELTER, summit]}
+        map={null}
+        listenHere={listenHere}
+        onClose={vi.fn()}
+      />,
+    )
+    open()
+    expect(screen.getByTestId('poi-card-listen')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByTestId('poi-card-chip')[1]!)
+    expect(screen.queryByTestId('poi-card-listen')).toBeNull()
   })
 })

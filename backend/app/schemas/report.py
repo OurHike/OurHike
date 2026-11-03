@@ -2,21 +2,30 @@
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.time import UtcDatetime
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import (
+    LocationSource,
     Report,
     ReporterType,
     ReportStatus,
     ReportType,
     Severity,
+    SignedNameKind,
     Visibility,
 )
 from app.schemas.common import FiniteFloat, NoteText
+
+# A name is short. Bounded for NoteText's reason - the compounding failure of
+# an unbounded text field on a row that is stored for good - and at a length
+# no name needs; 200 is picked and @unvalidated in the same way NOTE_MAX_CHARS
+# is, and the client refuses at the same figure (lib/outbox.ts).
+SIGNED_NAME_MAX_CHARS = 200
+SignedName = Annotated[str, Field(max_length=SIGNED_NAME_MAX_CHARS)]
 
 
 class ReportCreate(BaseModel):
@@ -90,9 +99,78 @@ class ReportCreate(BaseModel):
     # which is what made this a defect rather than a missing feature.
     mile: FiniteFloat | None = None
 
+    # WHERE THE COORDINATES CAME FROM, AND HOW FAR TO TRUST THEM (#1563).
+    #
+    # The fourth, fifth and sixth sanctioned client claims, for the reason the
+    # third exists: each is knowable on the phone at the moment of filing and
+    # nowhere else. `location_source` says whether `lat`/`lon` are a named
+    # waypoint's, the phone's own fix, or a spot marked by hand on the map;
+    # the other two are stated only for a fix - the platform's accuracy radius
+    # in metres, and how many seconds old the fix was when the report took it.
+    # app/models/report.py's column comment is the full reasoning.
+    #
+    # Bounded at the one end this server can bound, exactly as `mile` is: a
+    # negative radius or a negative age is a bug or a lie either way and is
+    # refused rather than stored. No upper bound on either - a 3 km radius is
+    # a real thing a phone reports indoors, and a fix a day old is a real
+    # thing a phone in a pack carries out onto the ridge.
+    #
+    # An unknown `location_source` is refused by the enum, like an unknown
+    # `type`. Growing this vocabulary means a server release before the client
+    # release that sends the new value, which is RELEASING.md's ordinary order.
+    location_source: LocationSource | None = None
+    location_accuracy_m: FiniteFloat | None = None
+    location_fix_age_s: int | None = None
+
     reporter_type: ReporterType
     note: NoteText | None = None
-    photo_url: str | None = None
+
+    # WHO SIGNS IT, IN WHICH NAME, AND WHETHER THEY MAY BE CONTACTED (#1563).
+    # The model's column comment is the reasoning. `signed_name_kind` without
+    # a `signed_name` is a claim about nothing, and is dropped in the router;
+    # `contact_ok` defaults to no, because an unticked box is not a yes.
+    signed_name: SignedName | None = None
+    signed_name_kind: SignedNameKind | None = None
+    contact_ok: bool = False
+
+    # ACCEPTED AND IGNORED, WHICH IS NOT THE SAME AS SUPPORTED (#1447 review).
+    #
+    # A caller could name an object it had never uploaded, and `create_report`
+    # stored the string - which made `photo_count`'s invariant
+    # ("`photo_url` is photo 1's key exactly when `photo_count >= 1`",
+    # app/routers/reports.py) false on any row that used it. Nothing was
+    # reachable through it, because the read path derives the key and gates on
+    # the count; what it produced was a column that decided nothing and
+    # contradicted the column beside it.
+    #
+    # `PUT /reports/{id}/photos/{n}` is the only writer now, so the pair cannot
+    # come apart. tests/test_report_photo_set.py holds both halves: sending
+    # this is still a 201, and the value is not stored.
+    #
+    # STILL DECLARED, because removing it is a contract break and this is not
+    # the place to take one. Six retained baselines carry the field
+    # (openapi_baselines/), and tests/test_openapi_compat.py refuses a request
+    # field's removal on the grounds that an old client may still send it. The
+    # field is therefore deprecated rather than deleted, exactly the way the
+    # `photo_url` COLUMN is kept written through a rollout under
+    # RELEASING.md §8c - same discipline, same reason, and a later release
+    # contracts both together.
+    photo_url: str | None = Field(default=None, deprecated=True)
+
+    # WHERE THE HIKER SAYS IT WAS, when the phone cannot say (#1439, D16).
+    #
+    # Sent only with no `lat`/`lon` and no `poi_id` - a report filed by a
+    # phone that never got a fix, about a place it can name no other way.
+    # **Never geocoded, here or anywhere.** A typed name resolved to
+    # coordinates would be a confident wrong dot on every phone that
+    # downloads the report, which is the same failure the omitted-not-zeroed
+    # rule on `lat`/`lon`/`mile` exists to prevent. A moderator places it.
+    #
+    # `NoteText` rather than a bare `str`, so it is bounded and stripped the
+    # way the note beside it is - it is prose a hiker typed, from the same
+    # keyboard, on the same screen.
+    place_words: NoteText | None = None
+
     authored_at: datetime | None = None
 
     # Only meaningful for `thanks`; both optional, both may be absent.
@@ -149,13 +227,43 @@ class ReportCreate(BaseModel):
             raise ValueError("mile cannot be negative")
         return value
 
+    @field_validator("location_accuracy_m")
+    @classmethod
+    def _reject_a_negative_radius(cls, value: float | None) -> float | None:
+        """A radius below zero is not a radius (#1563).
+
+        `FiniteFloat` has already refused NaN and the infinities at the type,
+        so this is the one check left: the platform's `coords.accuracy` is
+        defined as non-negative, and a client sending less is a client with a
+        bug, which is better found here than stored as a claim of
+        better-than-perfect knowledge.
+        """
+        if value is not None and value < 0:
+            raise ValueError("location_accuracy_m cannot be negative")
+        return value
+
+    @field_validator("location_fix_age_s")
+    @classmethod
+    def _reject_a_negative_age(cls, value: int | None) -> int | None:
+        """A fix from the future is a clock problem, not a fact about the fix.
+
+        The client computes the age as filing time minus the fix's own
+        timestamp and floors it at zero, so a negative here means something
+        other than that client wrote the field. Refused for the same reason a
+        negative mile is: it would sort under every honest row.
+        """
+        if value is not None and value < 0:
+            raise ValueError("location_fix_age_s cannot be negative")
+        return value
+
 
 class ReportOut(BaseModel):
     """One report, as much of it as the caller is entitled to (#252).
 
-    **Build these with `for_viewer`, never by returning the ORM row.** Four
-    fields are withheld from anyone who is neither the reporter nor a
-    moderator, and the withholding happens at construction so a caller cannot
+    **Build these with `for_viewer`, never by returning the ORM row.** The
+    fields below the "Withheld from the public" line are withheld from anyone
+    who is neither the reporter nor a moderator - `maintainer_id` from the
+    reporter too - and the withholding happens at construction so a caller cannot
     leak them by forgetting to check - the same posture
     app/routers/maintainer_assignments.py takes with `display_name`.
 
@@ -186,10 +294,41 @@ class ReportOut(BaseModel):
     # leaving it computable with the trail file and a script.
     mile: float | None
 
+    # How the coordinates were arrived at, and how far to trust them (#1563).
+    # Public alongside `lat`/`lon`, and for their reason: a radius and an age
+    # say LESS about the reporter than the coordinates beside them already
+    # do - they widen the claim rather than narrowing it - and whoever reads
+    # a pin is owed the difference between a surveyed waypoint, a ±5 m fix
+    # and a ±800 m one. Today only a moderator gets it: the moderation queue
+    # prints all three, while the baked conditions artifact does not carry
+    # them and the client's ReportSummary does not declare them, so a hiker's
+    # pin reads the same whichever it was. That gap is #1584 - "A pin baked
+    # from a ±800 m fix reads like one at a surveyed shelter: the provenance
+    # stops at the moderation queue" - and serving the fields here is the
+    # half of it that is done. Defaulted so a document baked or served
+    # before the columns existed still parses.
+    location_source: LocationSource | None = None
+    location_accuracy_m: float | None = None
+    location_fix_age_s: int | None = None
+
     reporter_type: ReporterType
     timestamp: UtcDatetime
     note: str | None
     photo_url: str | None
+
+    # How many photos this report holds (#1439). Public for `photo_url`'s own
+    # reason: it says how many objects to ask for, and each one is fetched
+    # through `GET /reports/{id}/photos/{n}`, which runs the same visibility
+    # check the report itself did. Knowing there are three is not being shown
+    # three.
+    photo_count: int = 0
+
+    # The hiker's own words for where this was, on a report with no
+    # coordinates (#1439). Public alongside `note`, which is the same thing:
+    # prose a hiker typed about what they found, on a report whose audience
+    # `visibility` already decides.
+    place_words: str | None = None
+
     follow_up: Any | None
     status: ReportStatus
     visibility: Visibility
@@ -229,12 +368,31 @@ class ReportOut(BaseModel):
     # public reads it - the client's ReportSummary does not even declare it.
     received_at: UtcDatetime | None = None
 
+    # The name the hiker signed with, which of their names it is, and whether
+    # they said a club may contact them (#1563). Withheld for `reporter_id`'s
+    # reason, and more so: a name beside a trail position and a time is the
+    # linkability features/IDENTITY_AND_PRIVACY.md exists to prevent. Null is
+    # "not for you" to the public and "not given" to a moderator; `contact_ok`
+    # is null to the public and a plain yes or no to a moderator.
+    signed_name: str | None = None
+    signed_name_kind: SignedNameKind | None = None
+    contact_ok: bool | None = None
+
     # Only meaningful on a `thanks`, which is `club_only` and so never
     # reaches a non-owner through these endpoints anyway. They are withheld
     # because `create_report` copies them from the request for EVERY type
     # while only a `thanks` is forced to `club_only` - so a `blowdown`
     # carrying an arbitrary real profile id is `public`, and `maintainer_id`
     # was a second reporter_id nobody had noticed.
+    #
+    # `maintainer_id` goes to moderators only - not to the reporter either.
+    # On a thanks it is whoever the server credited, resolved from the mile
+    # and the authored date when the hiker named nobody, so handing it back
+    # to the filer let one thanks per mile rebuild the map of volunteers'
+    # account ids along the trail that #641 (GET /maintainer-assignments
+    # serves volunteer account ids to anonymous callers) took away (the
+    # review of #1926). `club_id` stays with the reporter: every club's id is
+    # public on `GET /clubs`.
     maintainer_id: str | None = None
     club_id: str | None = None
 
@@ -244,14 +402,17 @@ class ReportOut(BaseModel):
 
         Privileged means the reporter reading their own report, or a
         moderator - the two audiences that already authenticate, and the two
-        `MODERATOR_ROLES` exists to keep in step.
+        `MODERATOR_ROLES` exists to keep in step. One field narrower still:
+        `maintainer_id`, which only a moderator reads (the field's comment
+        says why).
 
         Per (row, viewer) rather than per route, which is what rules out a
         public-schema/privileged-subclass split: `GET /reports` with a token
         returns the caller's own rows AND other people's public rows in one
         response, so the decision has to be made row by row inside it.
         """
-        privileged = viewer is not None and (report.reporter_id == viewer.id or viewer.role in MODERATOR_ROLES)
+        moderator = viewer is not None and viewer.role in MODERATOR_ROLES
+        privileged = moderator or (viewer is not None and report.reporter_id == viewer.id)
 
         return cls(
             id=report.id,
@@ -260,10 +421,15 @@ class ReportOut(BaseModel):
             lat=report.lat,
             lon=report.lon,
             mile=report.mile,
+            location_source=report.location_source,
+            location_accuracy_m=report.location_accuracy_m,
+            location_fix_age_s=report.location_fix_age_s,
             reporter_type=report.reporter_type,
             timestamp=report.timestamp,
             note=report.note,
             photo_url=report.photo_url,
+            photo_count=report.photo_count,
+            place_words=report.place_words,
             follow_up=report.follow_up,
             status=report.status,
             visibility=report.visibility,
@@ -271,7 +437,10 @@ class ReportOut(BaseModel):
             verified_at=report.verified_at,
             reporter_id=report.reporter_id if privileged else None,
             received_at=report.received_at if privileged else None,
-            maintainer_id=report.maintainer_id if privileged else None,
+            signed_name=report.signed_name if privileged else None,
+            signed_name_kind=report.signed_name_kind if privileged else None,
+            contact_ok=report.contact_ok if privileged else None,
+            maintainer_id=report.maintainer_id if moderator else None,
             club_id=report.club_id if privileged else None,
         )
 

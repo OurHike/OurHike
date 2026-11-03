@@ -73,6 +73,18 @@ export interface WalkStep {
    *  deliberate gaps (#935), so nothing - not a leg, not a turn - continues
    *  across the boundary between two of them. */
   segment: number
+  /**
+   * Which TAPPED PAIR this belongs to - counted across the whole walk, so two
+   * steps in different segments never share one.
+   *
+   * A leg does not continue across a change in this, which is the rule
+   * `routeThrough` follows when it builds the card's list: the published
+   * lines inside one pair merge (#1433), and the join between two pairs is
+   * the hiker's own boundary and stays. This field is what lets
+   * lib/dayHikeFollow.ts count the same legs from the walk rather than a
+   * second opinion about where they start.
+   */
+  pair: number
 }
 
 /**
@@ -92,6 +104,11 @@ export function dayHikeWalk(
   const graph = index.graph
   const steps: WalkStep[] = []
   let walkedMetres = 0
+  // Counted across the whole walk rather than per segment, so that comparing
+  // two steps' `pair` is the whole test - a segment boundary is a pair
+  // boundary by construction, and a reader does not have to remember to check
+  // both.
+  let pair = -1
 
   for (let at = 0; at < resolved.segments.length; at += 1) {
     const segment = resolved.segments[at]
@@ -106,6 +123,7 @@ export function dayHikeWalk(
       const to = pairs[step + 1]
       const leg = routeBetween(index, from, to)
       if (leg === null) return []
+      pair += 1
 
       const edges = leg.edgeIndices
       const entered = enteredNodes(graph, edges, from, to)
@@ -147,6 +165,7 @@ export function dayHikeWalk(
           metres: perEdge[i],
           beforeMetres: walkedMetres,
           segment: at,
+          pair,
         })
         walkedMetres += perEdge[i]
       }

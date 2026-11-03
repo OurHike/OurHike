@@ -86,6 +86,28 @@ class Profile(Base):
 
     display_name = Column(String, nullable=True)
 
+    # WHICH GITHUB ACCOUNT THIS PERSON IS, when they have told us by signing
+    # in with one. Null for everybody else, which is most people.
+    #
+    # **STORED, WHERE THE EMAIL DELIBERATELY IS NOT.** `get_current_email`
+    # reads the address off the token and keeps nothing, because every check
+    # that needs it happens inside a request that carries one. This cannot
+    # work that way: `.github/CODEOWNERS` is generated from the roster at a
+    # moment when no admin is making a request, so the login has to be on a
+    # row to be readable at all.
+    #
+    # **ONLY THE PROVIDER MAY SET IT.** A typed username proves nothing, and
+    # a CODEOWNERS entry naming the wrong account hands somebody else
+    # approval over an organization's registry - so `routers/profiles.py`
+    # reads it from the verified token and never from a request body.
+    #
+    # Unique because a CODEOWNERS entry has to stand for one seat. Two
+    # profiles claiming one account would make it ambiguous which, and
+    # letting the second take it would let anybody holding that username
+    # unseat the first. Lowercased on the way in: GitHub logins are
+    # case-insensitive, and two spellings are one owner written twice.
+    github_login = Column(String, nullable=True, unique=True, index=True)
+
     created_at = Column(DateTime, nullable=False, default=utc_now)
 
     # When this account was deleted at the hiker's own request, or null for

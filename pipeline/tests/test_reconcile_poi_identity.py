@@ -188,6 +188,40 @@ def test_a_refresh_sized_retirement_is_not_refused():
     assert len(outcome.retired) == 2
 
 
+def test_withdrawing_a_whole_type_is_not_refused_as_a_re_mint():
+    """#1674 retires every crossing at once - 63% of the real ledger - and
+    that is a decision in lib.poi_schema.WITHDRAWN_POI_TYPES, not the upstream
+    re-mint the guard exists to catch."""
+    shelters = [_record(sfid=f"s-{i}", lat=40.0 + i * 0.01) for i in range(10)]
+    crossings = [
+        _record(source="nhd_crossing", sfid=f"c-{i}", name=None, lat=42.0 + i * 0.01, poi_type="crossing") for i in range(40)
+    ]
+    prior = reconcile({}, shelters + crossings, RELEASE).pois
+
+    outcome = reconcile(prior, shelters, LATER)
+
+    assert len(outcome.retired) == 40
+    assert mass_retirement_refusal(outcome, prior) is None
+
+
+def test_a_re_mint_of_another_type_still_refuses_beside_a_withdrawal():
+    """Leaving the withdrawn rows out of the share, rather than raising the
+    threshold, is what keeps the guard as strict about everything else: the
+    same run losing 30 unrecognisable shelters is still a massacre."""
+    shelters = [_record(sfid=f"s-{i}", name=f"Shelter {i}", lat=40.0 + i * 0.1) for i in range(30)]
+    crossings = [
+        _record(source="nhd_crossing", sfid=f"c-{i}", name=None, lat=42.0 + i * 0.01, poi_type="crossing") for i in range(40)
+    ]
+    prior = reconcile({}, shelters + crossings, RELEASE).pois
+    unrecognizable = [_record(sfid=f"new-{i}", name=f"Different {i}", lat=44.0 + i * 0.1) for i in range(30)]
+
+    outcome = reconcile(prior, unrecognizable, LATER)
+    refusal = mass_retirement_refusal(outcome, prior)
+
+    assert refusal is not None
+    assert "retire 30 of 30 live rows" in refusal
+
+
 def test_render_is_one_row_per_line_sorted_and_json(tmp_path):
     """The serialization IS the review surface: one line per place keeps a
     refresh's identity outcome readable as a per-place diff, and keeps the
@@ -774,6 +808,47 @@ def test_check_exits_one_when_the_snapshot_moved_on(ledger_at):
     snapshot([_record(), _record(sfid="glob-2", name="Second Shelter", lat=42.0)])
 
     assert main(["--check", "--release", LATER]) == 1
+
+
+def test_withdraw_retires_every_live_row_of_a_withdrawn_type_and_nothing_else(ledger_at, monkeypatch):
+    """#1674: `--withdraw` puts the crossings' retirement in the pull request
+    that withdraws them, rather than leaving the next publish to fail
+    --check on 5,318 rows. It reads no snapshot - published_records would
+    raise if it were called."""
+    from reconcile_poi_identity import main
+
+    path, snapshot = ledger_at
+    crossing = _record(source="nhd_crossing", sfid="41.04000,-73.94500", name=None, lat=41.04, poi_type="crossing")
+    _seed_ledger_file(path, reconcile({}, [_record(), crossing], RELEASE).pois)
+
+    def no_snapshot():
+        raise AssertionError("--withdraw must not read a snapshot")
+
+    import reconcile_poi_identity as identity
+
+    monkeypatch.setattr(identity, "published_records", no_snapshot)
+
+    assert main(["--withdraw", "--release", LATER]) == 0
+
+    pois = json.loads(path.read_text())["pois"]
+    assert pois["nhd_crossing:41.04000,-73.94500"]["retired"] == LATER
+    assert pois["nhd_crossing:41.04000,-73.94500"]["history"][-1] == {"release": LATER, "event": "retired"}
+    assert "retired" not in pois["atc_shelters:glob-1"]
+
+
+def test_check_passes_after_a_withdrawal_once_the_export_stops_writing_the_type(ledger_at):
+    """The payoff: a snapshot without crossings reconciles to exactly the
+    withdrawn ledger, so the first publish after #1674 clears the identity
+    gate instead of stopping for a regeneration."""
+    from reconcile_poi_identity import main
+
+    path, snapshot = ledger_at
+    crossing = _record(source="nhd_crossing", sfid="41.04000,-73.94500", name=None, lat=41.04, poi_type="crossing")
+    _seed_ledger_file(path, reconcile({}, [_record(), crossing], RELEASE).pois)
+    snapshot([_record()])
+
+    assert main(["--withdraw", "--release", LATER]) == 0
+    assert main(["--check", "--release", "2027-10-01"]) == 0
 
 
 def test_a_held_item_exits_two_and_writes_nothing(ledger_at):

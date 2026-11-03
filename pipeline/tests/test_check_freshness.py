@@ -527,6 +527,10 @@ def test_a_source_the_published_state_omits_is_never_asked_about(tmp_path, monke
     requests_mock.get("https://services1.arcgis.com/test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
     requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
 
+    # Without build-raster.yml's withdrawal switch in view, which is the
+    # state this test was written for; the next test is the same run with it.
+    monkeypatch.setattr(check_freshness, "BUILD_RASTER_WORKFLOW", tmp_path / "absent.yml")
+
     # No mock is registered for TNM or S3: a request to either fails loudly
     # here rather than passing silently.
     reports = check_freshness.check_all(_published_state())
@@ -534,6 +538,55 @@ def test_a_source_the_published_state_omits_is_never_asked_about(tmp_path, monke
     verdicts = {r["source"]: r for r in reports}
     assert verdicts["topo_quads"]["freshness"] is Freshness.UNKNOWN
     assert verdicts["topo_quads"]["detail"] == "not in this state"
+
+
+def test_topo_quads_reads_withdrawn_while_build_raster_is_switched_off(tmp_path, monkeypatch, requests_mock):
+    """#1665. The same published state, read against this checkout's real
+    build-raster.yml, which carries #855's `run_despite_withdrawal` switch.
+    Still never asked about - no TNM or S3 mock is registered - but no longer
+    listed beside the sources that could not be checked, where it had sat
+    every day since 2026-08-09."""
+    for name in ("ATC_MANIFEST", "OPENTRAIL_STATE", "TOPO_MANIFEST", "ELEVATION_INDEX"):
+        monkeypatch.setattr(check_freshness, name, tmp_path / "absent.json")
+    requests_mock.get("https://services1.arcgis.com/test/centerline?f=json", json={"editingInfo": {"dataLastEditDate": 1}})
+    requests_mock.head("https://opentrail.org/api/getData?trail=AT", headers={"ETag": 'W/"abc"'})
+
+    reports = check_freshness.check_all(_published_state())
+
+    verdicts = {r["source"]: r for r in reports}
+    assert verdicts["topo_quads"]["freshness"] is Freshness.WITHDRAWN
+    assert "#855" in verdicts["topo_quads"]["detail"]
+    assert "topo_quads" not in summarise(reports)["unknown"]
+
+
+def _workflow(tmp_path, text: str):
+    path = tmp_path / "build-raster.yml"
+    path.write_text(text)
+    return path
+
+
+def test_the_withdrawal_is_read_from_the_dispatch_input_itself(tmp_path):
+    switched_off = "on:\n  workflow_dispatch:\n    inputs:\n      run_despite_withdrawal:\n        type: boolean\n"
+    assert set(check_freshness.withdrawn_sources(_workflow(tmp_path, switched_off))) == {"topo_quads"}
+
+
+def test_a_revived_raster_build_puts_topo_quads_back_to_unknown(tmp_path):
+    """Removing the switch is reviving the build, and from then on an absent
+    topo_quads key is a gap again - so it must go back to the loud verdict
+    without anybody remembering to edit this file."""
+    revived = "on:\n  workflow_dispatch:\n    inputs:\n      data_environment:\n        type: string\n"
+    assert check_freshness.withdrawn_sources(_workflow(tmp_path, revived)) == {}
+
+
+def test_a_comment_naming_the_switch_does_not_withdraw_anything(tmp_path):
+    """#1552's mistake, not repeated: the input has to exist, not be mentioned."""
+    commented = "# run_despite_withdrawal used to live here\non:\n  workflow_dispatch: {}\n"
+    assert check_freshness.withdrawn_sources(_workflow(tmp_path, commented)) == {}
+
+
+def test_a_missing_or_unreadable_workflow_withdraws_nothing(tmp_path):
+    assert check_freshness.withdrawn_sources(tmp_path / "absent.yml") == {}
+    assert check_freshness.withdrawn_sources(_workflow(tmp_path, "on: [unclosed")) == {}
 
 
 def test_capture_writes_a_state_and_asks_nothing_upstream(tmp_path, monkeypatch):

@@ -24,11 +24,35 @@ here covered" once, for the status strip, the legend's picker and the dashed sea
 draws (`map/coverageLayers.ts`); and the download window's stretch card
 (`screens/StretchCard.tsx`) prices what is missing and takes it in one tap.
 
-**What is still not built, stated so nobody rediscovers it.** The DEM has no cells yet —
-only `at_basemap` is cut, so a stretch is the basemap alone and the terrain stays the whole
-archive. The cells are cut from the Fine (z14) package only, so the "one global level with
-a per-piece override" decision below has no pipeline behind it: the client reads whatever
-level the index publishes and promises none. And named pieces wait on open question 2.
+**What is still not built, stated so nobody rediscovers it.** The cells are cut from the
+Fine (z14) package only, so the "one global level with a per-piece override" decision below
+has no pipeline behind it: the client reads whatever level the index publishes and promises
+none. And named pieces wait on open question 2.
+
+**This paragraph used to open "the DEM has no cells yet", and that was wrong for
+thirteen days.** `build-dem.yml` has cut them on every canonical build since
+[#1175](https://github.com/OurHike/OurHike/issues/1175) and `publish.py`'s `CELL_FAMILIES`
+has published them; what was missing was on the phone, where no client code named the key.
+So a stretch download really was the basemap alone — and the sentence blaming the pipeline
+for it would have sent the next session to build something that already existed, which is
+the failure this whole "stated so nobody rediscovers it" paragraph is for.
+[#1475 — A stretch download carries no terrain at all: the DEM cells are built and
+published, and no client code declares them](https://github.com/OurHike/OurHike/issues/1475)
+declares the fourth family (`lib/coverageCells.ts`'s `DEM_CELLS`), prices it into the
+stretch card with the other two, and teaches `map/demTiles.ts` to ask a held cell — and its
+shared context, and a held cell's coarser ancestor — before the whole package and long
+before AWS. The one thing that family needs and the others do not is a message: the DEM's
+tile reads run inside the app's own worker, so `map/contours.ts` posts the held set across
+(`map/demRpc.ts`'s `setCells`) rather than setting a module variable.
+
+**What a hiker was getting meanwhile is worth writing down rather than leaving as a fixed
+bug.** They took a stretch, were told they held that ground, and got a styled sheet with
+no hillshade and no contour lines on it — silently. Contours are how somebody works out
+which drainage they are in, which is [CLAUDE.md](../CLAUDE.md)'s first of four ways this
+app can hurt somebody, and nothing in the app said the terrain was absent. The lesson is
+narrower than "test it": a cut that publishes and a client that never names the key
+produce a release where every gate passes. `verify_release.py` check 20 walked the family
+and found it correct, because it was.
 Since 2026-09-07 the other organizations' trail lines above the seam are vector tiles
 (`nearby_trails.pmtiles`, [#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257) — the 228.8 MB GeoJSON they replaced crashed
 every phone that fetched it whole, [#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254)),
@@ -276,6 +300,124 @@ Two rules govern what it says, and the first is inherited rather than invented:
   boundaries meridians and parallels. A hiker crossing one sees a dead-straight edge, which
   looks like a rendering fault unless it is named. The mock-ups draw it dashed and labelled
   ("edge of what you downloaded") for exactly this reason.
+
+### The sentence above was wrong, and it took a second shape of cell to show it (#1458)
+
+> A cell's bounds are computable from its own identity — that is what a lat/lon grid buys —
+> so "is here covered" is a point-in-set test over the cells on the phone, not a geometry
+> read out of every archive.
+
+**A cell's bounds are computable from its identity. What a cell *covers* is not**, and the
+two were the same number only while every published cell was a corridor cell, where the
+uncovered part really was a margin.
+
+Measured 2026-09-15 against the live production bucket, cell `n40w074` — the one holding
+New York City:
+
+| | |
+| --- | --- |
+| `bounds` in `at_basemap_cells.json` | `[-74, 40, -73, 41]` — the whole square |
+| the archive header's real extent | `-74.1797, 40.7140` → `-73.1250, 41.2448` |
+| tiles | 290, z10–z14, 4,460,971 bytes |
+
+The tiles stop at **40.714** because the source they were cut from is clipped to the A.T.
+corridor, and the corridor clips only the top of that square. Probed point by point: Van
+Cortlandt Park in the Bronx has a z14 tile and is genuinely covered; Central Park has a z12
+tile and no z14, so it draws zoomed out and goes blank at hiking zoom; **Prospect Park,
+Forest Park and the Staten Island Greenbelt have no tile at any zoom.**
+
+On the point-in-set test that sentence describes, a phone holding that cell answered
+`'covered'` in all three places — and `outsideDownload` is true only for `'outside'`, so the
+status strip showed **nothing at all** over the blank paper. The inverse of
+[#352](https://github.com/OurHike/OurHike/issues/352), which this project already shipped
+once in the other direction: there a hiker past the edge of their package was told their
+download was damaged; here a hiker past the edge of their cell was told nothing.
+
+`archiveCoverage.ts` had anticipated the shape of it and accepted it — *"Inside a footprint
+but off the thin band its tiles actually cover, this says nothing — the same silence the app
+kept before cells existed."* That is a fair description of a margin and not of 71% of a cell
+with eight million people living in it.
+
+**What changed.** `cut_cells.py` now publishes `covered` beside `bounds` on every cell: the
+part of the square the cut actually put tiles in, clipped to the square and rounded outward.
+Two understatements, both deliberate — clipped, so the seam margin stays generosity in the
+bytes and never a promise in the metadata; a bounding box, so that *within the square* every
+tile the cell holds is inside it, which is what makes narrowing a claim onto it safe in the
+one direction that matters. `App.tsx`'s `heldFootprints` reads `covered`; everything that
+routes a tile to a cell still reads `bounds`, because routing is a question about the grid.
+`verify_release.py`'s check 20 refuses a published index whose `covered` escapes its square.
+
+**The seam followed.** `seamEdges` drew the dashed boundary at the square for one release,
+because its neighbour test was a lattice walk — a cell's neighbour is the square one cell
+over — and `covered` boxes do not tile. It is now a sweep over the lattice the boxes induce:
+every box edge contributes a line, between two consecutive lines the answer cannot change,
+so at most n×n tiles are each wholly in or wholly out and the boundary is exact rather than
+sampled. Collinear pieces are merged back into one segment, because a dashed line drawn in
+parts restarts its dash pattern at every join and repeats its label. A full-square cell
+gives exactly the old answer, so every release already on a phone draws the seams it drew.
+
+### Published, and the numbers are bigger than New York
+
+UA, 2026-09-15, runs [34967491651](https://github.com/OurHike/OurHike/actions/runs/34967491651)
+(basemap, `regions: at nyc`) and 34967505144 (DEM). Read back off the bucket rather than
+inferred from the build:
+
+**`n40w074`, the cell holding the five boroughs**, before and after:
+
+| | before | after |
+| --- | --- | --- |
+| `covered` | *(key did not exist)* | **`[-74, 40.4469, -73.125, 41]`** |
+| the archive's real southern edge | 40.714 | **40.4469** |
+| tiles | 290 | **687** |
+| bytes | 4,460,971 | **12,298,750** |
+
+Probed again, the five places that produced the finding: Central Park, **Prospect Park**,
+**Forest Park**, Van Cortlandt Park and **Rockaway Beach** now every one has a z14 tile,
+where three had nothing at any zoom and one had z12 only. `n40w075` covers south to 40.1789.
+
+**And this was never only New York.** Every cell of both families now carries the key, and
+of the DEM's 62, **42 are narrower than their own square**. The sharpest is `n36w085`, which
+declares a whole degree and covers `[-84.375, 36, -84, 36.0313]` — a sliver in one corner.
+A phone holding that cell was told it was covered anywhere in the other 97% of it. The New
+York case was the one somebody noticed, not the only one there was.
+
+**And none of it puts map under New York City** — that is the other half of #1458, and it is
+built and now run. `export_basemap.py` takes `--regions`, `pipeline/lib/build_regions.py` holds
+the named shapes, and `build-basemap.yml` cuts the coverage cells from a package covering the
+whole build rather than from the A.T.'s share of it. So `regions: at nyc` produces cells over
+the city that carry what they claim, while the A.T. package — whose advertised size is a
+published promise — is still cut against the corridor alone and does not move.
+
+### What New York costs, measured
+
+Run [34961028812](https://github.com/OurHike/OurHike/actions/runs/34961028812), 2026-09-15,
+`regions: at nyc`, `publish: false`, against the 07:17 build of `main` the same morning as the
+control. Both are the whole pipeline end to end on a free runner:
+
+| | `at` alone | `at nyc` | added |
+| --- | ---: | ---: | ---: |
+| source build + shapes (`basemap-archives`) | 350,964,052 B | 361,836,062 B | **+10.9 MB** |
+| packages, cells, context, indexes (`basemap-package`) | 1,002,773,163 B | 1,017,065,996 B | **+14.3 MB (+1.4%)** |
+| whole run, wall clock | 12.5 min (BASEMAP.md) | **11 min 36 s** | none |
+| runner disk left afterwards | ~80 GB | 77 GB | ~3 GB |
+
+**The city costs 1.4% of the published set and no wall clock at all.** That was not the
+expected answer — the city's OSM density is nothing like the corridor's — and the reason it is
+so small is that the region is a 3 km buffer around the city's own trail lines rather than a
+box around the city, so it is a ribbon through the boroughs and not the boroughs.
+
+**The A.T. package did not move**, which is the promise the publish guard rests on: z14 =
+62,097 tiles, z13 = 15,899, z12 = 4,172, the same three numbers BASEMAP.md recorded on
+2026-08-27.
+
+**The cell COUNT did not move either, and that is the subtle part.** Still 62. New York's two
+graticule cells — `n40w074` and `n40w075` — were always in the set, because the A.T.
+corridor's own bounding box reaches into them; what they held was a band across one corner.
+What this build changes is their *contents*, not their existence. So the finding above and
+this fix meet in the same two cells: `covered` said how little was there, and the region says
+what fills it. *(Reasoned from the coverage region rather than read off the index: the cells'
+own `covered` values become visible in `at_basemap_cells.json` at the next publish, and this
+paragraph should gain that number when they do.)*
 
 **What stops at a seam, and what does not**, is §8.
 

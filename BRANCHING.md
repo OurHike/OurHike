@@ -187,6 +187,20 @@ trigger would not break anything downstream: a pull request that does not touch
 this file would run it normally. That was the reason first given for leaving it
 out, and it was wrong.
 
+**Correction, 2026-09-17: the gate belongs to the expression, not to the pull
+request.** After [#679](https://github.com/OurHike/OurHike/issues/679)'s split,
+`settings-configured.yml` — schedule and dispatch only, no `pull_request`
+trigger — produced the same signature on `main`: its four Monday fires from
+2026-08-24 to 2026-09-14 and a manual dispatch on 2026-09-17 (run 35225565659)
+all concluded `action_required` within a second, with zero jobs, so the weekly
+settings check had never once run. The one thing that file did and no running
+workflow does was resolve the whole context with `toJSON(secrets)`. It reads
+each declared setting by name now, and
+`.github/tests/test_settings_configured_workflow.py` holds that list to
+`expected-settings.yml`. The five attempts in the table above are explained by
+the same expression sitting in the file under review, not by the pull request
+touching it.
+
 The reason it stayed out is the one that survived:
 
 > A pull request that edits this file, once queued, would raise its

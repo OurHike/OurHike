@@ -57,7 +57,7 @@
 
 import { useState, type ReactNode } from 'react'
 import type { DayHike } from '../lib/dayHikes'
-import type { HikerMode } from '../lib/hikerMode'
+import type { PlanRoom } from '../lib/planRoom'
 import { splitDayHikes } from '../lib/dayHikeShelf'
 import { hikeFigures, type Hike } from '../lib/hikes'
 import { planDayViews } from '../lib/plan'
@@ -69,17 +69,6 @@ import { groupFigures, type TripGroup } from '../lib/tripGroups'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import './plan.css'
-
-/**
- * Which room the tab is showing, derived from the app's mode and whether a
- * long hike is picked - never stored, and never a second answer to a
- * question `hikerMode` already answers. See the header.
- */
-export type PlanRoom = 'day' | 'sections'
-
-export function planRoomFor(mode: HikerMode): PlanRoom {
-  return mode === 'long' ? 'sections' : 'day'
-}
 
 export interface PlanHomeProps {
   room: PlanRoom

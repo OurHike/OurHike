@@ -200,3 +200,235 @@ def test_the_models_match_the_migrations(migration_engine):
     # this test wants, so it is left to propagate rather than caught and
     # re-raised as something less informative.
     command.check(_alembic_config())
+
+
+def test_the_flag_constraint_revision_collapses_duplicates_keeping_the_earliest(migration_engine):
+    """b1e4c7a9d2f6 (#1545) cannot add `uq_note_flags_note_flagger` over rows
+    that already violate it, so it deletes the later of each duplicate pair
+    first. Staged by upgrading to the revision before it, planting a pair
+    and a bystander, and upgrading the rest of the way - the operation a
+    deploy performs on a database that has been taking flags for weeks.
+
+    The downgrade is exercised too, because tests/test_migration_expand_contract.py
+    pairs columns and tables and knows nothing about constraints: a
+    `drop_constraint` forgotten here would roll back cleanly to base and
+    leave the constraint behind on a one-revision rollback.
+    """
+    config = _alembic_config()
+    command.upgrade(config, "c9d1a7f48b62")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into profiles (id, role, created_at) values ('flagger', 'hiker', now()), ('other', 'hiker', now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into field_notes (id, reporter_id, observed_at, posted_at, reporter_type) "
+                "values ('note', 'other', now(), now(), 'thru')"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into note_flags (id, note_id, flagged_by, reason, created_at) values "
+                "('later', 'note', 'flagger', 'second tap', now()), "
+                "('earlier', 'note', 'flagger', 'first tap', now() - interval '1 minute'), "
+                "('bystander', 'note', 'other', null, now())"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with migration_engine.connect() as connection:
+        kept = connection.execute(sqlalchemy.text("select id from note_flags order by id")).scalars().all()
+        constraints = (
+            connection.execute(sqlalchemy.text("select conname from pg_constraint where conname = 'uq_note_flags_note_flagger'"))
+            .scalars()
+            .all()
+        )
+    assert kept == ["bystander", "earlier"], "the first tap is the one that put the note in the queue"
+    assert constraints == ["uq_note_flags_note_flagger"]
+
+    command.downgrade(config, "c9d1a7f48b62")
+
+    with migration_engine.connect() as connection:
+        constraints = (
+            connection.execute(sqlalchemy.text("select conname from pg_constraint where conname = 'uq_note_flags_note_flagger'"))
+            .scalars()
+            .all()
+        )
+    assert constraints == []
+
+
+def test_the_slug_backfill_suffixes_two_names_that_share_one_slug(migration_engine):
+    """d1c4f8a06b93 backfills `clubs.slug` and then builds the unique
+    `ix_clubs_slug` over it, so any two rows the backfill gives the same slug
+    fail the whole upgrade. Its collision test used to compare `lower(name)`,
+    which calls "Ramapo Trail Conf." and "Ramapo Trail Conf" different while
+    the slug rule turns both into `ramapo-trail-conf` - found in the v1.3.2
+    release review, where this exact pair failed `upgrade head`.
+    """
+    config = _alembic_config()
+    command.upgrade(config, "d2f5a8c17b64")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into clubs (id, name) values "
+                "('aaaaaaaa-1', 'Ramapo Trail Conf.'), "
+                "('bbbbbbbb-2', 'Ramapo Trail Conf'), "
+                "('cccccccc-3', 'Solo Club')"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with migration_engine.connect() as connection:
+        slugs = dict(connection.execute(sqlalchemy.text("select id, slug from clubs")).tuples().all())
+    assert slugs == {
+        "aaaaaaaa-1": "ramapo-trail-conf-aaaaaaaa",
+        "bbbbbbbb-2": "ramapo-trail-conf-bbbbbbbb",
+        "cccccccc-3": "solo-club",
+    }
+
+
+def test_the_challenge_entry_backfill_names_the_owner_and_freezes_the_tags(migration_engine):
+    """d922b35687d9 adds `club_id`, `hand_item_ids` and `untagged_item_ids` to
+    entries 8944239ee32a had already been taking on UA, and backfills them:
+    the club owning the id now, and the tags as the old live CSV would have
+    read them at this moment. An entry whose id no club owns keeps a NULL
+    club - downloadable by nobody, as before - and still gets its tag lists.
+
+    Staged as a deploy meets it: upgrade to the revision before, plant the
+    rows, upgrade the rest of the way. Then down again, because
+    test_migration_expand_contract.py pairs columns but not the foreign key
+    or the index.
+    """
+    config = _alembic_config()
+    command.upgrade(config, "8944239ee32a")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into profiles (id, role, created_at) values ('hiker', 'hiker', now()), ('other', 'hiker', now())"
+            )
+        )
+        connection.execute(sqlalchemy.text("insert into clubs (id, name, slug) values ('club-1', 'Club One', 'club-one')"))
+        connection.execute(
+            sqlalchemy.text(
+                "insert into club_challenges (challenge_id, club_id, definition, takes_entries, updated_at) "
+                "values ('club-one-list', 'club-1', '{}', true, now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into challenge_tags (id, user_id, challenge_id, item_id, how, authored_at, received_at) values "
+                "('t1', 'hiker', 'club-one-list', 'walked', 'gps', now(), now()), "
+                "('t2', 'hiker', 'club-one-list', 'pressed', 'hand', now(), now()), "
+                "('t3', 'other', 'club-one-list', 'never', 'hand', now(), now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into challenge_entries "
+                "(id, user_id, challenge_id, name, item_ids, finished_only, consented_at, sent_at) values "
+                "('owned', 'hiker', 'club-one-list', 'Jo', '[\"walked\", \"pressed\", \"never\"]', false, now(), now()), "
+                "('orphan', 'other', 'nobody-list', 'Al', '[\"x\"]', false, now(), now())"
+            )
+        )
+
+    command.upgrade(config, "d922b35687d9")
+
+    with migration_engine.connect() as connection:
+        rows = {
+            row.id: row
+            for row in connection.execute(
+                sqlalchemy.text("select id, club_id, hand_item_ids, untagged_item_ids from challenge_entries")
+            ).all()
+        }
+    assert rows["owned"].club_id == "club-1"
+    assert rows["owned"].hand_item_ids == ["pressed"]
+    # 'never' is another hiker's tag, so this hiker sent none for it.
+    assert rows["owned"].untagged_item_ids == ["never"]
+    assert rows["orphan"].club_id is None
+    assert rows["orphan"].untagged_item_ids == ["x"]
+
+    command.downgrade(config, "8944239ee32a")
+
+    with migration_engine.connect() as connection:
+        columns = {
+            name
+            for (name,) in connection.execute(
+                sqlalchemy.text("select column_name from information_schema.columns where table_name = 'challenge_entries'")
+            ).all()
+        }
+        foreign_keys = (
+            connection.execute(
+                sqlalchemy.text("select conname from pg_constraint where conname = 'fk_challenge_entries_club_id_clubs'")
+            )
+            .scalars()
+            .all()
+        )
+    assert {"club_id", "hand_item_ids", "untagged_item_ids"}.isdisjoint(columns)
+    assert foreign_keys == []
+
+
+def test_the_maintainer_written_backfill_marks_only_rows_no_person_wrote(migration_engine):
+    """c3a9e5d27f18 adds `clubs.maintainer_written` and fills it once (#1913 -
+    Deleting the registrant's account turns a self-registered organization
+    into a maintainer-written one, and lets an accomplice keep an admin seat).
+    `created_by IS NULL` alone is what account deletion fakes, so the rows a
+    deleted account left behind - a registration claimed or held, a
+    nomination - must come out false, and only a maintainer's row true. Rows
+    after the upgrade default to false, which a maintainer's path has to
+    change."""
+    config = _alembic_config()
+    command.upgrade(config, "897b71ad5fff")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into profiles (id, role, created_at) values "
+                "('person-1', 'hiker', now()), ('accomplice', 'hiker', now()), ('nominator', 'hiker', now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into clubs (id, name, created_by, state) values "
+                "('loaded', 'Loaded Club', null, 'unclaimed'), "
+                "('registered', 'Registered Club', 'person-1', 'claimed'), "
+                # Registrants who deleted their accounts: deletion nulls
+                # `created_by` and takes their own seat, not the accomplice's.
+                "('claimed-then-deleted', 'Evil Trails', null, 'claimed'), "
+                "('held-then-deleted', 'Ramapo', null, 'pending'), "
+                "('seated-then-deleted', 'Seated', null, 'unclaimed'), "
+                "('nominated-then-deleted', 'Nominated', null, 'unclaimed')"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into club_admins (id, club_id, person_id, is_codeowner, invited_at) values "
+                "('seat-1', 'held-then-deleted', 'accomplice', true, now()), "
+                "('seat-2', 'seated-then-deleted', 'accomplice', true, now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into org_nominations (id, club_id, nominated_by, website, state, proposal_token, "
+                "token_expires_at, pages_read, created_at) values "
+                "('nom-1', 'nominated-then-deleted', 'nominator', 'https://nominated.example', 'proposed', 'tok-1', "
+                "now() + interval '1 day', 0, now())"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with migration_engine.begin() as connection:
+        connection.execute(sqlalchemy.text("insert into clubs (id, name) values ('after', 'After the upgrade')"))
+        flags = dict(connection.execute(sqlalchemy.text("select id, maintainer_written from clubs")).tuples().all())
+    assert flags == {
+        "loaded": True,
+        "registered": False,
+        "claimed-then-deleted": False,
+        "held-then-deleted": False,
+        "seated-then-deleted": False,
+        "nominated-then-deleted": False,
+        "after": False,
+    }

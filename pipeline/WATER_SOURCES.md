@@ -168,6 +168,21 @@ still refuses until read), the user-created sites stay unpublished (§3b's rule 
 safety, not licensing), and option 3's direct-from-ATC confirmation stays the ideal —
 now a confirmation rather than a blocker.
 
+*Amended 2026-09-30:* **#1728 — 42 steward-estimated water distances reach the card in
+the same voice as a survey, and the synthesized water point says "ATC measured"** ships
+the provenance the paragraphs above only record here. `export_poi.py` now publishes
+`Nearest_Water_Source` beside every distance as `water_distance_source` — verbatim, the
+four values this section counts — and the synthesized water point's sentence is worded
+by it: "measured" for the FarOut and NHD rows, "estimated" for `OSA_Field_Estimate`,
+and "ATC's index gives" where a reference file carried none. The phone prints a
+steward's estimate as `water ~250 ft` on every surface that prints the column — the
+card's nearby sentence, the water point's chip and meta line, a day hike's stop rows —
+and a measurement bare; the maintainer chose the tilde by poll that day, over the word
+"about" and over changing the sentence alone. Measured against
+[reference/water_distance.json](reference/water_distance.json) the same day: 42 of the
+305 published distances are estimates, 33 of them within the nearby gate. What this
+does **not** change: which rows publish (the allowlist above), or the figures.
+
 **Neither ArcGIS org hides a water layer.** All 146 ATC-org services and all 1,440
 NPS-org services were swept for water-ish names; every hit is another park's data
 (GRSM's backcountry shelters layer, probed on the off-chance, has no water field
@@ -187,6 +202,17 @@ either). That search does not need repeating.
   and distance-off columns arrive fused — the PDF's text layer holds no boundary).
   Publication still waits on the email this bullet asks for; the registry entry's
   `licence` field records that gate.
+  *Amended 2026-10-04:* the maintainer published it without the email (poll,
+  2026-10-04): low confidence, each source placed on ATC's mile axis from
+  GATC's own mile and checked against ATC's same-named shelter, campsite or road
+  gap. Measured that day: GATC's A.T. miles count from Springer on ATC's marker
+  scale, within 0.122 mi at six on-trail named places to mile 38.3 and 0.18 to
+  0.33 mi short at the shelters north of Low Gap; 18 of 61 have a namesake, along
+  the trail median 0.121 mi, worst 0.407 mi. 59 of the 65 ship and 6 are held
+  (the approach trail's 4, Stover Creek's "very low or dry", and Hawk Mountain's
+  tent sites, past the 0.37 mi bound). The card says the point is placed from
+  GATC's mile, not surveyed, beside the PDF's 2026-03-02 date and its "July 2020"
+  title. `int_points_of_interest__gatc_water`'s header has the whole measurement.
 - **WhiteBlaze 2024 shelter PDF**: ~198 of ~240 shelters carry a free-text water
   description ("Water (spring) 80 yards on a blue blazed trail…") — the best
   per-shelter water *prose* found anywhere — but water GPS on only 24 shelters
@@ -517,9 +543,9 @@ and hiker reports as the only eventual answer to "is it flowing".
    stays the better answer for shelters and this derivation only fills in a
    real coordinate where geometry can honestly supply one. Rejected candidates keep their numbers
    in the file so either gate can be re-argued from data. The same script
-   fills `crossing` from exact trail×stream intersections — water a hiker
-   walks straight through — which is the other half of "show the water that
-   meets the trail or a POI". Streams come from **both** hydrographies,
+   filled `crossing` from exact trail×stream intersections — water a hiker
+   walks straight through — which was the other half of "show the water that
+   meets the trail or a POI", until **#1674** withdrew the type (option 5). Streams come from **both** hydrographies,
    merged: USGS classifies flow — the one structured answer anywhere to "will
    this be dry in August", and §1's whole reason for measuring NHD — while OSM
    more often carries the local name and is edited by people who walk there.
@@ -563,7 +589,14 @@ and hiker reports as the only eventual answer to "is it flowing".
    doing the work. **60% of our crossings are not guidebook water**, which is
    this issue's own "minor unnamed streams no guidebook would list" measured
    rather than feared, and the argument for publishing them as `crossing` and
-   never as water pins. Step 1, the visual inspection, is still open. The guide
+   never as water pins. Step 1, the visual inspection, is still open.
+   *Amended 2026-09-26: withdrawn.* **#1674 — Stream crossings clutter the map:
+   remove the `crossing` waypoint type, its legend row, and the pipeline step
+   that derives it** took the layer off the map and out of the pipeline at the
+   maintainer's request ("Crossings are cluttering the map"). Step 1 will not
+   be done; the measurement above is the record of what the layer was, and
+   pipeline/README.md's #97 section says what its absence costs the
+   guidebook comparison. The guide
    is copyright AntiGravityGear, LLC and none of it is committed, published or
    folded into our data — §8 of [SOURCE_SURVEY.md](SOURCE_SURVEY.md) is
    unchanged, and what the spike writes down is statistics about *our* data.

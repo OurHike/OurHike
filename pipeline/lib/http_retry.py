@@ -42,6 +42,8 @@ from pathlib import Path
 
 import requests
 
+from lib.user_agent import USER_AGENT
+
 # A pause ladder. One entry per retry, so `(5, 30)` means three attempts.
 DEFAULT_BACKOFF_SECONDS = (5, 30)
 
@@ -64,6 +66,35 @@ TRANSIENT_EXCEPTIONS = (
 )
 
 
+def named(headers: dict | None, session: requests.Session | None = None) -> dict | None:
+    """`headers`, plus lib/user_agent.py's `USER_AGENT` when nothing else names the caller.
+
+    THE GAP THIS CLOSES. With no session, both functions below fell through
+    to bare `requests`, which sends `python-requests/<version>`. Read
+    2026-10-02: `fetch_external_layers.py`, the fetch behind every network
+    trail source, reaches `request_with_retry` that way through
+    `lib/arcgis.py`, and so do `fetch_centerline.py`, `export_trails.py`
+    and `export_spurs.py`, while `lib/user_agent.py` says the string goes to
+    every host. That module's measurement is why this is not courtesy:
+    ATC's site answered the default agent 403 and this string 200.
+
+    A session on requests' default agent gets it too: `export_dem.py`
+    builds a bare `requests.Session()` for its tile fetches (read the same
+    day), while the other fetchers' sessions set `USER_AGENT` themselves.
+
+    The caller's own choice always wins. An agent in `headers`, matched
+    without regard to case as HTTP does, is left alone, and so is any agent
+    a session already carries, which keeps the photo fetchers'
+    `CONTACTABLE_USER_AGENT`.
+    """
+    if any(key.lower() == "user-agent" for key in headers or {}):
+        return headers
+    carried = getattr(session, "headers", {}).get("User-Agent") if session is not None else None
+    if carried and carried != requests.utils.default_user_agent():
+        return headers
+    return {**(headers or {}), "User-Agent": USER_AGENT}
+
+
 def retry_after_seconds(response: requests.Response) -> int | None:
     """The integer `Retry-After` a 429/503 carries, capped.
 
@@ -82,6 +113,7 @@ def request_with_retry(
     session: requests.Session | None = None,
     method: str = "get",
     params: dict | None = None,
+    data: dict | None = None,
     timeout: int = 60,
     backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
     retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
@@ -91,6 +123,13 @@ def request_with_retry(
     sleep=None,
 ) -> requests.Response:
     """One request, retried over `backoff` on transient faults and statuses.
+
+    `data` is the form body a POST carries, for the one caller that signs in
+    rather than reads: fetch_hikefinder.py posts the export's site password
+    (#1468). It rides every attempt unchanged, like `headers`. NOTHING HERE
+    PRINTS IT - the retry lines carry `label` and the exception type, never
+    the body - and a caller sending a secret should keep it out of `label`
+    and out of the URL for the same reason.
 
     `headers` rides every attempt unchanged, the same as download_with_retry's
     and for a third caller (#1288): fetch_nynjtc_long_path_guide.py sends
@@ -116,7 +155,7 @@ def request_with_retry(
 
     for attempt, delay in enumerate((*backoff, None)):
         try:
-            response = requester.request(method, url, params=params, timeout=timeout, headers=headers)
+            response = requester.request(method, url, params=params, data=data, timeout=timeout, headers=named(headers, session))
         except TRANSIENT_EXCEPTIONS as error:
             if delay is None:
                 raise
@@ -150,8 +189,21 @@ def download_with_retry(
     chunk_bytes: int = 1 << 20,
     label: str | None = None,
     sleep=None,
+    response_headers: dict | None = None,
+    session: requests.Session | None = None,
 ) -> Path:
     """Stream a large file to `dest`, retrying the WHOLE transfer.
+
+    `session`, when given, sends every attempt in place of bare `requests`,
+    for the fourth caller: extract/_geofabrik.py passes extract/_kinds.py's
+    session(), which refuses an answer redirected to another host. Without one nothing changes for the others.
+
+    `response_headers`, when given, is filled with the headers of the one
+    response whose body became `dest`, for the third caller (#1652):
+    extract/_geofabrik.py records each extract's Last-Modified and ETag in
+    its manifest and holds the file's size to that response's
+    Content-Length, which a second HEAD could not promise to describe the
+    same bytes.
 
     `headers` rides every attempt unchanged. It exists for the second caller
     (#1066): fetch_trail_water.py's NHD downloads identify themselves with a
@@ -203,7 +255,7 @@ def download_with_retry(
     try:
         for attempt, delay in enumerate((*backoff, None)):
             try:
-                with requests.get(url, stream=True, timeout=timeout, headers=headers) as response:
+                with (session or requests).get(url, stream=True, timeout=timeout, headers=named(headers, session)) as response:
                     if response.status_code in retryable_statuses and delay is not None:
                         wait = retry_after_seconds(response) or delay
                         print(
@@ -225,6 +277,9 @@ def download_with_retry(
                 continue
 
             part.replace(dest)
+            if response_headers is not None:
+                response_headers.clear()
+                response_headers.update(response.headers)
             return dest
     finally:
         part.unlink(missing_ok=True)

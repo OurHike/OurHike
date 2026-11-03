@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set } from 'idb-keyval'
+import { LAUNCH_ARTIFACT_BUDGET_BYTES } from './artifactBudget'
 import {
   MAX_CACHED_BYTES,
   conditionsCacheKey,
@@ -83,11 +84,32 @@ describe('the kept baseline', () => {
     )
   })
 
-  it('refuses to keep an artifact past the size ceiling, and drops the old one', async () => {
+  it('keeps up to LAUNCH_ARTIFACT_BUDGET_BYTES, the same number as lib/artifactBudget.ts', () => {
+    // Restated in conditionsCache.ts rather than imported, which says why;
+    // this is what keeps the two one number.
+    expect(MAX_CACHED_BYTES).toBe(LAUNCH_ARTIFACT_BUDGET_BYTES)
+  })
+
+  it('keeps an artifact longer than the old 2 MiB ceiling, as UA’s notices.json is', async () => {
+    // UA's conditions/notices.json measured 11,811,478 characters on
+    // 2026-10-09, and a 2 MiB ceiling dropped it on every download: a planned
+    // hike's closures were on the phone until its first relaunch with no
+    // signal, and then gone.
+    const large = {
+      generated_at: '2026-10-08T22:51:29Z',
+      closures: [{ note: 'x'.repeat(3 * 1024 * 1024) }],
+    }
+
+    await rememberPublished(PUBLISHED_CLOSURES_KEY, large)
+
+    expect((await recallPublished(PUBLISHED_CLOSURES_KEY))?.document).toEqual(large)
+  })
+
+  it('refuses to keep an artifact past the launch budget, and drops the old one', async () => {
     await rememberPublished(PUBLISHED_CLOSURES_KEY, CLOSURES)
     const huge = {
       generated_at: '2026-07-21T06:00:00Z',
-      closures: [{ note: 'x'.repeat(MAX_CACHED_BYTES) }],
+      closures: [{ note: 'x'.repeat(LAUNCH_ARTIFACT_BUDGET_BYTES) }],
     }
 
     await rememberPublished(PUBLISHED_CLOSURES_KEY, huge)

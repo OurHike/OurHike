@@ -51,6 +51,86 @@ def test_unchanged_source_is_skipped_not_refetched(tmp_path, monkeypatch, reques
     assert manifest["oprhp_fake"]["data_last_edit_date"] == 123
 
 
+def test_only_fetches_the_named_sources_and_leaves_the_rest_alone(tmp_path, monkeypatch, requests_mock):
+    """build-basemap.yml builds a region from two named layers (#1458), and
+    fetching all 22 to read two cost 9m28s on the run that proved it."""
+    other_url = LAYER_URL.replace("Fake", "Other")
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(), _external(key="other_fake", url=other_url)],
+    )
+
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 5}})
+    # Two pages, the second empty: a single fixed non-empty response makes the
+    # pagination loop request forever - the neighbouring test says so and this
+    # one learned it the hard way.
+    requests_mock.get(
+        f"{LAYER_URL}/query",
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature"}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+    # No mock for the other layer at all: touching it raises NoMockAddress,
+    # which is how this asserts it was never reached rather than merely that
+    # its manifest entry did not change.
+
+    fetch_external_layers.main(["--only", "oprhp_fake"])
+
+    assert (raw_dir / "oprhp_fake.geojson").exists()
+    assert not (raw_dir / "other_fake.geojson").exists()
+    assert json.loads(manifest_path.read_text())["oprhp_fake"]["feature_count"] == 1
+
+
+def test_a_partial_fetch_does_not_shorten_the_manifest(tmp_path, monkeypatch, requests_mock):
+    """The manifest is what tells the NEXT run which layers are unchanged.
+    Dropping the entries this run did not look at would make the following
+    full fetch re-download every one of them, and would lose the only record
+    of when each last moved."""
+    other_url = LAYER_URL.replace("Fake", "Other")
+    _raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(), _external(key="other_fake", url=other_url)],
+        prior_manifest={
+            "oprhp_fake": {"title": "Fake External Layer", "url": LAYER_URL, "feature_count": 1, "data_last_edit_date": 1},
+            "other_fake": {"title": "Other", "url": other_url, "feature_count": 9, "data_last_edit_date": 7},
+        },
+    )
+
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 2}})
+    requests_mock.get(
+        f"{LAYER_URL}/query",
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature"}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fetch_external_layers.main(["--only", "oprhp_fake"])
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["oprhp_fake"]["data_last_edit_date"] == 2, "the named source was refetched"
+    assert manifest["other_fake"] == {
+        "title": "Other",
+        "url": other_url,
+        "feature_count": 9,
+        "data_last_edit_date": 7,
+    }, "the source nobody asked for kept its entry untouched"
+
+
+def test_an_unknown_key_refuses_the_run_rather_than_fetching_nothing(tmp_path, monkeypatch):
+    """A typo in the workflow would otherwise fetch nothing, build a region
+    from no lines, and hand the build a clip shape missing a city - quietly."""
+    _setup(tmp_path, monkeypatch, sources=[_external()])
+
+    with pytest.raises(SystemExit) as caught:
+        fetch_external_layers.main(["--only", "nyc_parks_trials"])
+
+    assert "nyc_parks_trials" in str(caught.value)
+
+
 def test_changed_source_is_refetched(tmp_path, monkeypatch, requests_mock):
     raw_dir, manifest_path = _setup(
         tmp_path,
@@ -309,7 +389,7 @@ def test_a_moved_maximum_refetches_and_records_it_as_a_string(tmp_path, monkeypa
 
 
 def test_a_layer_with_no_marker_of_any_kind_is_fetched_every_run(tmp_path, monkeypatch, requests_mock):
-    """NH GRANIT: `marker: none`, honestly. Fetched, and the manifest says
+    """`marker: none`, honestly (usfs_rec_sites today; NH GRANIT first). Fetched, and the manifest says
     there was nothing to compare - never a skip on the strength of a file
     happening to be on disk."""
     raw_dir, manifest_path = _setup(
@@ -390,3 +470,139 @@ def test_editing_info_wins_over_a_registered_substitute(tmp_path, monkeypatch, r
 
     manifest = json.loads(manifest_path.read_text())
     assert manifest["dec_fake"]["feature_count"] == 3
+
+
+# --- The Socrata half of this script (#1432) -------------------------------
+#
+# New York City's layers reach this loop through the same code as everybody
+# else except one branch each in `current_marker`, `fetch_one` and
+# `source_location`. That branch decides whether 10,089 rows are re-fetched or
+# skipped, and it had no coverage here at all when it was written.
+
+SOCRATA_DOMAIN = "data.example.gov"
+SOCRATA_DATASET = "abcd-1234"
+SOCRATA_RESOURCE = f"https://{SOCRATA_DOMAIN}/resource/{SOCRATA_DATASET}.geojson"
+SOCRATA_VIEWS = f"https://{SOCRATA_DOMAIN}/api/views/{SOCRATA_DATASET}.json"
+
+
+def _socrata(key="nyc_fake", **extra):
+    return {
+        "key": key,
+        "title": "Fake Socrata Dataset",
+        "kind": "socrata_geojson_layer",
+        "domain": SOCRATA_DOMAIN,
+        "dataset_id": SOCRATA_DATASET,
+        **extra,
+    }
+
+
+def test_a_socrata_layer_is_fetched_through_the_portal(tmp_path, monkeypatch, requests_mock):
+    """The dispatch, end to end: the marker comes from rowsUpdatedAt rather
+    than an editingInfo request that would 404, the bytes come from the SODA
+    resource, and the manifest records a real fetchable URL."""
+    raw_dir, manifest_path = _setup(tmp_path, monkeypatch, sources=[_socrata()])
+
+    requests_mock.get(SOCRATA_VIEWS, json={"rowsUpdatedAt": 1788000000})
+    requests_mock.get(
+        SOCRATA_RESOURCE,
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["nyc_fake"]["feature_count"] == 1
+    assert manifest["nyc_fake"]["url"] == SOCRATA_RESOURCE
+    assert manifest["nyc_fake"]["marker"]["kind"] == "rows_updated_at"
+    # ArcGIS's millisecond field stays null for a Socrata entry - the two
+    # scales must never be compared as one number.
+    assert manifest["nyc_fake"]["data_last_edit_date"] is None
+    assert json.loads((raw_dir / "nyc_fake.geojson").read_text())["features"]
+
+
+def test_an_unchanged_socrata_dataset_is_skipped(tmp_path, monkeypatch, requests_mock):
+    raw_dir, _ = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_socrata()],
+        prior_manifest={
+            "nyc_fake": {
+                "title": "Fake Socrata Dataset",
+                "url": SOCRATA_RESOURCE,
+                "feature_count": 1,
+                "marker": {"kind": "rows_updated_at", "value": "1788000000", "where": None},
+            }
+        },
+    )
+    (raw_dir / "nyc_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+
+    requests_mock.get(SOCRATA_VIEWS, json={"rowsUpdatedAt": 1788000000})
+    # Deliberately no mock for the resource URL - a fetch attempt raises.
+
+    fetch_external_layers.main()
+
+
+def test_changing_the_filter_refetches_even_though_the_dataset_has_not_moved(tmp_path, monkeypatch, requests_mock):
+    """THE ONE THAT MATTERS, and the reason `where` is inside the marker.
+
+    `where` is applied server-side, so tightening it changes the file
+    completely while the portal's own rowsUpdatedAt does not move. If the
+    skip compared the timestamp alone, the run would find the marker
+    unchanged and the cached file present, skip, and go on shipping exactly
+    the rows the new clause was written to remove - on nyc_dot_greenways
+    that clause is what keeps a walker off a road.
+    """
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_socrata(where="status='Current' AND onoffst='OFF'")],
+        prior_manifest={
+            "nyc_fake": {
+                "title": "Fake Socrata Dataset",
+                "url": SOCRATA_RESOURCE,
+                "feature_count": 9,
+                # The looser filter the last run used.
+                "marker": {"kind": "rows_updated_at", "value": "1788000000", "where": "status='Current'"},
+            }
+        },
+    )
+    (raw_dir / "nyc_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+
+    requests_mock.get(SOCRATA_VIEWS, json={"rowsUpdatedAt": 1788000000})
+    requests_mock.get(
+        SOCRATA_RESOURCE,
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["nyc_fake"]["feature_count"] == 1, "a changed filter must re-fetch"
+    assert manifest["nyc_fake"]["marker"]["where"] == "status='Current' AND onoffst='OFF'"
+
+
+def test_the_registered_filter_reaches_the_portal(tmp_path, monkeypatch, requests_mock):
+    """Applied BY the portal, so the excluded rows are never fetched and never
+    on disk to be drawn by mistake."""
+    _setup(tmp_path, monkeypatch, sources=[_socrata(where="grnwy='Greenway'")])
+
+    requests_mock.get(SOCRATA_VIEWS, json={"rowsUpdatedAt": 1788000000})
+    requests_mock.get(
+        SOCRATA_RESOURCE,
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fetch_external_layers.main()
+
+    resource_calls = [r for r in requests_mock.request_history if r.path.endswith(".geojson")]
+    assert resource_calls
+    assert all(call.qs["$where"] == ["grnwy='greenway'"] for call in resource_calls)

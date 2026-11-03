@@ -1,0 +1,129 @@
+version: 2
+
+sources:
+  - name: extract
+    description: >
+      The extract's own record of each run (pipeline/extract/_run.py's
+      write_run_log()), which extract/_warehouse.py's load_warehouse() copies
+      into the warehouse beside the tables it loaded: the whole log on the
+      monthly lane, and on a leg its kept log (_run.py's KEPT_LOG_TABLE),
+      each table's latest committed load and every row after it. The hourly
+      lane's copy is the conditions leg's own log. Two source tables name it,
+      one per lane (_extract_runs_monthly says why).
+    schema: raw
+    tables:
+      - name: _extract_runs
+        config:
+          loaded_at_field: checked_at
+          meta:
+            cadence: hourly
+          freshness:
+            # Every run appends its rows, so this measures whether the lane ran.
+            # @unvalidated: 7 hours is the hourly sources' threshold (the worst
+            # measured publish-conditions.yml gap, 6.3 h, rounded up); the 99th
+            # percentile of this table's own checked_at gaps over 30 days settles
+            # it. The error is 24 hours, the hourly leg's, since every source has both; @unvalidated as that one.
+            warn_after: {count: 7, period: hour}
+            error_after: {count: 24, period: hour}
+        data_tests:
+          # Rows sharing base_extract__runs's key must be exact copies.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'extract_runs'", "run_id", "resource_name"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
+          - elementary.volume_anomalies:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          One row per resource per run, appended and never rewritten: the
+          run's verdict and outcome, the rows it loaded, and `count_proof`,
+          the upstream's own count read in the same run (WordPress
+          X-WP-Total, ArcGIS returnCountOnly and the rest; the dlt skill,
+          rule 2). A zero loads only beside a count of zero (_run.py's
+          run_check()). Key: the run and the resource.
+        columns:
+          - name: run_id
+            description: The run, as a UTC stamp that sorts in time order.
+            data_tests: [not_null]
+          - name: resource_name
+            description: The resource the row is for.
+            data_tests: [not_null]
+      - name: _extract_runs_monthly
+        # A LANE COPY of _extract_runs, as make_dbt_staging.py's docstring
+        # ("A LANE COPY") writes NGPC's: the same relation, which
+        # dbt_project_evaluator_exceptions.csv's fct_duplicate_sources row lets
+        # two source tables name.
+        identifier: _extract_runs
+        config:
+          # When the lane last wrote the log: the run log names no row
+          # `_extract_runs`, so last_read_or_confirmed_at() reads the log's
+          # newest row (its header), at the monthly pair (make_dbt_staging.py's MONTHLY_FRESHNESS_DAYS).
+          loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+          meta:
+            cadence: monthly
+          freshness:
+            warn_after: {count: 35, period: day}
+            error_after: {count: 62, period: day}
+        data_tests:
+          # Rows sharing base_extract__runs_monthly's key must be exact copies.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'extract_runs'", "run_id", "resource_name"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
+          - elementary.volume_anomalies:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          The same run log, read by the monthly lane's nodes. A node's lane is
+          the fastest cadence among the sources it reads (build_marts.py's
+          docstring, "A LANE BUILDS ONLY ITS OWN NODES"), so a monthly writer
+          reading _extract_runs, which is hourly for int_closures__gate and
+          pub_conditions_notices, would become an hourly node: the monthly
+          lane's build leaves out everything an hourly source reaches
+          (build_marts.py's LANE_EXCLUDES), and club_sections.json would be
+          written by the hourly lane instead, over the A.T.'s monthly
+          models. The monthly warehouse holds the monthly lane's log under
+          this name, and a pin the log as of its raw_run
+          (extract/_warehouse.py). int_sources__data_edited reads each
+          layer's data edit date from it, for club_sections.json.
+        columns:
+          - name: run_id
+            description: The run, as a UTC stamp that sorts in time order.
+            data_tests: [not_null]
+          - name: resource_name
+            description: The resource the row is for.
+            data_tests: [not_null]
+          - name: data_last_edit_date
+            description: >
+              The upstream's own data edit date, in epoch milliseconds as it
+              stated it: ArcGIS's editingInfo.dataLastEditDate, from the
+              metadata the run read (extract/_run.py's RUNS_COLUMNS comment).
+              Null where the layer stated none or the run read no metadata,
+              and on every row but a `loaded` one and a `skipped` one whose
+              check read it.

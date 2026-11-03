@@ -1,29 +1,14 @@
-"""Derive data/raw/trail_water.json - where the A.T. meets water, and which
-shelters and campsites have water they can actually walk to.
+"""Derive data/raw/trail_water.json - which shelters and campsites have water
+they can actually walk to.
 
 This replaces an earlier attempt that published, on every shelter card, the
 nearest USGS-mapped stream within a kilometre. That was the wrong claim: a
 stream 700 m away is a true fact about the map and says nothing about the
 shelter, and a card that prints it is answering a question nobody asked. What
-a hiker asks is "can I get water here" and "where does the trail cross
-water" - so this file answers those two, and nothing else.
+a hiker asks is "can I get water here", so this file answers that, and nothing
+else.
 
 ## What it produces
-
-**Crossings** - exact geometric intersections of the walking routes with the
-stream lines of both hydrographies. Not a proximity guess: the two lines
-cross, so a hiker walking the trail walks through the water. **1,125 of them
-over the corridor, 571 seen by both databases**, filling the `crossing`
-poi_type that lib/poi_schema.py declared and nothing has ever populated
-(#97's investigation measured the same thing against NHD alone first: 841).
-
-Those counts are ATC's centerline ALONE and predate #1016, which added the
-trails other organizations maintain to the same intersection (see
-build_routes). Nobody has re-measured against the wider set - this was written
-where no fetched layers exist - and the run prints the new figure per source,
-so the real number lands in the log rather than here. Each crossing records
-which trail it sits on, because a pin that did not say would be claiming to be
-on the A.T., and export_poi.py withholds the A.T. mile from one that is not.
 
 **Site water** - for each shelter and campsite, the nearest point on a
 stream, published as a water POI only when a hiker could actually reach it:
@@ -37,6 +22,25 @@ stream, published as a water POI only when a hiker could actually reach it:
 Both gates have to hold. A stream 90 ft away and 120 ft below is not this
 shelter's water source however close the map says it is, and publishing it as
 one would send somebody over an edge in the dark looking for it.
+
+## What it no longer produces: crossings (#1674)
+
+Until 2026-09-26 this file also derived **stream crossings** - every exact
+intersection of the walking routes (ATC's centerline and, from #1016, the
+other organizations' trails) with both hydrographies' stream lines, deduped
+across the two at 50 m, published as the `crossing` poi_type. 5,318 of them
+on production release 2026-09-04. The maintainer: "Crossings are cluttering
+the map. Remove the crossing from the legend and do not show on the map. If
+it is a complex transformation step, remove." It was, so the intersection,
+the dedupe, the routes table and the write guard that counted crossings all
+went, and the type left POI_TYPES on both sides.
+
+What did NOT go is anything site water reads. Crossings never fed a water
+distance - build_water_distance.py reads ATC's own survey - and they were
+never site members (lib/poi_sites.py's MEMBER_TYPES), so no card's figure
+moved. A trail_water.json written before this change still carries a
+`crossings` array; export_poi.py no longer reads it, and the next derivation
+drops it.
 
 ## Both hydrographies, merged - and why USGS arrives in bulk
 
@@ -89,16 +93,15 @@ shelter_capacity.json and water_distance.json, and that was the wrong shelf.
 Those two are JOINS THAT ENCODE JUDGEMENT - a row in shelter_capacity.json is
 somebody's decision that this hiker-list entry is that ATC shelter, and a
 diff of it is a review of those decisions. This file's rows are derived
-geometry: 1,125 crossing coordinates and 512 site verdicts, none of which a
-human reads one by one.
+geometry: 512 site verdicts, none of which a human reads one by one.
 
 The judgement here lives in the CONSTANTS - MATCH_RADIUS_FT, MAX_GRADE,
-CROSSING_DEDUPE_M, which streams count - and those are code, reviewed as
+SITE_WATER_MERGE_M, which streams count - and those are code, reviewed as
 code. So the output goes where every other derived input goes: `data/raw/`,
 gitignored, cached between CI runs, and standing behind a receipt like every
 other fetcher (#542). What reaches hikers reaches them the way every layer
-does - through export_poi.py into `crossing.geojson` and `water.geojson`, and
-through publish.py into R2.
+does - through export_poi.py into `water.geojson`, and through publish.py
+into R2.
 
 Re-running it costs the extracts already on disk plus ~3.1 GB of USGS
 subregions downloaded and deleted in turn, which is why the publish workflow
@@ -114,17 +117,29 @@ it came from, and a merged one names both, so the attribution travels with
 the record rather than sitting in a registry line somebody has to find.
 
 Usage:
-    python fetch_trail_water.py
+    python fetch_trail_water.py            # ATC's two layers and the extracts fetched as needed
+    python fetch_trail_water.py --derive   # from files on disk alone (refresh-reference.yml's pin job)
+
+`--derive` is the monthly lane's form (#1652 — Download OSM's Geofabrik
+extracts at most once a month, into a private raw bucket that outlives the
+7-day Actions cache): the shelters and campsites are the ATC layers as the
+monthly extract landed them, its as-landed copy at data/raw/shelters.geojson
+and data/raw/campsites.geojson (extract/_run.py's as_landed_path()), read
+in fetch_atc_features' shape and order; the fourteen state extracts are the
+ones the pin job pulled from the raw store into OSM_RAW_DIR, and a missing one
+refuses the derivation rather than being fetched (from_disk_sites() and
+missing_extracts()). The NHD subregions and EPQS are read as always. The
+rule, the guards and the file written are the same either way.
 
 A derivation this expensive must not be able to quietly replace good output
-with less of it, so the write is guarded the way fetch_opentrail.py's is: a
-result under MIN_CROSSINGS, or one that has lost more than
-MAX_CROSSING_DROP_RATIO of what is already on disk, refuses rather than
-overwrites. Ordinary edits to either hydrography never halve a corridor's
-crossings; a broken read does.
+with less of it, so the write is guarded: a hydrography read that returned no
+stream reaches at all, or a result that has lost more than
+MAX_SITE_WATER_DROP_RATIO of the site water already on disk, refuses rather
+than overwrites. See those two for why each is the guard it is.
 """
 
 import argparse
+import concurrent.futures
 import json
 import math
 import sys
@@ -138,9 +153,8 @@ import requests
 from build_water_distance import fetch_atc_features
 from export_basemap import AT_STATES, OSM_RAW_DIR, fetch_states
 from lib import fetch_receipts
-from lib.corridor import count_features
 from lib.http_retry import download_with_retry
-from lib.source_registry import load_registry
+from lib.nhd import NHD_GPKG_URL
 from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
@@ -152,13 +166,6 @@ NHD_TMP_DIR = RAW_DIR / "nhd_tmp"
 # artifact rather than reviewed source - the answers are USGS's and the file
 # is disposable.
 ELEVATION_CACHE_PATH = RAW_DIR / "epqs_elevations.json"
-CENTERLINE_PATH = RAW_DIR / "centerline.geojson"
-
-# export_nearby_trails.py's artifact - the other organizations' lines, which
-# crossings are computed against too since #1016. Under data/processed/ because
-# it is derived output rather than a fetch, and absent on any run whose network
-# export was skipped or held back. See build_routes.
-NETWORK_LINES_PATH = ROOT / "data" / "processed" / "nearby_trails.geojson"
 
 # What counts as a stream a hiker could fill a bottle from. `waterway=ditch`,
 # `drain` and `canal` are deliberately absent - all three are water and none
@@ -180,9 +187,11 @@ STREAM_WATERWAYS = ("stream", "river")
 # NHD's intermittent code. An OSM "intermittent" there is not a second
 # opinion; it is NHD's opinion with an OSM id on it.
 #
-# So a crossing counted as "corroborated by both databases" means something
+# So a stream fact counted as "corroborated by both databases" means something
 # quite different in Virginia than in New Hampshire, and nothing in `sources`
-# could tell the two apart. These tags are what can.
+# could tell the two apart. These tags are what can. (The counts that split it
+# were the crossings', and went with them in #1674; the flag still rides on
+# every site candidate and through merge_stream_facts.)
 #
 # `gnis:feature_id` IS DELIBERATELY NOT IN THIS LIST, though #710 names it
 # alongside the others. It attests where the NAME came from - USGS's gazetteer
@@ -200,7 +209,6 @@ NHD_LINEAGE_TAGS = ("NHD:FCode", "NHD:ReachCode", "NHD:ComID")
 # NHD is a frozen snapshot - USGS retired it 2023-10-01 and its 3DHP
 # successor drops the flow classification entirely (WATER_SOURCES.md §5) -
 # which is the second reason the answer is checked in rather than re-fetched.
-NHD_GPKG_URL = "https://prd-tnm.s3.amazonaws.com/StagedProducts/Hydrography/NHD/HU4/GPKG/NHD_H_{huc4}_HU4_GPKG.zip"
 
 # The 21 subregions the trail actually crosses, from the WBD's own polygons
 # queried against the centerline (not its bounding box, which is a slab of
@@ -317,29 +325,10 @@ MAX_GRADE = 0.15
 # hole is theoretical.
 MIN_GRADE_RUN_FT = 10.0
 
-# Two crossings closer than this are one crossing.
+# Two databases' nearest points to one site closer than this are one stream.
 #
-# The frame is A HIKER'S STOP rather than a database's identity: two places
-# the trail meets water 50 m apart are one stop with one bottle, whether they
-# are one stream drawn twice or a stream and the tributary joining it.
-#
-# A CORRECTION IS RECORDED HERE ON PURPOSE. This constant was first argued up
-# from 20 m on a measurement that said not one OSM crossing landed within
-# 20 m of a USGS one, median nearest neighbour 363 m - which would have meant
-# the two databases could never be reconciled. That measurement was taken on
-# output whose merge was silently broken (see dedupe_crossings), so it
-# measured the leftovers of a collapse rather than the relationship, and it
-# was wrong. With the merge working, **571 of the corridor's 1,125 crossings
-# are seen by both databases** at this radius: they agree about the water far
-# more than that artifact suggested.
-#
-# 50 m stands anyway, on the hiker's-stop reasoning it should have rested on
-# in the first place. Whether 20 m would serve as well is a real question and
-# an honest re-measurement away - one this file's own counts would answer.
-CROSSING_DEDUPE_M = 50.0
-
-# The same question for a site's water is a different question, and keeps the
-# tighter number. Both databases' nearest points are anchored to the same
+# It was once the tighter of two such radii - crossings, until #1674 removed
+# them, merged at 50 m on a hiker's-stop argument. Both databases' nearest points are anchored to the same
 # shelter, so they converge on it rather than drifting apart - 25 of the 39
 # published points already merged at 20 m. Widening it here would start
 # folding a shelter's spring into the creek below it, which are two things a
@@ -354,11 +343,31 @@ TRIES = 5
 
 NO_STREAM_NEARBY = f"no stream within {REPORT_RADIUS_FT:.0f} ft"
 
-# The write guards, in fetch_opentrail.py's shape and for its reason. The
-# floor is far under the 1,125 the corridor measured (2026-08-13), because it
-# is there to catch a read that returned nothing, not to police the tide.
-MIN_CROSSINGS = 200
-MAX_CROSSING_DROP_RATIO = 0.5
+# The write guard, in fetch_opentrail.py's shape and for its reason: it is
+# there to catch a read that went wrong, not to police the tide.
+#
+# It used to count CROSSINGS (a floor of 200 and this same 50% drop), which was
+# the one figure here big enough to guard on - 1,125 on the corridor when it
+# was written. #1674 removed crossings, and with them the only guard site water
+# had: an empty hydrography read would have written a file with no site water
+# in it, and export_poi.py would have published that. So the guard is now two
+# checks, each on something site water actually depends on:
+#
+#   - EMPTY_READ in collect_streams: every one of the fourteen OSM state
+#     extracts and twenty-one NHD subregions this reads contains streams, so a
+#     read that loads none is a broken read, not a dry state. Reasoned from
+#     what the datasets are, not measured - no run has been made against this
+#     version, because the sandbox that wrote it has no extracts.
+#   - This ratio against the site water on disk.
+#
+# @unvalidated - 0.5 is the crossing guard's number carried over, not one
+# anybody measured against site water. 39 of 512 sites had water when
+# pipeline/README.md last counted, which is a small denominator: a real
+# hydrography edit could move it by a few, and would need to move it by
+# twenty to trip this. What would settle it is the count from two consecutive
+# derivations, to see how far an ordinary refresh actually moves it.
+MAX_SITE_WATER_DROP_RATIO = 0.5
+EMPTY_READ = "{label} loaded no stream reaches - a broken read, since every dataset this walks has streams in it"
 TOO_FAR = "the nearest stream is {distance_ft:.0f} ft away, past the {radius:.0f} ft a hiker walks for water"
 TOO_STEEP = (
     "the ground drops {drop_ft:.0f} ft over {distance_ft:.0f} ft - a {grade:.0%} grade, which is a scramble rather than a walk"
@@ -455,8 +464,8 @@ def nhd_stream_table(con: duckdb.DuckDBPyConnection, gpkg: Path) -> int:
                permanent_identifier AS id,
                -- FALSE, not NULL: NHD is the source rather than an import of
                -- it, and `streams` is one table both loaders write, so the
-               -- column has to exist on both sides for state_crossings to
-               -- read it (#710).
+               -- column has to exist on both sides for state_site_candidates
+               -- to read it (#710).
                FALSE AS osm_from_nhd,
                gnis_name AS name,
                CASE {cases} ELSE NULL END AS flow,
@@ -465,109 +474,6 @@ def nhd_stream_table(con: duckdb.DuckDBPyConnection, gpkg: Path) -> int:
         WHERE fcode IN ({fcodes})
     """)
     return con.execute("SELECT count(*) FROM streams").fetchone()[0]
-
-
-def shipped_network_keys() -> set[str]:
-    """The organizations whose lines crossings may be computed against - those
-    whose data reaches hikers."""
-    from export_nearby_trails import SOURCES_PATH, shipped_line_source_keys
-
-    return shipped_line_source_keys(load_registry(SOURCES_PATH))
-
-
-def build_routes(con: duckdb.DuckDBPyConnection, network_path: Path | None = None) -> int:
-    """The `routes` table every crossing is measured against: ATC's centerline,
-    plus the other organizations' published lines when there are any (#1016).
-    Returns how many network lines joined it.
-
-    ONE TABLE RATHER THAN TWO QUERIES, because the alternative is two code
-    paths that have to be kept saying the same thing about what a crossing is,
-    and the flag the union carries is exactly what the rows downstream need
-    anyway. `on_network` is false for every centerline row, so an A.T.-only run
-    produces the rows it always produced with two columns added.
-
-    A missing artifact is the ordinary state on a publish whose network export
-    was skipped or held back, and costs exactly what it did before this
-    existed: crossings on the A.T. and nowhere else. The caller says so out
-    loud rather than leaving a reader to infer it from a count.
-    """
-    path = NETWORK_LINES_PATH if network_path is None else network_path
-    con.execute(f"""
-        CREATE OR REPLACE TABLE routes AS
-        SELECT geom, false AS on_network, NULL::VARCHAR AS src, NULL::VARCHAR AS trail_name
-        FROM ST_Read('{CENTERLINE_PATH.as_posix()}')
-    """)
-    if not count_features(con, path):
-        return 0
-    # Only the organizations whose data reaches hikers: the artifact holds every
-    # exported source so a reviewer can look at the map before a licence answer
-    # arrives, and a crossing derived from a review-only organization's line
-    # would be that organization's data reaching a hiker. See
-    # export_nearby_trails.shipped_line_source_keys.
-    keys = shipped_network_keys()
-    quoted = ", ".join("'" + key.replace("'", "''") + "'" for key in sorted(keys)) or "NULL"
-    con.execute(f"""
-        INSERT INTO routes
-        SELECT geom, true, "source", "name" FROM ST_Read('{path.as_posix()}')
-        WHERE "source" IN ({quoted})
-    """)
-    return con.execute("SELECT count(*) FROM routes WHERE on_network").fetchone()[0]
-
-
-def state_crossings(con: duckdb.DuckDBPyConnection) -> list[dict]:
-    """Where the loaded state's streams cross the trail.
-
-    A true geometric intersection, computed by DuckDB's spatial extension
-    rather than inferred from a radius: #97 records that buffer-and-count
-    overshoots into thousands of near-misses, while the lines crossing is a
-    fact neither dataset can be talked out of.
-
-    The CTE is not cosmetic - written as a subquery in the FROM list beside
-    the two tables it reads, the join is uncorrelated and each intersection
-    point is paired with the wrong stream's name.
-    """
-    rows = con.execute("""
-        WITH hits AS (
-            SELECT streams.source AS source,
-                   streams.id AS stream_id,
-                   streams.name AS name,
-                   streams.flow AS flow,
-                   streams.osm_from_nhd AS osm_from_nhd,
-                   routes.on_network AS on_network,
-                   routes.src AS network_source,
-                   routes.trail_name AS trail_name,
-                   UNNEST(ST_Dump(ST_Intersection(routes.geom, streams.geom))).geom AS point
-            FROM streams JOIN routes ON ST_Intersects(routes.geom, streams.geom)
-        )
-        SELECT source, stream_id, name, flow, osm_from_nhd, on_network, network_source, trail_name,
-               ST_X(point) AS lon, ST_Y(point) AS lat
-        FROM hits WHERE ST_GeometryType(point) = 'POINT'
-    """).fetchall()
-    return [
-        {
-            "sources": [source],
-            "stream_id": str(stream_id),
-            "name": name or None,
-            "flow": flow,
-            # Only meaningful where OSM contributed, so it is None on an NHD
-            # row rather than False - absent means "not an OSM claim at all",
-            # which is a different thing from "an independent OSM claim".
-            "osm_from_nhd": bool(osm_from_nhd) if source == "osm" else None,
-            # WHICH trail the stream crosses (#1016). Until the network lines
-            # entered this query there was only one answer and it went without
-            # saying; with four organizations' trails in it, a crossing that
-            # did not say would be a pin claiming to be on the A.T. Carried
-            # through to export_poi.py, which withholds the A.T. mile from a
-            # crossing that is not on the A.T.
-            "on_network": bool(on_network),
-            "network_source": network_source or None,
-            "trail_name": trail_name or None,
-            "lat": lat,
-            "lon": lon,
-        }
-        for source, stream_id, name, flow, osm_from_nhd, on_network, network_source, trail_name, lon, lat in rows
-        if lat is not None and lon is not None
-    ]
 
 
 def state_site_candidates(con: duckdb.DuckDBPyConnection) -> dict[str, list[dict]]:
@@ -626,36 +532,39 @@ def ensure_state_extracts() -> None:
         fetch_states(missing, OSM_RAW_DIR)
 
 
-def collect_streams(sites: list[dict]) -> tuple[list[dict], dict[str, list[dict]]]:
-    """Walk both hydrographies once, collecting crossings and site candidates.
+def collect_streams(sites: list[dict], fetch_extracts: bool = True) -> dict[str, list[dict]]:
+    """Walk both hydrographies once, collecting every site's candidate streams.
 
     One dataset at a time, each dropped before the next is read: fourteen
     state extracts and twenty-one subregions at once is tens of gigabytes,
     and nothing here needs two in memory together. The USGS subregions are
     downloaded, read and deleted in the same loop, so the peak cost on disk
     is one 270 MB archive rather than 3.1 GB of them.
+
+    Raises on a dataset that loads no stream reaches (EMPTY_READ): see
+    MAX_SITE_WATER_DROP_RATIO for why that is half of this file's guard.
+    With `fetch_extracts` false (--derive) a missing extract is never
+    fetched: the loop below raises FileNotFoundError on it instead.
     """
-    ensure_state_extracts()
+    if fetch_extracts:
+        ensure_state_extracts()
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    network_lines = build_routes(con)
-    joined = f"+ {network_lines} network trail lines" if network_lines else "alone - no network artifact"
-    print(f"  routes: ATC's centerline {joined}", flush=True)
     con.execute("CREATE OR REPLACE TABLE sites (global_id VARCHAR, geom GEOMETRY)")
     con.executemany(
         "INSERT INTO sites VALUES (?, ST_Point(?, ?))",
         [(site["global_id"], site["lon"], site["lat"]) for site in sites],
     )
 
-    crossings: list[dict] = []
     candidates: dict[str, list[dict]] = {}
 
     def collect(label: str, reaches: int) -> None:
-        found = state_crossings(con)
-        crossings.extend(found)
-        for global_id, near in state_site_candidates(con).items():
+        if not reaches:
+            raise ValueError(EMPTY_READ.format(label=label))
+        found = state_site_candidates(con)
+        for global_id, near in found.items():
             candidates.setdefault(global_id, []).extend(near)
-        print(f"  {label}: {reaches} stream reaches, {len(found)} crossings", flush=True)
+        print(f"  {label}: {reaches} stream reaches, {len(found)} sites with one nearby", flush=True)
 
     for state in AT_STATES:
         pbf = OSM_RAW_DIR / f"{state}-latest.osm.pbf"
@@ -671,7 +580,7 @@ def collect_streams(sites: list[dict]) -> tuple[list[dict], dict[str, list[dict]
             # Deleted whichever way the read went: 270 MB apiece, and a
             # failure part-way through must not leave twenty of them behind.
             gpkg.unlink(missing_ok=True)
-    return crossings, candidates
+    return candidates
 
 
 def fetch_nhd_subregion(huc4: str) -> Path:
@@ -700,7 +609,7 @@ def fetch_nhd_subregion(huc4: str) -> Path:
 
 
 def merge_osm_lineage(kept: bool | None, other: bool | None) -> bool | None:
-    """Fold two records' OSM lineage into one, for a merged crossing (#710).
+    """Fold two records' OSM lineage into one, for a merged stream (#710).
 
     None means no OSM record contributed, and it is not False: "nobody from
     OSM said anything" and "OSM said something of its own" are different
@@ -724,7 +633,7 @@ def merge_stream_facts(kept: dict, other: dict) -> dict:
     features/POI_DEDUPLICATION.md wrote down after watching this branch's
     first merge throw the losing record's tags away. The two hydrographies
     know different things about the same stream - USGS classifies flow and
-    OSM often has the local name - so a merged crossing keeps whichever half
+    OSM often has the local name - so a merged record keeps whichever half
     each supplied, and says so: `sources` carries both, and `flow_source`
     records who made the flow claim, because "mapped as year-round" is a
     statement somebody is answerable for.
@@ -732,76 +641,15 @@ def merge_stream_facts(kept: dict, other: dict) -> dict:
     `osm_from_nhd` rides along for a narrower reason (#710): two sources in
     `sources` is not two opinions where OSM's line was imported from NHD's,
     and a merge is exactly where that stops being visible.
-
-    WHICH TRAIL A MERGED CROSSING IS ON (#1016), and why the direction is not
-    arbitrary. Through Harriman the Long Path runs beside the A.T., so the two
-    cross the same brook within CROSSING_DEDUPE_M and arrive here as a pair.
-    Taking the kept record's answer would decide it by which HYDROGRAPHY saw
-    the water first - the sort above puts USGS first for id stability, which
-    has nothing to say about trails - and half the time that answer would be
-    "a network trail" for a stream the A.T. genuinely crosses. The pin would
-    then lose its A.T. mile and drop out of a day plan's water, which is the
-    expensive failure in the direction this whole file cares about.
-
-    So a crossing is on a network trail only if EVERY record folded into it
-    was: any A.T. crossing in the pile makes the merged pin an A.T. crossing,
-    because the A.T. really does cross there. The network attribution is kept
-    either way rather than blanked - combine, never drop the loser - so the
-    record still says whose trail also crosses, even when the mile is the
-    A.T.'s.
     """
     merged = dict(kept)
     merged["sources"] = sorted(set(kept.get("sources", [])) | set(other.get("sources", [])))
     merged["name"] = kept.get("name") or other.get("name")
     merged["osm_from_nhd"] = merge_osm_lineage(kept.get("osm_from_nhd"), other.get("osm_from_nhd"))
-    merged["on_network"] = bool(kept.get("on_network")) and bool(other.get("on_network"))
-    merged["network_source"] = kept.get("network_source") or other.get("network_source")
-    merged["trail_name"] = kept.get("trail_name") or other.get("trail_name")
     if not kept.get("flow") and other.get("flow"):
         merged["flow"] = other["flow"]
         merged["flow_source"] = other.get("flow_source") or (other.get("sources") or [None])[0]
     return merged
-
-
-def dedupe_crossings(crossings: list[dict]) -> list[dict]:
-    """One pin per place the trail meets water.
-
-    By PROXIMITY rather than by identity, and across both databases at once:
-    OSM splits a stream wherever a tag changes, USGS splits a reach at every
-    confluence, and the two disagree about where the same water is by tens of
-    metres anyway (see CROSSING_DEDUPE_M for the measurement). A hiker
-    walking through gets wet once.
-    """
-    kept: list[dict] = []
-    # USGS first, so a merged crossing keeps the surveyed position and OSM's
-    # name folds onto it rather than the other way round. Within
-    # CROSSING_DEDUPE_M the two are the same stop either way; this only
-    # decides which one the published id is built from, and that id has to be
-    # stable across re-runs.
-    for crossing in sorted(crossings, key=lambda c: ("nhd" not in c["sources"], c["lat"], c["lon"])):
-        twin = next(
-            (
-                index
-                for index, other in enumerate(kept)
-                if distance_between(crossing["lat"], crossing["lon"], other["lat"], other["lon"]) <= CROSSING_DEDUPE_M
-            ),
-            None,
-        )
-        if twin is None:
-            kept.append(
-                {
-                    **crossing,
-                    "flow_source": crossing["sources"][0] if crossing.get("flow") else None,
-                    "lat": round(crossing["lat"], 6),
-                    "lon": round(crossing["lon"], 6),
-                }
-            )
-            continue
-        # COMBINED, not discarded: the loser usually knows something the
-        # winner does not - a name, or the flow class - and dropping it is
-        # the mistake features/POI_DEDUPLICATION.md was written about.
-        kept[twin] = merge_stream_facts(kept[twin], crossing)
-    return sorted(kept, key=lambda crossing: (crossing["lat"], crossing["lon"]))
 
 
 def distance_between(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -843,7 +691,7 @@ def nearest_stream(lat: float, lon: float, candidates: list[dict]) -> dict | Non
     Nearest is computed PER SOURCE and then merged, rather than taken once
     across the pile, because the two databases draw the same stream a few
     metres apart and the winner would otherwise decide which facts survive.
-    Where their nearest points agree to within CROSSING_DEDUPE_M it is one
+    Where their nearest points agree to within SITE_WATER_MERGE_M it is one
     stream: the closer point is published and the other's name or flow class
     folds onto it (merge_stream_facts). Where they disagree by more than
     that they are different water, and the closer one is simply the answer.
@@ -893,11 +741,83 @@ def elevation_ft(lat: float, lon: float) -> float | None:
     ground does not move between runs, and re-deriving with a tighter
     MAX_GRADE should cost the reading of the hydrography and not several
     hundred more round trips to a service that answers in seconds apiece.
+    The cache is keyed on the point itself (ELEVATION_CACHE_KEYS), so a
+    cached answer is only ever EPQS's answer for the point being asked.
+
+    A point prefetch_elevations() already asked this run and got no answer
+    for is declined here without asking again: it has had its TRIES.
     """
     cache = _elevation_cache()
-    key = f"{lat:.6f},{lon:.6f}"
+    key = _elevation_key(lat, lon)
     if key in cache:
         return cache[key]
+    if key in _EPQS_DECLINED:
+        return None
+    elevation = _ask_epqs(lat, lon)
+    if elevation is not None:
+        cache[key] = elevation
+        _note_elevation_added(cache)
+    return elevation
+
+
+# What an epqs_elevations.json key is, written into the file as its `keys`
+# field: the point itself (the maintainer, 2026-10-09, the rule
+# export_elevation.py's DEM sample cache follows). Each coordinate is written as Python's repr writes a double, the
+# shortest text that reads back to that same double, so two points share a key
+# only when they are one point, and a cached answer is only ever EPQS's answer
+# for the point that was asked. (0.0 and -0.0 are one point under two keys,
+# which costs a lookup and never a wrong answer.)
+#
+# WHAT IT REPLACED. A point was once keyed "lat,lon" to 6
+# decimals, about 0.11 m, and a key held the answer for the first point asked
+# under it and gave it to every later point inside the same 0.11 m box. The
+# cache feeds the water-grade gate: both ends of every walk to water that
+# resolve_site() grades here and that build_osm_water_reach.apply_grade_gate()
+# grades for OSM water (step_site_water.py --derive, step_osm_water_grade.py,
+# and parity.py's old side for a monthly run's pinned points). So a later
+# point could be graded on another point's ground. How far off depends on how
+# EPQS reads 3DEP: if it answers from the cell a point falls in, as
+# export_elevation.py's sampler does, two points either side of a cell edge
+# differ by the step between cells, the case measured on the DEM
+# sample cache (monthly run 30: up to 19 ft on one sample). How EPQS reads it
+# is not recorded here, and nobody has checked a run for a water verdict the
+# old key changed; the exact key removes the cause either way.
+#
+# WHAT IT COSTS. A point that differs from another only in the last bits of a
+# double is now asked on its own: the two sides of a monthly parity compute a
+# walk's far end each in their own SQL, and where those differ in the last
+# bits the second side asks EPQS again (Reasoned; nobody has compared the two
+# sides' walk ends bit for bit). Keys are longer and slower to make: 36.1
+# characters against 20.0, and 1.03 us a key against 0.59, on 200,000 random
+# points in the A.T. states' box (Measured 2026-10-09 in this sandbox,
+# synthetic points, not the corridor's).
+#
+# A FILE FROM BEFORE NEVER ANSWERS. An old key can equal a new one:
+# "40.000001,-75.000001" is the 6-decimal key every point within half a
+# millionth of a degree of that one was stored under, and that one point's
+# exact key as well. So _load_elevation_cache() reads a file only when its
+# `keys` is this value. Every file written under the old keys is a bare map
+# of keys to feet, carries no `keys` and is discarded whole, so each carried
+# cache's first run after it asks EPQS for every point again: monthly runs 20
+# to 22 graded the same 3,118 corridor OSM water points with nothing cached
+# in 21.3, 41.5 and 54.2 min one at a time, and run 24 asked 2,342 points
+# four at a time in 33.2 min (build-reference.yml's build job and parity.py's
+# _osm_water_old() record both). The cache's path and name are unchanged, so
+# no workflow changes.
+ELEVATION_CACHE_KEYS = "exact"
+
+
+def _elevation_key(lat: float, lon: float) -> str:
+    """The EPQS cache's key for a point: its own lat then lon, each as repr
+    writes the double (ELEVATION_CACHE_KEYS). float() first, so a numpy double
+    is keyed as the Python float it equals, never as "np.float64(...)". Lat
+    first, as this file has always keyed; export_elevation.py's DEM sample
+    cache keys lon first, and neither file is read by the other's code."""
+    return f"{float(lat)!r},{float(lon)!r}"
+
+
+def _ask_epqs(lat: float, lon: float) -> float | None:
+    """One point's EPQS answer in feet, after up to TRIES tries, or None. Touches no cache."""
     for attempt in range(TRIES):
         try:
             response = requests.get(
@@ -908,14 +828,72 @@ def elevation_ft(lat: float, lon: float) -> float | None:
             )
             response.raise_for_status()
             value = response.json().get("value")
-            elevation = None if value is None else float(value)
-            if elevation is not None:
-                cache[key] = elevation
-                _write_elevation_cache(cache)
-            return elevation
+            return None if value is None else float(value)
         except Exception:  # noqa: BLE001 - retried, then declined
             time.sleep(2**attempt)
     return None
+
+
+# How many EPQS lookups prefetch_elevations() keeps in flight at once.
+# elevation_ft() asks one point at a time, and monthly run 23
+# (refresh-reference.yml 37408053482, 2026-10-06) spent 2 h 56 min in
+# step_osm_water_grade asking that way, with nothing in the log, until the
+# job's 240 minutes ran out. One EPQS answer took 3.7 s from the sandbox that
+# day (measured 2026-10-06), against the ~1.9 s apply_grade_gate()'s docstring
+# records, and the step asks for both ends of every one of the 3,118 corridor
+# points (runs 20 to 22) that passes the distance gate. Four at once divides
+# that wait by about four (Reasoned: each lookup is independent and spends its
+# time waiting on the network). @unvalidated: 4 is picked as modest for a public
+# service that publishes no rate limit (its robots.txt answers 403, read
+# 2026-10-06), not measured against one. What would settle it is the step's
+# answered-per-minute line on a monthly run, and any 429 or 503 EPQS sends
+# back at this number.
+EPQS_AT_ONCE = 4
+
+# Points prefetch_elevations() asked this run that EPQS did not answer: kept
+# in memory only, never in the cache file, so the next run asks again (the
+# rule test_an_epqs_lookup_that_fails_or_answers_null_is_not_cached_so_the_next_attempt_asks_again
+# holds).
+_EPQS_DECLINED: set[str] = set()
+
+
+def _say(message: str) -> None:
+    print(message, flush=True)
+
+
+def prefetch_elevations(points, at_once: int = EPQS_AT_ONCE, say=_say, every: int = 250) -> int:
+    """Ask EPQS for every (lat, lon) not already cached, at_once at a time, and cache the answers.
+
+    The answers go in elevation_ft()'s own cache and in the same flush
+    batches, so a gate that then asks elevation_ft() for these points reads
+    them from memory. The lookups run in threads; the cache is written only
+    here, on the calling thread. Prints how far it has got every `every`
+    lookups, so a slow EPQS is visible in the log while it is slow. Returns how
+    many points it asked for.
+    """
+    cache = _elevation_cache()
+    wanted: dict[str, tuple[float, float]] = {}
+    for lat, lon in points:
+        key = _elevation_key(lat, lon)
+        if key not in cache and key not in _EPQS_DECLINED:
+            wanted.setdefault(key, (lat, lon))
+    if not wanted:
+        return 0
+    say(f"EPQS: {len(wanted):,} points to look up, {at_once} at a time ({len(cache):,} already cached)")
+    started = time.monotonic()
+    answered = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=at_once) as pool:
+        for done, (key, elevation) in enumerate(zip(wanted, pool.map(lambda point: _ask_epqs(*point), wanted.values())), 1):
+            if elevation is None:
+                _EPQS_DECLINED.add(key)
+            else:
+                cache[key] = elevation
+                answered += 1
+                _note_elevation_added(cache)
+            if done % every == 0 or done == len(wanted):
+                minutes = (time.monotonic() - started) / 60
+                say(f"  EPQS: {done:,}/{len(wanted):,} asked, {answered:,} answered, {minutes:.1f} min")
+    return len(wanted)
 
 
 _ELEVATION_CACHE: dict[str, float] | None = None
@@ -924,14 +902,73 @@ _ELEVATION_CACHE: dict[str, float] | None = None
 def _elevation_cache() -> dict[str, float]:
     global _ELEVATION_CACHE
     if _ELEVATION_CACHE is None:
-        _ELEVATION_CACHE = json.loads(ELEVATION_CACHE_PATH.read_text()) if ELEVATION_CACHE_PATH.exists() else {}
+        _ELEVATION_CACHE = _load_elevation_cache(ELEVATION_CACHE_PATH)
     return _ELEVATION_CACHE
 
 
+def _load_elevation_cache(path: Path) -> dict[str, float]:
+    """The answers a cache file holds, or none at all.
+
+    DISCARDED WHOLE, never in part, when its `keys` is not
+    ELEVATION_CACHE_KEYS: every file written under the old keys keyed a point
+    to 6 decimals, and one of its keys can be the exact key of a point it was
+    never asked for (ELEVATION_CACHE_KEYS says how), so not one entry of it is
+    served. Discarded too when it cannot be read or is not the shape
+    _write_elevation_cache() writes, every answer a finite number of feet
+    (json.loads reads a bare NaN or Infinity as a float, as
+    export_elevation._is_a_stored_sample() says): a lost answer costs one more
+    EPQS lookup, and a wrong one a wrong grade.
+    """
+    try:
+        stored = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(stored, dict) or stored.get("keys") != ELEVATION_CACHE_KEYS:
+        return {}
+    elevations = stored.get("elevations")
+    if not isinstance(elevations, dict) or not all(_is_feet(feet) for feet in elevations.values()):
+        return {}
+    return elevations
+
+
+def _is_feet(value) -> bool:
+    """Whether a value read back out of the cache file can be an elevation: a finite real number, and not a bool."""
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+# How many new lookups pile up before the cache file is rewritten (#1768).
+# The file used to be rewritten whole after every lookup, so a run adding N
+# points wrote 1 + 2 + ... + N rows. Now a crash loses at most this many
+# answered lookups, which the next run asks EPQS for again - the cost of the
+# crash safety, in place of N^2/2 rows written. @unvalidated: 50 is picked,
+# not measured; what would settle it is `time python fetch_trail_water.py`
+# against an empty cache with this at 1 and at 50, which nobody has run.
+ELEVATION_FLUSH_EVERY = 50
+_ELEVATION_UNSAVED = 0
+
+
+def _note_elevation_added(cache: dict[str, float]) -> None:
+    global _ELEVATION_UNSAVED
+    _ELEVATION_UNSAVED += 1
+    if _ELEVATION_UNSAVED >= ELEVATION_FLUSH_EVERY:
+        flush_elevation_cache()
+
+
+def flush_elevation_cache() -> None:
+    """Write the cache if any lookup has been added since the last write."""
+    global _ELEVATION_UNSAVED
+    if _ELEVATION_UNSAVED and _ELEVATION_CACHE is not None:
+        _write_elevation_cache(_ELEVATION_CACHE)
+    _ELEVATION_UNSAVED = 0
+
+
 def _write_elevation_cache(cache: dict[str, float]) -> None:
+    """The cache, written whole through a temporary file. `keys` says which
+    rule the keys were written under, so a later rule can refuse the file
+    (_load_elevation_cache())."""
     ELEVATION_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = ELEVATION_CACHE_PATH.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cache))
+    tmp.write_text(json.dumps({"keys": ELEVATION_CACHE_KEYS, "elevations": cache}))
     tmp.replace(ELEVATION_CACHE_PATH)
 
 
@@ -1030,21 +1067,13 @@ def resolve_site(feature: dict, layer: str, candidates: list[dict]) -> dict:
 
 
 README = [
-    "Where the A.T. meets water, and which shelters and campsites have water",
-    "they can actually walk to (#529).",
+    "Which shelters and campsites have water they can actually walk to (#529).",
     "",
     "GENERATED by fetch_trail_water.py - re-run that script rather than",
     "editing rows here, and review the diff it produces.",
     "",
-    "`crossings` are exact geometric intersections of the walking routes with",
-    "USGS and OSM stream lines: the two lines cross, so a hiker walking the trail",
-    "walks through the water. export_poi.py publishes them as the `crossing`",
-    "poi_type, which has been declared and empty since it was declared.",
-    "",
-    "The routes are ATC's centerline and, since #1016, the trails other",
-    "organizations maintain. Each crossing says which it sits on: `on_network`",
-    "with the organization's key, or false for the A.T. A crossing both trails",
-    "make is an A.T. crossing - see merge_stream_facts for why that direction.",
+    "Stream crossings used to be derived here too, as a `crossings` array.",
+    "#1674 removed them from the app and from this derivation.",
     "",
     "`sites` carries one record per shelter and campsite. A record publishes",
     # Interpolated rather than written out, because this said "35%" for as
@@ -1069,15 +1098,14 @@ README = [
     "`osm_from_nhd` says whether OSM's half was IMPORTED from NHD rather than",
     "drawn by somebody who went there - true, false, or absent where OSM did",
     "not contribute at all. Two sources in `sources` is not two opinions when",
-    "it is true, which is why `crossings_corroborated_independently` is",
-    "counted separately from `crossings_from_both` (#710). The share is not",
+    "it is true (#710). The share is not",
     "uniform along the trail: 77% of Virginia's OSM stream ways carry NHD's",
     "tags against 0% of New Hampshire's, so the same count means different",
     "things in different states.",
 ]
 
 
-def build(features_by_layer: dict[str, list[dict]], candidates: dict[str, list[dict]], crossings: list[dict]) -> dict:
+def build(features_by_layer: dict[str, list[dict]], candidates: dict[str, list[dict]]) -> dict:
     sites = []
     for layer, features in features_by_layer.items():
         for feature in features:
@@ -1085,25 +1113,9 @@ def build(features_by_layer: dict[str, list[dict]], candidates: dict[str, list[d
 
     matched = [site for site in sites if site["water"] is not None]
     counts = {
-        "crossings": len(crossings),
         "sites": len(sites),
         "sites_with_water": len(matched),
-        "named_crossings": sum(1 for crossing in crossings if crossing["name"]),
-        "crossings_from_both": sum(1 for crossing in crossings if len(crossing["sources"]) > 1),
-        # The split #710 asked for. "From both" counts two ids; only the first
-        # of these counts two OPINIONS, and which one a reader wants depends
-        # entirely on what they were about to conclude from it.
-        "crossings_corroborated_independently": sum(
-            1 for crossing in crossings if len(crossing["sources"]) > 1 and crossing.get("osm_from_nhd") is False
-        ),
-        "crossings_from_both_shared_lineage": sum(
-            1 for crossing in crossings if len(crossing["sources"]) > 1 and crossing.get("osm_from_nhd") is True
-        ),
-        "crossings_usgs_only": sum(1 for crossing in crossings if crossing["sources"] == ["nhd"]),
-        "crossings_osm_only": sum(1 for crossing in crossings if crossing["sources"] == ["osm"]),
     }
-    for flow in ("perennial", "intermittent", "ephemeral"):
-        counts[f"crossings_{flow}"] = sum(1 for crossing in crossings if crossing["flow"] == flow)
 
     return {
         "_README": README,
@@ -1126,66 +1138,120 @@ def build(features_by_layer: dict[str, list[dict]], candidates: dict[str, list[d
             },
         },
         "counts": counts,
-        "crossings": crossings,
         "sites": sites,
     }
 
 
 def render(document: dict) -> str:
-    """The document as text, ONE RECORD PER LINE inside the two big arrays.
+    """The document as text, ONE RECORD PER LINE inside the `sites` array.
 
     Rendered rather than `json.dumps(indent=2)`d because the point of
     checking this file in is that a change to it is reviewable, and at this
-    volume indentation defeats that: 1,125 crossings and 512 sites spread
-    over nine lines apiece is 20,000 lines, three times the largest reference
-    file this pipeline has, and nobody reads it. One line per record is the
-    same data in about a tenth of the space, and a moved crossing or a lost
-    match is exactly one changed line in the diff - which is more reviewable
-    than the pretty-printed form, not less.
+    volume indentation defeats that: 512 sites spread over a dozen lines
+    apiece, and more for a rejected candidate's numbers, is thousands of lines
+    nobody reads. (It was 20,000 while the file also carried 1,125 crossings,
+    before #1674.) One line per record is the same data in about a tenth of
+    the space, and a lost match is exactly one changed line in the diff -
+    which is more reviewable than the pretty-printed form, not less.
 
     The header keeps its indentation: `_README`, `source` and `counts` are
     the parts a human actually reads.
     """
     header = {key: document[key] for key in ("_README", "source", "counts")}
     lines = [json.dumps(header, indent=2)[:-2] + ","]  # drop the closing brace, keep the comma
-    for name in ("crossings", "sites"):
-        lines.append(f'  "{name}": [')
-        records = [f"    {json.dumps(record, separators=(', ', ': '))}" for record in document[name]]
-        lines.append(",\n".join(records))
-        lines.append("  ]," if name == "crossings" else "  ]")
+    lines.append('  "sites": [')
+    records = [f"    {json.dumps(record, separators=(', ', ': '))}" for record in document["sites"]]
+    lines.append(",\n".join(records))
+    lines.append("  ]")
     lines.append("}")
     return "\n".join(line for line in lines if line) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.parse_args(argv)
+    try:
+        return _run(argv)
+    finally:
+        flush_elevation_cache()  # also on a refusal or a crash, so answered lookups are kept
 
-    features_by_layer = {}
-    for layer in ("shelters", "campsites"):
-        print(f"Fetching the ATC {layer} layer ...")
-        features_by_layer[layer] = fetch_atc_features(layer)
+
+#: The two ATC layers this derives site water for, in the order the file lists them.
+SITE_LAYERS = ("shelters", "campsites")
+
+
+def from_disk_sites(raw_dir: Path | None = None) -> dict[str, list[dict]]:
+    """Each ATC layer from its as-landed GeoJSON under `raw_dir`, as fetch_atc_features returns it: {global_id, name, lat,
+    lon} for every feature with a point, by name then id. Raises FileNotFoundError for a layer with no file, and
+    ValueError for one with no point, as fetch_atc_features refuses an empty layer. `raw_dir` is RAW_DIR unless named,
+    read when called, so a test redirecting RAW_DIR redirects this."""
+    raw_dir = RAW_DIR if raw_dir is None else raw_dir
+    by_layer = {}
+    for layer in SITE_LAYERS:
+        features = json.loads((raw_dir / f"{layer}.geojson").read_text(encoding="utf-8")).get("features") or []
+        rows = [
+            {
+                "global_id": feature["properties"]["GlobalID"],
+                "name": feature["properties"].get("Name"),
+                "lat": feature["geometry"]["coordinates"][1],
+                "lon": feature["geometry"]["coordinates"][0],
+            }
+            for feature in features
+            if (feature.get("geometry") or {}).get("coordinates")
+        ]
+        if not rows:
+            raise ValueError(f"The as-landed ATC {layer} layer holds no feature with a point")
+        by_layer[layer] = sorted(rows, key=lambda row: (row["name"] or "", row["global_id"]))
+    return by_layer
+
+
+def missing_extracts() -> list[str]:
+    """The AT_STATES whose extract is not under OSM_RAW_DIR."""
+    return [state for state in AT_STATES if not (OSM_RAW_DIR / f"{state}-latest.osm.pbf").exists()]
+
+
+def _run(argv: list[str] | None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--derive",
+        action="store_true",
+        help="from files on disk alone: the as-landed ATC layers and the extracts already in data/raw/osm/, never fetched",
+    )
+    args = parser.parse_args(argv)
+
+    if args.derive:
+        if missing := missing_extracts():
+            print(f"Refusing to derive: no extract on disk for {', '.join(missing)}, and --derive fetches none.")
+            return 1
+        print(f"Reading the as-landed ATC layers under {RAW_DIR} ...")
+        try:
+            features_by_layer = from_disk_sites()
+        except (OSError, ValueError, KeyError) as refusal:
+            print(f"Refusing to derive: {refusal}.")
+            return 1
+    else:
+        features_by_layer = {}
+        for layer in SITE_LAYERS:
+            print(f"Fetching the ATC {layer} layer ...")
+            features_by_layer[layer] = fetch_atc_features(layer)
     sites = [feature for features in features_by_layer.values() for feature in features]
     print(f"  {len(sites)} shelters and campsites.")
 
     print(f"Reading streams: {len(AT_STATES)} OSM state extracts, then {len(NHD_HU4S)} USGS subregions ...")
-    crossings, candidates = collect_streams(sites)
-    crossings = dedupe_crossings(crossings)
-    print(f"  {len(crossings)} distinct trail crossings.")
+    try:
+        candidates = collect_streams(sites, fetch_extracts=False) if args.derive else collect_streams(sites)
+    except ValueError as refusal:
+        print(f"Refusing to write: {refusal}.")
+        return 1
 
     print(f"Matching water to sites (<= {MATCH_RADIUS_FT:.0f} ft, <= {MAX_GRADE:.0%} grade) ...")
-    document = build(features_by_layer, candidates, crossings)
+    document = build(features_by_layer, candidates)
     counts = document["counts"]
     print(f"  {counts['sites_with_water']}/{counts['sites']} sites have water they can walk to.")
 
-    if len(crossings) < MIN_CROSSINGS:
-        print(f"Refusing to write: {len(crossings)} crossings is below the floor of {MIN_CROSSINGS} - see MIN_CROSSINGS.")
-        return 1
-    previous = existing_crossing_count(OUT_PATH)
-    if previous and len(crossings) < previous * MAX_CROSSING_DROP_RATIO:
+    previous = existing_site_water_count(OUT_PATH)
+    if previous and counts["sites_with_water"] < previous * MAX_SITE_WATER_DROP_RATIO:
         print(
-            f"Refusing to overwrite {OUT_PATH.name}: {len(crossings)} crossings against {previous} "
-            f"on disk is past the {MAX_CROSSING_DROP_RATIO:.0%} drop guard."
+            f"Refusing to overwrite {OUT_PATH.name}: {counts['sites_with_water']} sites with water against "
+            f"{previous} on disk is past the {MAX_SITE_WATER_DROP_RATIO:.0%} drop guard."
         )
         return 1
 
@@ -1199,10 +1265,14 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def existing_crossing_count(path: Path) -> int | None:
+def existing_site_water_count(path: Path) -> int | None:
+    """Sites with water in the file on disk, counted from the records rather
+    than from `counts`, so a file written before #1674 - which carries the same
+    `sites` array beside its crossings - is measured the same way."""
     if not path.exists():
         return None
-    return len(json.loads(path.read_text(encoding="utf-8")).get("crossings", []))
+    sites = json.loads(path.read_text(encoding="utf-8")).get("sites", [])
+    return sum(1 for site in sites if site.get("water") is not None)
 
 
 if __name__ == "__main__":

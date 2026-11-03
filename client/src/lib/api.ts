@@ -58,12 +58,21 @@ export function apiUrl(path: string): string {
 export class ApiError extends Error {
   readonly status: number
   readonly detail: unknown
+  /** The response's `Retry-After` header as sent, or null - how long the
+   *  server asked to be left alone (lib/usageQueue.ts reads it). */
+  readonly retryAfter: string | null
 
-  constructor(status: number, message: string, detail?: unknown) {
+  constructor(
+    status: number,
+    message: string,
+    detail?: unknown,
+    retryAfter?: string | null,
+  ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.retryAfter = retryAfter ?? null
   }
 }
 
@@ -117,9 +126,24 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
       response.status,
       `${init.method ?? 'GET'} ${path} failed: ${response.status}`,
       await errorBody(response),
+      retryAfterOf(response),
     )
   }
   return response
+}
+
+/**
+ * The refusal's `Retry-After`, or null. Read inside a `try` for the same
+ * reason as `errorBody`: this runs while building the error for a request
+ * that has already failed, and a response with no readable headers - a test
+ * double, a proxy's oddity - must not replace the `ApiError` with another.
+ */
+function retryAfterOf(response: Response): string | null {
+  try {
+    return response.headers.get('Retry-After')
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -141,7 +165,10 @@ async function errorBody(response: Response): Promise<unknown> {
 }
 
 /** Like `apiFetch`, but refuses before spending a request when signed out. */
-async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
+export async function authedFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const token = await accessToken()
   // Checked here rather than left to the server's 401, because the round trip
   // is the expensive part on a metered connection with one bar - and the
@@ -164,14 +191,15 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
  * A third stance, and the reason reads could not just borrow `authedFetch`
  * (#286). That one refuses without a token, which is right for a write the
  * server would refuse anyway. A read must not: browsing has never needed an
- * account in this app, and `list_reports` is built to answer an anonymous
- * caller with the public set.
+ * account in this app, and every read here answers an anonymous caller.
  *
- * But the token still goes when it exists, and that is not a nicety - it is
- * what lets a reporter see their own unmoderated report. Without it someone's
- * own report vanishes from the app between submitting it and a moderator
- * reaching it, which is precisely what "Waiting" on the More screen is
- * describing.
+ * The token still goes when it exists, and two of its three callers need it:
+ * `list_field_notes` (`fetchFieldNotes`) and the report photo links
+ * (`fetchReportPhotoLink`) answer a signed-in caller with more of their own.
+ * The third, `fetchPoiPhotos`, reads `list_photos`
+ * (backend/app/routers/poi_photos.py), which takes no caller, so the token
+ * changes nothing there. The three conditions reads do not use this any more,
+ * and THE SHARED READS below says why.
  */
 async function readFetch(path: string, signal?: AbortSignal): Promise<Response> {
   const token = await accessToken()
@@ -181,6 +209,29 @@ async function readFetch(path: string, signal?: AbortSignal): Promise<Response> 
     headers: token === null ? {} : { Authorization: `Bearer ${token}` },
   })
 }
+
+/*
+ * THE SHARED READS. `fetchClosures`, `fetchReports` and `fetchDisputes` call
+ * `apiFetch` with no headers, so they never carry a token, even when there is
+ * one (#1916 - A signed-in hiker's app sends its token on the three
+ * edge-cached reads, so they either skip the cache or hide the hiker's own
+ * queued report). A fifth stance, kept as a convention rather than a wrapper
+ * because the launch budget counts every eager byte
+ * (features/LAUNCH_BUDGET.md §3).
+ *
+ * These are the reads a cache in front of the API keeps one copy of for
+ * everybody (#1907 - Let Cloudflare cache GET /closures, /reports and
+ * /disputes in front of the API, and write the click-path that stands it
+ * up). A token makes a request the cache cannot simply answer from that copy:
+ * it either goes past it to the API, or is answered from it, and Cloudflare's
+ * docs do not say which. The first spends the API's free tier on every
+ * signed-in hiker. The second hides a reporter's own waiting report. The
+ * server never reads the caller on `/closures` or `/disputes`. On `/reports`
+ * a token adds the caller's own reports at any status, and unmasks fields
+ * this app never reads (`ReportOut.for_viewer` in
+ * backend/app/schemas/report.py); the own reports come from `/reports/mine`
+ * instead (`fetchMyReports`).
+ */
 
 /**
  * A write the server accepts with or without an account, carrying the token
@@ -246,20 +297,37 @@ export interface ReportSummary {
   timestamp: string
   /**
    * When a moderator confirmed it, or null (#1373, F12). The live wire has
-   * sent it since PR #647; the published baseline does NOT carry it -
-   * pipeline/export_conditions.py's PUBLIC_REPORTS_SQL selects no
-   * `verified_at` (read 2026-09-10), so every report read offline arrives
-   * without one, and the serious-warning sheet says so rather than printing
-   * a bare confirmation. Baking the field is the pipeline's change to make,
-   * not this file's claim to have made. Optional as well as nullable for the
-   * reason `ClosureSummary`'s geometry gives: a document without the key.
+   * sent it since PR #647, and the published baseline carries it too:
+   * pipeline/export_conditions.py's PUBLIC_REPORTS_SQL selects `verified_at`
+   * and REPORT_TIMESTAMP_FIELDS normalises it (read 2026-09-14).
+   *
+   * THIS COMMENT SAID THE OPPOSITE UNTIL THE v1.3.0 RELEASE REVIEW, and the
+   * way it went wrong is worth keeping rather than quietly correcting. It was
+   * written against a tree where the field really was absent, and the branch
+   * that baked it in landed nineteen minutes later the same afternoon; both
+   * merged into 0fa5a68a, where the sentence was false and dated and looked
+   * checked. That is the combination defect RELEASING.md §9 says a release
+   * review exists to catch, on a hazard-freshness surface RELEASING.md §8b
+   * makes load-bearing.
+   *
+   * So a null here now means the report genuinely has no confirmation, not
+   * that the download could not carry one - EXCEPT on a release published
+   * before #1377, whose baseline predates the column. Optional as well as
+   * nullable for the reason `ClosureSummary`'s geometry gives: a document
+   * without the key.
    */
   verified_at?: string | null
 }
 
 /**
- * Reports visible to this caller: public and moderated, plus their own at any
- * status when a token went with the request.
+ * The public, moderated reports everybody gets, from `GET /reports`, sent
+ * with no token even when the hiker is signed in (THE SHARED READS above,
+ * #1916).
+ *
+ * The hiker's own reports at any status are `fetchMyReports`, a read of its
+ * own that lib/useConditions.ts merges in. Kept apart so this list never
+ * waits on that one: a fresh warning is drawn the moment it arrives, and a
+ * slow or failed private read cannot hold it back.
  *
  * **Throws rather than returning `[]` on failure, and that is the point.** An
  * empty list and a failed fetch draw the same map and mean opposite things on
@@ -267,8 +335,25 @@ export interface ReportSummary {
  * is open. The caller has to be able to say it does not know.
  */
 export async function fetchReports(signal?: AbortSignal): Promise<ReportSummary[]> {
-  const response = await readFetch('/reports', signal)
+  const response = await apiFetch('/reports', { signal })
   return (await response.json()) as ReportSummary[]
+}
+
+/**
+ * The signed-in hiker's own reports at any status, from `GET /reports/mine`.
+ * Without them, someone's own report would vanish from the app between
+ * submitting it and a moderator reaching it, which is what "Waiting" on the
+ * More screen describes.
+ *
+ * Through `authedFetch`, so it throws `NotSignedInError` before any request
+ * when nobody is signed in. Also throws on a 2xx body that is not a list, so
+ * a malformed answer fails this read alone instead of reaching the merge in
+ * lib/useConditions.ts, where spreading it would throw.
+ */
+export async function fetchMyReports(): Promise<ReportSummary[]> {
+  const mine: unknown = await (await authedFetch('/reports/mine')).json()
+  if (!Array.isArray(mine)) throw new TypeError('GET /reports/mine sent no list')
+  return mine as ReportSummary[]
 }
 
 /**
@@ -361,7 +446,7 @@ export interface ClosureSummary {
  * hiker would act on by walking into it.
  */
 export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummary[]> {
-  const response = await readFetch('/closures', signal)
+  const response = await apiFetch('/closures', { signal })
   return (await response.json()) as ClosureSummary[]
 }
 
@@ -380,7 +465,7 @@ export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummar
  * about a spring.
  */
 export async function fetchDisputes(signal?: AbortSignal): Promise<DisputeSummary[]> {
-  const response = await readFetch('/disputes', signal)
+  const response = await apiFetch('/disputes', { signal })
   return (await response.json()) as DisputeSummary[]
 }
 
@@ -441,7 +526,49 @@ export async function sendReport(item: OutboxItem): Promise<void> {
     body: JSON.stringify({ ...item.payload, id: item.id, authored_at: item.authoredAt }),
   })
 
-  if (item.photo !== undefined) await sendReportPhoto(item.id, item.photo)
+  // ONE REQUEST EACH, NUMBERED BY POSITION (#1439), and strictly in order.
+  //
+  // Sequential rather than `Promise.all`, and the reason is the endpoint's
+  // own contract: it refuses an index past the end of the set, so that a
+  // report can never claim photos the bucket does not hold. Three parallel
+  // PUTs would arrive in whatever order the connection gave them and two of
+  // the three would be refused - on a trail where the connection is the
+  // unreliable part.
+  //
+  // THE COUNTER ADVANCES ON WHAT LANDED, NOT ON WHAT WAS TRIED, and that is
+  // the subtle half. A photo the server will never accept is skipped rather
+  // than retried forever (see `sendReportPhoto`), and if the counter had
+  // advanced past it anyway the NEXT photo would ask for an index one beyond
+  // the end - refused as out of sequence, on every flush, leaving the item
+  // queued for good. So a skip closes the gap, and the set the server ends
+  // up holding is the photos that could be stored, densely numbered.
+  //
+  // A throw stops the loop and keeps the whole item queued, exactly as the
+  // single photo did: the next flush re-POSTs the report (idempotent since
+  // #243) and re-PUTs the photos, each landing on the object it landed on
+  // last time because the key is derived from its index.
+  let index = 1
+  for (const photo of reportPhotos(item)) {
+    if (await sendReportPhoto(item.id, photo, index)) index += 1
+  }
+}
+
+/**
+ * A report's photos, whichever field this item keeps them in.
+ *
+ * **`photo` is still read, and this is the whole reason the reading is a
+ * function.** #1439 moved a report's photos to `photos`, and the moment it
+ * shipped there were reports already queued in somebody's IndexedDB with the
+ * old single field - written offline, days from signal, and the only copy of
+ * what they photographed. An upgrade that silently stopped sending those
+ * would lose exactly the pictures this outbox exists to protect.
+ *
+ * Both, not either: an item cannot hold both fields (nothing writes `photo`
+ * for a report any more), and if one somehow did, sending both is the
+ * outcome that loses nothing.
+ */
+function reportPhotos(item: OutboxItem): Blob[] {
+  return [...(item.photo === undefined ? [] : [item.photo]), ...(item.photos ?? [])]
 }
 
 /**
@@ -468,20 +595,33 @@ export async function sendReport(item: OutboxItem): Promise<void> {
  * an empty body, which an encoded canvas is not. It is a valve for a bug in
  * this app's own preparation step, not a path a working client takes.
  */
-async function sendReportPhoto(reportId: string, photo: Blob): Promise<void> {
+async function sendReportPhoto(
+  reportId: string,
+  photo: Blob,
+  index: number,
+): Promise<boolean> {
   try {
-    await authedFetchBytes(`/reports/${reportId}/photo`, photo)
+    await authedFetchBytes(`/reports/${reportId}/photos/${index}`, photo)
+    return true
   } catch (error) {
+    // False rather than a throw: the caller uses it to keep the numbering
+    // dense over a photo that will never be stored - see the loop above.
     if (error instanceof ApiError && PERMANENTLY_UNACCEPTABLE_PHOTO.has(error.status))
-      return
+      return false
     throw error
   }
 }
 
 /** The statuses that mean this photo will never be accepted, however often it
  *  is offered. NOT 503 - that is "no bucket on this deployment yet", which is
- *  precisely the case worth waiting out. */
-const PERMANENTLY_UNACCEPTABLE_PHOTO = new Set([400, 413, 415])
+ *  precisely the case worth waiting out.
+ *
+ *  409 joined them with the photo set (#1439): it is the server saying the
+ *  index is out of sequence or past `MAX_REPORT_PHOTOS`, and neither becomes
+ *  true by asking again. It is also the one that must not block the photos
+ *  behind it - a client capped higher than the server would otherwise queue a
+ *  report forever over its seventh picture. */
+const PERMANENTLY_UNACCEPTABLE_PHOTO = new Set([400, 409, 413, 415])
 
 /**
  * Sends one queued app-failure report (#848).
@@ -576,14 +716,61 @@ export async function sendClosure(item: OutboxItem): Promise<void> {
 }
 
 /**
+ * Sends one completed challenge item (#1780). `authored_at` travels for the
+ * reason `sendClosure`'s `reported_at` does: the server stores when the tag
+ * was made, not when the phone found signal, so a tag queued on the last
+ * evening of the window and flushed in town a week later still reads as
+ * made inside it. The server judges nothing by it - it once answered with a
+ * `late` flag, which told any caller whether an id had an owner and a date,
+ * and was taken out.
+ */
+export async function sendChallengeTag(item: OutboxItem): Promise<void> {
+  await authedFetch('/challenges/tags', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...item.challengeTag,
+      id: item.id,
+      authored_at: item.authoredAt,
+    }),
+  })
+}
+
+/** Takes back a challenge tag, or every tag on a challenge (#1780). The
+ *  server answers 204 whether or not there was one, so a resend after a lost
+ *  response is harmless. */
+export async function sendChallengeUntag(item: OutboxItem): Promise<void> {
+  const untag = item.challengeUntag
+  if (untag === undefined) return
+  const challenge = encodeURIComponent(untag.challenge_id)
+  await authedFetch(
+    untag.item_id === null
+      ? `/challenges/${challenge}/tags`
+      : `/challenges/${challenge}/items/${encodeURIComponent(untag.item_id)}/tag`,
+    { method: 'DELETE' },
+  )
+}
+
+/** Sends one challenge entry (#1780) - the only thing about a hiker a club
+ *  ever receives, and only because they pressed send. */
+export async function sendChallengeEntry(item: OutboxItem): Promise<void> {
+  const entry = item.challengeEntry
+  if (entry === undefined) return
+  const { challenge_id: challengeId, ...body } = entry
+  await authedFetch(`/challenges/${encodeURIComponent(challengeId)}/entries`, {
+    method: 'POST',
+    body: JSON.stringify({ ...body, id: item.id }),
+  })
+}
+
+/**
  * Sends one queued outbox item, whatever it carries.
  *
- * The outbox holds six families now: condition reports (the original
+ * The outbox holds nine kinds of item now: condition reports (the original
  * cargo), photo actions (#577/#579 - share, withdraw, report), app-failure
  * reports (#848), field notes (features/FIELD_NOTES.md), volunteer hours
- * (#761), and closures (#832). One dispatcher, so `flushOutbox` keeps its
- * single `send`
- * seam and the queue stays one queue - a hiker's unsent work is one list.
+ * (#761), closures (#832), and challenge tags, their removals and entries
+ * (features/CHALLENGES.md). One dispatcher, so `flushOutbox` keeps its single `send` seam and
+ * the queue stays one queue - a hiker's unsent work is one list.
  */
 export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.action !== undefined) return sendPhotoAction(item.action, item.photo)
@@ -591,6 +778,9 @@ export async function sendOutboxItem(item: OutboxItem): Promise<void> {
   if (item.fieldNote !== undefined) return sendFieldNote(item)
   if (item.volunteerHours !== undefined) return sendVolunteerHours(item)
   if (item.closure !== undefined) return sendClosure(item)
+  if (item.challengeTag !== undefined) return sendChallengeTag(item)
+  if (item.challengeEntry !== undefined) return sendChallengeEntry(item)
+  if (item.challengeUntag !== undefined) return sendChallengeUntag(item)
   return sendReport(item)
 }
 
@@ -710,6 +900,47 @@ const PERMANENT_REASONS: Record<number, string> = {
   409: 'The server already has a different report filed under this one’s id.',
 }
 
+/**
+ * A challenge entry's or tag's refusals are sentences the server wrote for
+ * the hiker (backend/app/routers/trail_challenges.py's NOT_TAKING_ENTRIES,
+ * ALREADY_SENT and the per-hiker tag cap, and app/core/trail_challenge.py's
+ * closed_sentence, whose docstring says the phone shows it verbatim). They
+ * arrive as 409s, and PERMANENT_REASONS' 409 - "a different report filed
+ * under this one's id" - would tell somebody whose club is not taking
+ * entries, or whose tag hit the cap, that their report collided. Matched by
+ * opening words because they are the contract the backend's tests hold
+ * (test_routers_trail_challenges.py); a sentence this list does not know
+ * falls through to the generic reason, never to silence.
+ */
+const HIKER_SENTENCE =
+  /^(This challenge['’]s club is not taking entries|You have already sent an entry|Entries for this challenge closed|This account has more challenge tags)/
+
+/**
+ * The sentence a refused request's server wrote, or `fallback`.
+ *
+ * For screens whose reader is an admin (the org console): FastAPI puts a
+ * route's own refusal in `detail` as a string, and that sentence - "Ask
+ * OurHike to remove one you no longer need before saving another", "This
+ * organization's entries are held until somebody at it is confirmed
+ * again" - is what the admin needs. `ApiError.message` is
+ * "POST /clubs/… failed: 409", which the console showed instead (second
+ * Challenges review, 2026-10-01). A validation failure's `detail` is a list,
+ * not a sentence, and gets the fallback.
+ */
+export function refusalSentence(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const detail = (error.detail as { detail?: unknown } | null)?.detail
+    if (typeof detail === 'string' && detail.trim() !== '') return detail
+  }
+  return error instanceof Error ? error.message : fallback
+}
+
+function hikerSentence(error: ApiError): string | null {
+  if (error.status !== 409) return null
+  const detail = (error.detail as { detail?: unknown } | null)?.detail
+  return typeof detail === 'string' && HIKER_SENTENCE.test(detail) ? detail : null
+}
+
 // The backend returns 422 for two unrelated reasons, and the entry above is
 // written for only one of them (#412).
 //
@@ -761,6 +992,9 @@ function namesAuthoredAt(detail: unknown): boolean {
 export function permanentFailureReason(error: unknown): string | null {
   if (!(error instanceof ApiError)) return null
 
+  const written = hikerSentence(error)
+  if (written !== null) return written
+
   // A 422 that does not name `authored_at` is validation failing on some
   // other field, which this build cannot fix by trying again - but a newer
   // build can, so the message says so and `flushOutbox` retries it once the
@@ -810,6 +1044,51 @@ export async function fetchMyProfile(signal?: AbortSignal): Promise<ProfileSumma
 export interface QueuedReport extends ReportSummary {
   visibility: 'public' | 'internal_only' | 'club_only'
   photo_url: string | null
+  /**
+   * How many photos this report holds (#1439) - the whole set, fetched one
+   * index at a time through `fetchReportPhotoLink`.
+   *
+   * `| null` AS WELL AS OPTIONAL, and the null is what carries the meaning
+   * here: a server running the previous release does not send this field at
+   * all, and backend/tests/test_client_response_contract.py reads nullability
+   * rather than TypeScript's `?`, on the grounds that a client type which
+   * says always-present about a field that can be absent is a type that lies.
+   *
+   * The reader's fallback is the one inference the data supports: a row with
+   * a `photo_url` has exactly one object, which is also what the migration's
+   * own backfill says about the same row.
+   */
+  photo_count?: number | null
+  /**
+   * Where the hiker said this was, in their own words (#1439, D16), or null.
+   *
+   * Present only on a report with no coordinates and no `poi_id` - which is
+   * exactly the report a moderator cannot place any other way, so the queue
+   * is the one surface that must not drop it. Never geocoded: a moderator
+   * reads the words and places it, and the app does not guess.
+   */
+  place_words?: string | null
+  /**
+   * How the report came by its coordinates (#1563), or null for a row an
+   * older client filed: `poi` for a named waypoint, `gps` for the phone's own
+   * fix, `map` for a spot marked by hand. Optional as well as nullable, for
+   * `photo_count`'s reason: a server on the previous release does not send it.
+   */
+  location_source?: 'poi' | 'gps' | 'map' | null
+  /** The platform's stated radius for a `gps` fix, metres, or null. */
+  location_accuracy_m?: number | null
+  /** How many seconds old a `gps` fix was when the report took it, or null. */
+  location_fix_age_s?: number | null
+  /**
+   * The name the hiker put to the report and which of their two names it is
+   * (#1563), or null: withheld from everyone but the reporter and a moderator,
+   * like `reporter_id`, and absent on a report signed with nothing.
+   */
+  signed_name?: string | null
+  signed_name_kind?: 'trail' | 'real' | null
+  /** Whether the hiker said a club may contact them about it. Null on a
+   *  response that withholds it; the server's own default is false. */
+  contact_ok?: boolean | null
   reporter_id: string | null
 }
 
@@ -894,9 +1173,11 @@ export async function dismissReport(reportId: string): Promise<void> {
  */
 export async function fetchReportPhotoLink(
   reportId: string,
+  /** Which of the report's photos (#1439). One-based, as the keys are. */
+  index = 1,
   signal?: AbortSignal,
 ): Promise<{ url: string; expiresIn: number }> {
-  const response = await readFetch(`/reports/${reportId}/photo/link`, signal)
+  const response = await readFetch(`/reports/${reportId}/photos/${index}/link`, signal)
   const body = (await response.json()) as { url: string; expires_in: number }
   return { url: body.url, expiresIn: body.expires_in }
 }
@@ -1373,4 +1654,66 @@ export interface DeletionReceipt {
 export async function deleteAccount(): Promise<DeletionReceipt> {
   const response = await authedFetch('/profiles/me', { method: 'DELETE' })
   return (await response.json()) as DeletionReceipt
+}
+
+// ---- Supporting OurHike (#1876) ----
+//
+// The shape the server answers with lives here, beside the other response
+// types, so backend/tests/test_client_response_contract.py can hold it to
+// `GET /support/me`. The three calls that use it live in lib/supportApi.ts,
+// which only deferred screens import: this file is in the launch closure,
+// and LAUNCH_BUDGET.md §3 has no room for code a launch never runs.
+
+/**
+ * `GET /support/me`'s `status` (#1876). Provider-neutral: which provider
+ * holds the payment is `provider`, and nothing here depends on it.
+ *
+ * - `none`: no paid choice on this account.
+ * - `pending`: chosen in the app; the provider has not confirmed a payment.
+ * - `active`: the provider says the recurring payment started.
+ * - `payment_failed`: a renewal failed and the provider is retrying the
+ *   card. Still running: Stop cancels it at once, so no retry can charge.
+ * - `paused`: the provider says it exists and is not charging.
+ * - `cancel_scheduled`: no more charges; it ends at `period_end`.
+ * - `stop_requested`: the hiker pressed Stop and the provider has not yet
+ *   said it ended. The backend asks Stripe to stop renewing (or the founder,
+ *   by email, if Stripe cannot be reached), and the hiker is emailed when it
+ *   is done.
+ * - `stopped`: ended - or a pending choice cleared, with nothing charged.
+ */
+export type SupportStatus =
+  | 'none'
+  | 'pending'
+  | 'active'
+  | 'payment_failed'
+  | 'paused'
+  | 'cancel_scheduled'
+  | 'stop_requested'
+  | 'stopped'
+
+export interface SupportSummary {
+  status: SupportStatus
+  amount_cents: number | null
+  cadence: 'year' | 'month' | null
+  provider: string | null
+  /** The provider's name, for the website app only: the store apps never
+   *  name a payment provider. */
+  provider_label: string | null
+  /** The address the provider will know the supporter by. */
+  email: string | null
+  chosen_at: string | null
+  started_at: string | null
+  period_end: string | null
+  stop_requested_at: string | null
+  ended_at: string | null
+  /** A recurring payment exists and nothing has ended it. The server's
+   *  answer, so the app keeps no copy of the state machine. */
+  supporting: boolean
+  /** Stop does something. */
+  can_stop: boolean
+  /** A new choice would be accepted. */
+  can_choose: boolean
+  /** The "Emails about my support" switch for this support's address: false
+   *  when the hiker turned it off, here or from an email's page. */
+  support_emails: boolean
 }

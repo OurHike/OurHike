@@ -56,6 +56,21 @@ export const LAUNCH_MARKS = {
   today: 'ourhike:today',
   /** The centerline index landed, so a fix can be placed on the trail. */
   index: 'ourhike:index',
+  /**
+   * The engine built a map - MapView handed the shell a MapLibre instance
+   * (#1560). A phone that stays on Today never reaches this, deliberately
+   * (App.tsx's `mapNeededNow`); a laptop reaches it on every launch, and it
+   * is the moment the maintainer's "several seconds for the map to appear"
+   * needed a name for.
+   */
+  map: 'ourhike:map',
+  /**
+   * That map's `load` event - MapLibre's "first visually complete rendering",
+   * which is the frame a hiker would call the map appearing. Later than
+   * `map` by however long the style, the worker and the first tiles take,
+   * and that gap is what #1564 (the two-second research) is about.
+   */
+  mapDrawn: 'ourhike:map-drawn',
 } as const
 
 export type LaunchMarkName = (typeof LAUNCH_MARKS)[keyof typeof LAUNCH_MARKS]
@@ -68,6 +83,8 @@ export const LAUNCH_MARK_ORDER: readonly LaunchMarkName[] = [
   LAUNCH_MARKS.preferences,
   LAUNCH_MARKS.today,
   LAUNCH_MARKS.index,
+  LAUNCH_MARKS.map,
+  LAUNCH_MARKS.mapDrawn,
 ]
 
 /** What each mark is called on screen. Short enough for a settings row. */
@@ -77,6 +94,8 @@ export const LAUNCH_MARK_LABELS: Record<LaunchMarkName, string> = {
   [LAUNCH_MARKS.preferences]: 'Your settings read',
   [LAUNCH_MARKS.today]: 'Waypoints ready',
   [LAUNCH_MARKS.index]: 'Trail index ready',
+  [LAUNCH_MARKS.map]: 'Map built',
+  [LAUNCH_MARKS.mapDrawn]: 'Map drawn',
 }
 
 /**

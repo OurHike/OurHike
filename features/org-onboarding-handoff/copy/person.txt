@@ -1,0 +1,109 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Manage volunteers
+        ›
+          A volunteer
+  [button] ‹ All volunteers
+          MA
+            VOLUNTEER SINCE 2019 · 142 HOURS LOGGED
+        [h1] Maria Alvarez
+    [svg]
+          Maria sees this same page.
+        Maria can change her own name, contact details and notification settings; you can additionally change her roles and status. Whoever edits a field, the change is dated and attributed — nothing here is overwritten silently.
+          Their details
+              Name
+            [input text]  value=Maria Alvarez
+              Email
+            [input text]  value=maria@ramapotrails.org
+              Phone (optional)
+            [input text] Only shown to their supervisor value=
+              Trail name (optional)
+            [input text] What hikers call them value=Switchback
+            [button] Save changes
+              Last edited by Maria · Sep 9
+            Roles
+            ADMIN ONLY
+            Maria can see these; only an admin can change them.
+                  Supervisor
+                  Harriman · Pine Meadow
+                · supervised by
+                  — reports to the trails chair
+                since Apr 2021
+                  Supervisor
+                  Harriman · Ramapo–Dunderberg
+                · supervised by
+                  — reports to the trails chair
+                since Sep 2023
+                  Maintainer
+                  Harriman · Ramapo–Dunderberg E
+                · supervised by
+                  herself
+                since Apr 2019
+            [button] + Add a role
+            [button] Mark inactive
+            HER RECORD
+              Hours logged
+                142
+              Reports filed
+                41
+              Sections covered
+                3
+              Joined
+                Apr 2019
+            Hours are hers first — logged by her, confirmed by the club afterwards for its own reporting.
+          RECENT ACTIVITY
+                Sep 14
+                Approved the club registration
+                Sep 9
+                Logged 11 hours · Ramapo–Dunderberg E
+                Aug 30
+                Confirmed 6 volunteers’ logged hours
+                Jul 2
+                Took on Supervisor · Ramapo–Dunderberg
+            Public credit is off
+              Maria Alvarez’s name is never shown publicly against a section unless she turns credit on herself. Only she can make that choice — an admin cannot do it for her.

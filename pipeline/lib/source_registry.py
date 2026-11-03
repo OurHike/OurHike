@@ -118,20 +118,96 @@ WEEKLY_POLYGONS = "weekly_polygons"
 # a schedule, and fetch_all.py skips it like everything not ArcGIS.
 GUIDE_PAGES = "guide_pages"
 
-# Day hikes an organization writes up for people to walk - NYNJTC's Favorite
-# Hikes first (#1290): a name, an overview, a dated turn-by-turn, a credited
-# photograph, and the trailhead as a pin on a map, published as WordPress
-# posts of a custom type behind the REST API. Fetched by fetch_nynjtc_hikes.py
-# into data/raw/nynjtc_hikes.json and parsed by lib/nynjtc_hikes.py into
-# facts; the ROUTE each one walks is not published anywhere and is built here
-# from the description, reviewed row by row in reference/nynjtc_hike_routes
-# .json, and shipped by export_suggested_hikes.py behind the entry's own
-# `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the
+# Day hikes an organization writes up for people to walk - NYNJTC's, through
+# the Hike Finder export (#1427, and #1290 before it): a name, a summary, a
+# turn-by-turn description, the publisher's own categorisation and tags, and
+# the parking as a pin. Fetched by fetch_hikefinder.py into
+# data/raw/hikefinder.json and parsed by lib/hikefinder.py into facts. THE
+# ROUTE ARRIVES TWO WAYS and the difference is carried all the way to the
+# card: 113 of the 385 publish a GPX track the writer DREW (#1451 - they
+# are drawn in gpx.studio, not recorded on the ground), and 272
+# publish no line at all, so route_hikefinder.py forms one from the
+# description over the junction graph and grades it. export_suggested_hikes.py
+# ships what passes, behind the entry's own `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the
 # thing a reader gets is a hike, not a waypoint, and the exporter that reads
 # it is a different one; and rather than PUBLISHED_NOTICES because these are
 # fetched on a schedule, not reviewed by hand into git. fetch_all.py skips it
 # like everything not ArcGIS.
 PUBLISHED_HIKES = "published_hikes"
+
+# A dataset on a Socrata open-data portal, fetched as GeoJSON - New York
+# City's own walking paths first (#1432): NYC Parks' trails across 73 parks,
+# and the off-street greenway subset of NYC DOT's bike network.
+#
+# ITS OWN KIND BECAUSE THE TRANSPORT IS DIFFERENT, NOT BECAUSE THE DATA IS.
+# These carry trail lines exactly as EXTERNAL_ARCGIS_LAYER's occupants do,
+# and `network_line_sources()` picks both up off the same blaze marker. What
+# differs is everything about getting the bytes: SoQL `$where` rather than an
+# ArcGIS `where`, `$limit`/`$offset` rather than `resultOffset`, and
+# `rowsUpdatedAt` in epoch SECONDS rather than `editingInfo.dataLastEditDate`
+# in milliseconds. lib/socrata.py owns that half.
+#
+# WHY NOT JUST REGISTER NYC's ARCGIS MIRROR. Because it is dead. NYC DCP's
+# copy of DOT's bike network reports dataLastEditDate 2017-03-08, carries
+# 13,953 rows against the portal's 29,695, and has no `grnwy` column at all
+# (all measured live 2026-09-15) - so the ArcGIS route cannot express the
+# filter that keeps on-street bike lanes from being drawn as walking paths.
+# NYC Parks has no ArcGIS org publishing trails at all. The portal is the
+# publication of record, so the portal is what this fetches.
+#
+# fetch_external_layers.py fetches these alongside the ArcGIS ones - the same
+# script, because the boundary that mattered for that script was "another
+# organization's layer, outside the A.T. build", and that is what these are.
+# fetch_all.py skips it like everything not ArcGIS.
+SOCRATA_GEOJSON_LAYER = "socrata_geojson_layer"
+
+# A podcast's own RSS feed, read whole for its episode list - The Green
+# Tunnel first, which ATC sponsors (the maintainer, reviewing #1793's pull
+# request on 2026-10-01). Its rows are episode metadata (title, date, guid,
+# links), never audio: an episode is linked, never re-hosted (#1683 — Offer
+# podcast episodes picked for the hike, with a one-tap Spotify save and an
+# in-app player). Read by pipeline/extract/'s podcast_feed builder only;
+# fetch_all.py skips it like everything not ArcGIS, and no exporter reads it.
+# reference/podcast_episodes.json stays the editorial file that decides which
+# episode a hike offers.
+PODCAST_FEED = "podcast_feed"
+
+# A club's ArcGIS layer, registered for pipeline/extract/ alone (pipeline/ELT.md,
+# "Loading everything the clubs publish"): read only by the
+# extract's arcgis_layer builder, so publication is decided in dbt
+# (int_sources__publication) and nowhere else. No legacy fetcher, loader or
+# exporter reads it, and that is the reason for its own kind rather than
+# EXTERNAL_ARCGIS_LAYER. Under that kind, publish-vector-data.yml's
+# fetch_external_layers.py would fetch every such row whatever its
+# reaches_hikers says, and its completeness gate fails the whole publish on
+# one failed or empty layer. Club layers live on about 44 club hosts,
+# so one club server down would have stopped the A.T.'s water and shelters
+# publishing. load_raw.py would load them too. The rows also carry no
+# `poi_type` and no `blaze_field`, the two fields export_nearby_poi.py's
+# poi_sources() and export_trails.py's line sources select on.
+# tests/test_lib_source_registry.py fails if any of those readers selects one.
+CLUB_ARCGIS_LAYER = "club_arcgis_layer"
+
+# Club GIS files and geographic APIs (pipeline/ELT.md, "Loading everything the
+# clubs publish"), registered for pipeline/extract/ alone, as CLUB_ARCGIS_LAYER is
+# and for the same reason: no legacy fetcher, loader or exporter reads them,
+# so publication is decided in dbt and nowhere else. A GIS file (KML, KMZ, GPX,
+# GeoJSON, a zipped shapefile, a CSV of points) is read by extract/_gis_files.py;
+# an OGC API Features collection and a JSON API whose items carry a coordinate
+# by extract/_ogc.py. Like CLUB_ARCGIS_LAYER's rows, theirs carry no `poi_type`
+# and no `blaze_field`.
+GIS_FILE = "gis_file"
+OGC_FEATURES = "ogc_features"
+JSON_FEATURES = "json_features"
+
+# The points a club prints on its own
+# web page (extract/_pages_points.py) or in a PDF (extract/_pdf_points.py), a
+# parser per site or document. Registered for pipeline/extract/ alone, as the
+# kinds above are, and for the same reason: no legacy fetcher, loader or
+# exporter reads them. Neither is a GIS endpoint, so int_sources__publication
+# admits a `public_gis` row of either kind only as a club's own points (ELT.md's "Who may publish").
+PAGE_POINTS = "page_points"
+PDF_POINTS = "pdf_points"
 
 KNOWN_KINDS = frozenset(
     {
@@ -144,8 +220,54 @@ KNOWN_KINDS = frozenset(
         EXTERNAL_ARCGIS_LAYER,
         GUIDE_PAGES,
         PUBLISHED_HIKES,
+        SOCRATA_GEOJSON_LAYER,
+        PODCAST_FEED,
+        CLUB_ARCGIS_LAYER,
+        GIS_FILE,
+        OGC_FEATURES,
+        JSON_FEATURES,
+        PAGE_POINTS,
+        PDF_POINTS,
     }
 )
+
+# WHAT TODAY'S EXPORTERS READ, until the cutover (the maintainer,
+# 2026-10-14). Production's phone
+# files come from the Python exporters until the cutover
+# (publish-vector-data.yml; dbt's monthly lane publishes to UA only, and
+# publish-conditions.yml's PRODUCTION_PHONE_FILES keeps production's hourly
+# leg on the exporters), and none of them reads
+# CLUB_ARCGIS_LAYER or the five kinds registered after it for
+# pipeline/extract/ alone, nor a podcast feed or a club PDF: those reach a
+# phone only through dbt. So export_sources.py, on the exporters' path, names
+# a steward only for the rows one of them reads. Counting every shipping row
+# instead named 111 stewards against the 28 whose data production's files
+# carry (export_sources.build_output() in memory on 2026-10-14, over this
+# branch's registry at dd5f57f7 and main's at e61373be).
+#
+# EXPORTER_KINDS: every row of the kind is read by a legacy fetcher and an
+# exporter after it (fetch_all.py's ArcGIS layers, fetch_external_layers.py's
+# ArcGIS and Socrata layers, the OSM extracts, the drought polygons).
+EXPORTER_KINDS = frozenset(
+    {ARCGIS_FEATURE_LAYER, EXTERNAL_ARCGIS_LAYER, SOCRATA_GEOJSON_LAYER, GEOFABRIK_EXTRACT, WEEKLY_POLYGONS}
+)
+
+# EXPORTER_ONE_ROW_KINDS: an exporter reads ONE row of each, the key its own
+# module declares as SOURCE_KEY (lib/atc_updates.py, lib/nynjtc_alerts.py,
+# lib/hikefinder.py, lib/nynjtc_long_path_guide.py), while the club notices and
+# hike lists, registered under the same kinds, are
+# read by pipeline/extract/ alone. The caller passes those keys, so this
+# module imports no parser.
+EXPORTER_ONE_ROW_KINDS = frozenset({PUBLISHED_NOTICES, PUBLISHED_HIKES, GUIDE_PAGES})
+
+
+def read_by_an_exporter(entry: dict, exporter_keys: frozenset[str]) -> bool:
+    """Whether today's Python exporters read this row: its kind is one they read
+    every row of, or one they read a single declared key of and this is that key."""
+    kind = source_kind(entry)
+    if kind in EXPORTER_KINDS:
+        return True
+    return kind in EXPORTER_ONE_ROW_KINDS and entry.get("key") in exporter_keys
 
 
 def load_registry(path: Path) -> dict:
@@ -188,8 +310,48 @@ def club_pdf_sources(registry: dict) -> list[dict]:
 
 
 def external_arcgis_sources(registry: dict) -> list[dict]:
-    """The entries `fetch_external_layers.py` may fetch, in registry order."""
+    """The ArcGIS half of what `fetch_external_layers.py` fetches, in registry order."""
     return [entry for entry in registry.get("sources", []) if is_external_arcgis_layer(entry)]
+
+
+def is_socrata_layer(entry: dict) -> bool:
+    return source_kind(entry) == SOCRATA_GEOJSON_LAYER
+
+
+def socrata_sources(registry: dict) -> list[dict]:
+    """The Socrata half of what `fetch_external_layers.py` fetches, in registry order."""
+    return [entry for entry in registry.get("sources", []) if is_socrata_layer(entry)]
+
+
+def is_external_source(entry: dict) -> bool:
+    """Whether this entry is another organization's layer, outside the A.T. build.
+
+    THE NEGATIVE IS THE LOAD-BEARING USE (#1432). export_trails.py asks this
+    to keep somebody else's layers OUT of the A.T. corridor export, and that
+    question is about whose data it is, never about what it is served from -
+    so a second external transport must answer it the same way the first
+    does. Asked as `not is_external_arcgis_layer(...)`, the Socrata entries
+    would have read as A.T. sources and been clipped into the corridor
+    artifact, which is the silent-partial-keep failure export_trails.py's own
+    docstring warns about, arriving through the door that docstring did not
+    know existed yet.
+    """
+    return is_external_arcgis_layer(entry) or is_socrata_layer(entry)
+
+
+def external_sources(registry: dict) -> list[dict]:
+    """Every other organization's layer, whatever it is published on (#1432).
+
+    ONE LIST, IN REGISTRY ORDER, because the thing these entries have in
+    common is who they belong to and not how the bytes arrive: they are
+    somebody else's data, outside the A.T. build, fetched by
+    fetch_external_layers.py into data/raw/external/ and gated on their own
+    `reaches_hikers`. Kind decides which fetcher gets called and nothing
+    else, which is why this is the function the exports and the completeness
+    gate ask - a third transport later should not have to be added to five
+    call sites to be counted.
+    """
+    return [entry for entry in registry.get("sources", []) if is_external_source(entry)]
 
 
 def guide_page_sources(registry: dict) -> list[dict]:
@@ -246,7 +408,10 @@ POI_SOURCE_KEYS = {
 #:     when a steward exists for the layer they were derived from. A hiker
 #:     saying "there is no water here" about a derived crossing is telling
 #:     this project its derivation is wrong, which is an issue here rather
-#:     than an ask of USGS.
+#:     than an ask of USGS. Nothing mints `nhd_crossing` since #1674
+#:     withdrew crossings; it stays because the identity ledger keeps those
+#:     5,318 rows as tombstones forever, and a dispute against one of them
+#:     must still resolve to "no steward" rather than to an unknown source.
 UNREGISTERED_POI_SOURCES = frozenset({"atc_csi", "opentrail_at", "nhd_crossing", "nhd_stream"})
 
 

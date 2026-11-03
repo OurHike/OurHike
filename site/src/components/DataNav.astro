@@ -1,0 +1,99 @@
+---
+// The two data pages, as tabs across the top of the ones this site builds:
+// "How the data is built" at /data/how/, the plain page that leads into the
+// dbt docs at /data/ (#1805 — dlt → dbt re-platform as one go/no-go
+// change, the maintainer's "All three as drawn", 2026-10-15), and the
+// data-quality page at /data/quality/ (mock B, chosen by the maintainer on
+// 2026-10-07; pipeline/ELT.md, "The data checks").
+//
+// UNDER THE SITE'S OWN NAV, NOT IN PLACE OF IT. Mock B drew a header holding
+// the mark and these two tabs and nothing else. On ourhike.org the page is
+// one of the site's, so it keeps the nav, the skip link and the footer every
+// other page has, and the tabs become a row beneath them - the shape
+// OrgNav.astro already gives the four org pages.
+//
+// THE DOCS CARRY THEM TOO, IN A BAR OF THEIR OWN. /data/ itself is dbt's own
+// docs app, built by .github/actions/dbt-docs-site, where no component of the
+// site's can be drawn, so .github/scripts/brand_docs_page.py writes the same
+// two tabs, after the site's name, into dbt's page (the review of PR #1805,
+// 2026-10-15), and .github/tests/test_docs_page_brand.py holds its labels to
+// these.
+//
+// ROOT-RELATIVE ON PURPOSE, unlike the site's links on this page (Base.astro).
+// Both tabs are pages of the docs bundle, and every host that serves the
+// bundle serves it at /data/: docs.ourhike.org since the docs
+// moved off the app's origin, a preview, and ourhike.org until the move. So `/data/`
+// is the docs host's own page on the docs host and a preview's own on a
+// preview, which a full address could not be.
+const here = Astro.url.pathname
+
+const tabs = [
+  { href: '/data/how/', label: 'How the data is built' },
+  { href: '/data/quality/', label: 'Data quality' },
+]
+---
+
+<nav class="data-nav" aria-label="Data">
+  <div class="wrap data-nav__row">
+    {
+      tabs.map((tab) => (
+        <a
+          class="data-nav__tab"
+          href={tab.href}
+          aria-current={here === tab.href ? 'page' : undefined}
+        >
+          {tab.label}
+        </a>
+      ))
+    }
+  </div>
+</nav>
+
+<style>
+  .data-nav {
+    background: var(--bg-surface);
+    border-block: 1px solid var(--border-1);
+  }
+
+  .data-nav__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-block: 10px;
+  }
+
+  .data-nav__tab {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding-inline: 14px;
+    border-radius: 999px;
+    color: var(--fg-2);
+    font-size: 14.5px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .data-nav__tab:hover {
+    color: var(--fg-1);
+  }
+
+  /* The page you are on, in the sunken sage and the brand's darker ink, as
+     mock B marks it; `aria-current` carries it for a screen reader too. */
+  .data-nav__tab[aria-current='page'] {
+    background: var(--bg-sunken);
+    color: var(--brand-primary-hover);
+  }
+
+  /* 44px on a phone, the handoff's minimum for a target (HANDOFF_README.md,
+     Responsive), which client/e2e/sitePages.spec.ts holds every page to. */
+  @media (max-width: 720px) {
+    .data-nav__row {
+      padding-block: 6px;
+    }
+
+    .data-nav__tab {
+      min-height: 44px;
+    }
+  }
+</style>

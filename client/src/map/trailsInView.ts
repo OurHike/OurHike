@@ -10,8 +10,11 @@
 // sentence, for the same reason.
 //
 // SHAPED ON map/drawnPois.ts, TRAPS INCLUDED. `queryRenderedFeatures`
-// answers for the LAST RENDERED FRAME, so this recomputes on `idle` (and on
-// `moveend`, for a quick first answer while tiles are still landing). And a
+// answers for the LAST RENDERED FRAME, so this recomputes when the map
+// settles - map/settle.ts's rule, `idle` or 300 ms without a frame, because
+// `idle` alone never came while one basemap tile hung and left the list and
+// the badges empty (#1696) - and on `moveend`, for a quick first answer while
+// tiles are still landing. And a
 // GeoJSON source is tiled internally, so one trail crossing a tile boundary
 // comes back once per tile, with its geometry clipped to each: the A.T.
 // across a z12 screen is three or four pieces. Deduplicated by NAME rather
@@ -78,14 +81,16 @@
 
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
+import { displayTrailName } from '../lib/trails'
 import { CHOSEN_SYSTEM_SOURCES } from './nearbyTrails'
 import { POI_LAYER_ID } from './poiLayers'
+import { onSettled } from './settle'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
+import { longTrailDisplayName, longTrailForLine, neverShout } from './longTrailNames'
 import {
   registryNameForSource,
   BADGE_ANCHOR_PROPERTY,
-  BADGE_CHIP_PROPERTY,
   BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
   BADGE_NAME_PROPERTY,
@@ -100,23 +105,30 @@ import {
   TRAIL_BADGE_SOURCE_ID,
   TRAIL_BADGE_TEXT_FIT_PADDING,
   TRAIL_BADGE_TEXT_SIZE,
-  blazeChipImageId,
+  badgeMarkImageId,
   trailIdForSource,
-  trailMarkImageId,
 } from './trailBadges'
 import { WARNING_LAYER_ID } from './warningLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
+import { CHALLENGE_LAYER_ID } from './challengeLayers'
 
 /**
  * The symbol layers placed before the badge, whose pins it must not sit on:
  * every pin layer after it in the stack (style.ts). The along-line names and
  * the sheet's own labels are NOT here - they are placed after the badge and
  * yield to it.
+ *
+ * The challenge diamonds (#1780) are here although each sits on a waypoint
+ * pin already in this list, for the case where it does not: a hiker who hid
+ * that waypoint's category still has the diamond drawn, and a badge on it
+ * would cover the only mark at the place. Hidden layers answer nothing, so
+ * with the switch off this costs nothing.
  */
 export const BADGE_OBSTACLE_LAYER_IDS: readonly string[] = [
   POI_LAYER_ID,
   WARNING_LAYER_ID,
   WORKDAY_LAYER_ID,
+  CHALLENGE_LAYER_ID,
   ATC_UPDATE_POINT_LAYER_ID,
 ]
 
@@ -133,26 +145,44 @@ const OBSTACLE_HALF_PX = 44 / 2 + 2
  * wide at 12 px Noto Sans, 5.6 px a character, so 0.5 em a character is a
  * slight over-estimate - the right direction for a box that decides whether
  * there is room. As tall as the mark, which is taller than the 12 px name.
+ *
+ * THAT STRING IS THE CALIBRATION, NOT A NAME THIS BADGE PRINTS. Since
+ * 2026-09-16 the A.T.'s plate reads "Appalachian Trail" (lib/trails.ts),
+ * which is 17 characters and a 144 px plate against the old 240 - so the
+ * estimate has to hold well below the width it was measured at, and does,
+ * because it is per-character. The measured pair is kept because it is the
+ * only chars-to-px datum anybody produced, and this has to answer for
+ * whatever name a steward publishes next rather than for the four names the
+ * registry knows.
  */
 export function badgeTextSize(
   name: string,
   fit: BadgeFit = 'full',
+  hasMark: boolean = true,
 ): { width: number; height: number } {
   if (fit === 'mark')
     return { width: TRAIL_BADGE_MARK_SIZE, height: TRAIL_BADGE_MARK_SIZE }
   const text = name.length * TRAIL_BADGE_TEXT_SIZE * 0.5
-  return {
-    width: TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP + text,
-    height: TRAIL_BADGE_MARK_SIZE,
-  }
+  // No mark means no mark and no gap either, since map/trailBadges.ts now
+  // leaves the slot empty rather than filling it with a blaze chip. Measuring
+  // the plate as if the chip were still there would reserve 28 px of room
+  // nothing draws into, and the placer would refuse anchors that do fit.
+  const markAndGap = hasMark ? TRAIL_BADGE_MARK_SIZE + TRAIL_BADGE_MARK_GAP : 0
+  return { width: markAndGap + text, height: TRAIL_BADGE_MARK_SIZE }
 }
 
 /** How wide the plate comes out for a name: the text block plus the paper
  *  round it. What the legend and the tests reason about; the collision
  *  model below builds its own box from the same parts. */
-export function badgePlateWidth(name: string, fit: BadgeFit = 'full'): number {
+export function badgePlateWidth(
+  name: string,
+  fit: BadgeFit = 'full',
+  hasMark: boolean = true,
+): number {
   const [, right, , left] = TRAIL_BADGE_TEXT_FIT_PADDING
-  return badgeTextSize(name, fit).width + left + right + TRAIL_BADGE_PLATE_BORDER * 2
+  return (
+    badgeTextSize(name, fit, hasMark).width + left + right + TRAIL_BADGE_PLATE_BORDER * 2
+  )
 }
 
 /** MapLibre's default `text-padding` and `icon-padding`: the ring it grows
@@ -230,12 +260,130 @@ function obstacleBoxes(map: TrailsInViewMap): Box[] {
   return boxes
 }
 
+/**
+ * Side of one bucket in the obstacle grid, in CSS px.
+ *
+ * Comfortably more than an obstacle's own 48 px box, so a pin lands in one
+ * bucket or two rather than smeared across a row of them, and small enough
+ * that a bucket holds a handful of pins on the densest screen this app
+ * draws. Nothing downstream depends on the value: the index is a superset
+ * filter, so a wrong size costs work and never an answer.
+ */
+const OBSTACLE_CELL_PX = 64
+
+/** Cells either side of the origin the grid can address - 1,024 of them at
+ *  64 px is +/-65,536 px, two orders past any viewport. Out-of-range
+ *  coordinates clamp into the edge bucket rather than wrapping, which keeps
+ *  the superset property true for a pin projected far off screen. */
+const CELL_RANGE = 1024
+
+const NO_OBSTACLES: readonly Box[] = []
+
+/** The obstacles a badge position has to be tested against, without testing
+ *  it against every pin on the screen. */
+export interface ObstacleIndex {
+  /** The indexed boxes that COULD overlap `box`: always a superset of the
+   *  ones that do, never a subset. May repeat a box that spans buckets -
+   *  `overlaps` gives the same answer twice, and the caller short-circuits
+   *  on the first hit. */
+  near(box: Box): readonly Box[]
+  /** How many boxes were indexed. */
+  readonly size: number
+}
+
+function cellOf(value: number): number {
+  const cell = Math.floor(value / OBSTACLE_CELL_PX)
+  if (cell < -CELL_RANGE) return -CELL_RANGE
+  return cell >= CELL_RANGE ? CELL_RANGE - 1 : cell
+}
+
+function cellKey(cx: number, cy: number): number {
+  return (cx + CELL_RANGE) * CELL_RANGE * 2 + (cy + CELL_RANGE)
+}
+
+/**
+ * A uniform grid over the pin boxes, built once per camera settle.
+ *
+ * WHY THIS EXISTS (#1415). `anchorWithRoom` is
+ * `fits x candidates x anchors x obstacles`, and while it returns on the
+ * first position that fits, the case it cannot return early from is the one
+ * that matters: when NOTHING fits - the exact case the "always finds a
+ * place" fallback exists for, and the case the maintainer's z12 render hit -
+ * every candidate is tried at every anchor in both fits, and each of those
+ * has to look at every obstacle to conclude there is no room. At z12-z13
+ * over Harriman that is CANDIDATE_LIMIT 600 x TRAIL_BADGE_ANCHORS 8 x 2 fits
+ * = 9,600 positions against a few hundred pin boxes, per named trail, on the
+ * main thread at every `idle` and `moveend` - and `attachTrailsInView` is
+ * bound to `moveend` too, so it repeats through a pan rather than once at
+ * the end of one.
+ *
+ * #1415 offers two fixes and calls either sufficient: a spatial bucket, or
+ * breaking out of the candidate loop once a fit is found. The second was
+ * already here - `anchorWithRoom` has always returned on its first fit - and
+ * does nothing for the nothing-fits case, which is the expensive one. So
+ * this is the bucket.
+ *
+ * `@unvalidated` and deliberately so: nobody has profiled this on a phone,
+ * so how much of a pan's jank it owned remains unmeasured and this does not
+ * claim to have measured it. What IS measured is the work itself - see
+ * trailsInView.test.ts, which counts obstacle examinations over the issue's
+ * own numbers. What would settle the rest is a frame profile on a real
+ * device at z12 over Harriman, which nobody has taken.
+ */
+export function indexObstacles(obstacles: readonly Box[]): ObstacleIndex {
+  const cells = new Map<number, Box[]>()
+  for (const obstacle of obstacles) {
+    const lastX = cellOf(obstacle.x2)
+    const lastY = cellOf(obstacle.y2)
+    for (let cx = cellOf(obstacle.x1); cx <= lastX; cx += 1) {
+      for (let cy = cellOf(obstacle.y1); cy <= lastY; cy += 1) {
+        const key = cellKey(cx, cy)
+        const bucket = cells.get(key)
+        if (bucket === undefined) cells.set(key, [obstacle])
+        else bucket.push(obstacle)
+      }
+    }
+  }
+
+  return {
+    size: obstacles.length,
+    near(box: Box): readonly Box[] {
+      const firstX = cellOf(box.x1)
+      const lastX = cellOf(box.x2)
+      const firstY = cellOf(box.y1)
+      const lastY = cellOf(box.y2)
+      // The mark's own box is 32 px against a 64 px cell, so the common
+      // query touches one bucket - returned as it stands, so it allocates
+      // nothing at all.
+      if (firstX === lastX && firstY === lastY) {
+        return cells.get(cellKey(firstX, firstY)) ?? NO_OBSTACLES
+      }
+      let found: Box[] | null = null
+      for (let cx = firstX; cx <= lastX; cx += 1) {
+        for (let cy = firstY; cy <= lastY; cy += 1) {
+          const bucket = cells.get(cellKey(cx, cy))
+          if (bucket === undefined) continue
+          if (found === null) {
+            found = bucket.slice()
+            continue
+          }
+          for (const obstacle of bucket) found.push(obstacle)
+        }
+      }
+      return found ?? NO_OBSTACLES
+    },
+  }
+}
+
 interface BadgeAnchor {
   point: Position
   fit: BadgeFit
   /** Which side of the vertex the text block sits - one of
    *  TRAIL_BADGE_ANCHORS, and the one the layer draws (below). */
   anchor: string
+  /** The plate this badge actually took, in CSS px. Returned so the caller
+   *  can hand it to the NEXT trail as an obstacle - see `placeBadges`. */
+  box: Box
 }
 
 /**
@@ -350,23 +498,77 @@ function withinFrame(box: Box, frame: Box): boolean {
  */
 function anchorWithRoom(
   candidates: readonly Candidate[],
-  obstacles: readonly Box[],
+  obstacles: ObstacleIndex,
   frame: Box,
   name: string,
+  hasMark: boolean,
+  placed: readonly Box[],
 ): BadgeAnchor | null {
   if (candidates.length === 0) return null
-  for (const fit of ['full', 'mark'] as const) {
-    const text = badgeTextSize(name, fit)
+  // A BADGE IS AN OBSTACLE TO THE NEXT BADGE, which nothing here enforced
+  // until 2026-09-30. `placed` is every plate already taken this settle, in
+  // the order they were taken, and it is checked in the search below AND in
+  // the last resort - see the comment on that return for why the second one
+  // is the half that mattered.
+  const clearOfBadges = (box: Box) => !placed.some((taken) => overlaps(box, taken))
+  // THE BARE-MARK FALLBACK NEEDS A MARK. It is the whole badge in that form,
+  // so a trail whose steward has granted nothing would fall back to drawing
+  // nothing at all - the outcome the review of #1374 rejected when it made
+  // this layer always-drawn. A markless badge keeps the full plate instead
+  // and leans on that overlap, which is what "never nothing" costs here.
+  const fits = hasMark ? (['full', 'mark'] as const) : (['full'] as const)
+  for (const fit of fits) {
+    const text = badgeTextSize(name, fit, hasMark)
     for (const candidate of candidates) {
       for (const anchor of TRAIL_BADGE_ANCHORS) {
         const box = plateBox(anchor, candidate.at, text)
+        // Frame first, and it stays first: it is four comparisons against
+        // no lookup at all, and it rejects every position hanging off an
+        // edge before the grid is consulted.
         if (!withinFrame(box, frame)) continue
-        if (obstacles.some((obstacle) => overlaps(box, obstacle))) continue
-        return { point: candidate.point, fit, anchor }
+        // `near`, not every pin (#1415). The answer is identical - the
+        // index returns a superset of what could overlap - and the work is
+        // the handful of pins in the buckets this box touches rather than
+        // the few hundred on the screen.
+        if (obstacles.near(box).some((obstacle) => overlaps(box, obstacle))) continue
+        if (!clearOfBadges(box)) continue
+        return { point: candidate.point, fit, anchor, box }
       }
     }
   }
-  return { point: candidates[0].point, fit: 'mark', anchor: TRAIL_BADGE_ANCHORS[0] }
+  // THE LAST RESORT, AND THE ONE CHANGE THAT UNPILES THE MAP. #1374 made this
+  // layer always-drawn: a badge with nowhere clear to sit is placed anyway
+  // rather than dropped, because a trail the hiker can see and cannot name is
+  // worse than a slightly crowded plate. That was decided when BADGE_SOURCES
+  // held two entries and the only thing a badge could collide with was a pin.
+  //
+  // It does not survive fifteen badges. Below the pin seam there are no pins
+  // at all, so `obstacles` is empty, every trail failed the frame test at the
+  // same handful of anchors and every one of them landed here - at
+  // TRAIL_BADGE_ANCHORS[0], on its middle vertex. CI's whole-US frame
+  // (2026-09-30) is what that looks like: roughly fifteen plates stacked into
+  // one illegible block, "Sheltowee Traceede Trail" and "North Country Trail"
+  // written through each other. Nobody can name a trail from that either, so
+  // the reason #1374 gave for always drawing has stopped applying to the case
+  // it now produces.
+  //
+  // So the last resort still ignores PINS - that part of #1374 stands, and a
+  // plate over a waypoint is readable - and it no longer ignores other
+  // BADGES. A trail with no position clear of a plate already taken draws no
+  // badge this settle. It keeps its line, its name in the legend and its tap
+  // target; what it loses is a pill nobody could have read.
+  const fallback = plateBox(
+    TRAIL_BADGE_ANCHORS[0],
+    candidates[0].at,
+    badgeTextSize(name, hasMark ? 'mark' : 'full', hasMark),
+  )
+  if (!clearOfBadges(fallback)) return null
+  return {
+    point: candidates[0].point,
+    fit: hasMark ? 'mark' : 'full',
+    anchor: TRAIL_BADGE_ANCHORS[0],
+    box: fallback,
+  }
 }
 
 export type TrailsInViewMap = MapLibreMap
@@ -391,6 +593,18 @@ export interface TrailInView {
   takeable: boolean
   /** Whether the trail is in the chosen system, and so drawn solid. */
   chosen: boolean
+  /** Which long trail this line IS, from map/longTrailNames.ts, or null for
+   *  an ordinary line. The badge's mark is keyed off this rather than off
+   *  `source`, because one trail arrives under up to five published
+   *  spellings across three organizations' feeds and they all mean one
+   *  marker (#1543). Null for the A.T. and the Long Path, whose marks come
+   *  from the registry by source as they always did.
+   *
+   *  OPTIONAL, so a caller that predates this field still type-checks and
+   *  still gets the badge it got before - `badgeMarkImageId` treats a missing
+   *  value as "no steward marker" rather than building an id out of
+   *  `undefined`, which is the defect its own comment records. */
+  longTrail?: string | null
   /** A vertex on the trail, in view, where its badge sits; null where none of
    *  the drawn geometry put a vertex inside the viewport. */
   anchor: [number, number] | null
@@ -571,8 +785,12 @@ export function trailsInView(
     y2: container.clientHeight - insets.bottom,
   }
   const centre = { x: (frame.x1 + frame.x2) / 2, y: (frame.y1 + frame.y2) / 2 }
-  let obstacles: readonly Box[] | undefined
-  const pins = () => (obstacles ??= obstacleBoxes(map))
+  // Built at most once per settle and shared by every named trail, like the
+  // frame and the centre above. Indexed rather than listed (#1415): the
+  // grid is built from one pass over the pins and paid for by the first
+  // trail that searches against it.
+  let obstacles: ObstacleIndex | undefined
+  const pins = () => (obstacles ??= indexObstacles(obstacleBoxes(map)))
 
   const features = map.queryRenderedFeatures(undefined, { layers })
   const byName = new Map<string, TrailInView & { runs: Run[]; clearRuns: Run[] }>()
@@ -585,9 +803,47 @@ export function trailsInView(
     // where the published sketch carries no names at all
     // (map/trailBadges.ts's registryNameForSource says why, and why this
     // cannot name the unnamed haze around it).
-    const name = stringProp(properties, 'name') ?? registryNameForSource(source)
+    //
+    // Then through lib/trails.ts's displayTrailName, which is where ATC's
+    // "Appalachian National Scenic Trail" becomes the "Appalachian Trail" a
+    // hiker reads - once, here, so the badge and the legend row cannot
+    // disagree, this module's whole reason for measuring them together. It
+    // renames only a spelling the registry already knows; every other
+    // steward's name passes through untouched.
+    const name = displayTrailName(
+      stringProp(properties, 'name') ?? registryNameForSource(source),
+    )
     if (name === null) continue
-    const throughRoute = BADGE_SOURCES.includes(source)
+    // A BADGE BELONGS TO A TRAIL, NOT TO A FEED (#1543). This was
+    // `BADGE_SOURCES.includes(source)` alone until 2026-09-30, which meant
+    // ATC's centerline and NYNJTC's Long Path feed were the only two trails
+    // on the map that could ever wear one - while Sheltowee Trace, Ozark
+    // Highlands, Bartram, Pinhoti, Ouachita, Maah Daah Hey and the Tahoe Rim
+    // were already being downloaded and drawn as anonymous lines inside the
+    // Forest Service's nationwide layer. The source test stays because two
+    // feeds ARE one trail each; the name test is what reaches the rest.
+    //
+    // AND WHERE THE LINE IS, since 2026-09-30 (#1781): the name alone put
+    // the Georgia-North Carolina Bartram Trail's badge on Tuskegee National
+    // Forest's own "BARTRAM" in Alabama. Any vertex answers, because every
+    // vertex of a tile-clipped piece lies on the line.
+    const parts = partsOf(feature.geometry)
+    const longTrail = longTrailForLine(name, parts[0]?.[0])
+    const throughRoute = BADGE_SOURCES.includes(source) || longTrail !== null
+    // WHAT THE BADGE PRINTS, which is not what the publisher spells it. USFS
+    // publishes SHELTOWEE TRACE, BENTON MACKAYE and NORTH COUNTRY NATIONAL
+    // SCENIC; a hiker reads "Sheltowee Trace", "Benton MacKaye Trail" and
+    // "North Country Trail". Same decision lib/trails.ts already took for the
+    // A.T.'s federal designation, applied to the other twenty-one.
+    const printed = neverShout(
+      (longTrail !== null && longTrailDisplayName(longTrail)) || name,
+    )
+    // ONE BADGE PER TRAIL, NOT PER SPELLING. Keyed on the resolved trail
+    // where there is one, because the same trail arrives under several names
+    // - the first frame of this shipping badged NORTH COUNTRY TRAIL and
+    // NORTH COUNTRY NATIONAL SCENIC side by side, and PINHOTI beside PINHOTI
+    // NRT, which is the map telling a hiker there are two trails there.
+    const key = longTrail ?? name
     const takeable = trailIdForSource(source) !== null
     const inChosenSystem = chosen.includes(source)
 
@@ -595,18 +851,19 @@ export function trailsInView(
     // them (candidatesOf), so no piece is thrown away for being short.
     const runs: Run[] = []
     const clearRuns: Run[] = []
-    for (const part of partsOf(feature.geometry)) {
+    for (const part of parts) {
       runs.push(...visibleRuns(part, view))
       if (clear !== view) clearRuns.push(...visibleRuns(part, clear))
     }
 
-    const existing = byName.get(name)
+    const existing = byName.get(key)
     if (existing === undefined) {
-      byName.set(name, {
-        name,
+      byName.set(key, {
+        name: printed,
         source,
         blazeColor: stringProp(properties, 'blaze_color'),
         throughRoute,
+        longTrail,
         takeable,
         chosen: inChosenSystem,
         anchor: null,
@@ -622,17 +879,47 @@ export function trailsInView(
     // its runs join the search, and the through-route's piece names it.
     existing.runs.push(...runs)
     existing.clearRuns.push(...clearRuns)
-    if (throughRoute && !existing.throughRoute) {
+    // WHICH PIECE NAMES THE TRAIL. A through-route's piece beats a plain
+    // one, and among through-route pieces a TAKEABLE one beats the rest.
+    //
+    // That second clause is not tidiness. Since the dedupe key became the
+    // resolved trail, the A.T. arrives as two pieces - ATC's `centerline`,
+    // which is takeable, and the Forest Service's own `APPALACHIAN TRAIL`
+    // segments, which are not - and queryRenderedFeatures does not promise
+    // which comes back first. Without it, a frame where the USFS piece
+    // happened to be seen first left the A.T. un-takeable (#1306's whole
+    // subject) and keyed its mark off a source that has none.
+    const betterPiece =
+      (throughRoute && !existing.throughRoute) ||
+      (throughRoute && takeable && !existing.takeable)
+    if (betterPiece) {
       existing.throughRoute = true
       existing.takeable = takeable
       existing.source = source
       existing.blazeColor = stringProp(properties, 'blaze_color')
       existing.properties = properties
     }
+    existing.longTrail = existing.longTrail ?? longTrail
     existing.chosen = existing.chosen || inChosenSystem
   }
 
-  return [...byName.values()]
+  // PLACED IN A DECIDED ORDER, because a badge is now an obstacle to the next
+  // one and so the order decides which trail keeps its pill when two want the
+  // same ground. `queryRenderedFeatures` promises no order, so taking them as
+  // they arrive would have made that a coin toss that changes between settles
+  // - the same class of defect as the takeable-piece merge above.
+  //
+  // Chosen system first (the trail the hiker is actually on outranks the rest,
+  // the same seniority the sort below already applies), then takeable, then by
+  // name so the remainder is stable rather than merely deterministic-looking.
+  const ordered = [...byName.values()].sort((a, b) => {
+    if (a.chosen !== b.chosen) return a.chosen ? -1 : 1
+    if (a.takeable !== b.takeable) return a.takeable ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+
+  const taken: Box[] = []
+  return ordered
     .map(({ runs, clearRuns, ...trail }) => {
       // Only a through-route needs an anchor at all; the rest are listed,
       // not badged, and are spared the search. In the clear first: under
@@ -644,8 +931,11 @@ export function trailsInView(
         pins(),
         frame,
         trail.name,
+        badgeMarkImageId(trail.source, trail.longTrail) !== null,
+        taken,
       )
       if (placed === null) return { ...trail, anchor: null }
+      taken.push(placed.box)
       return {
         ...trail,
         anchor: placed.point,
@@ -664,28 +954,44 @@ export function trailsInView(
  * The badge points: one per through-route that has somewhere to sit.
  *
  * Each carries the line's own properties verbatim - so a tap on the badge
- * hands map/lineTaps.ts exactly what a tap on the line would - plus the two
- * image ids the layer's `coalesce` reads: the registry mark where the source
- * has one, and the blaze chip it falls through to.
+ * hands map/lineTaps.ts exactly what a tap on the line would - plus the one
+ * image id the layer reads: the registry mark where the source has one, and
+ * the empty string where it does not, which `text-field` renders as nothing.
  */
 export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: trails
       .filter((trail) => trail.throughRoute && trail.anchor !== null)
-      .map((trail) => ({
-        type: 'Feature',
-        properties: {
-          ...trail.properties,
-          [BADGE_NAME_PROPERTY]: trail.name,
-          [BADGE_SOURCE_PROPERTY]: trail.source,
-          [BADGE_MARK_PROPERTY]: trailMarkImageId(trail.source) ?? '',
-          [BADGE_CHIP_PROPERTY]: blazeChipImageId(trail.blazeColor),
-          [BADGE_FIT_PROPERTY]: trail.badgeFit,
-          [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
-        },
-        geometry: { type: 'Point', coordinates: trail.anchor as Position },
-      })),
+      .map((trail) => {
+        const mark = badgeMarkImageId(trail.source, trail.longTrail)
+        return {
+          type: 'Feature' as const,
+          properties: {
+            ...trail.properties,
+            [BADGE_NAME_PROPERTY]: trail.name,
+            [BADGE_SOURCE_PROPERTY]: trail.source,
+            [BADGE_MARK_PROPERTY]: mark ?? '',
+            // THE BARE-MARK FORM NEEDS A MARK, asserted here as well as chosen
+            // in anchorWithRoom, because the two failure modes are not the
+            // same and only this one is silent. An empty mark id renders as
+            // nothing (see map/trailBadges.ts), but the bare form asks for
+            // `<mark>-bare`, and for an empty mark that concatenates to the
+            // string `-bare` - a NON-empty id the style does not hold.
+            // Measured through the style-spec parser: that section comes back
+            // `{image: '-bare', available: false}` rather than imageless, so
+            // it is a badge of one unavailable image and no text, which with
+            // `text-optional: false` is a badge that draws nothing. Falling
+            // back to the full plate is the outcome #1374's review asked for.
+            [BADGE_FIT_PROPERTY]: mark === null ? 'full' : trail.badgeFit,
+            [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
+          },
+          geometry: {
+            type: 'Point' as const,
+            coordinates: trail.anchor as Position,
+          },
+        }
+      }),
   }
 }
 
@@ -693,9 +999,10 @@ export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCo
  * Keeps the badge source and the caller current with the camera, and
  * returns a detach.
  *
- * Writes only on change: `idle` fires after every render, including the one
- * a `setData` here causes, so an unconditional write would chase its own
- * tail. Compared as the serialised list, which is what both consumers read.
+ * Writes only on change: the map settles again after every render,
+ * including the one a `setData` here causes, so an unconditional write would
+ * chase its own tail. Compared as the serialised list, which is what both
+ * consumers read.
  */
 export function attachTrailsInView(
   map: TrailsInViewMap,
@@ -704,7 +1011,7 @@ export function attachTrailsInView(
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): () => void {
   let last = ''
-  let listening = false
+  let stopSettling: (() => void) | null = null
 
   const update = () => {
     const trails = trailsInView(map, insets, chosen)
@@ -723,18 +1030,17 @@ export function attachTrailsInView(
     map,
     () => map.getSource(TRAIL_BADGE_SOURCE_ID) !== undefined,
     () => {
-      listening = true
       update()
       map.on('moveend', update)
-      map.on('idle', update)
+      stopSettling = onSettled(map, update)
     },
     'Trail badges',
   )
 
   return () => {
     stopWaiting()
-    if (!listening) return
+    if (stopSettling === null) return
     map.off('moveend', update)
-    map.off('idle', update)
+    stopSettling()
   }
 }

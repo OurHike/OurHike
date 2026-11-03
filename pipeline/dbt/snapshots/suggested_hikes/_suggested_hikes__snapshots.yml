@@ -1,0 +1,14 @@
+version: 2
+
+snapshots:
+  - name: int_suggested_hikes__history
+    description: >
+      The suggested hikes mart's row history.
+      {{ doc('row_history_snapshot') }}
+    columns:
+      - name: hike_id
+        description: The mart's key; one current version each.
+        data_tests:
+          - unique:
+              config:
+                where: dbt_valid_to is null

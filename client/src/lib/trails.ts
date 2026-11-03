@@ -9,9 +9,9 @@
 // mark without the sheet knowing which trails have one.
 //
 // THE MARKS ARE THIRD-PARTY TRADEMARKS IN A PUBLIC AGPL TREE, and each one's
-// permission is recorded in pipeline/sources.json's `org_marks` block
-// (`trail_mark_in_tree` on the org's row), which is where #933 says the
-// answer lives - a comment here is the summary, not the record:
+// permission is recorded in pipeline/sources.json's `org_marks` block, which
+// is where #933 says the answer lives - a comment here is the summary, not
+// the record. Two rows carry a stronger basis than the rest:
 //
 //   - The AT mark is the official Appalachian Trail / National Scenic Trail
 //     marker, supplied directly by the repo owner - it carries its own TM
@@ -22,14 +22,42 @@
 //     authorisation and the relationship with NYNJTC they named for the
 //     trail's data the same day. Not a grant from NYNJTC.
 //
-// PCT and CDT still have placeholder marks of OurHike's own design, since
-// PCTA's and CDTC's official logos aren't sourced here - swap in licensed
-// art for those if that's ever secured.
+// EVERY OTHER MARK SHIPS BY DEFAULT, on the maintainer's decision of
+// 2026-09-30 (`org_marks.trail_marks`). A trail's own marker is how a hiker
+// tells which line is which - the same symbol nailed to the trees they are
+// walking past - so withholding it protected nobody and left the map
+// ambiguous. Stewards claim or withdraw; a withdrawal turns
+// test_org_marks.py red until the file is out of the tree.
+//
+// CDT NOW CARRIES CDTC'S OWN MARK (`cdt-logo.png`, their 192x192 site icon
+// resized to 96px, which is the headroom these render at) in place of the
+// OurHike-drawn placeholder that stood here until 2026-09-30, AND SO DOES
+// PCT - which took a different route and is worth reading before anybody
+// copies it.
+//
+// PCTA's media page still states in terms that the PCT emblem, the PCT
+// diamond and the PCTA logo each need written permission, and still nobody
+// has written. That restriction is intact; what changed is that the mark did
+// not have to come from PCTA. The US Forest Service administers the Pacific
+// Crest National Scenic Trail and publishes the emblem on its own trail
+// page, so `pct-logo.png` is the federal copy and rests on 17 U.S.C. 105
+// rather than on the opt-out decision above.
+//
+// COPYRIGHT WAS NOT THE ONLY QUESTION, and this is the part the public-domain
+// answer does not reach: 18 U.S.C. 701 protects trail markers prescribed by
+// the Interior Department, which is why `pohe` and `natr` ship nothing and
+// why the North Country and New England rows wear their associations' marks
+// instead of the prescribed ones. All 25 'Official Trail Marker' notices were
+// listed from the Federal Register API on 2026-09-30; those four trails are
+// each on it and THERE IS NO PACIFIC CREST NOTICE, which fits those notices
+// being Interior's and this trail being Agriculture's. sources.json's
+// `org_marks.trail_marks.pct` carries the query to re-run and the Commons
+// vector that was rejected for its share-alike layer.
 
 import atLogo from '../design-system/assets/trails/at-logo.png'
 import lpLogo from '../design-system/assets/trails/lp-logo.png'
-import pctLogo from '../design-system/assets/trails/pct-logo.svg'
-import cdtLogo from '../design-system/assets/trails/cdt-logo.svg'
+import pctLogo from '../design-system/assets/trails/pct-logo.png'
+import cdtLogo from '../design-system/assets/trails/cdt-logo.png'
 
 export interface Trail {
   id: string
@@ -44,10 +72,74 @@ export interface Trail {
 }
 
 export const TRAILS: Record<string, Trail> = {
+  // THE FOUR THIS TABLE HOLDS, and why the other 32 markers in the tree are
+  // not here. AT and LP are the two BADGE_SOURCES; PCT and CDT are reachable
+  // by name through lib/lineDetail.ts.
+  //
+  // The 32 steward markers shipped on 2026-09-30 are NOT in this table (PCT's
+  // and CDT's are, because those two are registry trails), and
+  // the reason is about what belongs in front of the first frame: App.tsx
+  // imports TRAILS, so every row is parsed before it. Adding 32 of them
+  // measured 257,725 bytes of eager JavaScript where a clean build without
+  // them passed at 253,337 - both real, both measured 2026-09-30. THEY WERE
+  // COMPARED AGAINST 256,000, WHICH STOPPED BEING THE BUDGET on 2026-09-18
+  // when #1577 raised it to 300 KB; features/LAUNCH_BUDGET.md §3 has carried
+  // 307,200 since, so both arrangements fit and this was never the forced move
+  // the old sentence implied. Corrected 2026-09-30 by review, which found the
+  // same dead figure in three files. It is still the right side to put them
+  // on, for a lookup nobody has shown matches anything: `trailForName`
+  // is exact, and whether any name a steward writes equals a name the
+  // usfs_trails layer publishes is unmeasured (#1543's body says so too).
+  //
+  // So the markers ship and are recorded; wiring them to names waits for the
+  // pull request that diffs the published names, which is the one that can
+  // say which rows earn their bytes - and can put them behind an import()
+  // at the sheet boundary rather than in the launch path.
   AT: { id: 'AT', name: 'Appalachian Trail', logo: atLogo, shortName: 'A.T.' },
   LP: { id: 'LP', name: 'Long Path', logo: lpLogo, shortName: 'L.P.' },
   PCT: { id: 'PCT', name: 'Pacific Crest Trail', logo: pctLogo, shortName: 'PCT' },
   CDT: { id: 'CDT', name: 'Continental Divide Trail', logo: cdtLogo, shortName: 'CDT' },
+}
+
+/**
+ * Published spellings that mean a trail this registry already names, folded
+ * to lower case, mapped to the TRAILS key they mean.
+ *
+ * ONE ENTRY, AND IT IS ATC'S. Measured 2026-08-23 against the live bucket
+ * (the count is in map/trailLabels.test.ts): all 3,025 centerline segments
+ * carry "Appalachian National Scenic Trail", which is the trail's formal
+ * federal designation and the only name ATC's layer publishes. It is nobody's
+ * word for it on a sheet headed "Appalachian Trail", and lib/lineDetail.ts
+ * had already special-cased exactly this string for exactly that reason. The
+ * maintainer asked on 2026-09-16 for the app to say "Appalachian Trail"
+ * wherever a hiker reads it, so the special case became this table and the
+ * remaining display paths were routed through it.
+ *
+ * AN ALIAS IS NOT A GUESS. Only a spelling somebody has seen in a published
+ * feed goes here, and only mapped to a trail TRAILS already names - never a
+ * substring rule, never a truncation. That is `trailForName`'s own refusal
+ * below, for the same reason: "Long Path Link Trail" is a different trail. A
+ * publisher's spelling for a trail this registry does NOT name is left
+ * exactly as it arrived, which is what keeps a state park's forty lines out
+ * of this and stops the rename becoming a licence to rewrite other people's
+ * data.
+ *
+ * WHERE THE LONG NAME SURVIVES ON PURPOSE. The pipeline keeps it, because
+ * pipeline/lib/hike_route_builder.py's `normalise_name` is explicit that a
+ * name is "carried as its publisher spells it, and this is the key the two
+ * spellings meet under" - the exported artifact stays traceable to the row
+ * ATC published. So this is a display choice taken at the last step before a
+ * hiker reads it, not a rewrite of the data behind it.
+ */
+const PUBLISHED_ALIASES: Record<string, string> = {
+  'appalachian national scenic trail': 'AT',
+}
+
+/** The registry trail a published spelling aliases, for an already-folded
+ *  name. Undefined for every name that is not in the table above. */
+function aliasedTrail(folded: string): Trail | undefined {
+  const id = PUBLISHED_ALIASES[folded]
+  return id === undefined ? undefined : TRAILS[id]
 }
 
 /**
@@ -59,10 +151,43 @@ export const TRAILS: Record<string, Trail> = {
  * keys the route on) and no trail id. Exact after trimming and case-folding,
  * never a substring - "Long Path Link Trail" is a different trail and must
  * not wear the Long Path's mark.
+ *
+ * PUBLISHED_ALIASES is read after the registry's own names, so ATC's spelling
+ * finds the A.T. too. No caller reaches that today - lib/lineDetail.ts looks
+ * the A.T. up by the app's own trail name, never by `line.name`, and its
+ * comment says what would have to change first - so this is consistency with
+ * `displayTrailName` rather than a defect anybody has seen. A name and a mark
+ * that disagree about whether a spelling is the A.T. is the bug worth not
+ * having.
  */
 export function trailForName(name: string | null | undefined): Trail | undefined {
   if (name === null || name === undefined) return undefined
   const wanted = name.trim().toLowerCase()
   if (wanted === '') return undefined
-  return Object.values(TRAILS).find((trail) => trail.name.toLowerCase() === wanted)
+  return (
+    Object.values(TRAILS).find((trail) => trail.name.toLowerCase() === wanted) ??
+    aliasedTrail(wanted)
+  )
+}
+
+/**
+ * The name to SHOW for a published trail name: this registry's name where the
+ * publisher's spelling is one it knows, the publisher's own spelling
+ * everywhere else, and null where there is no name to show at all.
+ *
+ * The one place the rename happens, so the badge, the legend's "Trails in
+ * view" row and the line sheet cannot drift apart on what the same trail is
+ * called - the reason map/trailsInView.ts measures the badge and the list off
+ * one pass rather than two.
+ *
+ * Empty and whitespace-only names come back null rather than '', matching
+ * what the callers already do with a nameless line: they omit it, because a
+ * name this map invented is a fact about somebody else's data that nobody
+ * stands behind (map/trailLabels.test.ts says the same about "Unnamed").
+ */
+export function displayTrailName(name: string | null | undefined): string | null {
+  if (name === null || name === undefined) return null
+  const trimmed = name.trim()
+  if (trimmed === '') return null
+  return aliasedTrail(trimmed.toLowerCase())?.name ?? trimmed
 }

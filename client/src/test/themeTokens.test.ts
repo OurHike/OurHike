@@ -31,6 +31,52 @@ function declared(css: string): string[] {
   return [...css.matchAll(/^--([a-z0-9-]+):/gm)].map((m) => m[1])
 }
 
+/** Every `--name:` declared anywhere in a stylesheet, at any indent.
+ *
+ *  `declared` above is anchored to the line start because the token files
+ *  write their declarations flush left. An app stylesheet indents inside a
+ *  rule, and `--min-touch-target: 44px` two spaces in is a definition like any
+ *  other. */
+function declarations(css: string): string[] {
+  return [...css.matchAll(/(?:^|[\s;{])--([a-z0-9-]+)\s*:/gm)].map((m) => m[1])
+}
+
+/** Every custom property a component sets from TSX, e.g. NextUpRail.tsx's
+ *  `{ '--chip-accent': poiColor(point.type) }`.
+ *
+ *  A property set in an inline style is as defined as one in a stylesheet -
+ *  the element carries it and everything under it reads it. Matching any
+ *  quoted `'--name'` rather than one followed by a colon is deliberate:
+ *  PoiCard.tsx writes its key as `['--poi-accent' as string]: accent`, which a
+ *  colon-anchored pattern misses. This list only ever has to be a superset,
+ *  because its job is to keep a real definition from being reported as a
+ *  missing one. */
+function componentSetProperties(): string[] {
+  const walk = (dir: string): string[] =>
+    readdirSync(dir).flatMap((entry) => {
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) return walk(full)
+      return /\.tsx?$/.test(full) ? [full] : []
+    })
+
+  return walk(ROOT).flatMap((file) =>
+    [...readFileSync(file, 'utf8').matchAll(/'(--[a-z0-9-]+)'/gi)].map((m) =>
+      m[1].slice(2),
+    ),
+  )
+}
+
+/** The same CSS with every comment blanked out, character for character.
+ *
+ *  Blanked rather than removed so that line numbers still point at the line
+ *  the reader will open. This exists because the first run of the rule below
+ *  reported `var(--bg-raised)` out of a COMMENT explaining that
+ *  `var(--bg-raised)` had been the bug - the one place in the repository where
+ *  the name should still appear. */
+function withoutComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
+}
+
 /** Every app stylesheet, which is every .css under src/ except the design
  *  system's own - those files ARE the palette, so naming a base colour in them
  *  is the point rather than a leak. */
@@ -134,5 +180,90 @@ describe('the theme token contract', () => {
     })
 
     expect(unknown).toEqual([])
+  })
+
+  it('leaves no app stylesheet on a var() chain with nothing at the end of it', () => {
+    // THE SISTER OF THE RULE ABOVE, AND THE HALF THAT WAS MISSING. That one
+    // catches `var(--never-defined, #fdf1d6)` - a hardcoded colour wearing a
+    // token's clothes. It cannot see `var(--never-defined)`, or
+    // `var(--never-defined, var(--also-never-defined))`, because there is no
+    // literal in either to match on.
+    //
+    // Those two are worse. A var() whose every name is undefined and which
+    // has no literal to fall back to resolves to the guaranteed-invalid
+    // value, which makes the WHOLE declaration invalid at computed-value time
+    // - so the property is not "wrong colour", it is absent. For a background
+    // that means transparent.
+    //
+    // `--bg-raised` and `--bg-0` were six such surfaces on 2026-09-20 and
+    // nothing has ever defined either name: the dropped-waypoint chip's
+    // background (#528), the waypoint card's expand button and note field,
+    // that card's observation hover, the volunteer form's inputs, and the
+    // Show points switch's own pill and knob. Every one of them rendered with
+    // no background at all, on both themes, for as long as it had shipped.
+    // The switch is how it was finally noticed - a pill with the map showing
+    // through it and a knob that was not there, on the pr-1590 preview frame.
+    // WIDER THAN THE RULE ABOVE'S `defined`, on purpose. That one asks "is
+    // this a design-system token", because its subject is a colour that
+    // cannot follow the theme. This one asks "does anything, anywhere, give
+    // this name a value" - the cascade is global, so a property declared in
+    // chrome.css (`--min-touch-target`) or set inline by a component
+    // (`--poi-accent`, NextUpRail.tsx's `--chip-accent`) is as real as one in
+    // colors.css. Counting only the token files here reported 60 false
+    // positives on first run.
+    const defined = new Set([
+      ...appStylesheets().flatMap((file) => declarations(readFileSync(file, 'utf8'))),
+      ...declared(colours),
+      ...declarations(readFileSync(join(TOKENS, 'spacing.css'), 'utf8')),
+      ...declarations(readFileSync(join(TOKENS, 'typography.css'), 'utf8')),
+      ...declarations(readFileSync(join(TOKENS, 'effects.css'), 'utf8')),
+      ...componentSetProperties(),
+    ])
+
+    /** Every `var(...)` in `css`, as {name, fallback, at}, outermost first. */
+    function varCalls(css: string): { name: string; fallback: string; at: number }[] {
+      const found: { name: string; fallback: string; at: number }[] = []
+      for (const match of css.matchAll(/var\(\s*--([a-z0-9-]+)/gi)) {
+        const open = css.indexOf('(', match.index)
+        // Walk to this var()'s own closing paren, so a nested var() in the
+        // fallback comes back whole rather than cut at the first ')'.
+        let depth = 0
+        let close = open
+        for (; close < css.length; close += 1) {
+          if (css[close] === '(') depth += 1
+          else if (css[close] === ')') {
+            depth -= 1
+            if (depth === 0) break
+          }
+        }
+        const inner = css.slice(open + 1, close)
+        const comma = inner.indexOf(',')
+        found.push({
+          name: match[1],
+          fallback: comma === -1 ? '' : inner.slice(comma + 1).trim(),
+          at: css.slice(0, match.index).split('\n').length,
+        })
+      }
+      return found
+    }
+
+    /** Whether this chain can produce a value: any defined name, or a literal
+     *  tail. A literal is anything that is not another var(). */
+    function resolves(name: string, fallback: string): boolean {
+      if (defined.has(name)) return true
+      if (fallback === '') return false
+      if (!fallback.startsWith('var(')) return true
+      const [next] = varCalls(fallback)
+      return next === undefined ? true : resolves(next.name, next.fallback)
+    }
+
+    const blank = appStylesheets().flatMap((file) => {
+      const css = withoutComments(readFileSync(file, 'utf8'))
+      return varCalls(css)
+        .filter(({ name, fallback }) => !resolves(name, fallback))
+        .map(({ name, at }) => `${relative(ROOT, file)}:${at} var(--${name})`)
+    })
+
+    expect(blank).toEqual([])
   })
 })

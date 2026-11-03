@@ -218,8 +218,12 @@ export function normaliseRecipe(module, name) {
   const wait = module.wait ?? DEFAULT_WAIT_MS
   if (typeof wait !== 'number' || !Number.isFinite(wait))
     wrong('wait must be a number of milliseconds', module.wait)
+  const before = module.before
+  if (before !== undefined && typeof before !== 'function')
+    wrong('before must be a function of the page', before)
   return {
     drive,
+    before,
     caption,
     alt,
     entry: module.entry === true,
@@ -375,6 +379,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         fullPage: false,
         viewport: recipe.desktop ? DESKTOP : recipe.small ? PHONE_SMALL : PHONE,
         drive: recipe.drive,
+        before: recipe.before,
       })
       const verdict = budgetVerdict(bytes)
       console.log(`  ${verdict.message}`)

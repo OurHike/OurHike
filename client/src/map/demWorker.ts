@@ -13,7 +13,7 @@
 // already IS the one home those numbers live in.
 
 import mlcontour from 'maplibre-contour'
-import { demGetTile } from './demTiles'
+import { demGetTile, setDemCells } from './demTiles'
 import { DEM_MAX_ZOOM, DEM_TILE_URL } from './terrain'
 import { createDemRequestHandler, type DemRequest } from './demRpc'
 
@@ -36,8 +36,14 @@ const workerSelf = self as unknown as {
   onmessage: ((event: MessageEvent) => void) | null
 }
 
-const handle = createDemRequestHandler(manager, (message) =>
-  workerSelf.postMessage(message),
+const handle = createDemRequestHandler(
+  manager,
+  (message) => workerSelf.postMessage(message),
+  // The shell's held DEM cells, landing in the module that reads them on
+  // every tile (#1475). This is the whole of what the notification is for:
+  // a hiker who took a stretch has terrain in IndexedDB that nothing in
+  // this worker could otherwise know about.
+  setDemCells,
 )
 
 workerSelf.onmessage = (event: MessageEvent) => handle(event.data as DemRequest)

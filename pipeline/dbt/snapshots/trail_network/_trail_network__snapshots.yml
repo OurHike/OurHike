@@ -1,0 +1,14 @@
+version: 2
+
+snapshots:
+  - name: int_trail_network__history
+    description: >
+      The trail network mart's row history.
+      {{ doc('row_history_snapshot') }}
+    columns:
+      - name: edge_id
+        description: The mart's key; one current version each.
+        data_tests:
+          - unique:
+              config:
+                where: dbt_valid_to is null

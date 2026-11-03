@@ -1,10 +1,11 @@
 // How an ATC trail update is drawn, and why it is not a second colour.
 //
 // The band's job is identical to a closure's - "do not walk down there, go
-// around" - so it is drawn with identical weight: the same width, the same
-// barrier tape, the same colour. Only the CADENCE differs, the identical tape
-// at twice the scale, so that the two read as the same kind of thing from the
-// same distance while still being distinguishable side by side.
+// around" - so it is drawn with the closure's own mark: crossed out (#1677),
+// by lib/closureStyle.ts's buildClosureLayers. Only the CADENCE differs, the
+// chain of crosses at twice the spacing, so that the two read as the same
+// kind of thing from the same distance while still being distinguishable side
+// by side.
 //
 // THE COLOUR IS DELIBERATELY NOT DIFFERENT, and this is the decision worth
 // recording because the obvious move is to make it different. #461 asks that
@@ -21,7 +22,8 @@
 // The same reasoning lib/closureStyle.ts applies to blazes applies here in
 // miniature: the distinction that matters is structural rather than
 // chromatic, because colour is the first thing to go in greyscale, in direct
-// sun, and for a red-green colour-blind hiker.
+// sun, and for a red-green colour-blind hiker. Since #1677 neither band is
+// red at all; the point notice below still is.
 //
 // WHAT CHANGED, AND WHY IT IS NOT A SECOND SEVERITY EITHER. The point notice
 // used to be a 10px dot drawn under the waypoint pins, which made the ATC's
@@ -56,20 +58,19 @@
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
-  CLOSURE_CASING_COLOR,
   CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
-  CLOSURE_TAPE_CADENCE,
-  CLOSURE_TAPE_WIDTH,
-  type TapeCadence,
+  CLOSURE_INK,
+  buildClosureLayers,
+  closureLayerIds,
 } from './closureStyle'
 
 export const ATC_UPDATE_LAYER_ID = 'atc-update-band'
 
-/** The ATC tape's own image id. A second image rather than a second colour,
- *  for the reason the header gives at length: the cadence is what separates
- *  the two feeds, and nothing about hue or weight may. */
-export const ATC_TAPE_IMAGE_ID = 'atc-update-tape'
+/** Every layer the ATC band draws with, bottom to top - the paper, the
+ *  trace, the chain and the far mark, named through closureLayerIds so the
+ *  two feeds' layers cannot be named differently. */
+export const ATC_UPDATE_BAND_LAYER_IDS = closureLayerIds(ATC_UPDATE_LAYER_ID)
 export const ATC_UPDATE_POINT_LAYER_ID = 'atc-update-point'
 
 /**
@@ -97,7 +98,7 @@ export const ATC_NOTICE_ICON_ID = 'atc-notice'
  *
  * IT WAS FIRST SIZED TO THE BAND'S WIDTH - a 10px dot, "a barrier seen end-on"
  * - and that was still too quiet by a long way. The dot came out SMALLER than
- * every pin it competes with on the same screen: a waypoint pin is 38px
+ * every pin it competes with on the same screen: a waypoint pin was 38px
  * (`POI_PIN_SIZE`, itself `--space-9`) and a serious-warning pin is 44px, so
  * the one mark on the map carrying the trail's own maintainer's word about the
  * trail was the smallest thing on it, and drawn UNDER both of them besides
@@ -133,8 +134,24 @@ export const ATC_NOTICE_ICON_ID = 'atc-notice'
  * that all 1,257 px² of it were opaque, not that it reached 40px - the reach is
  * what makes an eye land here rather than on the shelter pin beside it, and
  * src/test/atcAlertProminence.test.ts holds it against both pins.
+ *
+ * 30 SINCE THE WAYPOINT PIN WAS DRAWN 26 PX ACROSS (#1682). Everything above
+ * was argued against a 38 px pin; the pin's ink shrank to 26 inside the same
+ * 38 px footprint, and a 40 px notice stood 14 px clear of it where the whole
+ * derivation asks for "as little as the scale allows". The maintainer, shown
+ * the notice at 40 beside the new pins (poll, 2026-09-26), chose "Shrink it to
+ * just clear the pin". 30 rather than the token step 32, which clears by 6 and
+ * fails the test's 4 px ceiling; 30 rather than 28, which would repeat the old
+ * 2 px clearance but thin the triangle's red band to 2.6 px at walking zoom
+ * (it is 2.8 at 30, and was 3.7 at 40). Measured against the pin's INK, not
+ * its footprint, for the reason the next paragraph up gives about measuring
+ * ink against ink.
+ *
+ * @unvalidated Nobody has looked at a 30 px notice beside a 26 px pin on a
+ * phone. What would settle it: the same look that settled 40 against 38 - a
+ * real frame at walking zoom with a notice and a shelter pin side by side.
  */
-export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
+export const ATC_UPDATE_POINT_DRAWN_WIDTH = 30
 
 /**
  * The zooms the dot grows between, and what fraction of full size it is at
@@ -150,10 +167,10 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  * The stops are read off the two things this dot shares a screen with:
  *
  *  - **z13 and up, full size.** Where map/poiLayers.ts stops interpolating and
- *    a waypoint pin is its whole 38px. This is the comparison every bound in
+ *    a waypoint pin is its whole 26px of ink (#1682). This is the comparison every bound in
  *    src/test/atcAlertProminence.test.ts is about, so it has to be the zoom
  *    both are at full size.
- *  - **z9, 0.8.** Where waypoint pins first appear (`POI_PIN_MIN_ZOOM`), at
+ *  - **At the seam, 0.8.** Where waypoint pins first appear (`POI_PIN_MIN_ZOOM`), at
  *    the fraction they are drawn at there (`POI_PIN_MIN_SCALE`). Matching the
  *    pin's own scale is what keeps this dot its couple of pixels clear at
  *    every zoom where both are drawn, rather than only at the top.
@@ -170,7 +187,7 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  *    on `map/`, and the relationship is enforced by that test file, which
  *    exists precisely because neither half of the comparison can be made where
  *    either side lives.
- *  - **Below z9, not drawn at all** - the maintainer's call of 2026-09-08
+ *  - **Below the seam, not drawn at all** - the maintainer's call of 2026-09-08
  *    that the opening camera shows trail lines only (#1292). There WAS a
  *    third stop here, 0.4 at z5, on the argument that a hiker planning a
  *    week wants to see where the ATC has posted something. On the
@@ -191,18 +208,35 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  * precisely what zoom means.
  */
 export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: number]> = [
-  [9, 0.8],
+  // 7.5, not 9, since #1585 moved the pin seam out to the zoom at which
+  // essentially every resupply carry fits. It follows the pins WITHOUT being
+  // re-argued:
+  // this ramp exists to keep ATC's own notice a couple of pixels clear of the
+  // pin beside it at every zoom where both are drawn, and a notice that
+  // stayed at 9 would simply be absent on the first screen that has pins on
+  // it - the one place a hiker planning a carry would want it.
+  [7, 0.8],
   [13, 1],
 ]
 
 /**
  * Where the notice point stops being drawn, going out: the pin seam
  * (map/poiLayers.ts's POI_PIN_MIN_ZOOM), since #1292 - below it the map
- * draws trail lines only. The number is repeated here rather than imported,
+ * draws trail lines only - lines and a stipple of dots, since #1585 took the
+ * dot rank back down. It moved 9 -> 7.5 with that seam on the same change,
+ * which is the whole of why the two are held equal rather than merely written
+ * down. The number is repeated here rather than imported,
  * for the reason the 0.8 above gives: `lib/` does not depend on `map/`, and
  * src/test/atcAlertProminence.test.ts holds the two equal.
  */
-export const ATC_UPDATE_POINT_MIN_ZOOM = 9
+// 7 SINCE 2026-09-20, following map/poiLayers.ts's POI_PIN_MIN_ZOOM down
+// from 7.5. A LITERAL rather than an import, deliberately: this module sits
+// outside the map layer, and importing a value from poiLayers.ts would pull
+// a MapLibre-shaped module into whatever chunk this lands in - the bundle
+// boundary LOCATE_MIN_ZOOM's docstring describes. The two numbers agreeing
+// is enforced instead, by src/test/atcAlertProminence.test.ts, which fails
+// if the seam moves and this does not.
+export const ATC_UPDATE_POINT_MIN_ZOOM = 7
 
 /**
  * What the symbol layer is given instead of a number.
@@ -295,63 +329,47 @@ export const ATC_NOTICE_GLYPH_BOX =
 // shape of the fault this change is fixing.
 
 /**
- * Wider stripes, further apart - literally the closure's tape at twice the
- * scale.
+ * The chain's spacing, as a multiple of the closure's - the same crosses,
+ * twice as far apart.
  *
- * DERIVED FROM THE CLOSURE'S CADENCE RATHER THAN PICKED, and multiplied on
- * both axes by the same factor, which is what makes "the same tape, slower"
- * true rather than merely intended: doubling only the pitch would thin the
- * ATC's band to a third of the closure's red and read as a softer claim, which
- * is the severity distinction this module exists to refuse. Scaling both keeps
- * tapeRedFraction identical for the two - the tests hold that equality rather
- * than these numbers.
+ * THE CROSSES ARE THE SAME SIZE, and only the spacing moves, which is what
+ * makes "the same mark, slower" true rather than merely intended: smaller or
+ * fainter crosses would read as a softer claim, which is the severity
+ * distinction this module exists to refuse. The #1598 band made the same
+ * trade with its dash, doubling tick and gap together.
  *
- * At a glance the two are one treatment, and only a close look separates them.
- * That is the intended reading order, since what a hiker must register
+ * At a glance the two are one treatment, and only a close look separates
+ * them. That is the intended reading order, since what a hiker must register
  * instantly is "barrier", and only then "whose".
  */
-export const ATC_UPDATE_TAPE_SCALE = 2
+export const ATC_UPDATE_SPACING_SCALE = 2
 
-export const ATC_UPDATE_TAPE_CADENCE: TapeCadence = {
-  stripe: CLOSURE_TAPE_CADENCE.stripe * ATC_UPDATE_TAPE_SCALE,
-  pitch: CLOSURE_TAPE_CADENCE.pitch * ATC_UPDATE_TAPE_SCALE,
-}
-
-/** Re-exported so a test can hold the equality rather than the numbers, and
- *  so the coupling to lib/closureStyle.ts is visible from this file. An ATC
- *  band that quietly drifted narrower than a closure band would be exactly
- *  the severity distinction this module refuses to draw. */
-export const ATC_UPDATE_LINE_WIDTH = CLOSURE_TAPE_WIDTH
 /** The old band casing, which nothing paints with now - see the constant's own
  *  note in lib/closureStyle.ts. Kept re-exported because ATC_NOTICE_CASING_WIDTH
  *  is asserted lighter than it, and a comparison needs both sides. */
 export const ATC_UPDATE_CASING_WIDTH = CLOSURE_CASING_WIDTH
+/** The point notice's colours: the closure red, with the closure ink as its
+ *  hairline (map/atcNoticeMark.ts). */
 export const ATC_UPDATE_COLOR = CLOSURE_COLOR
-export const ATC_UPDATE_CASING_COLOR = CLOSURE_CASING_COLOR
+export const ATC_UPDATE_CASING_COLOR = CLOSURE_INK
 
-export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
+/** `ground` and `ink` are the sheet's paper and the mark's ink, as
+ *  lib/closureStyle.ts's ClosureLayerOptions describes them. */
+export function buildAtcUpdateLayers(
+  sourceId: string,
+  ground: string,
+  ink: string,
+): LayerSpecification[] {
   return [
-    // ONE band layer, and no casing beneath it - see buildClosureLayers, which
-    // makes the same shape for the same reason. A solid casing under tape with
-    // transparent gaps shows through every one of them, which is the defect
-    // both feeds just stopped having.
-    //
-    // THE GLOW THAT USED TO OPEN THIS LIST IS GONE, and it went for a reason
-    // this change shares rather than contradicts. #1071 removed it with the
-    // solid disc it surrounded: opaque ink covers the ground a mark is about,
-    // and a translucent wash around it was the softer half of the same fault.
-    // The burst below and the tape here are the same answer at two scales -
-    // let the ground read through the mark instead of around it.
-    {
-      id: ATC_UPDATE_LAYER_ID,
-      type: 'line',
-      source: sourceId,
-      layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: {
-        'line-pattern': ATC_TAPE_IMAGE_ID,
-        'line-width': ATC_UPDATE_LINE_WIDTH,
-      },
-    },
+    // The band: the closure's four layers, at this feed's own slower cadence.
+    // Point features are ignored by all four - a `line` layer draws no
+    // points, and a symbol placed along a line or at its centre needs a line.
+    ...buildClosureLayers(sourceId, {
+      ground,
+      ink,
+      bandId: ATC_UPDATE_LAYER_ID,
+      spacingScale: ATC_UPDATE_SPACING_SCALE,
+    }),
     // Points, from the same source. A `line` layer ignores Point features and
     // a `symbol` layer ignores lines, so one source can carry both geometries
     // and the tap has one place to look - which is why this is a third layer

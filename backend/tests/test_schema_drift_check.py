@@ -60,16 +60,18 @@ def migration_engine():
 # --- the connection string is one a migration can use ----------------------
 
 
-def test_a_dashboard_url_without_the_driver_is_refused():
-    """What you get by pasting Supabase's string unedited.
+def test_a_dashboard_url_without_the_driver_is_accepted_because_sqlalchemy_loads_psycopg():
+    """What you get by pasting Supabase's string unedited - refused until the
+    sqlalchemy>=2.1.4 floor in requirements.in.
 
-    SQLAlchemy resolves a bare `postgresql://` to psycopg2, which this backend
-    does not install, so without this the failure is an import error naming a
-    driver nobody chose.
+    SQLAlchemy 2.0 resolved a bare `postgresql://` to psycopg2, which this
+    backend does not install; 2.1 resolves it to psycopg. The first assertion
+    pins that, so an install that slips back below 2.1 fails here, naming the
+    driver, rather than at the first migration.
     """
-    reason = check_schema_drift.unsuitable_reason("postgresql://postgres:pw@db.abc.supabase.co:5432/postgres")
-    assert reason is not None
-    assert "postgresql+psycopg://" in reason
+    url = "postgresql://postgres:pw@db.abc.supabase.co:5432/postgres"
+    assert sqlalchemy.engine.make_url(url).get_driver_name() == "psycopg"
+    assert check_schema_drift.unsuitable_reason(url) is None
 
 
 def test_the_transaction_pooler_is_refused():
@@ -133,11 +135,11 @@ def test_an_unusable_url_stops_the_run_before_it_connects(monkeypatch, capsys):
     monkeypatch.setattr(
         check_schema_drift,
         "load_settings",
-        lambda: SimpleNamespace(database_url="postgresql://postgres:pw@localhost:5432/x"),
+        lambda: SimpleNamespace(database_url="postgresql+psycopg2://postgres:pw@localhost:5432/x"),
     )
 
     assert check_schema_drift.main(["--label", "test"]) == 2
-    assert "postgresql+psycopg://" in capsys.readouterr().out
+    assert "resolves to the 'psycopg2' driver" in capsys.readouterr().out
 
 
 # --- the environment a migration job actually has --------------------------
@@ -195,18 +197,43 @@ def test_a_missing_setting_never_prints_the_connection_string():
 
 def test_the_environment_the_workflows_pass_is_enough():
     """The fix, asserted as the workflows configure it: DATABASE_URL plus the
-    two Supabase settings the app needs and a migration does not."""
+    two Supabase settings the app needs and a migration does not.
+    SUPABASE_URL is migrate.yml's own placeholder, which names no Supabase
+    project, so app/config.py's same-project guard has nothing to compare."""
     result = _run_in(
         {
             "PATH": os.environ["PATH"],
             "DATABASE_URL": SESSION_POOLER_URL,
-            "SUPABASE_URL": "https://example.supabase.co",
+            "SUPABASE_URL": "https://migrations-never-call-this.invalid",
             "SUPABASE_ANON_KEY": "sb_publishable_example",
         }
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "usable for a migration" in result.stdout
+
+
+def test_settings_from_two_projects_are_reported_as_refused_not_as_missing():
+    """app/config.py's same-project guard refuses the settings as a whole, so
+    its error names no field. load_settings() read the first field name of
+    every error, and on this one it would have raised IndexError mid-handler:
+    a traceback, with pydantic's rendering of the input chained under it."""
+    result = _run_in(
+        {
+            "PATH": os.environ["PATH"],
+            "DATABASE_URL": SESSION_POOLER_URL,
+            # Shaped like a project ref, 20 lowercase letters: a label of any
+            # other shape names no project, and the guard would not compare it.
+            "SUPABASE_URL": "https://someotherprojectrefs.supabase.co",
+        }
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode == 2, combined
+    assert "refused these settings" in result.stdout
+    assert "project abc, but SUPABASE_URL is project someotherprojectrefs" in result.stdout
+    assert "hunter2" not in combined, "the password leaked"
+    assert "Traceback" not in combined
 
 
 # --- classify, as a pure function -----------------------------------------

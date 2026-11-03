@@ -1,0 +1,335 @@
+version: 2
+
+unit_tests:
+  # Each test is named for the export_elevation.py rule it holds, and most
+  # for the tests/test_export_elevation.py case it ports (pipeline/ELT.md,
+  # "Tests move with their rule"). tests/test_dbt_elevation_parity.py runs
+  # export_elevation.py's own functions over each test's given rows and
+  # holds every expected row to the Python's answer; the one test the Python
+  # has no counterpart for is listed there by name.
+  #
+  # HOW EXACT A UNIT TEST IS HERE (measured 2026-10-02 on dbt 2.0.6, the
+  # trail_lines family): a VARCHAR, integer or boolean column is compared
+  # exactly, a DOUBLE only after rounding to one decimal. So the published
+  # numbers are compared as text, exactly; along_m is compared to 0.1 here,
+  # and the pytest holds it exactly. The mile axis's lists and geometry can
+  # only be given in `format: sql`, which the pytest runs in DuckDB to read
+  # them back.
+  - name: int_elevation__sample_points_a_sample_carries_the_piece_it_came_from
+    description: >
+      Ports test_a_sample_carries_the_piece_it_came_from: two 100 m pieces
+      at 25 m give five samples on the first and four on the second, the
+      25 m left over at the first piece's end carried into the second.
+    model: int_elevation__sample_points
+    given:
+      - input: ref('int_trail_lines__mile_axis')
+        format: sql
+        rows: |
+          select 0 as piece_id, 0 as pre_calibration_order, st_geomfromtext('LINESTRING (0 0, 100 0)') as geom_5070, cast(100.0 as double) as length_m, cast(0.0 as double) as start_mile, cast(0.0621371192237334 as double) as end_mile, [cast(0.0 as double)] as anchor_along_mi, [cast(0.0 as double)] as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+          union all
+          select 1 as piece_id, 1 as pre_calibration_order, st_geomfromtext('LINESTRING (500 0, 600 0)') as geom_5070, cast(100.0 as double) as length_m, cast(1.0 as double) as start_mile, cast(1.0621371192237334 as double) as end_mile, [cast(0.0 as double)] as anchor_along_mi, [cast(1.0 as double)] as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+    expect:
+      rows:
+        - {sample_index: 0, piece_id: 0, along_m: 0.0, distance_mi_text: '0.000'}
+        - {sample_index: 1, piece_id: 0, along_m: 25.0, distance_mi_text: '0.016'}
+        - {sample_index: 2, piece_id: 0, along_m: 50.0, distance_mi_text: '0.031'}
+        - {sample_index: 3, piece_id: 0, along_m: 75.0, distance_mi_text: '0.047'}
+        - {sample_index: 4, piece_id: 0, along_m: 100.0, distance_mi_text: '0.062'}
+        - {sample_index: 5, piece_id: 1, along_m: 25.0, distance_mi_text: '1.016'}
+        - {sample_index: 6, piece_id: 1, along_m: 50.0, distance_mi_text: '1.031'}
+        - {sample_index: 7, piece_id: 1, along_m: 75.0, distance_mi_text: '1.047'}
+        - {sample_index: 8, piece_id: 1, along_m: 100.0, distance_mi_text: '1.062'}
+
+  - name: int_elevation__sample_points_carries_the_interval_across_a_seam
+    description: >
+      The walk of test_only_the_first_sample_of_a_piece_is_marked: two 50 m
+      pieces give three samples on the first (0, 25, 50 m), and the second
+      starts 25 m in, so it gives two (25, 50 m) rather than three. The
+      interval is continuous across the seam though the trail is not.
+    model: int_elevation__sample_points
+    given:
+      - input: ref('int_trail_lines__mile_axis')
+        format: sql
+        rows: |
+          select 0 as piece_id, 0 as pre_calibration_order, st_geomfromtext('LINESTRING (0 0, 50 0)') as geom_5070, cast(50.0 as double) as length_m, cast(0.0 as double) as start_mile, cast(0.0310685596118667 as double) as end_mile, [cast(0.0 as double)] as anchor_along_mi, [cast(0.0 as double)] as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+          union all
+          select 1 as piece_id, 1 as pre_calibration_order, st_geomfromtext('LINESTRING (500 0, 550 0)') as geom_5070, cast(50.0 as double) as length_m, cast(1.0 as double) as start_mile, cast(1.0310685596118667 as double) as end_mile, [cast(0.0 as double)] as anchor_along_mi, [cast(1.0 as double)] as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+    expect:
+      rows:
+        - {sample_index: 0, piece_id: 0, along_m: 0.0, distance_mi_text: '0.000'}
+        - {sample_index: 1, piece_id: 0, along_m: 25.0, distance_mi_text: '0.016'}
+        - {sample_index: 2, piece_id: 0, along_m: 50.0, distance_mi_text: '0.031'}
+        - {sample_index: 3, piece_id: 1, along_m: 25.0, distance_mi_text: '1.016'}
+        - {sample_index: 4, piece_id: 1, along_m: 50.0, distance_mi_text: '1.031'}
+
+  - name: int_elevation__sample_points_a_piece_shorter_than_the_carry_gets_no_sample
+    description: >
+      sample_points_along_parts' while loop not entered: the 60 m piece
+      leaves 15 m to carry, the 10 m piece after it is shorter than that, so
+      it gets no sample and passes 5 m on, and the 100 m piece starts 5 m in.
+    model: int_elevation__sample_points
+    given:
+      - input: ref('int_trail_lines__mile_axis')
+        format: sql
+        rows: |
+          select 0 as piece_id, 0 as pre_calibration_order, st_geomfromtext('LINESTRING (0 0, 60 0)') as geom_5070, cast(60.0 as double) as length_m, cast(0.0 as double) as start_mile, cast(0.03728227153424004 as double) as end_mile, [cast(0.0 as double)] as anchor_along_mi, [cast(0.0 as double)] as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+          union all
+          select 1 as piece_id, 1 as pre_calibration_order, st_geomfromtext('LINESTRING (100 0, 110 0)') as geom_5070, cast(10.0 as double) as length_m, cast(1.0 as double) as start_mile, cast(1.0062137119223733 as double) as end_mile, [cast(0.0 as double)] as anchor_along_mi, [cast(1.0 as double)] as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+          union all
+          select 2 as piece_id, 2 as pre_calibration_order, st_geomfromtext('LINESTRING (200 0, 300 0)') as geom_5070, cast(100.0 as double) as length_m, cast(2.0 as double) as start_mile, cast(2.0621371192237334 as double) as end_mile, [cast(0.0 as double)] as anchor_along_mi, [cast(2.0 as double)] as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+    expect:
+      rows:
+        - {sample_index: 0, piece_id: 0, along_m: 0.0, distance_mi_text: '0.000'}
+        - {sample_index: 1, piece_id: 0, along_m: 25.0, distance_mi_text: '0.016'}
+        - {sample_index: 2, piece_id: 0, along_m: 50.0, distance_mi_text: '0.031'}
+        - {sample_index: 3, piece_id: 2, along_m: 5.0, distance_mi_text: '2.003'}
+        - {sample_index: 4, piece_id: 2, along_m: 30.0, distance_mi_text: '2.019'}
+        - {sample_index: 5, piece_id: 2, along_m: 55.0, distance_mi_text: '2.034'}
+        - {sample_index: 6, piece_id: 2, along_m: 80.0, distance_mi_text: '2.050'}
+
+  - name: int_elevation__sample_points_reads_each_mile_off_its_pieces_anchors
+    description: >
+      CalibratedPart.mile_at through each sample, then Python's round to
+      three decimals. The bent first piece has two anchors, at 25 and 75 m:
+      before the first the mile runs back at unit slope (9.984), at each
+      anchor it is the anchor's (10.000, 10.500), between them it is
+      interpolated (10.250), and past the last it runs on at unit slope
+      (10.516). The second piece's one anchor puts its first sample at
+      exactly 10.5625, a tie that Python's round sends to the even 10.562
+      and DuckDB's round() would send up to 10.563.
+    model: int_elevation__sample_points
+    given:
+      - input: ref('int_trail_lines__mile_axis')
+        format: sql
+        rows: |
+          select 0 as piece_id, 0 as pre_calibration_order, st_geomfromtext('LINESTRING (0 0, 60 0, 60 40)') as geom_5070, cast(100.0 as double) as length_m, cast(9.984465720194066 as double) as start_mile, cast(10.515534279805934 as double) as end_mile, [cast(25.0 as double) / cast(1609.344 as double), cast(75.0 as double) / cast(1609.344 as double)] as anchor_along_mi, [cast(10.0 as double), cast(10.5 as double)] as anchor_mile, 2 as anchor_count, 2 as snapped_marker_count, false as reversed_by_markers
+          union all
+          select 1 as piece_id, 1 as pre_calibration_order, st_geomfromtext('LINESTRING (200 0, 300 0)') as geom_5070, cast(100.0 as double) as length_m, cast(10.546965720194066 as double) as start_mile, cast(10.6091028394178 as double) as end_mile, [cast(25.0 as double) / cast(1609.344 as double)] as anchor_along_mi, [cast(10.5625 as double)] as anchor_mile, 1 as anchor_count, 1 as snapped_marker_count, false as reversed_by_markers
+    expect:
+      rows:
+        - {sample_index: 0, piece_id: 0, along_m: 0.0, distance_mi_text: '9.984'}
+        - {sample_index: 1, piece_id: 0, along_m: 25.0, distance_mi_text: '10.000'}
+        - {sample_index: 2, piece_id: 0, along_m: 50.0, distance_mi_text: '10.250'}
+        - {sample_index: 3, piece_id: 0, along_m: 75.0, distance_mi_text: '10.500'}
+        - {sample_index: 4, piece_id: 0, along_m: 100.0, distance_mi_text: '10.516'}
+        - {sample_index: 5, piece_id: 1, along_m: 25.0, distance_mi_text: '10.562'}
+        - {sample_index: 6, piece_id: 1, along_m: 50.0, distance_mi_text: '10.578'}
+        - {sample_index: 7, piece_id: 1, along_m: 75.0, distance_mi_text: '10.594'}
+        - {sample_index: 8, piece_id: 1, along_m: 100.0, distance_mi_text: '10.609'}
+
+  - name: int_elevation__profile_only_the_first_sample_of_a_piece_is_marked
+    description: >
+      Ports test_only_the_first_sample_of_a_piece_is_marked, on the walk
+      int_elevation__sample_points_carries_the_interval_across_a_seam
+      expects: three samples on the first piece and two on the second
+      publish part_start true, false, false, true, false.
+    model: int_elevation__profile
+    given:
+      - input: ref('int_elevation__sample_points')
+        rows:
+          - {line_id: 'AT', sample_index: 0, piece_id: 0, distance_mi_text: '0.000', lon: -74.0, lat: 41.0}
+          - {line_id: 'AT', sample_index: 1, piece_id: 0, distance_mi_text: '0.016', lon: -74.0, lat: 41.000223}
+          - {line_id: 'AT', sample_index: 2, piece_id: 0, distance_mi_text: '0.031', lon: -74.0, lat: 41.000447}
+          - {line_id: 'AT', sample_index: 3, piece_id: 1, distance_mi_text: '1.016', lon: -73.99, lat: 41.010223}
+          - {line_id: 'AT', sample_index: 4, piece_id: 1, distance_mi_text: '1.031', lon: -73.99, lat: 41.010447}
+      - input: ref('stg_derived__dem_samples')
+        rows:
+          - {line_id: 'AT', sample_index: 0, lon: -74.0, lat: 41.0, elevation_m: 300.0}
+          - {line_id: 'AT', sample_index: 1, lon: -74.0, lat: 41.000223, elevation_m: 300.5}
+          - {line_id: 'AT', sample_index: 2, lon: -74.0, lat: 41.000447, elevation_m: 301.0}
+          - {line_id: 'AT', sample_index: 3, lon: -73.99, lat: 41.010223, elevation_m: 310.0}
+          - {line_id: 'AT', sample_index: 4, lon: -73.99, lat: 41.010447, elevation_m: 310.5}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_id: 'segment-a', loaded_at: '2026-10-01 00:00:00+00'}
+      - input: ref('stg_atc__half_mile_markers')
+        rows:
+          - {source_id: '1', loaded_at: '2026-10-02 00:00:00+00'}
+    expect:
+      rows:
+        - {seq: 0, sample_index: 0, distance_mi_text: '0.000', elevation_ft_text: '984.3', part_start: true, dem_read: true}
+        - {seq: 1, sample_index: 1, distance_mi_text: '0.016', elevation_ft_text: '985.9', part_start: false, dem_read: true}
+        - {seq: 2, sample_index: 2, distance_mi_text: '0.031', elevation_ft_text: '987.5', part_start: false, dem_read: true}
+        - {seq: 3, sample_index: 3, distance_mi_text: '1.016', elevation_ft_text: '1017.1', part_start: true, dem_read: true}
+        - {seq: 4, sample_index: 4, distance_mi_text: '1.031', elevation_ft_text: '1018.7', part_start: false, dem_read: true}
+
+  - name: int_elevation__profile_the_very_first_sample_is_marked_too
+    description: >
+      Ports test_the_very_first_sample_is_marked_too: on a profile of one
+      piece, its first sample is a part_start, so a consumer starts a run at
+      every part_start without special-casing the first.
+    model: int_elevation__profile
+    given:
+      - input: ref('int_elevation__sample_points')
+        rows:
+          - {line_id: 'AT', sample_index: 0, piece_id: 0, distance_mi_text: '0.000', lon: -74.0, lat: 41.0}
+          - {line_id: 'AT', sample_index: 1, piece_id: 0, distance_mi_text: '0.016', lon: -74.0, lat: 41.000223}
+          - {line_id: 'AT', sample_index: 2, piece_id: 0, distance_mi_text: '0.031', lon: -74.0, lat: 41.000447}
+      - input: ref('stg_derived__dem_samples')
+        rows:
+          - {line_id: 'AT', sample_index: 0, lon: -74.0, lat: 41.0, elevation_m: 300.0}
+          - {line_id: 'AT', sample_index: 1, lon: -74.0, lat: 41.000223, elevation_m: 300.5}
+          - {line_id: 'AT', sample_index: 2, lon: -74.0, lat: 41.000447, elevation_m: 301.0}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_id: 'segment-a', loaded_at: '2026-10-01 00:00:00+00'}
+      - input: ref('stg_atc__half_mile_markers')
+        rows:
+          - {source_id: '1', loaded_at: '2026-10-02 00:00:00+00'}
+    expect:
+      rows:
+        - {seq: 0, sample_index: 0, part_start: true}
+        - {seq: 1, sample_index: 1, part_start: false}
+        - {seq: 2, sample_index: 2, part_start: false}
+
+  - name: int_elevation__profile_overlapping_duplicate_geometry_is_published_once
+    description: >
+      Ports test_overlapping_duplicate_geometry_is_published_once and the
+      strictly-increasing half of
+      test_export_elevation_points_are_ordered_by_distance_along_trail.
+      Piece 1 covers miles piece 0 already published: its samples at 0.116
+      and 0.131 are dropped, the second because it rounds to piece 0's last
+      mile (the clip reads the published mile, not the raw one), and its
+      0.147 is kept as a part_start. Piece 2's first sample rounds to that
+      same 0.147 and is dropped; its 0.162 begins a run.
+    model: int_elevation__profile
+    given:
+      - input: ref('int_elevation__sample_points')
+        rows:
+          - {line_id: 'AT', sample_index: 0, piece_id: 0, distance_mi_text: '0.100', lon: -74.0, lat: 41.0}
+          - {line_id: 'AT', sample_index: 1, piece_id: 0, distance_mi_text: '0.116', lon: -74.0, lat: 41.000223}
+          - {line_id: 'AT', sample_index: 2, piece_id: 0, distance_mi_text: '0.131', lon: -74.0, lat: 41.000447}
+          - {line_id: 'AT', sample_index: 3, piece_id: 1, distance_mi_text: '0.116', lon: -74.0003, lat: 41.000223}
+          - {line_id: 'AT', sample_index: 4, piece_id: 1, distance_mi_text: '0.131', lon: -74.0003, lat: 41.000447}
+          - {line_id: 'AT', sample_index: 5, piece_id: 1, distance_mi_text: '0.147', lon: -74.0003, lat: 41.00067}
+          - {line_id: 'AT', sample_index: 6, piece_id: 2, distance_mi_text: '0.147', lon: -74.0, lat: 41.00067}
+          - {line_id: 'AT', sample_index: 7, piece_id: 2, distance_mi_text: '0.162', lon: -74.0, lat: 41.000893}
+      - input: ref('stg_derived__dem_samples')
+        rows:
+          - {line_id: 'AT', sample_index: 0, lon: -74.0, lat: 41.0, elevation_m: 300.0}
+          - {line_id: 'AT', sample_index: 1, lon: -74.0, lat: 41.000223, elevation_m: 300.5}
+          - {line_id: 'AT', sample_index: 2, lon: -74.0, lat: 41.000447, elevation_m: 301.0}
+          - {line_id: 'AT', sample_index: 3, lon: -74.0003, lat: 41.000223, elevation_m: 300.6}
+          - {line_id: 'AT', sample_index: 4, lon: -74.0003, lat: 41.000447, elevation_m: 301.1}
+          - {line_id: 'AT', sample_index: 5, lon: -74.0003, lat: 41.00067, elevation_m: 301.6}
+          - {line_id: 'AT', sample_index: 6, lon: -74.0, lat: 41.00067, elevation_m: 301.5}
+          - {line_id: 'AT', sample_index: 7, lon: -74.0, lat: 41.000893, elevation_m: 302.0}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_id: 'segment-a', loaded_at: '2026-10-01 00:00:00+00'}
+      - input: ref('stg_atc__half_mile_markers')
+        rows:
+          - {source_id: '1', loaded_at: '2026-10-02 00:00:00+00'}
+    expect:
+      rows:
+        - {seq: 0, sample_index: 0, distance_mi_text: '0.100', part_start: true}
+        - {seq: 1, sample_index: 1, distance_mi_text: '0.116', part_start: false}
+        - {seq: 2, sample_index: 2, distance_mi_text: '0.131', part_start: false}
+        - {seq: 3, sample_index: 5, distance_mi_text: '0.147', part_start: true}
+        - {seq: 4, sample_index: 7, distance_mi_text: '0.162', part_start: true}
+
+  - name: int_elevation__profile_a_dem_gap_is_kept_as_a_null_never_a_zero
+    description: >
+      Ports test_export_elevation_handles_a_gap_in_dem_coverage_without_crashing:
+      the two samples the DEM has no answer for keep their places on the
+      distance axis with a null elevation, and a sample the DEM puts at
+      exactly 0 m is published as 0.0 ft, so a 0 always means sea level and
+      never a gap.
+    model: int_elevation__profile
+    given:
+      - input: ref('int_elevation__sample_points')
+        rows:
+          - {line_id: 'AT', sample_index: 0, piece_id: 0, distance_mi_text: '0.000', lon: -74.0, lat: 41.0}
+          - {line_id: 'AT', sample_index: 1, piece_id: 0, distance_mi_text: '0.016', lon: -74.0, lat: 41.000223}
+          - {line_id: 'AT', sample_index: 2, piece_id: 0, distance_mi_text: '0.031', lon: -74.0, lat: 41.000447}
+          - {line_id: 'AT', sample_index: 3, piece_id: 0, distance_mi_text: '0.047', lon: -74.0, lat: 41.00067}
+      - input: ref('stg_derived__dem_samples')
+        rows:
+          - {line_id: 'AT', sample_index: 0, lon: -74.0, lat: 41.0, elevation_m: 301.2}
+          - {line_id: 'AT', sample_index: 1, lon: -74.0, lat: 41.000223, elevation_m: null}
+          - {line_id: 'AT', sample_index: 2, lon: -74.0, lat: 41.000447, elevation_m: null}
+          - {line_id: 'AT', sample_index: 3, lon: -74.0, lat: 41.00067, elevation_m: 0.0}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_id: 'segment-a', loaded_at: '2026-10-01 00:00:00+00'}
+      - input: ref('stg_atc__half_mile_markers')
+        rows:
+          - {source_id: '1', loaded_at: '2026-10-02 00:00:00+00'}
+    expect:
+      rows:
+        - {seq: 0, sample_index: 0, elevation_ft_text: '988.2', dem_read: true}
+        - {seq: 1, sample_index: 1, elevation_ft_text: null, dem_read: true}
+        - {seq: 2, sample_index: 2, elevation_ft_text: null, dem_read: true}
+        - {seq: 3, sample_index: 3, elevation_ft_text: '0.0', dem_read: true}
+
+  - name: int_elevation__profile_rounds_feet_half_to_even_as_python_round_does
+    description: >
+      round(elevation_m / METERS_PER_FOOT, 1), on the double's exact value
+      with ties to even. 376.1994 m is exactly 1234.25 ft, which Python
+      rounds to 1234.2 and DuckDB's round() to 1234.3; 376.3518 m is exactly
+      1234.75 ft, rounded to the even 1234.8 either way; one double past
+      376.1994 is 1234.2500000000002 ft, rounded up; 114.9858 m is exactly
+      377.25 ft, rounded to 377.2. The doubles are given as text through
+      `format: sql`, because a 17-digit literal reaches DuckDB as a decimal
+      first and can come back one unit off.
+    model: int_elevation__profile
+    given:
+      - input: ref('int_elevation__sample_points')
+        rows:
+          - {line_id: 'AT', sample_index: 0, piece_id: 0, distance_mi_text: '0.000', lon: -74.0, lat: 41.0}
+          - {line_id: 'AT', sample_index: 1, piece_id: 0, distance_mi_text: '0.016', lon: -74.0, lat: 41.000223}
+          - {line_id: 'AT', sample_index: 2, piece_id: 0, distance_mi_text: '0.031', lon: -74.0, lat: 41.000447}
+          - {line_id: 'AT', sample_index: 3, piece_id: 0, distance_mi_text: '0.047', lon: -74.0, lat: 41.00067}
+      - input: ref('stg_derived__dem_samples')
+        format: sql
+        rows: |
+          select 'k0' as dem_sample_key, 'AT' as line_id, 0 as sample_index, cast('-74.0' as double) as lon, cast('41.0' as double) as lat, cast('376.1994' as double) as elevation_m, cast('2026-10-02 00:00:00+00' as timestamptz) as loaded_at
+          union all
+          select 'k1' as dem_sample_key, 'AT' as line_id, 1 as sample_index, cast('-74.0' as double) as lon, cast('41.000223' as double) as lat, cast('376.3518' as double) as elevation_m, cast('2026-10-02 00:00:00+00' as timestamptz) as loaded_at
+          union all
+          select 'k2' as dem_sample_key, 'AT' as line_id, 2 as sample_index, cast('-74.0' as double) as lon, cast('41.000447' as double) as lat, cast('376.1994000000001' as double) as elevation_m, cast('2026-10-02 00:00:00+00' as timestamptz) as loaded_at
+          union all
+          select 'k3' as dem_sample_key, 'AT' as line_id, 3 as sample_index, cast('-74.0' as double) as lon, cast('41.00067' as double) as lat, cast('114.9858' as double) as elevation_m, cast('2026-10-02 00:00:00+00' as timestamptz) as loaded_at
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_id: 'segment-a', loaded_at: '2026-10-01 00:00:00+00'}
+      - input: ref('stg_atc__half_mile_markers')
+        rows:
+          - {source_id: '1', loaded_at: '2026-10-02 00:00:00+00'}
+    expect:
+      rows:
+        - {seq: 0, sample_index: 0, elevation_ft_text: '1234.2'}
+        - {seq: 1, sample_index: 1, elevation_ft_text: '1234.8'}
+        - {seq: 2, sample_index: 2, elevation_ft_text: '1234.3'}
+        - {seq: 3, sample_index: 3, elevation_ft_text: '377.2'}
+
+  - name: int_elevation__profile_refuses_an_elevation_read_at_another_point
+    description: >
+      The refusal: a DEM row for this sample read 0.000001 degrees away (as
+      from an earlier walk), and a sample with no DEM row at all, both give
+      no elevation and dem_read false, which
+      assert_every_elevation_sample_was_read_at_its_own_point then fails the
+      build on. The Python has no such state: it reads the DEM at each
+      sample's own point in the same run.
+    model: int_elevation__profile
+    given:
+      - input: ref('int_elevation__sample_points')
+        rows:
+          - {line_id: 'AT', sample_index: 0, piece_id: 0, distance_mi_text: '0.000', lon: -74.0, lat: 41.0}
+          - {line_id: 'AT', sample_index: 1, piece_id: 0, distance_mi_text: '0.016', lon: -74.0, lat: 41.000223}
+          - {line_id: 'AT', sample_index: 2, piece_id: 0, distance_mi_text: '0.031', lon: -74.0, lat: 41.000447}
+      - input: ref('stg_derived__dem_samples')
+        rows:
+          - {line_id: 'AT', sample_index: 0, lon: -74.0, lat: 41.0, elevation_m: 300.0}
+          - {line_id: 'AT', sample_index: 1, lon: -74.000001, lat: 41.000223, elevation_m: 300.5}
+      - input: ref('stg_atc__centerline_segments')
+        rows:
+          - {source_id: 'segment-a', loaded_at: '2026-10-01 00:00:00+00'}
+      - input: ref('stg_atc__half_mile_markers')
+        rows:
+          - {source_id: '1', loaded_at: '2026-10-02 00:00:00+00'}
+    expect:
+      rows:
+        - {seq: 0, sample_index: 0, elevation_ft_text: '984.3', dem_read: true}
+        - {seq: 1, sample_index: 1, elevation_ft_text: null, dem_read: false}
+        - {seq: 2, sample_index: 2, elevation_ft_text: null, dem_read: false}

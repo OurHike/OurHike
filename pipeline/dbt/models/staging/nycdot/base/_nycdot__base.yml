@@ -1,0 +1,59 @@
+version: 2
+
+models:
+  - name: base_nycdot__nyc_cscl_paths
+    data_tests:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (the generic test's).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('nycdot', 'raw_nycdot__nyc_cscl_paths')
+    description: >
+      NYC Street Centerline - pedestrian ways (path, boardwalk, step street,
+      non-vehicular), every row, keyed and deduped. Nothing reads it yet: the
+      stage-3 unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key: dbt_utils.generate_surrogate_key over
+          nyc_cscl_paths, globalid, the registry key first and then the
+          columns measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nycdot__nyc_park_drives
+    data_tests:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (the generic test's).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('nycdot', 'raw_nycdot__nyc_park_drives')
+    description: >
+      NYC park drives that are closed to cars (Central Park and Prospect
+      Park), every row, keyed and deduped. Nothing reads it yet: the stage-3
+      unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key: dbt_utils.generate_surrogate_key over
+          nyc_park_drives, globalid, the registry key first and then the
+          columns measured unique for this layer.
+        data_tests: [not_null, unique]
+  - name: base_nycdot__nyc_dot_greenways
+    data_tests:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (the generic test's).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('nycdot', 'raw_nycdot__nyc_dot_greenways')
+    description: >
+      NYC DOT Greenways (current, off-street), every row, keyed and deduped.
+      Nothing reads it yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key: dbt_utils.generate_surrogate_key over
+          nyc_dot_greenways, segmentid, the registry key first and then the
+          columns measured unique for this layer.
+        data_tests: [not_null, unique]

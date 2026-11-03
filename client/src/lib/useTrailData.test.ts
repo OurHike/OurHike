@@ -26,7 +26,7 @@
 // one cannot tell "not yet" from "never".
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 
 vi.mock('./config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./config')>()),
@@ -46,10 +46,15 @@ vi.mock('./nearbyTrailData', () => ({
   forgetNearbyTrails: vi.fn(),
   loadNetworkOverview: vi.fn(),
 }))
+// The pointer read this hook's update check starts beside itself. Answered
+// here so no test in this file depends on a fetch jsdom cannot make.
+vi.mock('./dataChannel', () => ({
+  readDataChannel: vi.fn(async () => ({ outcome: 'unchanged', recorded: null })),
+}))
 vi.mock('./trailOverview', () => ({ fetchTrailOverview: vi.fn() }))
 vi.mock('./dataManifest', () => ({ publishedSnapshot: vi.fn() }))
 vi.mock('./dataRefresh', () => ({
-  availableRefresh: () => null,
+  availableRefresh: vi.fn(),
   dismissRelease: vi.fn(),
   dismissedRelease: vi.fn(),
   recallRelease: vi.fn(),
@@ -61,7 +66,8 @@ const { downloadTrailData, haveTrailData, loadTrailData, loadTrailLines } =
 const { forgetNearbyTrails, loadNetworkOverview } = await import('./nearbyTrailData')
 const { fetchTrailOverview } = await import('./trailOverview')
 const { publishedSnapshot } = await import('./dataManifest')
-const { recallRelease } = await import('./dataRefresh')
+const { availableRefresh, dismissRelease, dismissedRelease, recallRelease } =
+  await import('./dataRefresh')
 const { useTrailData } = await import('./useTrailData')
 
 /** A promise this test resolves by hand, so "the trail fetch is still in
@@ -95,6 +101,9 @@ beforeEach(() => {
   vi.mocked(fetchTrailOverview).mockResolvedValue(null)
   vi.mocked(publishedSnapshot).mockResolvedValue({} as never)
   vi.mocked(recallRelease).mockResolvedValue(null)
+  vi.mocked(availableRefresh).mockReturnValue(null)
+  vi.mocked(dismissedRelease).mockResolvedValue(null)
+  vi.mocked(dismissRelease).mockResolvedValue(undefined)
   vi.mocked(forgetNearbyTrails).mockResolvedValue(undefined)
   vi.mocked(loadNetworkOverview).mockResolvedValue(null)
 })
@@ -227,5 +236,71 @@ describe('the launches that must not pay for the rule', () => {
     // day-hike builder that refused every tap. lib/useTrailGraph.test.ts
     // holds that the cells are read with `online = false` and gated on
     // nothing; what is this hook's is that the gate is not applied offline.
+  })
+})
+
+describe('"Not now" on the update row, across launches (#919)', () => {
+  /** What lib/dataRefresh.ts's availableRefresh offers for a manifest
+   *  `version`, with the counts it does not matter to this test. */
+  function offerOf(version: string) {
+    return {
+      version,
+      keys: ['poi_shelter.geojson'],
+      described: false,
+      older: false,
+      severity: 'consequential',
+      added: 0,
+      removed: 0,
+      moved: 0,
+      edited: 0,
+      bytes: 85_620,
+    } as never
+  }
+
+  /** One launch: mount the hook against a published manifest `version`
+   *  and a stored "Not now" `declined`, and settle its update check. */
+  async function launch(version: string, declined: string | null) {
+    vi.mocked(publishedSnapshot).mockResolvedValue({ version } as never)
+    vi.mocked(dismissedRelease).mockResolvedValue(declined)
+    const hook = renderHook(() => useTrailData(true))
+    await waitFor(() => expect(dismissedRelease).toHaveBeenCalled())
+    // One more turn, so the setUpdate after dismissedRelease has landed.
+    await act(async () => {})
+    vi.mocked(dismissedRelease).mockClear()
+    return hook
+  }
+
+  beforeEach(() => {
+    vi.mocked(haveTrailData).mockResolvedValue(true)
+    vi.mocked(recallRelease).mockResolvedValue({
+      version: 'held',
+      hashes: { 'poi_shelter.geojson': '0'.repeat(64) },
+      at: 1_700_000_000_000,
+    })
+    vi.mocked(availableRefresh).mockImplementation((_stored, snapshot) =>
+      snapshot.version === null ? null : offerOf(snapshot.version),
+    )
+  })
+
+  it('keeps manifest version A silent on the next launch after "Not now", and still offers version B', async () => {
+    // e2e/data/newerData.spec.ts's "Not now" test holds the same thing in a
+    // real browser, and went red when its two launches read two releases
+    // (the compiled floor, then channels.json's), each with its own manifest
+    // version. That is this test's third launch: a different version, which
+    // dismissRelease is keyed to keep asking about.
+    const first = await launch('A', null)
+    expect(first.result.current.update?.version).toBe('A')
+    await act(() => first.result.current.declineUpdate())
+    expect(dismissRelease).toHaveBeenCalledWith('A')
+    expect(first.result.current.update).toBeNull()
+    first.unmount()
+
+    const second = await launch('A', 'A')
+    expect(second.result.current.update).toBeNull()
+    second.unmount()
+
+    const third = await launch('B', 'A')
+    expect(third.result.current.update?.version).toBe('B')
+    third.unmount()
   })
 })

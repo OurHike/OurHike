@@ -95,6 +95,7 @@ The contract, everything optional but the file:
 | `alt` | the image's alt text (default: the caption) |
 | `entry` | `true` keeps first run on screen; the runner skips it otherwise |
 | `wait` | settle in ms after load, and again after the drive (default 3500) |
+| `before` | a function of the page, run before the app is loaded - for a `page.route` that holds a chunk back, which is the only way to photograph a frame the launch passes through on its own (`today-desktop-before-the-map.mjs`) |
 | default export | the drive: Playwright taps from the loaded app to the state worth photographing. Omit it for a screen the app opens on by itself |
 
 `pr-preview.yml` hands the runner
@@ -161,6 +162,19 @@ Three consequences worth knowing before writing one:
 - **A `client/src/` change with no recipe gets nudged.** The comment says no
   shot above is the pull request's own. If the change genuinely has no screen,
   answer the nudge in `## Screenshot`; it is a question, not a failure.
+- **The marketing site is reachable too, at phone width and in dark mode.**
+  Until #1663 — The /for-orgs/ pages are unreadable in dark mode and
+  misaligned on a phone — the camera served only the app, so no recipe could
+  open a `site/` page and the org pages shipped with "seven recipes, all
+  desktop", none of the site. A recipe with
+  `export const before = serveMarketingSite` from
+  `preview-shots/fixtures/marketingSite.mjs` answers every non-app path from
+  `site/dist` (CI builds it first); `site-for-orgs-phone.mjs` is the worked
+  example, `page.emulateMedia({ colorScheme: 'dark' })` included. A `site/`
+  change a hiker can see gets one, same as a `client/src/` one. The pixels
+  are also audited: `client/e2e/sitePages.spec.ts` fails a site page on
+  contrast, a crowded edge, a small tap target or an unstyled control, at
+  390px and 1280px, light and dark.
 
 Check the drive locally before pushing — it either reaches the screen or it
 does not, and CI should not be the first to find out:
@@ -246,7 +260,9 @@ So an image has to be *served* from somewhere. **The preview is that
 somewhere**, and it is why the automated screenshot exists: `pr-preview.yml`
 writes the capture into the directory it uploads to Cloudflare Pages, so the
 image comes from the same deployment as the app it shows, at
-`https://pr-<n>.<project>.pages.dev/__screenshot/<name>.png`.
+`https://pr-<n>.<project>.pages.dev/app/__screenshot/<name>.png` — under
+`/app/`, because a preview is now laid out the way production is, with the
+marketing site at the root and the app beneath it.
 
 **It dies when the pull request closes**, because the preview does — the
 workflow tears previews down on close so a build vouched for by nobody does not

@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: base_atc__challenges_atc
+    data_tests:
+      # Warns if the dedupe drops any row, which for a key unique by
+      # construction never happens.
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('atc', 'raw_atc__challenges_atc')
+    description: >
+      reference/challenges/atc/*.json, every file, keyed, each still the JSON
+      its reviewer wrote. Read by stg_atc__challenges.
+    columns:
+      - name: challenge_file_key
+        description: >
+          The file's key: dbt_utils.generate_surrogate_key over
+          the folder's claim and the file's path.
+        data_tests: [not_null, unique]
+      - name: file_path
+        description: The file's path, relative to pipeline/.
+        data_tests: [not_null]
+      - name: file_json
+        description: The file as its reviewer wrote it, `_README` aside, as JSON; null for a file that does not parse.
+      - name: file_json_text
+        description: The same, as the text the extract landed.
+      - name: parse_error
+        description: Why the file did not parse as JSON, where it did not.

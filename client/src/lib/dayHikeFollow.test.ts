@@ -91,6 +91,41 @@ describe('followDayHike', () => {
     expect(state.leg.of).toBe(resolved.legs.length)
   })
 
+  it('puts a leg boundary at the hiker s own tap, as the card does (#1433)', () => {
+    // Straight down Pine Meadow with one tap partway along it, so the only
+    // boundary in the whole walk is the tap: same trail, same blaze, one
+    // published line, no junction taken. The card lists two legs because a
+    // tap is the hiker's own structure and `routeThrough` stops its squash
+    // there (the maintainer's rule, 2026-09-15), so this header has to say
+    // two as well - "leg 1 of 1" beside a list showing two rows is the
+    // disagreement #1433 is about, arriving from the other side.
+    //
+    // Counted off `WalkStep.pair`. Counted off the segment alone, which is
+    // what this did before, the whole walk is one leg.
+    const resolved = resolvedFor(hikeThrough([WEST_END, [-74.095, 41.25], EAST_END]))
+    expect(resolved.legs).toHaveLength(2)
+
+    // Before the tap, and after it: the boundary is where the hiker put it
+    // rather than merely somewhere, which a count alone would not pin.
+    const before = followDayHike({
+      index: INDEX,
+      resolved,
+      at: { lon: -74.097, lat: 41.25 },
+    })
+    const after = followDayHike({
+      index: INDEX,
+      resolved,
+      at: { lon: -74.093, lat: 41.25 },
+    })
+
+    expect(before?.kind).toBe('on-route')
+    expect(after?.kind).toBe('on-route')
+    if (before?.kind !== 'on-route' || after?.kind !== 'on-route') return
+    expect(before.leg).toMatchObject({ at: 1, of: 2, name: 'Pine Meadow Trail' })
+    expect(after.leg).toMatchObject({ at: 2, of: 2, name: 'Pine Meadow Trail' })
+    expect(after.leg.of).toBe(resolved.legs.length)
+  })
+
   it('reports a distance and a bearing off the route, and no way back', () => {
     const state = followDayHike({
       index: INDEX,

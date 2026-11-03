@@ -38,6 +38,7 @@
 import {
   DRAWN_SNAP_METRES,
   SAME_TREAD_METRES,
+  askableName,
   trailsNear,
   type GraphPoint,
   type LonLat,
@@ -109,18 +110,40 @@ function metresBetween(from: LonLat, to: LonLat): number {
  * ran the length of the Pine Meadow Trail crosses several of them without
  * ever leaving the trail.
  *
- * SEPARATED BY `\0`, WRITTEN AS AN ESCAPE. The separator has to be a character
- * no steward can put in a trail name, or two trails collide into one key, and
- * every printable choice is a character somebody's name might carry. It was a
- * literal NUL byte typed into the template until now - identical at runtime,
- * and it made this file BINARY to git: `git diff` answered "Binary files
- * differ", `git grep` skipped it, and a review of any change here saw nothing.
- * The escape is the same character to the parser and leaves the file text.
+ * ONE NAME RULE, TWO FALLBACKS, AND THE SPLIT IS THE POINT (#1444). This
+ * function reimplemented `askableIdentity` line for line - the same
+ * `null`-only guard, the same `source\0name\0blaze` key, a different NUL
+ * escape - so both carried the same defect: a name that is only whitespace is
+ * not `null`, and 12,510 of the network's 631,915 edges carry one, which
+ * keyed a whole state's worth of unnamed tread onto one string. `askableName`
+ * is now the single home of that rule and both callers read it.
+ *
+ * WHAT IS NOT SHARED IS WHAT AN UNNAMED PIECE FALLS BACK TO, because the two
+ * questions want opposite answers and collapsing them was a real regression -
+ * caught in review of this change, not in theory. `askableIdentity` answers
+ * "is this the same ANSWER to which trail did you mean", so it falls back to
+ * the EDGE: two unnamed trails must stay two candidates rather than become
+ * one answer wrong for at least one of them. This function answers "is the
+ * stroke still on the same trail", and an edge-wise fallback fragments a
+ * stroke along one blank-named trail into a stretch per published line -
+ * measured on a five-line fixture, 1 stretch of 31 points became 5 - which
+ * costs `shapesOffered` and `canCloseLoop` their `segments.length === 1` and
+ * makes `gapsAcross` invent zero-mile gaps between pieces of one trail.
+ *
+ * So unnamed tread keys on THE TRAIL'S OWN ID here. A publisher who split one
+ * unnamed trail across five lines under one id keeps one stretch; two
+ * different unnamed trails, which is what distinct ids say, stay two - and
+ * that second half is this path's share of the #1444 defect, because a blank
+ * name used to merge them. Only an edge with no id at all falls through to
+ * the edge, and then the app genuinely has nothing to tell it otherwise.
  */
 function trailKeyOf(index: TrailGraphIndex, point: GraphPoint): string {
   const edge = index.graph.edges[point.edgeIndex]
-  if (edge.name === null) return `edge:${point.edgeIndex}`
-  return `${edge.source ?? ''}\0${edge.name}\0${edge.blaze_color ?? ''}`
+  const name = askableName(edge.name)
+  if (name !== null) {
+    return `${edge.source ?? ''}\u0000${name}\u0000${edge.blaze_color ?? ''}`
+  }
+  return `unnamed\u0000${edge.trail_id ?? `edge:${point.edgeIndex}`}`
 }
 
 /** One stretch of a matched stroke: the trail it ran along, and the points on
@@ -271,7 +294,10 @@ export function matchStroke(
     )
     current = {
       points: [chosen],
-      name: edge.name,
+      // `askableName` rather than `edge.name`, so this field's own contract -
+      // "Null for a piece nobody named" - is true of a blank name as well as
+      // an absent one (#1444). The shell prints this in a sentence.
+      name: askableName(edge.name),
       blaze_color: edge.blaze_color,
       source: edge.source,
       alternatives: rest.filter(
@@ -279,7 +305,11 @@ export function matchStroke(
       ),
       alsoKnownAs: sameTread.map((other) => {
         const also = index.graph.edges[other.edgeIndex]
-        return { name: also.name, blaze_color: also.blaze_color, source: also.source }
+        return {
+          name: askableName(also.name),
+          blaze_color: also.blaze_color,
+          source: also.source,
+        }
       }),
     }
     currentKey = trailKeyOf(index, chosen)

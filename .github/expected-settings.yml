@@ -60,6 +60,79 @@ settings:
       The other half, and the one shown exactly once at creation. If this is
       missing it cannot be looked up anywhere - the token has to be reminted.
 
+  R2_RAW_BUCKET:
+    where: secret
+    required: false
+    why: >-
+      The private raw store, `our-hike-raw` (one private bucket for raw and
+      the step cache, one key). dlt lands every
+      extract there under raw/, the step cache sits under steps/, and the
+      builds read it back; no phone reads it. Six workflows need it, and
+      each stops by name when it is missing: the monthly lane's two,
+      refresh-reference.yml's extract and pin jobs and build-reference.yml's
+      build and parity jobs (split by the maintainer, 2026-10-08),
+      extract-notices.yml's (the notices legs, every 4 hours),
+      publish-conditions.yml's dbt path, which its UA leg runs on the
+      schedule (its production leg, today's bake, does not read it until
+      the cutover), check-conditions.yml, the hourly checks, which take each leg's warehouse from its history
+      store there and save Elementary's history back, and
+      purge-person-fields.yml, the person-fields purge, dispatched by hand.
+      REQUIRED: FALSE until the
+      maintainer has minted the key and stored the three R2_RAW_* secrets
+      (ELT.md, "Secrets and buckets: a maintainer action"), so
+      settings-configured.yml's weekly live check stays green until then;
+      whether they are stored is not known to this file.
+
+  R2_RAW_ACCESS_KEY_ID:
+    where: secret
+    required: false
+    why: >-
+      Half of the one read-and-write key to the raw store's bucket. Held by the extract, pin, build, parity and purge jobs, never
+      beside the public bucket's keys. The cost the maintainer accepted with
+      it: an R2 key covers a whole bucket, so a job that only needs to read
+      raw could overwrite it. Required: false for R2_RAW_BUCKET's reason.
+
+  R2_RAW_SECRET_ACCESS_KEY:
+    where: secret
+    required: false
+    why: >-
+      The other half, shown once at creation, so a lost one is a reminted
+      key. Required: false for R2_RAW_BUCKET's reason.
+
+  NPS_API_KEY:
+    where: secret
+    required: false
+    why: >-
+      The National Park Service alerts API's key (developer.nps.gov, free from
+      https://www.nps.gov/subjects/developer/get-started.htm), read by
+      extract-notices.yml's extract step for NPS alerts and road events
+      (pipeline/extract/_json_apis.py, "THE KEY"), which moved off publish-conditions.yml's hourly job with every other club's
+      and agency's notices; and by refresh-reference.yml's monthly extract for
+      the NPS Data API's places and campgrounds. REQUIRED: FALSE because a run without it is honest
+      rather than wrong: the two NPS tables read as unavailable with a
+      warning, no NPS alert reaches dbt for the 27 park codes 26 clubs draw
+      on, and the leg stays green. Added by the maintainer as a repository
+      secret on 2026-10-03.
+
+  HIKEFINDER_PASSWORD:
+    where: secret
+    required: false
+    why: >-
+      The site password NYNJTC's Hike Finder export went behind on 2026-09-15
+      (#1468). Read by the hike fetch step of publish-vector-data.yml, and by
+      nynjtc-archive-recovery.yml, which needs the 385 hikes to match against
+      the photographs recovered from the Internet Archive (#1450) - that one
+      is dispatch-only and publishes nothing.
+      REQUIRED: FALSE IS THE POINT, not an oversight. The export was open
+      before that date and may be open again, and a run without this fetches
+      as an anonymous reader; if the export is in fact locked, the fetcher
+      lands on its own listing guard, which #1462 turned into "no hikes this
+      run" rather than a dead publish. So a missing secret costs the 385 day
+      hikes and never the A.T. data - which is the whole reason that step is
+      continue-on-error. The value is never in the repository, in
+      sources.json, or in a log: sources.json is published to hikers as
+      registry.json, and it records this name and not the password.
+
   DATA_BASE_URL:
     where: variable
     also-accepted-as-secret: true
@@ -99,24 +172,26 @@ settings:
       secret, belongs only to the backend's runtime environment, and is
       deliberately absent from this file because no workflow reads it.
 
-  AUTH_PROVIDERS:
-    where: variable
+  SUPABASE_ACCESS_TOKEN:
+    where: secret
     required: false
     why: >-
-      Which sign-in buttons a build offers. Optional because the client
-      defaults to google when it is unset, so a missing value is a working
-      app rather than a broken one. Worth declaring anyway: every name in it
-      must be a provider actually enabled in the Supabase dashboard, and one
-      that is not is a button reaching an error page. The Supabase config
-      check is what compares those two lists.
+      A personal access token for Supabase's management API, read only by
+      the Supabase config check, and only to READ the project's auth
+      config: whether custom SMTP is configured, whether the email templates
+      carry `{{ .Token }}`, the code's length and expiry, and each
+      provider's client id - the settings a hiker meets as an email that
+      never arrives, and which the public settings endpoint does not show
+      (#1572). Optional because the check says what it could not see
+      without one, and runs everything else regardless.
 
-      The default was google,email until #397 decided v1's provider set.
-      Email was in it because switching it on costs nothing, which was true
-      of the setup and false of the result - Supabase's built-in sender is
-      not a delivery path this project ships on, so an unset variable built
-      an app offering a sign-in that could not complete. Setting this to
-      `google` explicitly is still worth doing; since #397 it agrees with the
-      default rather than rescuing it.
+      Mint it FINE-GRAINED, with `auth_config_read` and nothing more
+      (supabase.com -> Account -> Access Tokens). A classic token is the
+      whole account - every project, every table - and there is no reason
+      for that to sit in Actions when a read of one document is all this
+      needs. Never the service-role key, which is a different credential
+      for a different API and which app/config.py deliberately does not
+      hold.
 
   API_BASE_URL:
     where: variable
@@ -177,6 +252,18 @@ settings:
       without the other falls back to production rather than building a UA
       that cannot sign anyone in.
 
+  SPOTIFY_CLIENT_ID:
+    where: variable
+    required: false
+    why: >-
+      The Spotify app the podcast card's one-tap "Save to Spotify" signs in to
+      (#1683). Optional because unset is a supported state: the card then
+      offers Spotify's player and an "Open in Spotify" link, and no Save.
+      On the Variables tab because a PKCE client id is public by design - it
+      ships inside the bundle and carries no secret. The Spotify app it names
+      must list each origin's spotify-callback.html as a redirect URI, and in
+      Spotify's Development Mode serves at most five accounts added by hand.
+
   UA_API_BASE_URL:
     where: variable
     required: false
@@ -194,7 +281,9 @@ settings:
     where: secret
     required: true
     why: >-
-      Lets pr-preview.yml upload a preview build to Cloudflare Pages. Needs the
+      Lets pr-preview.yml upload a preview build to Cloudflare Pages, ua.yml
+      upload UA, and pages.yml upload the data docs to their own project,
+      ourhike-docs, at docs.ourhike.org. Needs the
       "Cloudflare Pages: Edit" permission and nothing else - it is not the R2
       token above and should not be made one, because a token that can publish
       previews has no business overwriting the live map data. Required for the
@@ -208,7 +297,7 @@ settings:
     where: secret
     required: true
     why: >-
-      Which Cloudflare account the preview is uploaded to. On the Secrets tab
+      Which Cloudflare account the previews, UA and the data docs are uploaded to. On the Secrets tab
       for the same reason R2_ENDPOINT_URL is - an account id is not secret in
       the way a token is, but it is not something to hand out either, and these
       two name the same account. A repository secret rather than an
@@ -306,6 +395,144 @@ settings:
       leg runs normally. UA's ATC trail-updates artifact is published either
       way, because that one is baked from a reviewed file in git and needs no
       credential at all.
+
+  PRODUCTION_ANALYTICS_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      Production's Postgres, for analytics-rollup.yml to close each month of
+      usage events into analytics_monthly and delete raw events past six
+      months (#1902). It connects as `ourhike_analytics_rollup`, whose grants
+      features/EVENTING.md writes out: every usage column EXCEPT the sealed
+      one, plus the monthly tables - so the one scheduled job holding a
+      production credential for usage data cannot read a position or an
+      account even by mistake. Tenant-qualified username, exactly as the
+      conditions reader's entry above explains. Optional because unset is the
+      current state and the job warns and skips. Until it is set no month
+      closes and nothing is deleted at six months - so POST /usage-events
+      also collects nothing: with no rollup heartbeat it turns every batch
+      away as `paused` (EVENTING.md §0, Retention).
+
+  UA_ANALYTICS_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      UA's Postgres, the same role and grants as the production entry above,
+      for the rollup's UA job. Optional because unset is the current state:
+      UA's Supabase project exists (#371 - Stand up the UA environment, so a
+      candidate has somewhere to wait, closed 2026-08-13), but nobody has
+      created the rollup's role in it or set this secret, and the job warns
+      and skips until somebody does.
+
+  PRODUCTION_ANALYTICS_ARCHIVE_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      Production's Postgres, for analytics-rollup.yml's archive step to move
+      each closed month's usage rows that no account is linked to into
+      Parquet files in R2, and delete them from Postgres (#1923). It connects
+      as `ourhike_analytics_archive`, whose grants features/EVENTING.md writes
+      out: every column of the usage rows, `sealed` included because the
+      files carry it, but only on rows with no account linked - plus the
+      archive's own two tables. It is the one credential here that can read
+      `sealed`, which is ciphertext under a key no server holds.
+      Tenant-qualified username, exactly as the conditions reader's entry
+      explains. Optional because unset is the current state: the step warns
+      and skips, and rows stay in Postgres until the rollup deletes them at
+      six months, as they did before the archive existed.
+
+  PRODUCTION_USAGE_ARCHIVE_R2_ACCESS_KEY_ID:
+    where: secret
+    required: false
+    why: >-
+      Half of an R2 API token with Object Read & Write on the one bucket
+      `ourhike-usage-production`, for the archive step above to write each
+      month's files and delete them at six months. Scoped to that bucket
+      alone, so this token reads no other bucket and no other key here reads
+      usage files. Its endpoint is the account's, R2_ENDPOINT_URL. Optional
+      for the database URL's reason above.
+
+  PRODUCTION_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY:
+    where: secret
+    required: false
+    why: >-
+      The other half, shown once at creation, so a lost one is a reminted
+      token. Optional for the database URL's reason above.
+
+  UA_ANALYTICS_ARCHIVE_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      UA's Postgres, the same role and grants as the production entry above,
+      for the archive step of the rollup's UA job. Optional because unset is
+      the current state, and the step warns and skips until somebody creates
+      the role in UA's project and sets this.
+
+  UA_USAGE_ARCHIVE_R2_ACCESS_KEY_ID:
+    where: secret
+    required: false
+    why: >-
+      Half of a token like production's above, on the one bucket
+      `ourhike-usage-ua` - its own token, so a UA run cannot touch
+      production's files (the maintainer's choice, #1923, 2026-10-29).
+      Optional for UA_ANALYTICS_ARCHIVE_DATABASE_URL's reason.
+
+  UA_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY:
+    where: secret
+    required: false
+    why: >-
+      The other half of the UA token. Optional for
+      UA_ANALYTICS_ARCHIVE_DATABASE_URL's reason.
+
+  BACKUP_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      Production's Postgres, as the dedicated `ourhike_backup` role, for
+      backup-database.yml's nightly dump (#1908). SELECT and BYPASSRLS and
+      nothing else - not the migration owner, so a leaked copy can read but
+      never write or drop. BYPASSRLS is the point rather than a convenience:
+      every table has row-level security on, and a role without it makes
+      the dump refuse. Through the session pooler on 5432; the transaction
+      pooler is refused by name. Optional only in the sense that nothing else
+      breaks without it - while it is unset, the backup job's tracking issue
+      says production has no backup, which is then the truth.
+
+  BACKUP_R2_BUCKET:
+    where: secret
+    required: false
+    why: >-
+      The private bucket the encrypted dumps go to, used for nothing else, with
+      a lifecycle rule deleting objects after 90 days and a bucket lock rule
+      keeping them that long (LAUNCH_CHECKLIST.md 5b).
+      Not `our-hike`, which is public, and not `our-hike-raw`, whose token five
+      pipeline jobs hold: a dump holds people's data, so the set of keys that
+      can read it should be one.
+
+  BACKUP_R2_ACCESS_KEY_ID:
+    where: secret
+    required: false
+    why: >-
+      Half of an R2 token scoped to BACKUP_R2_BUCKET alone. R2 offers no
+      write-only token, so this one could read the dumps back - which is why
+      they are encrypted before upload and the key to open them is not here.
+
+  BACKUP_R2_SECRET_ACCESS_KEY:
+    where: secret
+    required: false
+    why: >-
+      The other half, shown once at creation. A wrong value fails the upload
+      step and opens the backup tracking issue, never silently.
+
+  BACKUP_AGE_RECIPIENT:
+    where: variable
+    required: false
+    why: >-
+      The `age` public key every dump is encrypted to (`age1...`). Public by
+      construction - it can only seal, never open - so it lives on the
+      Variables tab where a build log may show it. Its private half is kept
+      offline by the maintainer and is the only way to read a backup, so
+      losing it loses every backup made to it (LAUNCH_CHECKLIST.md 5b).
 
   PROTECTIONS_READ_TOKEN:
     where: secret

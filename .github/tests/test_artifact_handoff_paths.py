@@ -1,6 +1,6 @@
 """An artifact handed between jobs comes back where the next job looks for it.
 
-`actions/upload-artifact@v4` does not store the paths you give it. It roots
+`actions/upload-artifact` (v4, and v7 alike) does not store the paths you give it. It roots
 the archive at the LEAST COMMON ANCESTOR of its search paths and stores
 everything relative to that, so the archive's shape depends on the whole path
 list rather than on any one entry. The matching `download-artifact` must
@@ -50,6 +50,17 @@ RELOCATIONS = {
     # named `app-dist`, which it then assembles into the deployed site. The
     # rename is the point; nothing downstream refers to `_site/app`.
     ("pages.yml", "app-dist"),
+    # pages.yml's docs job uploads the directory the dbt-docs-site action
+    # names, which exists on that job's runner only, and the build job
+    # extracts it to a folder of its own whose path its "Assemble the site"
+    # step reads (test_pages_publish.py holds the two to each other).
+    ("pages.yml", "data-docs"),
+    # pr-preview.yml's docs job does the same for the preview job, whose
+    # "Assemble the preview" step reads the folder it extracts to.
+    ("pr-preview.yml", "data-docs"),
+    # ua.yml's docs job the same again since #1887, for the same reason: the
+    # UA job's "Assemble UA" reads $DOCS_DIR from where it is downloaded.
+    ("ua.yml", "data-docs"),
 }
 
 

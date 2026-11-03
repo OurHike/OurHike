@@ -6,6 +6,7 @@ import { buildTrailIndex } from '../lib/trailPosition'
 import type { Closure } from '../lib/closureBanner'
 import { MAX_BAND_MILES } from '../lib/closureSpan'
 import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
 import {
   attachClosureData,
   attachClosureTaps,
@@ -295,6 +296,41 @@ describe('tapping the tape', () => {
     map.emit('click', { point: { x: 120, y: 240 } })
 
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('yields to a waypoint pin under the same thumb, so one touch stays one sheet (#1419)', () => {
+    // The other half of #1419's flip. poiTaps.ts now opens a waypoint card
+    // for a pin standing on closed trail - the maintainer's call, 2026-09-14,
+    // on lineTaps.ts's rule 2: the narrow, specific mark over the wide,
+    // ambient one. Flipping only that side would open the closure sheet AND
+    // the card on one touch, which is the defect attachClosureTaps' own
+    // "ONE TOUCH, ONE INTERPRETER" note records as the first version's. So
+    // the yield is symmetric, through the probe both modules share.
+    const map = tappableMap([band('c1')])
+    map.layerIds.push(POI_LAYER_ID)
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'atc_shelters:abc' } },
+    ])
+    const onSelect = vi.fn()
+
+    attachClosureTaps(map as never, onSelect)
+    map.emit('click', { point: { x: 120, y: 240 } })
+
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('keeps the touch when the waypoint layer holds nothing under the thumb', () => {
+    // The tape is still the answer on closed trail with no pin on it, which
+    // is the ordinary case and the one the flip must not cost.
+    const map = tappableMap([band('c1')])
+    map.layerIds.push(POI_LAYER_ID)
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    const onSelect = vi.fn()
+
+    attachClosureTaps(map as never, onSelect)
+    map.emit('click', { point: { x: 120, y: 240 } })
+
+    expect(onSelect).toHaveBeenCalledWith('c1')
   })
 
   it('queries a thumb-sized box, not a pixel', () => {

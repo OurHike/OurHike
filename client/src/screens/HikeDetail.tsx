@@ -35,18 +35,42 @@
 //    creeps in.
 //  - No Avenza link, on the maintainer's instruction, though the publisher's
 //    own pages carry one.
+//
+// WHAT IS HERE SINCE #1574: the publisher's PAPER map for the park, where
+// the publisher is a steward this phone holds, their store block grants this
+// screen, and their own sheet index names the park (lib/paperMaps.ts). The
+// link is to their product on their own store, the title is their words,
+// and no price is printed - the store is the source for that. Nothing on
+// this screen is for sale by OurHike.
+//
+// AND SINCE #1683, podcast episodes somebody picked for this hike
+// (chrome/PodcastCard.tsx), as THE LAST THING ON THE SCREEN - below the
+// provenance, on the maintainer's word (poll, 2026-09-26): "should be the
+// last thing you see". Deciding and getting there come first; listening is
+// what a hiker does once they have decided.
 
 import { useState } from 'react'
+import { PodcastCard } from '../chrome/PodcastCard'
 import { Badge } from '../design-system/components'
 import { shortDate } from '../lib/hikeText'
 import type { PaceProfile } from '../lib/pace'
+import { isSafeLink } from '../lib/safeLink'
 import {
   authorLine,
   difficultyLabel,
   hikeEstimate,
   type SuggestedHike,
+  type SuggestedHikeDetail,
 } from '../lib/suggestedHikes'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
+import { paperMapLead, paperMapsForPlace, stewardForSource } from '../lib/paperMaps'
+import { EMPTY_STEWARDS, type Stewards } from '../lib/stewards'
+import { useHikeDetail } from '../lib/useHikeDetail'
+import {
+  NO_PODCAST_EPISODES,
+  type PodcastApp,
+  type PodcastEpisode,
+} from '../lib/podcasts'
 import './hikeDetail.css'
 
 /** How many paragraphs of the turn-by-turn show before the button. Two is
@@ -58,6 +82,10 @@ export interface HikeDetailProps {
   hike: SuggestedHike
   pace: PaceProfile
   units: UnitSystem
+  /** Whether to ask the bucket for this hike's prose (#1473). The shelf no
+   *  longer carries it; a phone with no signal shows whatever it kept, and
+   *  a hike it has never opened simply prints the figures. */
+  online: boolean
   onBack: () => void
   /** Saves the route into the hiker's own day hikes. Absent while the store
    *  is not ready, and then no button is drawn - a control that cannot do
@@ -71,6 +99,16 @@ export interface HikeDetailProps {
    *  shell's `showSavedHikeOnMap`. Absent is the honest state, not a
    *  degraded one: Save is the button beside it. */
   onShowOnMap?: (hike: SuggestedHike) => void
+  /** Who the map's data belongs to (lib/stewards.ts), for the publisher's
+   *  paper map (#1574). Empty on a phone with no download, and empty renders
+   *  no line - the honest state, not a degraded one. */
+  stewards?: Stewards
+  /** The podcast episodes picked for this hike (lib/podcasts.ts,
+   *  `episodesForHike`), or none - and none draws nothing. */
+  podcastEpisodes?: readonly PodcastEpisode[]
+  /** The podcast apps the card's picker offers, from the whole published
+   *  list (PodcastCardProps.offeredApps). */
+  podcastApps?: readonly PodcastApp[]
 }
 
 function figures(hike: SuggestedHike, pace: PaceProfile, units: UnitSystem): string {
@@ -93,12 +131,24 @@ function figures(hike: SuggestedHike, pace: PaceProfile, units: UnitSystem): str
 
 /** The line under the figures naming whose number is whose. Never printed
  *  without the phone's own half, because "NYNJTC says 3.8 mi" alone would
- *  read as the app's measurement. */
-function measurementLine(hike: SuggestedHike, units: UnitSystem): string {
+ *  read as the app's measurement.
+ *
+ *  THE MERGED DETAIL, NOT `hike.detail` - `publishedMiles` is not in
+ *  export_suggested_hikes.py's SHELF_FIELDS, so since #1473 it arrives with
+ *  the prose rather than on the shelf record. Reading it off the shelf
+ *  returns undefined for every hike and silently drops the publisher's own
+ *  mileage, which is the half of this line a hiker uses to judge the other
+ *  half. So the line grows a second state: it prints ours alone while the
+ *  detail is still on its way, and gains theirs when it lands. */
+function measurementLine(
+  detail: SuggestedHikeDetail | undefined,
+  author: string,
+  units: UnitSystem,
+): string {
   const ours = 'measured on the trail lines this phone holds'
-  const theirs = hike.detail?.publishedMiles
+  const theirs = detail?.publishedMiles
   if (theirs === undefined) return ours
-  return `${ours} · ${hike.author.name} says ${formatDistance(theirs, units)}`
+  return `${ours} · ${author} says ${formatDistance(theirs, units)}`
 }
 
 /** "Walked 12 Mar, and twice before" - the dates on the hiker's own record,
@@ -129,13 +179,20 @@ export function HikeDetail({
   hike,
   pace,
   units,
+  online,
   onBack,
   onSave,
   savedWalks,
   onShowOnMap,
+  stewards = EMPTY_STEWARDS,
+  podcastEpisodes = NO_PODCAST_EPISODES,
+  podcastApps,
 }: HikeDetailProps) {
   const [wholeDescription, setWholeDescription] = useState(false)
-  const detail = hike.detail
+  // #1473: the shelf carries the figures, this fetches the prose for the one
+  // hike somebody opened. Undefined while it is on its way, and undefined is
+  // the state every field here was already written for.
+  const detail = useHikeDetail(hike, online)
   const description = detail?.description ?? []
   const shown = wholeDescription ? description : description.slice(0, DESCRIPTION_PREVIEW)
   const rest = description.length - DESCRIPTION_PREVIEW
@@ -143,6 +200,18 @@ export function HikeDetail({
 
   const facets = [detail?.routeType, detail?.park].filter(
     (part): part is string => part !== undefined,
+  )
+
+  // The publisher's paper map for the park (#1574). The publisher is found
+  // through the hike's own id - `nynjtc_hike_finder:7909` names the registry
+  // key it was published from - never by comparing display names, and the
+  // park is the publisher's own word for it (`detail.park`), matched against
+  // their own sheet index. Empty for a hike whose publisher is not a steward
+  // here, has no store, or names a park no sheet lists.
+  const paperMaps = paperMapsForPlace(
+    stewardForSource(stewards, hike.id.split(':')[0] ?? null),
+    'hike_detail',
+    detail?.park,
   )
 
   return (
@@ -176,7 +245,9 @@ export function HikeDetail({
         )}
 
         <p className="hike-detail__figures">{figures(hike, pace, units)}</p>
-        <p className="hike-detail__measurement">{measurementLine(hike, units)}</p>
+        <p className="hike-detail__measurement">
+          {measurementLine(detail, hike.author.name, units)}
+        </p>
 
         {(hike.difficulty !== null || facets.length > 0) && (
           <p className="hike-detail__facets">
@@ -298,16 +369,57 @@ export function HikeDetail({
             {hike.author.name}’s route and words, published here with their permission.
             {detail?.trails !== undefined && ` Uses ${detail.trails.join(', ')}.`}
           </p>
-          {detail?.url !== undefined && (
-            <a className="hike-detail__source" href={detail.url}>
+          {detail?.url !== undefined && isSafeLink(detail.url) && (
+            <a
+              className="hike-detail__source"
+              href={detail.url}
+              target="_blank"
+              rel="noreferrer"
+            >
               Read it on their page ›
             </a>
+          )}
+          {/* Their paper map, on their store, where their sheet index names
+              the park. The lead names the sheet and the organization; the
+              product title, verbatim, is the only thing to tap. One line
+              per product, because a park can sit on two (the Pequannock
+              Watershed is on two NYNJTC sets). */}
+          {paperMaps.map((match) => (
+            <span key={match.map.handle} className="hike-detail__paper-map">
+              <p>{paperMapLead(match, 'The park')}</p>
+              <a
+                className="hike-detail__source"
+                href={match.map.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {match.map.title} ›
+              </a>
+            </span>
+          ))}
+          {paperMaps.length > 0 && (
+            <p className="hike-detail__aside">
+              Their paper map, sold on their own store. OurHike takes no cut and never
+              touches that money.
+            </p>
           )}
           <p className="hike-detail__aside">
             The line a map draws is OurHike’s, built from their description on the trail
             data this phone holds — not a track anybody walked with a GPS.
           </p>
         </footer>
+
+        {podcastEpisodes.length > 0 && (
+          <section className="hike-detail__section">
+            <h2 className="hike-detail__rule">Listen before you go</h2>
+            <PodcastCard
+              episodes={podcastEpisodes}
+              heading="Picked for this hike"
+              online={online}
+              offeredApps={podcastApps}
+            />
+          </section>
+        )}
       </div>
     </div>
   )

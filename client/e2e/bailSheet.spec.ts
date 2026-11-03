@@ -151,11 +151,18 @@ test.describe('the bail sheet (D8)', () => {
   // deterministic (non-network) path for every future spec that needs a
   // live day-hike draft - filed as **#1387**.
   //
+  // TWO NUMBERS, NOT ONE (#1394). #1387 is why this test cannot RUN. The
+  // defect it is written to CATCH has its own issue - **#1378 - Switching
+  // the mode under step 1 with a live day-hike draft, then picking on the
+  // map, sweeps the draft without asking** - and citing only the blocker
+  // left a reader who closes #1387 with somewhere to unskip the test and
+  // nowhere to report what it then proves.
+  //
   // Written as the target rather than deleted: the moment a graph-shard
   // fixture exists, this becomes seedPreferences + seedHikerMode('day') +
   // seedGraphShard(...) + the "Where I am" door, and the skip below comes
   // off in the same change.
-  test.skip('known gap: switching mode then Pick on the map sweeps a live day-hike draft with no ask (should be guarded) - #1387, and this drive is now stale against step 1', async ({
+  test.skip('known gap: switching mode then Pick on the map sweeps a live day-hike draft with no ask (should be guarded) - #1378, blocked on #1387, and this drive is now stale against step 1', async ({
     page,
   }) => {
     await seedPreferences(page)

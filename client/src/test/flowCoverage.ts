@@ -94,6 +94,30 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F2 Today',
     flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
   },
+  // The podcast card (#1683), under today's leg here and last on
+  // screens/HikeDetail.tsx. Planned rather than unit-only: tap-to-play and
+  // the offline state are flows worth driving, with the episode list
+  // answered the way preview-shots/fixtures/podcasts.mjs answers it. Save is
+  // not - it leaves for Spotify's sign-in, which no flow test should reach.
+  'chrome/PodcastCard.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/PodcastAppIcon.tsx': {
+    step: 'F2 Today',
+    flow: {
+      status: 'unit-only',
+      why: 'Drawn marks with no state, the same as SpotifyIcon.tsx: size and colour are pinned in PodcastCard.test.tsx.',
+    },
+  },
+  // The "which app do you listen in?" list (#1690), inside the podcast card
+  // and behind More → Settings. Planned with the card: the first-tap ask is
+  // a flow worth driving once the card's flow test exists.
+  'chrome/PodcastAppPicker.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/SpotifyIcon.tsx': {
+    step: 'F2 Today',
+    flow: {
+      status: 'unit-only',
+      why: 'A drawn mark with no state: its size and colour are pinned in PodcastCard.test.tsx, and a browser driven to it would prove the same thing slower.',
+    },
+  },
   // SAME BLOCKER AS THE RIBBON BELOW, read from the source rather than
   // measured (2026-09-11): chrome/MapScreen.tsx renders the rail only when
   // `waypoints !== undefined && elevation !== undefined`, and App.tsx's
@@ -173,6 +197,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F4 step 2 · Route',
     flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
   },
+  // The report's crosshair (#1439). `planned` rather than `unit-only`: it is
+  // drivable the moment the flow suite can reach the long report form, which
+  // needs an account (#1399).
+  'chrome/ReportPickBar.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
   'chrome/RouteMapPickBar.tsx': {
     step: 'F4 step 2 · Route',
     flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
@@ -357,6 +385,41 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
   },
+  // The picker is driven where the window is: a tap with no fix is refused
+  // and opens it, and the spec files a report by the words it collects
+  // (#1563).
+  'reporting/LocationPicker.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The sheet the picker lives in, and the block the receipt and the long
+  // form sign with: both are driven by the same "no fix" and thanks-form
+  // specs, which read the sheet's title and the signature line.
+  'reporting/LocationSheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  'reporting/ReporterDetails.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The frame both sheets share, and the keep window the map's tap opens:
+  // driven by the same spec, which marks a spot on the map and keeps it.
+  'reporting/Sheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  'reporting/KeepSpotSheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The photo tiles the long form and the receipt share (#1563): the
+  // thanks-form spec finds the `+` tile with nothing picked, and the one-tap
+  // spec finds it again above the receipt's note.
+  'reporting/PhotoTiles.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'screens/Moderation.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
 
   // ---- F12 the map --------------------------------------------------------
@@ -372,21 +435,40 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
   },
-  // NOT A NEEDLE — NO NEEDLE. Measured 2026-09-11 against the UA environment:
+  // NOT A NEEDLE — NO NEEDLE, and #1400's option 3 is what got past it.
+  // Measured 2026-09-11 against UA and re-checked 2026-09-15:
   // `conditions/closures.json` carries 0 closures and `conditions/reports.json`
   // 0 reports, and the serious warnings ARE escalated reports. So
-  // alertSheetsPanel has nothing to place, the marks never draw, and a camera
-  // derived from a mile would find nothing at it. The three ways
-  // out are in #1400 — "Two safety sheets have no published data to open them, so
-  // the map's alert taps go untested". This is the safety path CLAUDE.md names
-  // third of four, so the gap is worth more than its line count.
-  'chrome/ClosureSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/SeriousWarningSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  // alertSheetsPanel had nothing to place, the marks never drew, and a camera
+  // derived from a mile would have found nothing at it.
+  //
+  // `e2e/data/alertSheets.spec.ts` replaces those two artifacts with
+  // `page.route` and drives the sheets against fixtures placed at the camera
+  // this suite already seeds — so what is `covered` here is THE SHEET AND THE
+  // TAP, and explicitly not the data or the pipeline that bakes it. The spec's
+  // own header says so at length, because a coverage row that quietly meant
+  // something weaker than it looks is worse than a `planned` one. Option 1 —
+  // wait for a real closure — is still the right answer for the MARKS, and
+  // #1400 keeps that half.
+  //
+  // This is the safety path CLAUDE.md names third of four, which is why it was
+  // worth more than its line count and why the tap is now driven end to end.
+  'chrome/ClosureSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/alertSheets.spec.ts' },
+  },
+  'chrome/SeriousWarningSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/alertSheets.spec.ts' },
+  },
   'chrome/OrgNoticeSheet.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
-  'chrome/alertSheetsPanel.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/alertSheetsPanel.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/alertSheets.spec.ts' },
+  },
   'chrome/noticesPanel.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
@@ -395,6 +477,41 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // The planned-hike panel and the hazard area card (#1805). PLANNED, and
+  // the reason is the data rather than the drive: both render only when
+  // conditions/notices.json is on the phone, which only the dbt path
+  // publishes, so the release e2e/data/ reads has none until the cutover.
+  // Their spec is mapSheets.spec.ts's notices case with the file routed in,
+  // as preview-shots/planned-hike-notices.mjs routes it for the camera; the
+  // rule underneath is held by lib/plannedNotices.test.ts and
+  // lib/hazardAreas.test.ts in the meantime.
+  'chrome/PlannedNoticeList.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
+  'chrome/HazardAreaSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
+  // A club closure's sheet (the maintainer's closure-map standard, 2026-10-11). PLANNED, for
+  // the two above's reason: it opens only from a mark drawn out of
+  // conditions/trail_closures.json, which only the dbt path publishes.
+  // preview-shots/club-closures-on-the-map.mjs routes the file in for the
+  // camera; noticesPanel.clubClosures.test.tsx and ClubClosureSheet.test.tsx
+  // hold the rule and the sheet in the meantime.
+  'chrome/ClubClosureSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned' },
+  },
+  // A CLUB LINE'S SHEET is a state of this module
+  // the flow suite does not reach yet: the data suite reads the release
+  // lib/dataRelease.ts pins, and no pinned release carries a `line_kind`
+  // 'club' line until one is published from the change that writes it.
+  // Until then LineSheet.test.tsx ('says a club line is drawn and not
+  // routed') and lineDetail.test.ts hold the tag, the sentence and the
+  // missing day-hike point; mapSheets.spec.ts is where a club-line tap
+  // belongs once the pin moves. preview-shots/club-line-sketch.mjs
+  // photographs the line drawn in the sketch, from a fixture, not the sheet.
   'chrome/LineSheet.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
@@ -403,9 +520,30 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
+  // A PLUMBED TAP'S SEASON CAUTION is a state of
+  // this card the flow suite does not reach yet, for the club line's reason
+  // above: no pinned release carries `water_caution` until one is published
+  // from the change that writes it. PoiCard.test.tsx ('says on the peek that a plumbed tap may
+  // be shut off') and trailData.test.ts hold it, and
+  // preview-shots/seasonal-tap-card.mjs photographs it from a fixture.
   'chrome/PoiCard.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
+  // NOAA's forecast on the waypoint card (#1056 build step 3). `planned`: the
+  // data suite reads UA (client-tests.yml's flow-data job), and UA publishes
+  // `conditions/weather/`, so mapSheets.spec.ts's cards already carry a real
+  // forecast - its first run on #1782 proved it by renaming the pull under
+  // the spec's locator. Nothing there asserts on the band yet, and it was not
+  // written blind: this branch's sandbox cannot reach the bucket to run it.
+  // PoiCard.weather.test.tsx holds the band's states in the meantime.
+  'chrome/WeatherBand.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/weatherIcons.tsx': {
+    step: 'F12 the map',
+    flow: {
+      status: 'unit-only',
+      why: 'Stateless SVG drawn inside WeatherBand; which icon an hour gets is PoiCard.weather.test.tsx, and a browser would prove only that an SVG renders.',
+    },
   },
   // NOT BLOCKED AFTER ALL, and this ledger said otherwise until 2026-09-11:
   // `retired_poi.geojson` ships inside EACH release, so the single pinned one
@@ -479,6 +617,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // `unit-only` because the surface is meant to be drivable, and will be the
   // day the pipeline publishes what it reads.
   'chrome/WorkdaySheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  // The crews section's two shared pieces (#1440). `planned` for
+  // WorkdaySheet's own reason, and it is the same blocker: #1402 - no workday
+  // artifact is published, so there is nothing for a flow to drive them with.
+  'chrome/CrewsSection.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'chrome/WorkdayRow.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'chrome/CrewContactLink.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'chrome/WorkdayCalendar.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/ClubSheet.tsx': {
     step: 'F14 volunteering',
@@ -494,6 +639,21 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
+  // Supporting OurHike (#1876). PLANNED, and the reason is not a missing
+  // fixture: both screens' paid halves need a backend, and the flow suite
+  // builds with none (pr-preview.yml leaves VITE_API_BASE_URL unset), which
+  // keeps the ask dormant by design. The rules are held by
+  // lib/support.test.ts, SupportAsk.test.tsx and YourSupport.test.tsx; a flow
+  // spec needs a stubbed API the suite does not have yet.
+  'screens/SupportAsk.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/YourSupport.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/SupportGate.tsx': {
+    step: 'F13 More',
+    flow: {
+      status: 'unit-only',
+      why: 'Renders nothing of its own: it counts days and decides whether to open SupportAsk, whose rules lib/support.test.ts holds and whose flow is planned above. A browser would be driving the window, not this.',
+    },
+  },
   'screens/Settings.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
@@ -503,6 +663,32 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
   'screens/Registry.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Challenges (#1780): joined, one, Browse - and the pieces every challenge
+  // surface shares. e2e/challenges.spec.ts walks join, tag and the list.
+  'screens/Challenges.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'screens/ChallengeDetail.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'screens/ChallengeBrowse.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'chrome/ChallengeParts.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  // The camp card is Today's (F2); the place-card section and Plan's card
+  // are driven by unit tests and recipes, not yet by a flow.
+  'chrome/ChallengeCampCard.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
+  },
+  'chrome/PoiChallenges.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/PlanChallenges.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
   'screens/GpsTrace.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
@@ -512,19 +698,29 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
   },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Driven by the @backend half of e2e/identityRooms.spec.ts, which finishes
+  // an emailed-code sign-in against a stubbed Supabase: the question (#1902)
+  // follows it, and "No thanks" returns the hiker to the map signed in.
+  'screens/UsageLinkQuestion.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
+  // Reachable in every build since #1572 put the provider list in code:
+  // ENABLED_PROVIDERS names email, so SignInPrompt offers it and this screen
+  // mounts behind that button. It was 'unit-only' while the deployed set came
+  // from a repository variable the preview build did not carry.
+  //
+  // Covered since #1643, both steps: e2e/identityRooms.spec.ts's `@backend`
+  // test drives the ask, the address, the code step and an eight-digit code
+  // through to a signed-in header. The code "a real email carried" this entry
+  // used to wait for is answered instead by a stubbed Supabase
+  // (e2e/support/backend.ts), so what is covered is the app's half of the
+  // exchange - the request it makes and what it does with the answer - and
+  // not the project's email template, which backend/check_supabase_config.py
+  // reads back.
   'screens/EmailSignIn.tsx': {
     step: 'F13 More',
-    flow: {
-      // Not "planned": no build this project ships can render it. Measured
-      // 2026-09-11 by driving More → You → Sign in, which offers "Continue
-      // with Google" and nothing else. lib/supabase.ts is why - email left
-      // ENABLED_PROVIDERS' default because Supabase's built-in sender "is
-      // not a delivery path this project can ship on", and this screen is
-      // only mounted when SignInPrompt offers the email provider. It comes
-      // back with a sender behind it, and a flow test comes back with it.
-      status: 'unit-only',
-      why: 'Unreachable in any shipped build: ENABLED_PROVIDERS defaults to google alone (lib/supabase.ts), and this screen is mounted only when the sign-in prompt offers email. EmailSignIn.test.tsx holds the form; a flow test would need a build flag no deployment sets.',
-    },
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
   },
   'screens/SignInPrompt.tsx': {
     step: 'F13 More',
@@ -608,6 +804,28 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
       why: 'A glyph. ModeIcon.test.tsx draws it; a flow test would be a slower way to look at the same SVG.',
     },
   },
+  'chrome/AccountButton.tsx': {
+    step: 'shared',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
+  'chrome/SignInWindow.tsx': {
+    step: 'shared',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
+  'chrome/AccountPanel.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "What the account button opens once a hiker is SIGNED IN (#1596) - the address, a sign-out and a line saying the rest is in More. A flow spec cannot reach it: driving there means completing a real round trip at GitHub, Google or a mailbox, which is the same wall e2e/identityRooms.spec.ts stops at for the email code step and which waits on #1399's account. App.accountPanel.test.tsx drives it instead, from App with the auth module mocked signed in, and holds the two things the defect it was written for got wrong - that the window says 'Your account' and not 'Sign in', and that signing out closes it rather than swapping the ask in under the tap.",
+    },
+  },
+  'chrome/ProviderMark.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "A glyph per sign-in provider - Google's G, GitHub's mark, the OurHike icon - drawn inside SignInPrompt's buttons (#1572). SignInPrompt.test.tsx pins the colours and that each stays out of the accessible name; e2e/identityRooms.spec.ts finds the buttons by that name.",
+    },
+  },
   'chrome/PoiRow.tsx': {
     step: 'shared',
     flow: {
@@ -672,6 +890,167 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: {
       status: 'unit-only',
       why: 'A generic radio ladder; the download-size rules it renders are asserted in lib and in first run.',
+    },
+  },
+
+  // ---- F14 the organization console (features/ORG_ONBOARDING.md) ----------
+  //
+  // A STEP OUTSIDE PATHWAY.MD'S SPINE, and deliberately: the spine is a
+  // hiker's journey and none of this is on it. An org admin arrives by a link
+  // in their own inbox, and the hiker's app links to none of these screens -
+  // which is why `e2e/orgConsole.spec.ts` opens on an address and says so at
+  // length rather than tapping in from Today.
+  //
+  // `covered` is claimed where the spec ASSERTS on the surface. Every screen
+  // below has a line in that spec checking it landed on its own heading, so
+  // the entrance claim is real for all of them; what is still `planned` for
+  // most is driving their controls, which cannot mean much until the writes
+  // behind them exist (all forty-nine are stubs today).
+  // OrgEntry IS the entrance claim, which is why it is `covered` rather than
+  // passed through: its whole surface is "the address opened the right one of
+  // three screens", and every assertion below that a screen landed on its own
+  // heading is an assertion that this switch chose it. It draws nothing else
+  // but the "Opening" frame while a chunk arrives.
+  'org/OrgEntry.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/OrgConsole.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/OrgShell.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/SetupHub.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/AdminApproval.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/HikeRegistry.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/RegistrySignoff.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/AddTrail.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Embeds.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OrgEmails.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OrgSettings.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Roles.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Workdays.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  // A club's challenges and who sent an entry (#1780); each address is in
+  // that spec's "every console address lands on its own screen" list.
+  'org/screens/Challenges.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/ChallengeFinishers.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Coverage.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Roster.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/WelcomeVolunteers.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+
+  // ---- F15 the volunteer's own screens ------------------------------------
+  // THE TWO SCREENS THAT ARE NOT THE CONSOLE. Both are arrived at from
+  // outside the app - one from /for-orgs/nominate/, one from a link in an
+  // email to somebody with no account - so neither is reachable by the tap
+  // sequence from boot that the flow battery drives, which is the same
+  // exception e2e/orgConsole.spec.ts already takes at the top of its file for
+  // the console itself. Unit-only rather than planned, because the properties
+  // worth asserting on them are decisions rather than journeys: that a
+  // dropped contact is not submitted, and that the refusal is offered as
+  // plainly as the approval.
+  'org/screens/Nominate.tsx': {
+    step: 'F15 volunteer',
+    flow: {
+      status: 'unit-only',
+      why: 'reached only from the marketing site, which the flow battery does not boot into; the review step is asserted in org/screens/nominate.test.tsx',
+    },
+  },
+  'org/screens/Proposal.tsx': {
+    step: 'F15 volunteer',
+    flow: {
+      status: 'unit-only',
+      why: 'reached only by a token in an email, by somebody with no account; the refusal path is asserted in org/screens/nominate.test.tsx',
+    },
+  },
+  'org/screens/YourTread.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OnYourPhone.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/HandBack.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/RidgeRunner.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/VolunteerProfile.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+
+  // ---- Leaves with no state of their own ----------------------------------
+  'org/Mark.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'unit-only',
+      why: 'An inline SVG wordmark. It has no state, no branch and no control - driving a browser to it proves what reading it proves.',
+    },
+  },
+  'org/components.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'unit-only',
+      why: "The console's shared parts, every one of which is rendered by a screen above and asserted through it. Their own branches - a blaze with nothing to draw, a section with no geometry, an empty workday list - are pure and tested as functions in src/org, which is faster and covers the cases a browser would have to be contrived into.",
+    },
+  },
+  'org/AssistPanel.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'covered',
+      spec: 'e2e/orgConsole.spec.ts',
     },
   },
 }

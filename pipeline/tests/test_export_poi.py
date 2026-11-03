@@ -203,6 +203,25 @@ def no_real_water_distance_file(tmp_path, monkeypatch):
     monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", tmp_path / "no-water-distance-file.json")
 
 
+@pytest.fixture(autouse=True)
+def no_real_network_lines(tmp_path, monkeypatch):
+    """Keep the real trail network out of every test here (#1669).
+
+    `export_poi.NETWORK_LINES_PATH` is fixed at import as
+    `data/processed/nearby_trails.geojson`, so the `OUT_DIR` patch every test
+    makes never moved it. On a machine that has run `export_nearby_trails.py`
+    the file is 253,554,744 bytes and 142,892 lines (measured 2026-09-24),
+    and each of the 60 calls here to `main()`, `build_enriched_records()` or
+    `read_sources()` loaded and indexed all of it: `scripts/test.sh` sat at
+    94% for over ten minutes. CI has no such file, which is why only a
+    working tree ever noticed.
+
+    In this file rather than conftest.py because
+    test_water_covers_trail_sources.py asserts the real constant's value.
+    """
+    monkeypatch.setattr(export_poi, "NETWORK_LINES_PATH", tmp_path / "no-network-lines.geojson")
+
+
 # TRAIL_WATER_PATH is redirected for the whole suite by conftest.py's
 # no_real_trail_water, which is autouse there rather than here because
 # unify_all_sources reads it and every caller of that function needs the
@@ -276,41 +295,42 @@ def test_export_poi_writes_a_sha256_hash_per_artifact_in_the_manifest(tmp_path, 
     assert on_disk_manifest["shelter"]["geojson"]["sha256"] == shelter_entry["geojson"]["sha256"]
 
 
-def test_export_poi_crossing_layer_is_present_but_empty_pending_nhd_ingestion(tmp_path, monkeypatch, con):
-    """`crossing` is a real declared poi_type (ROADMAP.md's NHD-crossing item
-    is still exploratory/undecided) - it must ship as a present-but-empty
-    layer, not be silently omitted, and not contain invented data."""
+def test_export_poi_writes_no_crossing_layer_since_the_type_was_withdrawn(tmp_path, monkeypatch, con):
+    """#1674: the maintainer had stream crossings taken off the map. The
+    export writes no crossing file and no manifest entry - even from a
+    trail_water.json derived before the change, which still carries its
+    `crossings` array - so publish.py has no crossing artifact to upload."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
+    trail_water = tmp_path / "trail_water.json"
+    _write_trail_water(
+        trail_water,
+        crossings=[{"sources": ["nhd"], "stream_id": "90662307", "flow": None, "name": None, "lat": 41.04, "lon": -73.945}],
+    )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", trail_water)
 
     manifest = export_poi.main()
 
-    assert "crossing" in manifest
-    assert manifest["crossing"]["geojson"]["feature_count"] == 0
-    assert manifest["crossing"]["fgb"]["feature_count"] == 0
-
-    geojson_path = out_dir / "crossing.geojson"
-    fgb_path = out_dir / "crossing.fgb"
-    assert geojson_path.exists()
-    assert fgb_path.exists()
-
-    fc = json.loads(geojson_path.read_text())
-    assert fc["features"] == []
-
-    fgb_count = con.execute(f"SELECT COUNT(*) FROM ST_Read('{fgb_path.as_posix()}')").fetchone()[0]
-    assert fgb_count == 0
+    assert "crossing" not in manifest
+    assert not (out_dir / "crossing.geojson").exists()
+    assert not (out_dir / "crossing.fgb").exists()
+    every_type = {
+        feature["properties"]["poi_type"]
+        for path in out_dir.glob("*.geojson")
+        for feature in json.loads(path.read_text()).get("features", [])
+    }
+    assert "crossing" not in every_type
 
 
 def test_export_poi_a_non_crossing_type_returning_zero_features_fails_the_run(tmp_path, monkeypatch, con):
-    """Unlike `crossing` (intentionally always empty pending NHD ingestion -
-    see test_export_poi_crossing_layer_is_present_but_empty_pending_nhd_ingestion),
-    every other poi_type is expected to be non-empty for real AT corridor
-    data. A genuinely broken source - e.g. shelters.geojson silently coming
+    """Unlike the types lib.poi_schema.ALLOWED_EMPTY_POI_TYPES names (`trailhead`
+    today; `crossing` was the first, until #1674 withdrew it), every other
+    poi_type is expected to be non-empty for real AT corridor data. A genuinely broken source - e.g. shelters.geojson silently coming
     back with zero features after an upstream schema change - must fail the
     run loudly instead of shipping a structurally-identical-to-crossing empty
     layer with no signal anything went wrong."""
@@ -669,7 +689,9 @@ def test_export_poi_exports_without_capacity_when_the_reference_file_is_absent(t
 
 def _write_water_distance_file(path, records):
     """A stand-in for reference/water_distance.json, same shape
-    build_water_distance.py writes."""
+    build_water_distance.py writes: `provenance` is CSI's own
+    `Nearest_Water_Source` value, and a record without one is what a file
+    written before #1728 carried."""
     path.write_text(json.dumps({"sites": records}))
 
 
@@ -691,14 +713,20 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
     _write_water_distance_file(
         water_path,
         [
-            {"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120},
-            {"layer": "campsites", "atc_global_id": "campsite-glob-1", "distance_ft": 100},
+            {"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120, "provenance": "FarOut"},
+            {
+                "layer": "campsites",
+                "poi_id": "atc_campsites:campsite-glob-1",
+                "distance_ft": 100,
+                "provenance": "OSA_Field_Estimate",
+            },
             # A refusal row, exactly as build_water_distance.py writes one:
             # null distance, reason stated. Must publish nothing.
             {
                 "layer": "shelters",
-                "atc_global_id": "shelter-glob-absent",
+                "poi_id": "atc_shelters:shelter-glob-absent",
                 "distance_ft": None,
+                "provenance": None,
                 "unresolved": "no CSI row within 150 m",
             },
         ],
@@ -712,13 +740,19 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
 
     shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
     assert shelter_props["water_distance_ft"] == 120
+    # And how ATC arrived at it, verbatim (#1728): the phone prints a
+    # steward's estimate with a tilde and a measurement without, and can only
+    # tell them apart if the difference reaches it as a column.
+    assert shelter_props["water_distance_source"] == "FarOut"
     # The column's own number, unconverted, through the same nearby_parts a
-    # folded water point would use - so one card cannot say it two ways.
-    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0}]
+    # folded water point would use - so one card cannot say it two ways. The
+    # provenance rides the part for the same sentence.
+    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0, "source": "FarOut"}]
 
     campsite_props = json.loads((out_dir / "campsite.geojson").read_text())["features"][0]["properties"]
     assert campsite_props["water_distance_ft"] == 100
-    assert _json_prop(campsite_props["nearby"]) == [{"phrase": "water", "distance_ft": 100.0}]
+    assert campsite_props["water_distance_source"] == "OSA_Field_Estimate"
+    assert _json_prop(campsite_props["nearby"]) == [{"phrase": "water", "distance_ft": 100.0, "source": "OSA_Field_Estimate"}]
 
     # Real water POIs never carry the column - it is a fact about a shelter
     # or campsite, not about the water point itself. The members synthesized
@@ -729,6 +763,38 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
     for feature in water_fc["features"]:
         if feature["properties"]["source"] != export_poi.CSI_WATER_SOURCE:
             assert feature["properties"].get("water_distance_ft") is None
+            assert feature["properties"].get("water_distance_source") is None
+
+
+def test_export_poi_publishes_no_provenance_where_the_reference_file_carried_none(tmp_path, monkeypatch, con):
+    """A water_distance.json written before #1728 states a distance and
+    nothing about where it came from. The figure still publishes - it is the
+    same figure it always was - and the provenance is NULL and the nearby
+    part carries no `source` key, so the phone prints the number in the voice
+    it always has rather than in a voice this export guessed at. Absent means
+    unknown, never "measured"."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(water_path, [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120}])
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
+    assert shelter_props["water_distance_ft"] == 120
+    assert shelter_props["water_distance_source"] is None
+    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0}]
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    [synthesized] = [f["properties"] for f in water_fc["features"] if f["properties"]["source"] == export_poi.CSI_WATER_SOURCE]
+    assert synthesized["water_distance_source"] is None
+    # The one thing true of every row, and nothing more.
+    assert synthesized["description"].startswith("ATC's index gives how far water is from Test Shelter;")
 
 
 def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path, monkeypatch, con):
@@ -749,7 +815,9 @@ def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
     water_path = tmp_path / "water_distance.json"
-    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120}])
+    _write_water_distance_file(
+        water_path, [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120, "provenance": "FarOut"}]
+    )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
@@ -765,10 +833,14 @@ def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path
     assert synthesized["name"] == "Water near Test Shelter"
     assert synthesized["confidence"] == "low"
     assert synthesized["water_distance_ft"] == 120
+    # The anchor's provenance, on the member whose chip prints the figure
+    # (#1728) - so the chip can say "~" exactly where the anchor's line does.
+    assert synthesized["water_distance_source"] == "FarOut"
     # Inherited coordinates, and a description that says so in place of them.
     assert (synthesized["lat"], synthesized["lon"]) == (shelter_props["lat"], shelter_props["lon"])
     assert synthesized["description"] == (
-        "ATC measured how far water is from Test Shelter; the spot itself is not mapped, so this point sits on the shelter."
+        "ATC measured how far the nearest water waypoint in FarOut is from Test Shelter; "
+        "the spot itself is not mapped, so this point sits on the shelter."
     )
     # And no figure in it, in either unit - the chip carries that (#625).
     assert not any(character.isdigit() for character in synthesized["description"])
@@ -780,7 +852,51 @@ def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path
     assert shelter_props["site_id"] == shelter_props["id"]
     # The anchor's own parts still carry the stated distance, not the zero its
     # member's inherited position would measure.
-    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0}]
+    assert _json_prop(shelter_props["nearby"]) == [{"phrase": "water", "distance_ft": 120.0, "source": "FarOut"}]
+
+
+@pytest.mark.parametrize(
+    ("provenance", "claim"),
+    [
+        ("FarOut", "ATC measured how far the nearest water waypoint in FarOut is from Test Shelter"),
+        ("NHDP_HR_Stream", "ATC measured how far the nearest USGS-mapped stream is from Test Shelter"),
+        ("NHDP_HR_Pond", "ATC measured how far the nearest USGS-mapped pond is from Test Shelter"),
+        ("OSA_Field_Estimate", "An ATC steward estimated how far water is from Test Shelter"),
+        # A value build_water_distance.py's allowlist admits before
+        # WATER_PROVENANCE_CLAIMS learns it: the sentence asserts only what is
+        # true of every row rather than promoting it to "measured".
+        ("Something_ATC_Adds_Later", "ATC's index gives how far water is from Test Shelter"),
+    ],
+)
+def test_export_poi_words_the_synthesized_members_sentence_by_how_atc_arrived_at_the_figure(
+    tmp_path, monkeypatch, con, provenance, claim
+):
+    """ "ATC measured" was the one wording for every synthesized member until
+    #1728, and on the 42 `OSA_Field_Estimate` rows it was not true: those are
+    a steward's round number, typically 250 or 300. The verb is now the
+    claim's real size, per provenance, and the figure stays out of the
+    sentence in every case (#625)."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    out_dir = tmp_path / "processed" / "poi"
+    _write_fixture_sources(raw_dir)
+    water_path = tmp_path / "water_distance.json"
+    _write_water_distance_file(
+        water_path,
+        [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 250, "provenance": provenance}],
+    )
+
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", water_path)
+
+    export_poi.main()
+
+    water_fc = json.loads((out_dir / "water.geojson").read_text())
+    [synthesized] = [f["properties"] for f in water_fc["features"] if f["properties"]["source"] == export_poi.CSI_WATER_SOURCE]
+    assert synthesized["description"] == f"{claim}; the spot itself is not mapped, so this point sits on the shelter."
+    assert not any(character.isdigit() for character in synthesized["description"])
+    assert synthesized["water_distance_source"] == provenance
 
 
 def test_export_poi_synthesizes_from_the_anchor_only_never_from_a_member(tmp_path, monkeypatch, con):
@@ -802,8 +918,8 @@ def test_export_poi_synthesizes_from_the_anchor_only_never_from_a_member(tmp_pat
     _write_water_distance_file(
         water_path,
         [
-            {"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120},
-            {"layer": "campsites", "atc_global_id": "campsite-glob-1", "distance_ft": 100},
+            {"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120},
+            {"layer": "campsites", "poi_id": "atc_campsites:campsite-glob-1", "distance_ft": 100},
         ],
     )
 
@@ -829,7 +945,10 @@ def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeyp
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
     water_path = tmp_path / "water_distance.json"
-    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 1648}])
+    _write_water_distance_file(
+        water_path,
+        [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 1648, "provenance": "OSA_Field_Estimate"}],
+    )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
@@ -839,6 +958,10 @@ def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeyp
 
     shelter_props = json.loads((out_dir / "shelter.geojson").read_text())["features"][0]["properties"]
     assert shelter_props["water_distance_ft"] == 1648
+    # The provenance publishes with the column wherever the column does: a
+    # day hike's stop row prints this figure with no nearby gate in front of
+    # it, and needs the tilde there too (#1728).
+    assert shelter_props["water_distance_source"] == "OSA_Field_Estimate"
     assert "water" not in shelter_props["description"]
     # And no synthesized member either (#694): a site is a sub-150 m place,
     # and a part half a kilometre off is not a part of it.
@@ -863,7 +986,7 @@ def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_
         [_point_feature(0, -73.95, 41.0504, {"title": "Test Spring", "icon": "w", "dbid": 100})],
     )
     water_path = tmp_path / "water_distance.json"
-    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120}])
+    _write_water_distance_file(water_path, [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120}])
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
@@ -878,6 +1001,9 @@ def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_
     # The folded point's own measurement - ~45 m, so ~147 ft - and not the
     # reference file's 120 ft.
     assert waters[0]["distance_ft"] == pytest.approx(147, abs=2)
+    # And no provenance on it: a measured position is not a stated figure,
+    # and the reference file's provenance belongs to the figure it kept out.
+    assert "source" not in waters[0]
     # And no synthesized member beside the real one (#694): the site already
     # holds an actual mapped point, and it speaks for water here.
     water_fc = json.loads((out_dir / "water.geojson").read_text())
@@ -933,9 +1059,10 @@ def test_export_poi_exported_properties_are_exactly_the_declared_columns(tmp_pat
     # which is exactly where an off-by-one would land the wrong value.
     assert props["confidence"] == CONFIDENCE_HIGH
     assert props["capacity"] == 8
-    # The column between capacity and description: present as a key, NULL
-    # with no reference file - so a one-place shift cannot hide in it.
-    assert props.get("water_distance_ft") is None
+    # The columns between capacity and description: present as keys, NULL
+    # with no reference file - so a one-place shift cannot hide in them.
+    assert "water_distance_ft" in props and props["water_distance_ft"] is None
+    assert "water_distance_source" in props and props["water_distance_source"] is None
     assert props["photo_key"] == f"photos/{SHELTER_DIGEST}.jpg"
     assert props["photo_author"] == "Jane Doe"
     assert props["name"] == "Test Shelter"
@@ -1400,12 +1527,11 @@ def test_check_reads_the_sources_and_writes_nothing(tmp_path, monkeypatch, con):
         "campsite": 1,
         "water": 2,
         "resupply": 1,  # the ATC Community alone since #806 dropped opentrail "r"
-        "crossing": 0,
         "viewpoint": 1,
         "parking": 1,
         "privy": 1,
         # Zero, and legitimately (#1197): ATC publishes no trailhead layer, so
-        # this export has no source for the ninth type. The 287 that ship are
+        # this export has no source for that type. The 287 that ship are
         # OPRHP's and travel in nearby_poi.geojson, which this export does not
         # write. Asserted as a key rather than omitted, so a trailhead source
         # arriving on the A.T. one day fails here and gets a decision.
@@ -1434,7 +1560,8 @@ def test_check_fails_on_the_defect_that_would_otherwise_surface_an_hour_later(tm
 def test_check_and_the_export_gate_on_the_same_rule(tmp_path, monkeypatch, con):
     """The preflight would be worth little if it were more lenient than the
     export it stands in for. Both call fail_if_any_type_is_empty, and
-    `crossing` is the one type allowed to be empty in both."""
+    `trailhead` is the one type allowed to be empty in both (`crossing` was,
+    until #1674 withdrew it)."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed" / "poi"
@@ -1443,9 +1570,9 @@ def test_check_and_the_export_gate_on_the_same_rule(tmp_path, monkeypatch, con):
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
 
-    # crossing is empty in the fixtures, and neither side objects.
-    assert export_poi.check_sources()["crossing"] == 0
-    assert export_poi.main()["crossing"]["geojson"]["feature_count"] == 0
+    # trailhead is empty in the fixtures, and neither side objects.
+    assert export_poi.check_sources()["trailhead"] == 0
+    assert export_poi.main()["trailhead"]["geojson"]["feature_count"] == 0
 
 
 def test_a_red_export_writes_no_artifacts_at_all(tmp_path, monkeypatch, con):
@@ -1879,7 +2006,7 @@ def test_export_poi_the_reachability_gate_touches_only_osm_water(tmp_path, monke
     assert shelters["features"]
 
 
-# --- where the trail meets water (#529, fetch_trail_water.py) ---------------
+# --- which sites have water they can reach (#529, fetch_trail_water.py) ------
 
 
 def _write_trail_water(path, crossings=(), sites=()):
@@ -1906,51 +2033,12 @@ def _trail_water_site(global_id, lat, lon, **water):
     }
 
 
-def test_export_poi_publishes_trail_stream_crossings(tmp_path, monkeypatch, con):
-    """The `crossing` type has shipped declared-and-empty since it was
-    declared; a hiker walking the trail walks through these."""
-    raw_dir = tmp_path / "raw"
-    raw_dir.mkdir()
-    _write_fixture_sources(raw_dir)
-    trail_water = tmp_path / "trail_water.json"
-    _write_trail_water(
-        trail_water,
-        crossings=[
-            {
-                "sources": ["nhd", "osm"],
-                "stream_id": "90662307",
-                "flow": "perennial",
-                "flow_source": "nhd",
-                "name": "Stony Brook",
-                "lat": 41.04,
-                "lon": -73.945,
-            }
-        ],
-    )
-    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
-    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
-    monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", trail_water)
-
-    export_poi.main()
-
-    crossings = json.loads((tmp_path / "processed" / "poi" / "crossing.geojson").read_text())
-    (crossing,) = crossings["features"]
-    assert crossing["properties"]["name"] == "Stony Brook"
-    assert crossing["properties"]["confidence"] == CONFIDENCE_LOW
-    assert crossing["properties"]["description"] == (
-        "Where the trail crosses Stony Brook. USGS maps it as year-round. Also mapped by OpenStreetMap contributors."
-    )
-    # Identity is WHERE it is: one reach can cross the trail twice, so the
-    # reach id alone would collide.
-    assert crossing["properties"]["id"] == "nhd_crossing:41.04000,-73.94500"
-    assert "stream_id" not in crossing["properties"], "the passport is for the ledger, not the phone"
-
-
 def test_load_trail_water_keeps_the_stream_for_the_ledger_and_publishes_nothing_new(tmp_path):
-    """The stream a crossing or a site's water point is made of rides
-    RAW_PROPERTIES_KEY for reconcile_poi_identity.py - the passport that
-    carries a nameless crossing across a trail re-measure (#1028) - and goes
-    nowhere else: it is not a POI_COLUMNS column, so no feature publishes it."""
+    """The stream a site's water point is made of rides RAW_PROPERTIES_KEY
+    for reconcile_poi_identity.py - the passport that carries a nameless
+    derived point across a re-measure (#1028) - and goes nowhere else: it is
+    not a POI_COLUMNS column, so no feature publishes it. A `crossings` array
+    left in the file by a derivation before #1674 is not read at all."""
     trail_water = tmp_path / "trail_water.json"
     _write_trail_water(
         trail_water,
@@ -1958,11 +2046,11 @@ def test_load_trail_water_keeps_the_stream_for_the_ledger_and_publishes_nothing_
         sites=[_trail_water_site("site-1", 41.05, -73.95)],
     )
 
-    crossing, site_water = export_poi.load_trail_water(trail_water)
+    (site_water,) = export_poi.load_trail_water(trail_water)
 
-    assert crossing[export_poi.RAW_PROPERTIES_KEY]["stream_id"] == "90662307"
+    assert site_water["poi_type"] == "water"
     assert site_water[export_poi.RAW_PROPERTIES_KEY]["stream_id"] == "12"
-    assert "stream_id" not in crossing and "stream_id" not in site_water
+    assert "stream_id" not in site_water
     assert "stream_id" not in {column for column, _ in export_poi.POI_COLUMNS}
 
 
@@ -2034,8 +2122,7 @@ def test_export_poi_publishes_no_water_for_a_site_the_gates_refused(tmp_path, mo
 
 def test_export_poi_an_absent_trail_water_file_is_a_normal_state(tmp_path, monkeypatch, con):
     """Same tolerance as capacities and photos: the export ships without
-    crossings rather than failing, and `crossing` is empty-but-present as it
-    was before this source existed."""
+    site water rather than failing."""
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
     _write_fixture_sources(raw_dir)
@@ -2045,7 +2132,9 @@ def test_export_poi_an_absent_trail_water_file_is_a_normal_state(tmp_path, monke
 
     manifest = export_poi.main()
 
-    assert manifest["crossing"]["geojson"]["feature_count"] == 0
+    water = json.loads((tmp_path / "processed" / "poi" / "water.geojson").read_text())
+    assert manifest["water"]["geojson"]["feature_count"] > 0
+    assert all(f["properties"]["source"] != "nhd_stream" for f in water["features"])
 
 
 # --- build_enriched_records caching (#1331) -----------------------------------
@@ -2338,31 +2427,17 @@ def test_a_spring_beside_the_at_is_not_marked():
     assert export_poi.NOT_ON_AT_KEY not in records[0]
 
 
-def test_a_crossing_on_somebody_elses_trail_is_marked():
-    """fetch_trail_water.py's own answer, carried through: this stream crosses
-    a network trail, so the crossing is not a point on the A.T."""
+def test_a_stale_network_flag_marks_nothing_now_crossings_are_gone():
+    """fetch_trail_water.py's crossings carried `on_network_trail`, and this
+    marked the ones on somebody else's trail. #1674 removed crossings and the
+    branch with them, so the flag on any record is no longer read."""
     records = [
         {
             "id": "nhd:1",
-            "poi_type": "crossing",
+            "poi_type": "water",
             "source": "nhd_stream",
             "source_feature_id": "1",
             export_poi.RAW_PROPERTIES_KEY: {"on_network_trail": True, "network_source": "nynjtc_long_path"},
-        }
-    ]
-
-    assert export_poi.mark_off_trail_records(records, {}) == 1
-    assert records[0][export_poi.NOT_ON_AT_KEY] == "nynjtc_long_path"
-
-
-def test_an_at_crossing_keeps_its_mile():
-    records = [
-        {
-            "id": "nhd:1",
-            "poi_type": "crossing",
-            "source": "nhd_stream",
-            "source_feature_id": "1",
-            export_poi.RAW_PROPERTIES_KEY: {"on_network_trail": False},
         }
     ]
 
@@ -2419,3 +2494,29 @@ def test_absent_verdicts_are_no_anchors_rather_than_an_error(tmp_path):
     """The pre-#1016 file, and every run whose reach build has not happened -
     which read_sources already refuses on for its own reasons."""
     assert export_poi.load_osm_water_network_anchors(tmp_path / "nowhere.json") == {}
+
+
+def test_load_water_distances_keys_by_the_records_poi_id_not_a_rebuilt_globalid(tmp_path):
+    """#1729: a ledger id that no longer equals `{source}:{GlobalID}` (what a
+    re-key leaves behind) still matches, because the loader takes the record's
+    own `poi_id` instead of composing one from a GlobalID."""
+    path = tmp_path / "water_distance.json"
+    _write_water_distance_file(path, [{"layer": "shelters", "poi_id": "atc_shelters:carried-id", "distance_ft": 90}])
+
+    assert export_poi.load_water_distances(path) == {"atc_shelters:carried-id": export_poi.WaterDistance(90, None)}
+
+
+def test_load_water_distances_reads_only_the_shelters_and_campsites_layers(tmp_path):
+    """A record on any other layer is not read, even when its poi_id names a
+    shelter - int_points_of_interest__water filters on the same two layers, so
+    the two paths agree on a file that carries one."""
+    path = tmp_path / "water_distance.json"
+    _write_water_distance_file(
+        path,
+        [
+            {"layer": "shelters", "poi_id": "atc_shelters:s-1", "distance_ft": 120},
+            {"layer": "viewpoints", "poi_id": "atc_shelters:s-1", "distance_ft": 10},
+        ],
+    )
+
+    assert export_poi.load_water_distances(path) == {"atc_shelters:s-1": export_poi.WaterDistance(120, None)}

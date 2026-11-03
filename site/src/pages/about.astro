@@ -5,6 +5,14 @@
 // document lives in the repository and is linked rather than duplicated;
 // this page is the reading of it a hiker or a journalist needs.
 import Base from '../layouts/Base.astro'
+import { readRegistry, registeredOrgs, shipping } from '../lib/orgRoster.mjs'
+
+// The organization counts below are the registry's, read when the site is
+// built (#1877). This page said "five organizations" and named them until
+// 2026-10-23, while sources.json registered 150; the names now live on
+// /organizations/, which lists every one.
+const ROSTER = registeredOrgs(readRegistry())
+const SHIPPING = shipping(ROSTER).length
 
 const title = 'About OurHike'
 const description =
@@ -68,7 +76,7 @@ const values = [
       </div>
       <p class="lede">
         OurHike is a free, open-source, offline-first map inspired by the
-        Appalachian Trail and built from five trail organizations' own
+        Appalachian Trail and built from {SHIPPING} organizations' own
         published data — made by volunteers, for the places where a map that
         needs signal is no map at all. It exists because the tools trail communities
         depend on keep getting bought, closed, or shut down, and the answer to
@@ -133,11 +141,14 @@ const values = [
         <h2>Where the data comes from</h2>
       </div>
       <p style="margin-bottom: 12px">
-        The trail centerline and facilities come from five organizations'
-        published GIS layers: the Appalachian Trail Conservancy, the New
-        York-New Jersey Trail Conference, NY State Parks, Mohonk Preserve, and
-        NYS DEC. The topo background is USGS US Topo; elevation is sampled
-        from USGS 3DEP survey data. Water sources draw on © OpenStreetMap
+        Trails, shelters, closures and alerts come from {SHIPPING}
+        organizations' own published data, from the Appalachian Trail
+        Conservancy's centerline to state parks, national forests and the
+        volunteer clubs that blaze the trails. All {ROSTER.length} registered
+        organizations, and how many of each one's datasets reach the app, are
+        on <a href="/organizations/">Whose data is on the map</a>. The topo
+        background is USGS US Topo; elevation is sampled from USGS 3DEP survey
+        data. Water sources draw on © OpenStreetMap
         contributors (ODbL) and the National Hydrography Dataset.
       </p>
       <p>

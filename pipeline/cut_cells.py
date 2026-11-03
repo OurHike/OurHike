@@ -226,6 +226,92 @@ def _bounds_header(source_header: dict, bounds_merc: tuple[float, float, float, 
     }
 
 
+def covered_bounds(
+    cell: tuple[float, float, float, float],
+    bounds_merc: tuple[float, float, float, float],
+) -> list[float]:
+    """The part of `cell` a cut actually put tiles in, as lon/lat.
+
+    THE CELL IS THE PROMISE AND THIS IS THE DELIVERY, and until #1458 only
+    the promise was published. A cell is a whole graticule square, but the
+    tiles routed into it are whatever the source archive held over that
+    square - and a source clipped to a trail corridor holds a band across
+    one corner of it, not the square. `n40w074` is the measured case
+    (2026-09-15, against the published `at_basemap_cell_n40w074.pmtiles`):
+    it declares 40.0 to 41.0 and its 290 tiles stop at 40.714, so Brooklyn,
+    Queens and Staten Island are inside the declared square with no tile at
+    any zoom - while the phone read the square, called itself covered, and
+    said nothing over the blank paper.
+
+    TWO UNDERSTATEMENTS, AND BOTH ARE DELIBERATE:
+
+    - CLIPPED TO THE CELL, so the seam margin stays what the index comment
+      below has always said it is - generosity in the bytes, never a promise
+      in the metadata. A tile pulled in by SEAM_MARGIN_KM lies outside the
+      square and does not widen this.
+    - A BOUNDING BOX, so it is generous INSIDE the square. The corridor is a
+      thin band and the box around it holds ground the band misses, which
+      keeps the guarantee that matters: WITHIN THE SQUARE, every tile the
+      cell holds lies inside this rectangle. So narrowing a footprint onto
+      it can never tell a hiker they are outside a download that would in
+      fact have drawn for them. The error it removes is the other one -
+      claiming ground that is not there - which is the direction nothing
+      checked before.
+
+    Within the square is the whole of the guarantee, and the margin is why
+    it is stated that way rather than more simply. A tile borrowed from the
+    neighbour can sit wholly outside this square and is therefore outside
+    `covered` - but it was outside `bounds` too, so a phone reading either
+    key answers identically there. The margin was never a coverage claim;
+    this does not make it one, and does not take one away.
+
+    So `covered` is a subset of `bounds`, and inside `bounds` it contains
+    every tile the cell holds. A client may use it wherever it used `bounds`
+    and be strictly more honest; one that does not know the key is exactly
+    as wrong as it was.
+    """
+    min_lon, min_lat = merc_to_lonlat(bounds_merc[0], bounds_merc[1])
+    max_lon, max_lat = merc_to_lonlat(bounds_merc[2], bounds_merc[3])
+    west, south, east, north = cell
+    box = [
+        max(_widen(max(min_lon, west), out=False), west),
+        max(_widen(max(min_lat, south), out=False), south),
+        min(_widen(min(max_lon, east), out=True), east),
+        min(_widen(min(max_lat, north), out=True), north),
+    ]
+    # A box with no area is the clip of tiles that all lie OUTSIDE the square
+    # - what release 2026-09-16-4 published for n38w082, `[-81.21, 38.0,
+    # -81.0, 37.996]`, south above north (#1559). cut_cells() no longer
+    # builds such a cell; this refuses to describe one, so the index can
+    # never again carry a claim the app has to throw the whole file away over.
+    if not (box[0] < box[2] and box[1] < box[3]):
+        raise ValueError(
+            f"cell {cell} holds no tile inside its own square (its tiles span "
+            f"{(min_lon, min_lat, max_lon, max_lat)}); a cell the margin alone reaches is not built"
+        )
+    return box
+
+
+#: Degrees the published index rounds to. Six places is ~11 cm of latitude -
+#: far below anything a tile boundary means - and it is what `bounds` has
+#: always used, so the two keys read as one vocabulary.
+_INDEX_PLACES = 6
+
+
+def _widen(value: float, *, out: bool) -> float:
+    """`value` rounded to the index's precision, AWAY from the interior.
+
+    Rounding to nearest would quietly break the guarantee covered_bounds()
+    is documented on: a west edge rounded UP by half a micro-degree excludes
+    the tile it came from, and the invariant stops holding by 3e-9 degrees -
+    caught by the test, and the kind of thing that is much cheaper to make
+    impossible than to argue is too small to matter. Rounding outward costs
+    at most 11 cm of over-claim against a 3 km margin.
+    """
+    scale = 10**_INDEX_PLACES
+    return (math.ceil if out else math.floor)(value * scale) / scale
+
+
 def cut_cells(
     source_path: Path,
     family: str,
@@ -274,17 +360,34 @@ def cut_cells(
         # archive.
         lookup = GraticuleLookup(candidates)
         candidate_routing: dict[tuple[int, int, int], list[int]] = {}
+        # The cells a tile lies IN, as against the cells its margin reaches.
+        # Only the first makes a cell worth building - see below.
+        core_populated: set[int] = set()
         context_tile_count = 0
         for (z, x, y), _data in all_tiles(get_bytes):
             if z > context_zoom:
-                candidate_routing[(z, x, y)] = lookup.hits(tile_bounds_lonlat(z, x, y), margin_km)
+                tile = tile_bounds_lonlat(z, x, y)
+                candidate_routing[(z, x, y)] = lookup.hits(tile, margin_km)
+                core_populated.update(lookup.hits(tile, 0.0))
             else:
                 context_tile_count += 1
 
-        # Keep only the cells that are somebody's map. An empty candidate is
-        # ordinary - it is ground the corridor does not cross - and building
-        # it would publish an archive that 404s nothing and covers nothing.
-        populated = sorted({index for indices in candidate_routing.values() for index in indices})
+        # Keep only the cells that are somebody's map: one with a tile inside
+        # its own square. An empty candidate is ordinary - it is ground the
+        # corridor does not cross - and building it would publish an archive
+        # that 404s nothing and covers nothing.
+        #
+        # INSIDE ITS OWN SQUARE, not merely reached by the margin (#1559).
+        # Routing widens every tile by the seam margin, so a square the
+        # corridor passes just outside of used to collect its neighbour's
+        # edge tiles and be built from those alone - 22 such cells in release
+        # 2026-09-16-4 (four each in at_basemap and dem, fourteen in
+        # nearby_trails, n38w082 the first), every one holding only tiles its
+        # neighbour also holds inside the neighbour's square. covered_bounds()
+        # then clipped their box to a square none of their ground was in and
+        # published an inverted or zero-width rectangle, and the app, whole or
+        # nothing over a bad row, refused all three indexes.
+        populated = sorted(core_populated)
         if not populated:
             raise SystemExit(
                 f"{source_path}: no tile in this archive falls in any whole-degree cell of its own "
@@ -293,7 +396,10 @@ def cut_cells(
 
         cells = [candidates[i] for i in populated]
         renumber = {old: new for new, old in enumerate(populated)}
-        routing = {address: [renumber[i] for i in indices] for address, indices in candidate_routing.items()}
+        # A tile whose every hit is a square that is not built goes nowhere.
+        # It lies inside no candidate square at all - past the bounds the
+        # source header declares - so no cell's `bounds` ever drew it either.
+        routing = {address: [renumber[i] for i in indices if i in renumber] for address, indices in candidate_routing.items()}
 
         # Pass 2: stream bytes into one writer per artifact. No context
         # artifact when the source holds nothing at or under the context zoom
@@ -354,6 +460,12 @@ def cut_cells(
     # margin as coverage. The list is what was BUILT, which is not the same
     # set as what the grid defines - and that difference is the one thing a
     # client cannot compute for itself.
+    #
+    # `covered` is the same sentence pointed the other way (#1458): the cell
+    # is the ground PROMISED and `covered` the ground DELIVERED, which had
+    # never been published, so a phone had nothing to read but the promise.
+    # See covered_bounds() for the two understatements that make it safe to
+    # narrow a footprint onto.
     index = {
         "cell_degrees": CELL_DEGREES,
         "seam_margin_km": margin_km,
@@ -364,6 +476,7 @@ def cut_cells(
                 "name": cell_name(c[0], c[1]),
                 "key": cell_key[i],
                 "bounds": [round(v, 6) for v in c],
+                "covered": covered_bounds(c, tuple(bounds[cell_key[i]])),
             }
             for i, c in enumerate(cells)
         ],

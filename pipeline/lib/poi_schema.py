@@ -1,8 +1,8 @@
 """Unified POI schema (ROADMAP.md Phase 1 "Unified POI schema"): one shape
 for every point-of-interest source instead of source-specific ones - ATC
 shelters/campsites/vistas/parking/privies, ATC Communities (a resupply proxy),
-opentrail.org's water/resupply tags, and eventually NHD stream crossings (see
-ROADMAP.md's still-exploratory NHD investigation).
+opentrail.org's water/resupply tags, and the site water fetch_trail_water.py
+derives from NHD and OSM streams.
 
 Pure module - no I/O, no DuckDB, no network. export_poi.py is what wires
 this up against real raw GeoJSON and the corridor clip.
@@ -27,7 +27,7 @@ this up against real raw GeoJSON and the corridor clip.
 #
 # `trailhead` joined ninth (#1197). Where a hiker STARTS, which is neither
 # `parking` (a lot is where a car waits; a trailhead is where the walking
-# begins, and the two are often not the same point) nor `crossing`. Its
+# begins, and the two are often not the same point) nor a crossing. Its
 # absence was the reason export_nearby_poi.py dropped every trailhead three
 # orgs publish - POI_COVERAGE_SURVEY.md 7c counted DEC 10,520, OPRHP 287,
 # NYNJTC 26 - with the named reason "POI_TYPES has no trailhead category".
@@ -37,7 +37,6 @@ POI_TYPES = (
     "campsite",
     "water",
     "resupply",
-    "crossing",
     "viewpoint",
     "parking",
     "privy",
@@ -47,8 +46,6 @@ POI_TYPES = (
 #: The poi_types export_poi.py's own completeness gate may legally publish
 #: nothing for, each with the reason it is empty rather than broken:
 #:
-#:   crossing   filled from NHD and OSM geometry rather than an ATC layer,
-#:              and empty until fetch_trail_water.py has run.
 #:   trailhead  ATC publishes no trailhead layer at all (#1197). The 287 that
 #:              ship are OPRHP's and they travel in nearby_poi.geojson, which
 #:              export_poi.py does not write.
@@ -58,8 +55,37 @@ POI_TYPES = (
 #: export_poi.py's gate from the manifest on disk rather than sharing its
 #: process, so it had its own hardcoded copy - {"poi:crossing": 0} - that
 #: `trailhead` joining this dict never reached. Both read this tuple now, so
-#: there is one dict to update rather than two to remember.
-ALLOWED_EMPTY_POI_TYPES = {"crossing": 0, "trailhead": 0}
+#: there is one dict to update rather than two to remember. (`crossing` left
+#: this dict with the type itself - see WITHDRAWN_POI_TYPES.)
+ALLOWED_EMPTY_POI_TYPES = {"trailhead": 0}
+
+#: poi_types a release USED to publish and deliberately no longer does, each
+#: with why - the one way a category leaves, as POI_TYPES is the one way it
+#: arrives.
+#:
+#: Removing a type from POI_TYPES alone does not remove it from what hikers
+#: download, because three things in the release machinery are built to keep
+#: an artifact once it exists, each for a good reason about ordinary artifacts:
+#:
+#:   - publish.py carries every key of the previous `latest.json` forward
+#:     ("a name that is live stays live", R2_LAYOUT.md), so the last
+#:     `poi_<type>.*` written would ride into every new release folder;
+#:   - verify_release.py's check 3 fails a release that loses an artifact
+#:     the previous one served;
+#:   - reconcile_poi_identity.py refuses a run that retires more than
+#:     MAX_RETIRE_SHARE of the ledger, which a whole type going can exceed.
+#:
+#: Each of the three reads this dict and lets exactly these types go. A type
+#: here must not also be in POI_TYPES - test_poi_schema.py holds that.
+#:
+#:   crossing   The stream crossings fetch_trail_water.py derived, 5,318 on
+#:              production release 2026-09-04. Removed on 2026-09-26 at the
+#:              maintainer's request (#1674): "Crossings are cluttering the
+#:              map. Remove the crossing from the legend and do not show on
+#:              the map. If it is a complex transformation step, remove."
+WITHDRAWN_POI_TYPES = {
+    "crossing": "#1674 - removed from the map, the legend and the pipeline at the maintainer's request",
+}
 
 # Two tiers is enough for the one real distinction this schema needs to make
 # today: ATC's Communities layer (a town being an "official A.T. Community"

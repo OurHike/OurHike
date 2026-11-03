@@ -61,6 +61,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, bootFreshPage } from './support/seed'
 import { writeIDBEntries } from './support/idb'
+import { setSignal } from './support/signal'
 
 /** The kept copy of `places.json`, as lib/conditionsCache.ts keys it
  *  (`ourhike:conditions:` + the bucket key) and lib/places.ts validates it.
@@ -249,9 +250,13 @@ test.describe('first run, and what its cards say with nothing behind them', () =
     // Playwright's own offline, not a stubbed `navigator.onLine`: the app
     // reads the browser's answer through lib/useOnline.ts's event listeners,
     // and this is the event a phone losing signal actually fires. Set after
-    // the boot, because the app has to be served before it can be cut off.
+    // the boot, because the app has to be served before it can be cut off -
+    // and through `setSignal`, which waits until the page's own window has
+    // received the event rather than until the context has flipped. Those
+    // are different moments, and this test failed on WebKit in the gap
+    // between them: support/signal.ts has the measurement.
     await page.goto('/')
-    await context.setOffline(true)
+    await setSignal(page, context, { on: false })
 
     await page.getByRole('button', { name: 'Get set up' }).click()
     await page

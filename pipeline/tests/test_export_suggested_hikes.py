@@ -1,67 +1,74 @@
-"""export_suggested_hikes.py - the reviewed rows as the artifact the shelf reads (#1290).
+"""export_suggested_hikes.py - the graded routes as the artifact the shelf
+reads (#1427).
 
-The synthetic graph from test_lib_trail_graph_route.py, a one-hike cache in
-the shape fetch_nynjtc_hikes.py writes, reference rows, and a registry in a
-temp directory - never the real network, cache or rows (TESTING.md).
+The synthetic graph from test_lib_trail_graph_route.py, a cache in the shape
+fetch_hikefinder.py writes, and a routes file in the shape route_hikefinder.py
+writes, all in a temp directory - never the real network, cache or graph
+(TESTING.md).
 
-What is pinned is the three gates and the contract: nothing ships from an
-entry that does not reach hikers, nothing ships from a row nobody signed
-off, a signed-off row the ground moved from under is dropped loudly and
-named in the manifest, and what does ship is spelled the way
-lib/suggestedHikesData.ts reads it - ends as snapped coordinates, a loop
-closed by repeating its first end, a climb that is absent rather than zero
-when nothing priced it, a photo that is absent rather than uncredited.
+What is pinned is the gate and the contract: nothing ships from an entry that
+does not reach hikers, nothing ships from a route graded `rejected`, a
+published line that this build's lines cannot re-walk is dropped rather than
+re-drawn, and what does ship is spelled the way lib/suggestedHikesData.ts
+reads it - ends as snapped coordinates, a loop closed by repeating its first
+end, and the publisher's own tags carried through.
 """
 
 from __future__ import annotations
 
 import json
+import pathlib
+import re
 
 import pytest
 
 import export_suggested_hikes as exporter
-import route_nynjtc_hikes as script
-from lib.nynjtc_hikes import SOURCE_KEY
+from lib.hikefinder import SOURCE_KEY
+from lib.r2_keys import assert_valid_keys
 from tests.test_lib_trail_graph_route import LAT, LON, STEP, graph_files
 
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 STEWARD = "New York-New Jersey Trail Conference"
-
-
-def registry(reaches: bool = True) -> dict:
-    return {"sources": [{"key": SOURCE_KEY, "kind": "published_hikes", "steward": STEWARD, "reaches_hikers": reaches}]}
 
 
 def hike(**overrides) -> dict:
     base = {
+        "id": 7,
         "name": "Pine Meadow Loop",
-        "source_url": "https://www.nynjtc.org/hike/pine/",
-        "difficulty": "easy-moderate",
-        "stated_miles": 0.25,
-        "terms": {
-            "route-type": [{"slug": "loop", "name": "Loop"}],
-            "park": [{"slug": "h", "name": "Harriman State Park"}],
-            "trail": [{"slug": "p", "name": "Pine Meadow Trail"}, {"slug": "r", "name": "Ridge Loop"}],
-        },
-        "overview": ["A short loop."],
-        "description": ["Turn right onto the Ridge Loop."],
-        "publication": {"submitted_by": "Daniel Chazin", "submitted_on": "2016-08-24", "verified_on": "2021-08-15"},
-        "start": {"lat": LAT, "lon": LON, "basis": "marker"},
-        "photo": {"key": "photos/" + "a" * 64 + ".jpg", "digest": "a" * 64, "credit": "Daniel Chazin"},
+        "source_url": "https://example.test/hikefinder/hike.php?id=7",
+        "summary": "A short loop.",
+        "stated_miles": 0.3,
+        "difficulty": "Easy To Moderate",
+        "estimated_hours": 1.0,
+        "route_type": "Circuit",
+        "dogs": "Allowed on leash",
+        "park": "Harriman State Park",
+        "region": "Lower Hudson",
+        "author": "Daniel Chazin",
+        "features": ["Views", "Waterfall"],
+        "published_on": "July 11, 2013",
+        "updated_on": None,
+        "directions": ["Park at the gate."],
+        "description": ["Follow the Pine Meadow Trail."],
+        "public_transport": [],
+        "has_published_route": False,
+        "start": {"lat": LAT, "lon": LON, "label": "Parking location"},
     }
     base.update(overrides)
     return base
 
 
-def row(**overrides) -> dict:
+def route(**overrides) -> dict:
     base = {
-        "status": "reviewed",
+        "hike_id": 7,
+        "provenance": "generated",
+        "grade": "strong",
+        "ends": [[LON, LAT], [LON + 2 * STEP, LAT]],
         "closed": True,
-        "ends": [[LON + 0.2 * STEP, LAT], [LON + 2 * STEP, LAT + 0.9 * STEP]],
-        "measured_miles": 0.3,
-        "basis": "two junctions",
-        "hiker_note": "Starts at the kiosk.",
-        "proposed": "2026-09-09",
-        "reviewed": "2026-09-10",
+        "miles": 0.3,
+        "stated_miles": 0.3,
+        "problems": [],
+        "climb": None,
     }
     base.update(overrides)
     return base
@@ -72,247 +79,714 @@ def sandbox(tmp_path, monkeypatch):
     processed = tmp_path / "processed"
     processed.mkdir()
     graph_files(processed)
-    raw = tmp_path / "raw"
-    raw.mkdir()
-    cache_path = raw / "nynjtc_hikes.json"
-    cache_path.write_text(json.dumps({"hikes": {"hike-pine": hike()}}))
-    reference_path = tmp_path / "routes.json"
-    reference_path.write_text(json.dumps({"routes": {"hike-pine": row()}}))
-    registry_path = tmp_path / "sources.json"
-    registry_path.write_text(json.dumps(registry()))
-    monkeypatch.setattr(script, "CACHE_PATH", cache_path)
-    monkeypatch.setattr(script, "REFERENCE_PATH", reference_path)
-    monkeypatch.setattr(exporter, "SOURCES_PATH", registry_path)
-    monkeypatch.setattr(exporter, "PROCESSED_DIR", processed)
-    monkeypatch.setattr(exporter, "OUT_PATH", processed / "suggested_hikes.json")
-    monkeypatch.setattr(exporter, "MANIFEST_PATH", processed / "suggested_hikes_manifest.json")
-    return {"processed": processed, "cache": cache_path, "reference": reference_path, "registry": registry_path}
+    sources = tmp_path / "sources.json"
 
-
-def published(sandbox) -> dict:
-    return json.loads((sandbox["processed"] / "suggested_hikes.json").read_text())
-
-
-class TestTheGates:
-    def test_an_entry_that_does_not_reach_hikers_publishes_nothing(self, sandbox, capsys):
-        sandbox["registry"].write_text(json.dumps(registry(reaches=False)))
-
-        assert exporter.main() is None
-        assert not (sandbox["processed"] / "suggested_hikes.json").exists()
-        assert "reaches_hikers: false" in capsys.readouterr().out
-
-    def test_a_proposed_row_is_not_close_enough(self, sandbox, capsys):
-        sandbox["reference"].write_text(json.dumps({"routes": {"hike-pine": row(status="proposed", reviewed=None)}}))
-
-        assert exporter.main() is None
-        assert not (sandbox["processed"] / "suggested_hikes.json").exists()
-        assert "1 proposed, waiting for sign-off" in capsys.readouterr().out
-
-    def test_a_held_row_never_ships(self, sandbox):
-        sandbox["reference"].write_text(
+    def registry(reaches: bool = True):
+        sources.write_text(
             json.dumps(
-                {
-                    "routes": {
-                        "hike-pine": row(),
-                        "hike-far": {"status": "held", "reason": "no lines - #1293", "proposed": "2026-09-09"},
-                    }
-                }
+                {"sources": [{"key": SOURCE_KEY, "kind": "published_hikes", "steward": STEWARD, "reaches_hikers": reaches}]}
             )
         )
 
-        manifest = exporter.main()
-        assert manifest["count"] == 1
-        assert [h["id"] for h in published(sandbox)["hikes"]] == [f"{SOURCE_KEY}:hike-pine"]
+    registry()
+    monkeypatch.setattr(exporter, "SOURCES_PATH", sources)
+    monkeypatch.setattr(exporter, "PROCESSED_DIR", processed)
+    monkeypatch.setattr(exporter, "OUT_PATH", processed / "suggested_hikes.json")
+    monkeypatch.setattr(exporter, "MANIFEST_PATH", processed / "suggested_hikes_manifest.json")
+    monkeypatch.setattr(exporter, "ROUTES_PATH", processed / "hikefinder_routes.json")
+    monkeypatch.setattr(exporter, "DETAIL_DIR", processed / "suggested_hikes_detail")
+    monkeypatch.setattr(exporter, "DETAIL_MANIFEST_PATH", processed / "suggested_hikes_detail_manifest.json")
 
-    def test_a_reviewed_row_the_ground_moved_from_under_is_dropped_loudly(self, sandbox, capsys):
-        sandbox["reference"].write_text(
-            json.dumps({"routes": {"hike-pine": row(ends=[[LON + 0.2 * STEP, LAT], [LON + 2 * STEP, LAT - 3 * STEP]])}})
-        )
+    # Pointed at a path in the sandbox rather than left at the real
+    # reference/ file, so a suite run once somebody confirms rows does not
+    # start attaching photographs to every test in this file (#1522).
+    confirmed = tmp_path / "nynjtc_hike_photos.json"
+    monkeypatch.setattr(exporter, "CONFIRMED_PHOTOS_PATH", confirmed)
 
-        manifest = exporter.main()
+    def write(hikes: dict, routes: dict):
+        monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: hikes)
+        (processed / "hikefinder_routes.json").write_text(json.dumps({"routes": routes}))
 
-        assert manifest["count"] == 0
-        assert manifest["dropped"] == ["hike-pine"]
-        assert "did not publish" in capsys.readouterr().err
-        assert published(sandbox)["hikes"] == []
+    def confirm(rows, key="photos"):
+        """Write the reviewer's file the way a person would, from the sheet."""
+        confirmed.write_text(json.dumps(rows if key is None else {key: rows}), encoding="utf-8")
 
-    def test_a_reviewed_row_with_no_cached_hike_is_dropped_and_named(self, sandbox, capsys):
-        sandbox["cache"].write_text(json.dumps({"hikes": {"hike-other": hike()}}))
-
-        manifest = exporter.main()
-
-        assert manifest["dropped"] == ["hike-pine"]
-        assert "not in the fetch cache" in capsys.readouterr().err
-
-    def test_reviewed_rows_and_no_cache_is_an_exit(self, sandbox):
-        sandbox["cache"].unlink()
-
-        with pytest.raises(SystemExit, match="no fetch cache"):
-            exporter.main()
-
-
-class TestTheContract:
-    def test_a_reviewed_hike_ships_what_the_client_validates(self, sandbox):
-        manifest = exporter.main()
-        record = published(sandbox)["hikes"][0]
-
-        assert record["id"] == f"{SOURCE_KEY}:hike-pine"
-        assert record["name"] == "Pine Meadow Loop"
-        assert record["miles"] > 0
-        assert record["difficulty"] == "easy-moderate"
-        assert record["author"] == {"kind": "club", "name": STEWARD}
-        assert record["photo"] == {
-            "url": "photos/" + "a" * 64 + ".jpg",
-            "credit": "Photo by Daniel Chazin",
-            "licence": exporter.PHOTO_LICENCE,
-        }
-        assert manifest["count"] == 1
-        assert manifest["with_photo"] == 1
-        assert manifest["path"].endswith("suggested_hikes.json")
-
-    def test_the_ends_are_snapped_onto_the_line_and_a_loop_repeats_its_first_end(self, sandbox):
-        exporter.main()
-        (segment,) = published(sandbox)["hikes"][0]["segments"]
-
-        assert len(segment) == 3
-        assert segment[0] == segment[-1]
-        assert all(point["poiId"] is None for point in segment)
-        # The second end was placed 0.9 * STEP north of the line; what ships
-        # is the point on the line, not the point somebody typed.
-        assert abs(segment[1]["coord"][1] - (LAT + 0.9 * STEP)) < 1e-9 or abs(segment[1]["coord"][1] - LAT) < 1e-6
-
-    def test_an_open_walk_does_not_close(self, sandbox):
-        sandbox["reference"].write_text(json.dumps({"routes": {"hike-pine": row(closed=False)}}))
-
-        exporter.main()
-        (segment,) = published(sandbox)["hikes"][0]["segments"]
-
-        assert len(segment) == 2
-        assert published(sandbox)["hikes"][0]["closed"] is False
-
-    def test_climb_ships_when_priced_and_is_absent_when_not(self, sandbox):
-        exporter.main()
-        assert "climb" in published(sandbox)["hikes"][0]
-        assert set(published(sandbox)["hikes"][0]["climb"]) == {"gainFt", "lossFt"}
-
-        graph_files(sandbox["processed"], misaligned=True)
-        manifest = exporter.main()
-
-        assert "climb" not in published(sandbox)["hikes"][0]
-        assert manifest["with_climb"] == 0
-
-    def test_a_photo_with_no_credit_or_no_bytes_does_not_ship(self, sandbox):
-        sandbox["cache"].write_text(
-            json.dumps({"hikes": {"hike-pine": hike(photo={"key": "photos/" + "b" * 64 + ".jpg", "credit": None})}})
-        )
-        exporter.main()
-        assert "photo" not in published(sandbox)["hikes"][0]
-
-        sandbox["cache"].write_text(
-            json.dumps({"hikes": {"hike-pine": hike(photo={"credit": "Jane Daniels", "source_url": "https://x/y.jpg"})}})
-        )
-        exporter.main()
-        assert "photo" not in published(sandbox)["hikes"][0]
-
-    def test_the_detail_fields_carry_nynjtcs_own_facts_beside_this_builds_measurement(self, sandbox):
-        exporter.main()
-        record = published(sandbox)["hikes"][0]
-
-        assert record["publishedMiles"] == 0.25
-        assert record["measured"]["miles"] == record["miles"]
-        assert record["measured"]["note"] == exporter.router.SAME_TREAD_NOTE
-        assert [leg["name"] for leg in record["measured"]["legs"]]
-        assert record["park"] == "Harriman State Park"
-        assert record["trails"] == ["Pine Meadow Trail", "Ridge Loop"]
-        assert record["publication"]["verifiedOn"] == "2021-08-15"
-        assert record["hikerNote"] == "Starts at the kiosk."
-        assert record["reviewed"] == "2026-09-10"
-        assert record["url"] == "https://www.nynjtc.org/hike/pine/"
-        assert record["overview"] == ["A short loop."]
-
-    def test_the_document_is_dated_and_named(self, sandbox):
-        exporter.main()
-        document = published(sandbox)
-
-        assert document["source"] == SOURCE_KEY
-        assert document["generated_at"].endswith("Z")
+    return {
+        "processed": processed,
+        "write": write,
+        "registry": registry,
+        "confirm": confirm,
+        "confirmed_path": confirmed,
+        "out": processed / "suggested_hikes.json",
+    }
 
 
-class TestVariants:
-    """One NYNJTC page, three walks (#1290, maintainer's call 2026-09-09).
+def published(sandbox) -> list[dict]:
+    return json.loads(sandbox["out"].read_text())["hikes"]
 
-    "Platte Clove to Overlook Mountain via Codfish Point and Echo Lake"
-    offers 4.5, 8.8 and 13 miles under one title. A row key is the slug plus
-    "#" and a variant name; everything before the "#" is the cache key and
-    the page a hiker is sent to.
+
+def detail_of(record: dict) -> dict:
+    """The detail object published beside one shelf record (#1473).
+
+    Keyed on the number off the record's own id, which is what the client
+    builds its URL from - so reading it this way exercises the same lookup a
+    phone does rather than trusting the filename.
     """
+    number = record["id"].split(":", 1)[-1]
+    return json.loads((exporter.DETAIL_DIR / f"{number}.json").read_text())
 
-    def rows(self) -> dict:
-        return {
-            "hike-pine#short": row(
-                name="Pine Meadow, the short way", ends=[[LON + 0.2 * STEP, LAT], [LON + STEP, LAT]], closed=False
-            ),
-            "hike-pine#long": row(
-                name="Pine Meadow to the ridge", ends=[[LON + 0.2 * STEP, LAT], [LON + 2 * STEP, LAT]], closed=False
-            ),
-        }
 
-    def test_both_variants_ship_from_one_cached_hike(self, sandbox):
-        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
+# --- the gates -----------------------------------------------------------------
 
-        manifest = exporter.main()
 
-        assert manifest["count"] == 2
-        # Published in key order, which is deterministic and is all this end
-        # promises - the shelf and the finder sort for themselves.
-        records = published(sandbox)["hikes"]
-        assert [r["name"] for r in records] == ["Pine Meadow to the ridge", "Pine Meadow, the short way"]
-        # Both point at NYNJTC's one page.
-        assert {r["url"] for r in records} == {"https://www.nynjtc.org/hike/pine/"}
+def test_an_entry_that_does_not_reach_hikers_publishes_nothing(sandbox, capsys):
+    sandbox["registry"](reaches=False)
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    assert exporter.main() is None
+    assert not sandbox["out"].exists()
 
-    def test_each_variant_gets_its_own_id_so_the_client_cannot_dedupe_them_away(self, sandbox):
-        """lib/suggestedHikesData.ts drops a second record sharing an id.
-        Keying on the base slug would silently lose two of the three."""
-        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
 
-        exporter.main()
+def test_a_rejected_route_ships_nothing_and_is_named_in_the_manifest(sandbox):
+    """Paired with a hike that DOES ship, because a run where nothing passes
+    now writes no artifact at all - see
+    test_a_run_where_nothing_passes_writes_no_artifact_at_all."""
+    sandbox["write"](
+        {"7": hike(), "8": hike(id=8, name="Ridge Walk")},
+        {"7": route(grade="rejected", ends=[], problems=["too far apart"]), "8": route(hike_id=8)},
+    )
+    manifest = exporter.main()
+    assert [record["id"] for record in published(sandbox)] == [f"{SOURCE_KEY}:8"]
+    assert manifest["dropped"] == ["7"]
 
-        ids = [r["id"] for r in published(sandbox)["hikes"]]
-        assert ids == [f"{SOURCE_KEY}:hike-pine#long", f"{SOURCE_KEY}:hike-pine#short"]
-        assert len(set(ids)) == 2
 
-    def test_the_variants_measure_differently(self, sandbox):
-        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
+def test_a_hike_with_no_row_in_the_routes_file_is_dropped_rather_than_guessed(sandbox):
+    sandbox["write"]({"7": hike(), "8": hike(id=8, name="Ridge Walk")}, {"8": route(hike_id=8)})
+    manifest = exporter.main()
+    assert [record["id"] for record in published(sandbox)] == [f"{SOURCE_KEY}:8"]
+    assert manifest["dropped"] == ["7"]
 
-        exporter.main()
-        long, short = published(sandbox)["hikes"]
 
-        assert short["miles"] < long["miles"]
+# --- what a shipped record says ------------------------------------------------
 
-    def test_a_variant_carries_its_own_published_miles(self, sandbox):
-        """NYNJTC states a length per walk, not per page - the row says which
-        of the three this one is, and the parse's single stated_miles cannot."""
-        rows = self.rows()
-        rows["hike-pine#short"]["published_miles"] = 0.1
-        rows["hike-pine#long"]["published_miles"] = 0.2
-        sandbox["reference"].write_text(json.dumps({"routes": rows}))
 
-        exporter.main()
-        long, short = published(sandbox)["hikes"]
+def test_a_generated_route_ships_its_ends_and_says_it_was_generated(sandbox):
+    """The distinction the maintainer asked for, on the record a phone holds:
+    a screen that prints an inference in the voice of a survey is the failure
+    this field exists to prevent."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    assert record["id"] == f"{SOURCE_KEY}:7"
+    assert record["routeProvenance"] == "generated"
+    assert record["routeGrade"] == "strong"
 
-        assert (short["publishedMiles"], long["publishedMiles"]) == (0.1, 0.2)
 
-    def test_a_variant_with_no_name_of_its_own_is_refused(self, sandbox):
-        """Three cards reading identically is worse than a failed export: a
-        hiker choosing between 4.5 and 13 miles could not tell which is which."""
-        rows = self.rows()
-        rows["hike-pine#short"].pop("name")
-        sandbox["reference"].write_text(json.dumps({"routes": rows}))
+def test_a_closed_walk_repeats_its_first_end_so_the_phone_closes_it(sandbox):
+    sandbox["write"]({"7": hike()}, {"7": route(closed=True)})
+    exporter.main()
+    ends = published(sandbox)[0]["segments"][0]
+    assert ends[0]["coord"] == ends[-1]["coord"]
 
-        with pytest.raises(SystemExit, match="carries no `name`"):
-            exporter.main()
 
-    def test_a_plain_row_still_takes_its_name_from_nynjtcs_page(self, sandbox):
-        exporter.main()
+def test_an_open_walk_does_not(sandbox):
+    sandbox["write"]({"7": hike(route_type="Shuttle")}, {"7": route(closed=False)})
+    exporter.main()
+    ends = published(sandbox)[0]["segments"][0]
+    assert ends[0]["coord"] != ends[-1]["coord"]
 
-        assert published(sandbox)["hikes"][0]["name"] == "Pine Meadow Loop"
+
+def test_the_publishers_tags_ride_through_to_the_record(sandbox):
+    """ "Especially the tags" - they are the facets the finder filters on."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    assert published(sandbox)[0]["features"] == ["Views", "Waterfall"]
+
+
+def test_everything_the_export_said_is_carried_across_the_two_objects(sandbox):
+    """#1473 split the record; it did not drop anything out of it. What the
+    export said still all ships - the finder's facts on the shelf, the prose
+    in the hike's own object - and this walks both sides to prove it."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    detail = detail_of(record)
+
+    # On the shelf, because a finder filters what it already holds.
+    assert record["park"] == "Harriman State Park"
+    assert record["routeType"] == "Circuit"
+    assert record["dogs"] == "Allowed on leash"
+
+    # In the hike's own object, because only its screen reads them.
+    assert detail["directions"] == ["Park at the gate."]
+    assert detail["publishedMiles"] == 0.3
+    assert detail["overview"] == ["A short loop."]
+
+
+def test_the_two_authors_are_kept_apart(sandbox):
+    """A collision flattening the record exposed. `author` at the top level is
+    the client's own field and means the PUBLISHING ORGANIZATION - it is what
+    the card's "by" line names, and features/SUGGESTED_HIKES.md makes naming
+    that organization the premise of showing a route at all. The person who
+    wrote this particular hike up is a different fact, and it goes where the
+    client reads it: `publication.submittedBy`."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    assert record["author"] == {"kind": "club", "name": STEWARD}
+    assert detail_of(record)["publication"]["submittedBy"] == "Daniel Chazin"
+
+
+def test_a_hike_naming_no_author_ships_no_publication_block(sandbox):
+    """validPublication refuses a block with no submittedBy, so an empty one
+    would be a field the client drops anyway - and a card printing "written by"
+    with nobody after it is worse than one printing nothing."""
+    sandbox["write"]({"7": hike(author=None)}, {"7": route()})
+    exporter.main()
+    assert "publication" not in published(sandbox)[0]
+
+
+# --- difficulty is quoted, and one level does not fit --------------------------
+
+
+def test_the_publishers_difficulty_becomes_the_slug_the_client_holds(sandbox):
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    assert published(sandbox)[0]["difficulty"] == "easy-moderate"
+
+
+def test_very_strenuous_takes_the_hardest_slug_there_is_and_keeps_its_own_word(sandbox):
+    """The client holds five levels and the export publishes six. Mapping it
+    down UNDERSTATES the hike, which is the unsafe direction, so the
+    publisher's own label rides along and the card can print it."""
+    sandbox["write"]({"7": hike(difficulty="Very Strenuous")}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    assert record["difficulty"] == "strenuous"
+    assert record["publishedDifficulty"] == "Very Strenuous"
+
+
+def test_a_difficulty_the_client_has_no_slot_for_is_absent_rather_than_guessed(sandbox):
+    sandbox["write"]({"7": hike(difficulty="Brutal")}, {"7": route()})
+    exporter.main()
+    assert published(sandbox)[0]["difficulty"] is None
+
+
+# --- a published line has to survive the round trip ----------------------------
+
+
+def test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorded(sandbox):
+    """The claim being made is "the phone walking these ends walks the line the
+    publisher drew", and it is only made after measuring it."""
+    ends = [[LON, LAT], [LON + STEP, LAT], [LON + 2 * STEP, LAT], [LON + 3 * STEP, LAT]]
+    miles = exporter.router.metres_to_miles(exporter.router.metres_between((LON, LAT), (LON + 3 * STEP, LAT)))
+    sandbox["write"](
+        {"7": hike(has_published_route=True, route_type="Shuttle")},
+        {"7": route(provenance="published", ends=ends, closed=False, miles=miles, stated_miles=miles)},
+    )
+    manifest = exporter.main()
+    record = published(sandbox)[0]
+    assert record["routeProvenance"] == "published", "provenance rides the SHELF, beside the line it describes"
+    assert "trackReproduction" in detail_of(record)
+    assert manifest["by_provenance"] == {"published": 1}
+
+
+def test_a_track_that_leaves_this_builds_lines_is_dropped_rather_than_re_drawn(sandbox):
+    """49 of the export's 113 tracks do this. Snapping them onto whatever
+    happens to be nearest would publish a line the surveyor never walked."""
+    ends = [[LON + 1.0, LAT + 1.0], [LON + 1.01, LAT + 1.0]]
+    sandbox["write"](
+        {"7": hike(has_published_route=True, route_type="Shuttle"), "8": hike(id=8, name="Ridge Walk")},
+        {
+            "7": route(provenance="published", ends=ends, closed=False, miles=0.6, stated_miles=0.6),
+            "8": route(hike_id=8),
+        },
+    )
+    manifest = exporter.main()
+    assert [record["id"] for record in published(sandbox)] == [f"{SOURCE_KEY}:8"]
+    assert manifest["dropped"] == ["7"]
+
+
+# --- the manifest --------------------------------------------------------------
+
+
+def test_the_manifest_counts_the_two_provenances_apart(sandbox):
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    manifest = exporter.main()
+    assert manifest["count"] == 1
+    assert manifest["by_provenance"] == {"generated": 1}
+    assert manifest["with_tags"] == 1
+
+
+# --- the wire shape, guarded across the two suites -----------------------------
+
+CLIENT_VALIDATOR = ROOT.parent / "client" / "src" / "lib" / "suggestedHikesData.ts"
+
+
+def _fields_the_client_reads() -> set[str]:
+    """Every `raw.<name>` inside the client's `validDetail`, read from the
+    client's own source rather than copied here.
+
+    Copying the list would be a second place for it to be wrong, which is the
+    whole defect this guards against.
+    """
+    source = CLIENT_VALIDATOR.read_text(encoding="utf-8")
+    body = source[source.index("function validDetail(") :]
+    body = body[: body.index("\n}\n")]
+    return set(re.findall(r"raw\.(\w+)", body))
+
+
+def test_the_record_is_flat_because_the_client_reads_it_flat(sandbox):
+    """THE BUG THIS EXISTS FOR, and it shipped green.
+
+    `validDetail` is handed the WHOLE record and reads `raw.url`,
+    `raw.publishedMiles`, `raw.description` off the top level - its own test
+    pins it as "reads nothing out of a nested `detail`, which is not the wire
+    shape". An earlier version of the exporter nested them under a `detail`
+    key, which dropped every one on the phone while BOTH suites stayed green:
+    this one asserted the nested shape, the client's asserted the flat one,
+    and they never met.
+
+    So this test reads the client's own validator and checks the exporter
+    against it. It fails if either side moves without the other.
+
+    #1473 SPLIT THE RECORD AND THIS GOT STRONGER RATHER THAN WEAKER. The
+    fields are still flat - `validDetail` is handed a whole object either way
+    - but they now live across two of them, so what has to hold is that the
+    UNION covers what the client reads. A field that fell out of the shelf and
+    never landed in the detail would be exactly the original bug wearing a new
+    coat.
+    """
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    detail = detail_of(record)
+
+    for obj, where in ((record, "shelf record"), (detail, "detail object")):
+        assert "detail" not in obj, f"the fields are flat on the wire - validDetail reads the whole {where}"
+
+    wanted = _fields_the_client_reads()
+    carried = set(record) | set(detail)
+    missing = wanted - carried
+    # `hikerNote` is deliberately never written: its contract is that a person
+    # reviewed the route, and nobody has reviewed these.
+    assert missing <= {"hikerNote"}, f"the client reads {sorted(missing)} and neither object carries them"
+
+
+def test_the_shelf_and_the_detail_share_no_field(sandbox):
+    """What lib/useHikeDetail.ts's merge rests on (#1473).
+
+    It spreads the fetched detail OVER the shelf's own fields, which is only
+    safe while the two carry nothing in common - the moment they overlap,
+    spread order silently becomes a precedence decision nobody made, and the
+    field it would quietly win is `routeProvenance`: the one that says whether
+    a hiker is looking at a line somebody drew or a line this pipeline
+    inferred.
+
+    Disjoint by construction today, since the detail is built by excluding
+    SHELF_FIELDS. This is the guard for the day somebody adds a field to both
+    lists by hand.
+    """
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    detail = detail_of(record)
+
+    shared = (set(record) & set(detail)) - {"id"}
+    assert shared == set(), f"{sorted(shared)} is on both objects - useHikeDetail's merge would pick a winner silently"
+    assert detail["id"] == record["id"], "a detail fetched on its own has to say which hike it is"
+
+
+def test_every_detail_key_is_one_the_bucket_will_accept(sandbox):
+    """The check that would have caught this split breaking the whole publish.
+
+    publish.py calls `assert_valid_keys` over every artifact BEFORE it opens a
+    connection, and that call RAISES - so one illegal name among the details
+    does not skip those objects, it aborts the vector-data publish entirely
+    and the bucket goes on serving the release before it. The first version of
+    #1473 keyed these `suggested_hikes_detail/<n>.json`, which is a top-level
+    prefix nobody declared in lib/r2_keys.py, and CI was green on it: no suite
+    ran a real key through the validator.
+
+    This runs the manifest publish.py actually reads, rather than a key built
+    by hand here, so a template changed in one place and not the other fails
+    here instead of in the bucket.
+    """
+    sandbox["write"](
+        {"7": hike(), "1234": hike(id=1234, name="Another Walk")},
+        {"7": route(), "1234": route(hike_id=1234)},
+    )
+    exporter.main()
+
+    keys = list(json.loads(exporter.DETAIL_MANIFEST_PATH.read_text())["artifacts"])
+    assert keys, "the manifest is what publish.py uploads from; an empty one publishes no prose at all"
+    assert_valid_keys(keys)
+
+
+def test_a_stale_detail_from_an_earlier_run_is_not_left_behind(sandbox):
+    """A hike dropped or renumbered between runs leaves prose in the bucket
+    that no shelf record points at. Harmless to a phone, which never asks for
+    it - and exactly the kind of debris that makes a later reader mistrust the
+    whole family."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    orphan = exporter.DETAIL_DIR / "999.json"
+    orphan.write_text('{"id": "gone:999"}')
+
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    assert not orphan.exists(), "the detail directory is rebuilt, not added to"
+    assert sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json")) == ["7.json"]
+
+
+def test_an_id_this_scheme_cannot_name_costs_the_run_and_not_the_last_good_one(sandbox):
+    """A bad id raises BEFORE anything is deleted, and takes the manifest with
+    it rather than leaving one that names files this run just removed.
+
+    Two ways to get this wrong and one of them is worse than the failure it
+    is reporting: a manifest naming deleted paths is read by publish.py on
+    the NEXT run and aborts the whole vector-data upload, where a missing
+    manifest is read as "this run published no prose" and costs the release
+    its prose alone.
+    """
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    kept = sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json"))
+    assert kept == ["7.json"]
+
+    with pytest.raises(ValueError, match="detailKeyFor"):
+        exporter.write_details([{"id": "nynjtc_favorite_hikes:hike-vista-loop-trail"}])
+    # And the other half of the same gate: a bare number is an id the client
+    # answers null for, so writing its detail would publish prose nothing can
+    # ask for.
+    with pytest.raises(ValueError, match="detailKeyFor"):
+        exporter.write_details([{"id": "50"}])
+
+    assert sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json")) == kept, (
+        "the check runs before the delete, so a bad id leaves the last good run intact"
+    )
+    assert exporter.DETAIL_MANIFEST_PATH.exists(), "nothing was deleted, so the manifest still describes what is there"
+
+
+def test_a_manifest_never_outlives_the_files_it_names(sandbox):
+    """The manifest goes first, so a crash between the delete and the rewrite
+    leaves publish.py with no manifest rather than one pointing at nothing."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    named = json.loads(exporter.DETAIL_MANIFEST_PATH.read_text())["artifacts"]
+    assert all(pathlib.Path(entry["path"]).exists() for entry in named.values())
+
+    # Every id checks out, so this run reaches the delete - and dies there,
+    # the way a killed CI job would.
+    def die(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    original = exporter.sha256_file
+    exporter.sha256_file = die
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            exporter.write_details([{"id": f"{SOURCE_KEY}:7"}])
+    finally:
+        exporter.sha256_file = original
+
+    assert not exporter.DETAIL_MANIFEST_PATH.exists(), (
+        "publish.py reads a missing manifest as 'no prose this run'; one naming deleted paths aborts the publish"
+    )
+
+
+def test_the_provenance_fields_are_spelled_the_way_the_client_reads_them(sandbox):
+    """The point of #1427 reaching a phone at all. These three were added to
+    `validDetail` in the same pull request; if either side is renamed, an
+    inferred line arrives indistinguishable from a published one."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    assert _fields_the_client_reads() >= {"routeProvenance", "routeGrade", "routeNotes"}
+    assert record["routeProvenance"] == "generated"
+    assert record["routeGrade"] == "strong"
+
+
+def test_no_hiker_note_is_written_because_nobody_reviewed_these(sandbox):
+    """`hikerNote` says what a PERSON checked. The machine's account of itself
+    is `routeProvenance`, and the two must not be confused."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    assert "hikerNote" not in published(sandbox)[0]
+
+
+def test_climb_ships_when_the_route_was_priced_and_is_absent_when_it_was_not(sandbox):
+    """Absent means never measured, which the client reads as unknown. Never 0:
+    a walk with one unpriced edge reported as flat fails SHORT, and short is
+    the direction that gets somebody caught by the dark."""
+    sandbox["write"]({"7": hike()}, {"7": route(climb=[420, 380])})
+    exporter.main()
+    assert published(sandbox)[0]["climb"] == {"gainFt": 420, "lossFt": 380}
+
+    sandbox["write"]({"7": hike()}, {"7": route(climb=None)})
+    exporter.main()
+    assert "climb" not in published(sandbox)[0]
+
+
+def test_a_run_where_nothing_passes_writes_no_artifact_at_all(sandbox):
+    """ "Nothing passed grading" and "there are no suggested hikes" are
+    different claims. Writing an empty document makes the client read the
+    second, and publish.py uploads whatever manifest exists with no count of
+    its own - so refusing here is the only thing standing between a bad run
+    and every phone's Today shelf emptying."""
+    sandbox["write"]({"7": hike()}, {"7": route(grade="rejected", ends=[], problems=["too far apart"])})
+    assert exporter.main() is None
+    assert not sandbox["out"].exists()
+
+
+def test_a_published_hikes_climb_is_priced_from_this_builds_graph(sandbox):
+    """#1451. The track's own `<ele>` values are not used; the figure comes
+    from the re-walk that `track_ends` already performs to prove the phone can
+    reproduce the line, which prices climb from this build's sidecar exactly as
+    a generated route's does. One source for one number."""
+    ends = [[LON, LAT], [LON + STEP, LAT], [LON + 2 * STEP, LAT], [LON + 3 * STEP, LAT]]
+    miles = exporter.router.metres_to_miles(exporter.router.metres_between((LON, LAT), (LON + 3 * STEP, LAT)))
+    sandbox["write"](
+        {"7": hike(has_published_route=True, route_type="Shuttle")},
+        {"7": route(provenance="published", ends=ends, closed=False, miles=miles, stated_miles=miles, climb=None)},
+    )
+    exporter.main()
+    record = published(sandbox)[0]
+    # The synthetic graph carries an elevation sidecar that fits it, so the
+    # re-walk prices the climb even though the routes artifact carried none.
+    assert record["climb"]["gainFt"] > 0
+
+
+def test_a_missing_fetch_or_route_pass_publishes_nothing_rather_than_failing(sandbox, monkeypatch, capsys):
+    """#1462. The exporter is the second of the two scripts that used to treat
+    a skipped hike fetch as fatal, and between them they threw away a whole
+    A.T. publish (run 114 of publish-vector-data.yml) because one website
+    timed out. Both now return "nothing to publish", which is what the
+    workflow's `continue-on-error` on that fetch always meant."""
+    monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: {})
+    assert exporter.main() is None
+    assert "No fetch cache" in capsys.readouterr().err
+
+    monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: {"7": {"id": 7}})
+    assert not exporter.ROUTES_PATH.exists()
+    assert exporter.main() is None
+    assert "No routes artifact" in capsys.readouterr().err
+
+
+def test_a_routes_artifact_that_will_not_parse_still_fails_loudly(sandbox):
+    """The other half, and the reason the one above is safe: absence is a fact
+    about this run, corruption is a defect, and softening both together would
+    turn a loud failure into a silent one."""
+    exporter.ROUTES_PATH.write_text("{ not json at all")
+    with pytest.raises(SystemExit, match="unreadable"):
+        exporter.load_routes()
+
+
+# --- the photograph a person confirmed (#1450 Phase 2, #1522) ------------------
+
+# The shelf has shipped with no photographs since #1427 swapped the source:
+# nynjtc.org's WordPress API served a credited photograph for 19 of its 20
+# hikes, the Hike Finder export carries none, and the code that filled this
+# field went with the scraper. #1450 recovered 403 of them from the Internet
+# Archive; this is the half that puts one on a card, and it fires only for a
+# hike somebody confirmed by hand.
+
+DIGEST = "a" * 64
+
+
+def _confirmed_row(**overrides) -> dict:
+    return {"hike_id": "7", "digest": DIGEST, "credit": "Daniel Chazin", **overrides}
+
+
+def test_a_confirmed_photograph_reaches_the_record_as_a_bucket_key(sandbox):
+    """`photos/<digest>.jpg`, not an address. The phone resolves it against
+    its own data base URL, so no hostname enters the artifact."""
+    sandbox["confirm"]([_confirmed_row()])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    photo = published(sandbox)[0]["photo"]
+    assert photo["url"] == f"photos/{DIGEST}.jpg"
+    assert photo["credit"] == "Photo by Daniel Chazin"
+    assert photo["licence"] == exporter.PHOTO_LICENCE
+
+
+def test_a_hike_nobody_confirmed_carries_no_photo_key_at_all(sandbox):
+    """Absent, never empty: the client draws absence as a plain sunken block,
+    and a half-filled block would be a card claiming bytes it has none of."""
+    sandbox["confirm"]([_confirmed_row(hike_id="99")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert "photo" not in published(sandbox)[0]
+
+
+def test_no_confirm_file_is_a_shelf_with_no_photographs_rather_than_a_failure(sandbox):
+    """Today's state, and a supported one. Nobody has reviewed the sheet, so
+    reference/nynjtc_hike_photos.json does not exist - and the export must
+    still ship the hikes."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert not sandbox["confirmed_path"].exists()
+    assert "photo" not in published(sandbox)[0]
+
+
+def test_a_confirmed_row_naming_no_photographer_ships_no_photograph(sandbox):
+    """The licence condition, enforced at the last place it can be.
+    sources.json's nynjtc_hikes_licence makes attribution a condition of the
+    permission rather than a courtesy, so a row somebody confirmed but that
+    credits nobody is still not publishable."""
+    sandbox["confirm"]([_confirmed_row(credit="")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert "photo" not in published(sandbox)[0]
+
+
+def test_the_manifest_says_how_many_photographs_shipped_and_how_many_were_confirmed(sandbox):
+    """#1557. Before this, a run that shipped photographs and a run that
+    shipped none wrote manifests differing in nothing but the checksum."""
+    sandbox["confirm"]([_confirmed_row()])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    manifest = exporter.main()
+
+    assert manifest["with_photo"] == 1
+    assert manifest["confirmed_photos"] == 1
+
+
+def test_a_confirmed_photograph_whose_hike_is_not_on_the_shelf_still_counts_as_confirmed(sandbox):
+    """The reason both numbers are kept rather than one. 57 of the first 119
+    confirmed rows belonged to hikes the shelf does not carry, so a gap
+    between the two is the ORDINARY state and not evidence of anything. A
+    manifest carrying only `with_photo` would make that indistinguishable
+    from the shipping path having broken."""
+    sandbox["confirm"]([_confirmed_row(hike_id="99")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    manifest = exporter.main()
+
+    assert manifest["with_photo"] == 0
+    assert manifest["confirmed_photos"] == 1
+
+
+def test_no_confirm_file_reads_as_none_confirmed_rather_than_none_shipped(sandbox):
+    """The distinction the pair exists to draw, at the end that matters.
+    `0 of 0` is nobody having reviewed the sheet - today's ordinary state.
+    `0 of 119` is the shipping path broken while the review stands. Three of
+    its four gates fail quietly by design, so this is the only place the
+    difference shows without querying the bucket by hand."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    manifest = exporter.main()
+
+    assert not sandbox["confirmed_path"].exists()
+    assert (manifest["with_photo"], manifest["confirmed_photos"]) == (0, 0)
+
+
+def test_the_run_log_carries_the_same_pair_as_the_manifest(sandbox, capsys):
+    """In the log too, because the log is what somebody reads when they are
+    asking why a card is blank - the manifest is not in front of them then."""
+    sandbox["confirm"]([_confirmed_row(), _confirmed_row(hike_id="99", digest="b" * 64)])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert "1  with a photograph, of 2 confirmed" in capsys.readouterr().out
+
+
+def test_the_sheets_bare_hike_number_joins_to_the_records_prefixed_id(sandbox):
+    """THE TRAP THIS JOIN IS MOST LIKELY TO FALL INTO. The matcher writes
+    `hike_id` as the bare export number and a record here is
+    `nynjtc_hike_finder:<number>`, so a reviewer copying rows out of the
+    sheet - the way this file is meant to be written - would otherwise get a
+    join matching nothing, silently, looking exactly like an unreviewed
+    corpus."""
+    sandbox["confirm"]([_confirmed_row(hike_id="7")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert published(sandbox)[0]["photo"]["url"] == f"photos/{DIGEST}.jpg"
+
+
+def test_a_row_already_carrying_the_prefixed_id_joins_too(sandbox):
+    sandbox["confirm"]([_confirmed_row(hike_id=f"{SOURCE_KEY}:7")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert published(sandbox)[0]["photo"]["url"] == f"photos/{DIGEST}.jpg"
+
+
+@pytest.mark.parametrize("key", ["photos", "matches", None])
+def test_every_shape_a_person_might_write_the_confirm_file_in_is_read(sandbox, key):
+    """`matches` is the key the matcher's own proposal file uses and so the
+    one a reviewer is most likely to keep; `photos` is the noun every other
+    reference file here uses; a bare list is what somebody writing it fresh
+    would produce. Reading only one would take the others as empty - which
+    is indistinguishable, from outside, from nobody having confirmed
+    anything. publish.py's `_digests_in` reads the same three."""
+    sandbox["confirm"]([_confirmed_row()], key=key)
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert "photo" in published(sandbox)[0]
+
+
+def test_a_credit_that_already_says_photo_by_is_not_given_it_twice(sandbox):
+    sandbox["confirm"]([_confirmed_row(credit="Photo by Jane Daniels")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert published(sandbox)[0]["photo"]["credit"] == "Photo by Jane Daniels"
+
+
+def test_an_unreadable_confirm_file_costs_the_photographs_and_not_the_hikes(sandbox, capsys):
+    sandbox["confirmed_path"].write_text("{ not json", encoding="utf-8")
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert [record["id"] for record in published(sandbox)] == [f"{SOURCE_KEY}:7"]
+    assert "photo" not in published(sandbox)[0]
+
+
+def test_the_photo_travels_on_the_shelf_rather_than_in_the_detail(sandbox):
+    """`photo` is in SHELF_FIELDS, and it has to be: the shelf card and the
+    finder's rows both draw it, and neither fetches a detail object."""
+    sandbox["confirm"]([_confirmed_row()])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    record = published(sandbox)[0]
+    assert "photo" in record
+    assert "photo" not in detail_of(record)
+
+
+def test_the_exporter_and_publish_read_the_same_confirm_file_the_same_way(sandbox, tmp_path):
+    """THE TWO GATES MUST AGREE, because disagreeing is worse than either one
+    being wrong. publish.py's archive_photos_awaiting_review decides which
+    BYTES reach the bucket from this file; this module decides which records
+    REFERENCE them. A shape one reads and the other does not would publish a
+    card pointing at a digest that was withheld - a broken image on a hiker's
+    shelf, from two correct-looking halves."""
+    import publish
+
+    rows = [_confirmed_row()]
+    for key in ("photos", "matches"):
+        sandbox["confirm"](rows, key=key)
+        recovered = tmp_path / "wayback_hike_photos.json"
+        recovered.write_text(json.dumps({"photos": [{"digest": DIGEST}]}), encoding="utf-8")
+
+        held, cleared = publish.archive_photos_awaiting_review(recovered, sandbox["confirmed_path"])
+
+        assert cleared == 1, f"publish.py read no confirmed digest out of a {key!r} file"
+        assert held == set(), f"publish.py withheld a digest the exporter would reference, from a {key!r} file"
+        assert exporter.confirmed_photos(sandbox["confirmed_path"]), f"the exporter read nothing out of a {key!r} file"

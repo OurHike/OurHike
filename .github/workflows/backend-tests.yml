@@ -103,13 +103,16 @@ jobs:
           # workflow and the action are in the list so a change to the gate
           # itself still proves the suite it gates.
           #
-          # The six client modules are here because three suites READ them as
+          # The eight client files are here because five suites READ them as
           # text. tests/test_preferences_contract.py,
           # tests/test_client_report_contract.py and
           # tests/test_client_response_contract.py compare the TypeScript
           # halves of UserPreferences, ReportDraft, the moderation statuses,
           # the photo cap, the closure vocabulary and every response shape
-          # against this backend's schemas and its OpenAPI document. The drift
+          # against this backend's schemas and its OpenAPI document, and
+          # tests/test_usage_registry_contract.py and
+          # tests/test_usage_golden_batch.py compare the usage events the phone
+          # sends with the ones POST /usage-events accepts. The drift
           # they exist to catch is far more likely to arrive in a client-only
           # pull request than in a backend one; scoped out, the guard would run
           # on every change except the change it is for. TESTING.md's rule, in
@@ -125,15 +128,26 @@ jobs:
           # memory - so tests/test_ci_scope.py reads this line back and fails
           # if a contract test starts reading a client file that is not on it.
           # It did, when api.ts and closureBanner.ts joined the list.
+          #
+          # features/EVENTING.md for the same rule: the rollup role's column
+          # grant is SQL written there, and tests/test_analytics_rollup_role.py
+          # checks it names every usage column but `sealed`.
           paths: >-
             backend/
             pipeline/export_conditions.py
+            pipeline/check_deployment.py
+            pipeline/lib/database_size.py
+            pipeline/dbt/models/staging/ourhike/base/base_ourhike__database_size.sql
+            pipeline/dbt/tests/singular/assert_the_database_stays_under_its_plan.sql
             client/src/lib/api.ts
             client/src/lib/closureBanner.ts
             client/src/lib/outbox.ts
             client/src/lib/reportPhoto.ts
             client/src/lib/reportStatus.ts
+            client/src/lib/usageBatch.golden.json
+            client/src/lib/usageEvents.ts
             client/src/lib/userPreferences.ts
+            features/EVENTING.md
             .github/workflows/backend-tests.yml
             .github/actions/changed-paths/
 
@@ -156,19 +170,33 @@ jobs:
         # max_prepared_statements are the parts under test, and two copies of
         # them is one copy that goes stale.
         run: |
-          # NOT `update && install` (#1361). `apt-get update` exits non-zero
-          # if ANY configured repository fails, including ones preinstalled
-          # on the runner image that this project never uses - and the `&&`
-          # then skipped the install, so `local-pooler.sh` found no pgbouncer
-          # and exited 1 with NO TEST HAVING RUN. Measured on PR #1360,
-          # 2026-09-09 17:34 and again at 17:41: Google's Chrome apt repo
-          # served an index whose SHA256 did not match its Release file.
-          # apt itself ignores the bad index and keeps the rest ("old ones
-          # used instead"), so the install below succeeds on exactly the runs
-          # the `&&` used to fail. A genuinely broken update now surfaces as
-          # the install failing, which names the package that could not be
-          # installed rather than the repository that could not be indexed.
-          sudo apt-get update -qq || true
+          # ASK APT ONLY ABOUT UBUNTU'S OWN ARCHIVES (#1366).
+          #
+          # Runner images ship third-party apt repositories - Google Chrome
+          # among them - that nothing in this project installs from, and
+          # `apt-get update` exits non-zero when ANY configured source has a
+          # bad index. Measured on PR #1360, 2026-09-09 17:34 and again at
+          # 17:41: Google's Chrome repo served an index whose SHA256 did not
+          # match its own Release file, and two checks went red for about
+          # forty-five minutes with nothing wrong with the branch.
+          #
+          # This used to read `apt-get update -qq || true`, which #1361 added
+          # to stop that failing the install. It bought the green at a price
+          # #1366 named: a real problem with the archive this job DOES depend
+          # on became invisible too, and `update` is the step that would have
+          # said so. Dropping the sources nothing here uses keeps the immunity
+          # and gives the exit code back its meaning - a failure below is now
+          # Ubuntu's archive, which is this job's business.
+          #
+          # By what a source is rather than by name: deleting
+          # google-chrome.list fixes one repository and leaves the next one to
+          # be discovered the same way. Both apt formats survive it - Ubuntu's
+          # own archives live in /etc/apt/sources.list (classic) or in
+          # sources.list.d/ubuntu.sources (deb822), and neither is touched.
+          sudo mkdir -p /etc/apt/sources.list.d
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
+            ! -name 'ubuntu.sources' ! -name 'ubuntu.list' -print -delete
+          sudo apt-get update -qq
           sudo apt-get install -y -qq pgbouncer
           # The package starts its own service on 6432 with a config that
           # routes no databases. Ours needs the port, and the script refuses

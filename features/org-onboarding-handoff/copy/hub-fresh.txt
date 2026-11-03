@@ -1,0 +1,297 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] brand new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Onboarding
+        ›
+          Org home
+          ORG HOME · LIVE SINCE MARCH 2026
+          [svg]
+              ORG HOME · EVERYTHING YOU PUBLISH
+          [h1] Ramapo Trail Conference
+              Live since March 2026. Anything below can change — every change is a proposal your codeowners approve, in the open.
+      [button] onboarding complete · replay it
+        [svg]
+        Waiting on you
+          4
+        open proposals
+      Nothing changes what hikers see until your codeowners approve it — including the nightly re-read of your own GIS.
+              Add Sterling Ridge Trail · 14 sections
+              #1496
+            ·
+              proposed by Maria Alvarez
+            ·
+              2 days ago
+                1 of 3 approvals
+            [button] Review
+              Reassign Pine Meadow North to Dev Patel
+              #1502
+            ·
+              proposed by Joseph Okafor
+            ·
+              yesterday
+                2 of 3 approvals
+            [button] Review
+              Privy at Stone Shelter marked gone
+              #1504
+            ·
+              proposed by Ana Reyes · maintainer
+            ·
+              4 hours ago
+                needs 1 admin
+            [button] Review
+              Nightly GIS re-read · 3 geometry changes
+              #1505
+            ·
+              proposed by OurHike · automatic
+            ·
+              today, 4am
+                needs 1 admin
+            [button] Review
+        [svg]
+        Approved is not published
+        1 release waiting
+      A merged proposal still has to be built into map tiles and offline packs before a hiker on the trail sees it. This is where that sits — you never have to guess.
+            Sterling Ridge Trail
+              waiting on the build
+          PR #1496 · merged today, 9:03am
+                Approved
+                ·
+                  All three codeowners
+                today, 9:02am
+                Merged
+                ·
+                  PR #1496 into main
+                today, 9:03am
+                Map build
+                ·
+                  Next build runs tonight at 2am
+                queued
+                Live to hikers
+                ·
+                  +14 sections, +18.6 miles
+                expected tomorrow
+          We email your admins the moment it goes live, and again if a build fails. Offline packs already on a hiker's phone refresh next time they open the app on wifi.
+            Your original registry
+              live to hikers
+          PR #1482 · released Sep 12, 4:40pm
+                Approved
+                ·
+                  All three codeowners
+                Sep 12, 4:11pm
+                Merged
+                ·
+                  PR #1482 into main
+                Sep 12, 4:12pm
+                Map build
+                ·
+                  Tiles + offline packs rebuilt
+                Sep 12, 4:38pm
+                Live to hikers
+                ·
+                  312 sections · 41 hikes
+                Sep 12, 4:40pm
+          28 minutes from merge to live.
+          [link] See it as a hiker does
+          ·
+          [link] release history
+      [svg]
+          How you hear about it.
+        Every admin gets an email on release and on failure. Add a webhook or an RSS feed if you would rather it land in Slack or your own dashboard —
+        [link] notification settings
+        .
+          [svg]
+            Registered. Nothing published yet.
+            This page will fill itself in as you go — it is empty because you have not done anything yet, which is exactly where every club starts. There is no wrong order, and nothing here expires.
+                Next, and it is the big one:
+              point us at your GIS. Everything else on this page depends on having sections to talk about.
+                If you are not the person with the files
+              , that is common — invite whoever is as an admin and hand it to them. You will not lose your place.
+              [button] Start the registry
+              [button] See a finished org first
+        What you have published
+        live now · edit anything
+      Each card is what a hiker sees today. Editing one opens a proposal — the same pull request your registry went through the first time.
+          [svg]
+              Org details
+            ramapotrails.org · verified by DNS
+            last changed Mar 2026
+            [button] Edit
+          [svg]
+              Admins and codeowners
+            Maria Alvarez · Joseph Okafor · Dana Whitfield
+            all three own the registry files
+            [button] Edit
+          [svg]
+              Giving links
+            ramapotrails.org/join · /give
+            shown on all 312 sections
+            [button] Edit
+          [svg]
+              GIS sources
+            3 connected · ArcGIS FeatureServer, a WFS endpoint, and one uploaded shapefile set
+            weekly, nightly and manual · 3 changes waiting
+            [button] Manage sources
+          [svg]
+              Trails and sections
+            312 sections · 6 parks · 41 featured hikes
+            published Mar 2026 · 14 more proposed
+            [button] Add a trail
+          [svg]
+              Regions
+            Harriman · Ramapo · Catskills · Shawangunks
+            used by the coverage report only
+            [button] Edit
+        [svg]
+        Put this on your own website
+        3 public · 1 private
+      The first three are one line of HTML and a script tag, public, no account needed to view. The fourth is the private console — same paste, plus one call from your server to vouch for whoever is signed in. All four read your published registry, so they stay current without you touching them, and they carry your own membership and donation links, not ours.
+      [button] Find a hike
+      [button] Workdays
+      [button] Coverage badge
+      [button] Management console
+            PASTE THIS WHERE IT SHOULD APPEAR
+            copy
+            <div id="ourhike-hikes" data-org="ramapo-trail-conference" data-filters="region,difficulty,length" data-rows="25"></div> <script src="https://embed.ourhike.org/v1/hikes.js" async></script>
+            Your featured hikes, filterable, reading the registry you already signed off. It updates when your registry does — you never paste a list again.
+            WHAT IT WILL NOT DO
+            No cookies, no tracking, no OurHike branding you cannot remove, and it inherits your fonts and colours. If our servers are down your page still renders — the embed just does not appear.
+        LIVE PREVIEW · THIS IS WHAT VISITORS SEE
+                    Region
+                  [select] All regions | Hudson Highlands | Harriman | Ramapo | Catskills | Palisades
+                    Difficulty
+                  [select] Any difficulty | Easy | Moderate | Strenuous
+                    Length
+                  [select] Any length | Under 3 miles | 3 to 6 miles | Over 6 miles
+            [button] Clear
+              HIKE
+                PARK
+              LENGTH
+              TIME
+              ROUTE
+              DIFFICULTY
+                  Bear Mountain via Major Welch
+                  Views · Historic
+                Bear Mountain State Park
+                3.8 mi
+                3:15
+                Loop
+                  Strenuous
+                  Pine Meadow Lake
+                  Water · Swimming
+                Harriman State Park
+                6.2 mi
+                3:45
+                Loop
+                  Moderate
+                  Popolopen Gorge & Torne
+                  Waterfall · Views
+                Bear Mountain State Park
+                5.4 mi
+                4:00
+                Loop
+                  Strenuous
+                  Claudius Smith Den
+                  Rock scramble · Historic
+                Harriman State Park
+                4.6 mi
+                3:00
+                Loop
+                  Moderate
+                  Ramapo Torne loop
+                  Views
+                Ramapo Mountain State Forest
+                4.1 mi
+                2:45
+                Loop
+                  Moderate
+                  Indian Head & Twin
+                  Views · Ledges
+                Catskill Forest Preserve
+                9.4 mi
+                6:30
+                Loop
+                  Strenuous
+              Showing
+                1–6
+              of
+                10
+              hikes
+              [button] ‹ Back
+                  Page 1 of 2
+              [button] Next ›
+              Published by
+                Ramapo Trail Conference
+              · drawn by OurHike
+        Two of these say
+          Sign up on our site
+        because they are mirrored from your own calendar — the button goes to your form, not ours. The storm sweep was created in OurHike, so it uses our signup.
+        LIVE PREVIEW · THIS IS WHAT VISITORS SEE
+                  Region
+                [select] All regions | Harriman | Hudson Highlands | Ramapo | Catskills | Palisades
+                  Difficulty
+                [select] Any difficulty | Easy | Moderate | Strenuous
+                  Length
+                [select] Any length | Under 3 miles | 3 to 6 miles | Over 6 miles
+          [button] Clear
+            HIKE
+            PARK
+            LENGTH
+            TIME
+            ROUTE
+            DIFFICULTY
+            Showing
+            of
+            hikes
+            Published by
+              Ramapo Trail Conference
+            · drawn by OurHike
+      [svg]
+          Nothing here is overwritten.
+        Every change is dated, so a report written three weeks ago still routes to whoever covered that mile then.
+        [link] See this org as of any date
+        ·
+        [link] Onboarding complete · view the 3 pull requests

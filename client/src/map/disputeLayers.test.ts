@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import type { SymbolLayerSpecification } from '@maplibre/maplibre-gl-style-spec'
+import {
+  createExpression,
+  type SymbolLayerSpecification,
+} from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
-import { POI_LAYER_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
+import {
+  FULL_SIZE_POI_TYPES,
+  POI_ICON_SIZE_EXPRESSION,
+  POI_LAYER_ID,
+  POI_PIN_MIN_ZOOM,
+} from './poiLayers'
+import { POI_PIN_INK_SIZE } from './poiIcons'
 import { DISPUTE_MARK_ID, DISPUTE_MARK_SIZE, buildDisputeMark } from './disputeMark'
 import {
   attachDisputeData,
@@ -10,6 +19,8 @@ import {
   buildDisputeSource,
   disputeFeatureCollection,
   DISPUTE_ID_PROPERTY,
+  DISPUTE_MARK_OFFSET_EXPRESSION,
+  DISPUTE_TYPE_PROPERTY,
   DISPUTE_LAYER_ID,
   DISPUTE_SOURCE_ID,
 } from './disputeLayers'
@@ -33,8 +44,8 @@ import {
 const layer = () => buildDisputeLayer() as SymbolLayerSpecification
 
 const DISPUTED = [
-  { poiId: 'atc_shelters:spring-1', lon: -74.1, lat: 41.3 },
-  { poiId: 'osm_water:9', lon: -73.9, lat: 41.1 },
+  { poiId: 'atc_shelters:spring-1', poiType: 'water', lon: -74.1, lat: 41.3 },
+  { poiId: 'osm_water:9', poiType: 'water', lon: -73.9, lat: 41.1 },
 ]
 
 describe('the layer', () => {
@@ -51,11 +62,56 @@ describe('the layer', () => {
     expect(buildDisputeLayer().layout).toMatchObject({ 'icon-ignore-placement': true })
   })
 
-  it('sits on the shoulder of the pin rather than over its glyph', () => {
-    const offset = layer().layout?.['icon-offset'] as [number, number]
+  it('sits on the drawn pin\u2019s upper-left edge, at every zoom and for both tiers (#1687)', () => {
+    // The maintainer's choice from five real pins drawn both ways (poll,
+    // 2026-09-26): centred ON the edge, upper left - clear of a site pin's
+    // badges, which fan out upper right. Checked as geometry: the pin stands
+    // on its point, so its drawn centre is half its drawn size above the
+    // coordinate, and the mark's centre is one more radius out at 45 degrees.
+    expect(layer().layout?.['icon-offset']).toBe(DISPUTE_MARK_OFFSET_EXPRESSION)
+    const offsetAt = (zoom: number, poiType: string) => {
+      const compiled = createExpression(
+        DISPUTE_MARK_OFFSET_EXPRESSION,
+        'layers[0].layout.icon-offset',
+      )
+      if (compiled.result === 'error') throw new Error(compiled.value[0].message)
+      return compiled.value.evaluate({ zoom }, {
+        properties: { [DISPUTE_TYPE_PROPERTY]: poiType },
+        type: 'Point',
+      } as never) as [number, number]
+    }
+    const sizeAt = (zoom: number, poiType: string) => {
+      const compiled = createExpression(
+        POI_ICON_SIZE_EXPRESSION,
+        'layers[0].layout.icon-size',
+      )
+      if (compiled.result === 'error') throw new Error(compiled.value[0].message)
+      return compiled.value.evaluate({ zoom }, {
+        properties: { poi_type: poiType },
+        type: 'Point',
+      } as never) as number
+    }
 
-    expect(offset[0]).toBeGreaterThan(0)
-    expect(offset[1]).toBeLessThan(0)
+    for (const zoom of [POI_PIN_MIN_ZOOM, 10, 13, 16]) {
+      for (const poiType of [FULL_SIZE_POI_TYPES[0], 'viewpoint']) {
+        const radius = (POI_PIN_INK_SIZE / 2) * sizeAt(zoom, poiType)
+        const [x, y] = offsetAt(zoom, poiType)
+        const fromCentre = { x, y: y + radius }
+        const where = `z${zoom} ${poiType}`
+        expect(Math.hypot(fromCentre.x, fromCentre.y), where).toBeCloseTo(radius, 6)
+        expect(fromCentre.x, where).toBeLessThan(0)
+        expect(fromCentre.x, where).toBeCloseTo(fromCentre.y, 6)
+      }
+    }
+  })
+
+  it('follows the pin\u2019s own size stops rather than a copy of them', () => {
+    // Same zooms, in the same places, as POI_ICON_SIZE_EXPRESSION - a pin
+    // ramp moved without this following it would put the mark back off the
+    // pin, which is how it got there the first time.
+    const zooms = (expression: unknown[]) =>
+      expression.filter((_, index) => index >= 3 && index % 2 === 1)
+    expect(zooms(DISPUTE_MARK_OFFSET_EXPRESSION)).toEqual(zooms(POI_ICON_SIZE_EXPRESSION))
   })
 
   it('asks for the image disputeMark.ts actually registers', () => {
@@ -84,13 +140,17 @@ describe('the source', () => {
     })
   })
 
-  it('carries the poi id and nothing else', () => {
+  it('carries the place\u2019s id and type, and nothing the dispute says', () => {
     // Not the count, not the date. What a dispute SAYS is the card's job -
     // a count in a GeoJSON source is one `text-field` away from being drawn
-    // on the map without the sentence that makes it honest.
+    // on the map without the sentence that makes it honest. The type is the
+    // PLACE's, and only decides how big its pin is drawn (#1687).
     const properties = disputeFeatureCollection(DISPUTED).features[0].properties
 
-    expect(properties).toEqual({ [DISPUTE_ID_PROPERTY]: 'atc_shelters:spring-1' })
+    expect(properties).toEqual({
+      [DISPUTE_ID_PROPERTY]: 'atc_shelters:spring-1',
+      [DISPUTE_TYPE_PROPERTY]: 'water',
+    })
   })
 
   it('puts each mark where its waypoint is', () => {

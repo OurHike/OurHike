@@ -454,7 +454,7 @@ export function PlanTargetSheet({
                 <p className="plan-target__note" role="note">
                   {restKind === 'zero'
                     ? 'A zero walks nothing and still eats a day of food.'
-                    : `A nearo walks up to ${formatDistance(NEARO_MAX_MI, units, 'trimmed')} to the next place to sleep — and is a zero where there isn’t one.`}
+                    : `A nearo walks to the furthest place to sleep within ${formatDistance(NEARO_MAX_MI, units, 'trimmed')}, short of the next day’s stop — and is a zero where there isn’t one.`}
                 </p>
               </>
             )}

@@ -4,11 +4,24 @@
 // forget one.
 //
 // What stays eager, and why: Today and the tab bar (the first frame),
-// Onboarding (a first run's first frame), the report window (it opens the
-// instant a report is saved, on a ridge, and its constant UNDO_WINDOW_MS is
-// read by the shell), and the map's own overlays that the shell composes
-// itself. Everything a hiker reaches by a tap on another tab or by starting
-// a flow is here.
+// Onboarding (a first run's first frame), and the map's own overlays that
+// the shell composes itself. Everything a hiker reaches by a tap on another
+// tab or by starting a flow is here.
+//
+// THE REPORT WINDOW IS HERE SINCE #1563, and it was kept out on purpose
+// before: it opens on a ridge the instant a hiker taps Report, and the shell
+// read its UNDO_WINDOW_MS. The second reason was the trap LAUNCH_BUDGET.md
+// §4.4 names - a constant read out of a screen brings the screen - and the
+// constant lives in reporting/undoWindow.ts now. The first holds for every
+// screen in this list: a chunk is a precache read on any phone that has
+// installed the app, and the idle preload below has fetched it within a
+// second of launch. What forced the move is the budget: the window's #1563
+// growth measured 256,121 eager bytes in CI against 256,000 (commit
+// 53315108, `check:build`), and deferring only its sheet and reporter block
+// left 232 bytes of headroom locally against a CI build that runs ~400
+// bytes larger. The sheet (Change, or a refused tap) and the block the
+// receipt signs with are deferred separately, because the long form and the
+// closure form render the same pair and one chunk serves all three hosts.
 
 import { deferredScreen, type DeferredScreen } from '../lib/deferredScreen'
 import type { ComponentType } from 'react'
@@ -64,6 +77,22 @@ export const ReportForm = screen(
   () => import('./ReportForm').then((m) => m.ReportForm),
   'ReportForm',
 )
+export const ReportWindow = screen(
+  () => import('../reporting/ReportWindow').then((m) => m.ReportWindow),
+  'ReportWindow',
+)
+export const LocationSheet = screen(
+  () => import('../reporting/LocationSheet').then((m) => m.LocationSheet),
+  'LocationSheet',
+)
+export const ReporterDetails = screen(
+  () => import('../reporting/ReporterDetails').then((m) => m.ReporterDetails),
+  'ReporterDetails',
+)
+export const KeepSpotSheet = screen(
+  () => import('../reporting/KeepSpotSheet').then((m) => m.KeepSpotSheet),
+  'KeepSpotSheet',
+)
 export const GroupScreen = screen(
   () => import('./GroupScreen').then((m) => m.GroupScreen),
   'GroupScreen',
@@ -84,6 +113,10 @@ export const IdentitySetup = screen(
   () => import('./IdentitySetup').then((m) => m.IdentitySetup),
   'IdentitySetup',
 )
+export const UsageLinkQuestion = screen(
+  () => import('./UsageLinkQuestion').then((m) => m.UsageLinkQuestion),
+  'UsageLinkQuestion',
+)
 export const SignInPrompt = screen(
   () => import('./SignInPrompt').then((m) => m.SignInPrompt),
   'SignInPrompt',
@@ -91,6 +124,59 @@ export const SignInPrompt = screen(
 export const EmailSignIn = screen(
   () => import('./EmailSignIn').then((m) => m.EmailSignIn),
   'EmailSignIn',
+)
+// Tap-opened surfaces deferred in #1903 to pay for usage measurement's wiring
+// (#1902), the part of it App has to build before any import(): the props,
+// the plan calls and the link question's branch. The account panel opens
+// inside the sign-in window; "Which long hike?" and add-a-day-hike open over
+// whatever screen is up; the other five live on the map, which is itself
+// deferred. Measured 2026-10-27 by check-build-output.mjs, one build each:
+// `main` at aad6cd17 245,489 bytes compressed; the branch with these eight
+// deferred 244,846. CI's preview build inlines five VITE_ variables and has
+// read 266 bytes above a plain build of the same commit (ced035f4).
+//
+// NOTHING THAT TAKES FOCUS WHEN IT OPENS IS ON THIS LIST, and that is a rule
+// learned here rather than a preference. chrome/SignInWindow.tsx focuses its
+// panel on mount so Escape works at once; chrome/BailSheet.tsx and
+// chrome/PlaceSheet.tsx autofocus a button. Deferred, all three mount when
+// their chunk lands rather than inside the tap, and on WebKit that focus did
+// not take: e2e/identityRooms.spec.ts's "Escape closes the window" failed on
+// phone-webkit twice at ced035f4, where the window was on this list. That
+// mechanism is reasoned rather than reproduced - WebKit is not in the
+// sandbox, and Chromium honoured the late focus in a probe that held the
+// window's module back 2.5 s - but the iOS shell is WebKit, so all three
+// stay eager.
+export const AccountPanel = screen(
+  () => import('../chrome/AccountPanel').then((m) => m.AccountPanel),
+  'AccountPanel',
+)
+export const HikePickSheet = screen(
+  () => import('../chrome/HikePickSheet').then((m) => m.HikePickSheet),
+  'HikePickSheet',
+)
+export const AddDayHikeSheet = screen(
+  () => import('../chrome/AddDayHikeSheet').then((m) => m.AddDayHikeSheet),
+  'AddDayHikeSheet',
+)
+export const DayHikesHere = screen(
+  () => import('../chrome/DayHikesHere').then((m) => m.DayHikesHere),
+  'DayHikesHere',
+)
+export const SectionPlanner = screen(
+  () => import('../chrome/SectionPlanner').then((m) => m.SectionPlanner),
+  'SectionPlanner',
+)
+export const ReportPickBar = screen(
+  () => import('../chrome/ReportPickBar').then((m) => m.ReportPickBar),
+  'ReportPickBar',
+)
+export const PressPlate = screen(
+  () => import('../chrome/PressPlate').then((m) => m.PressPlate),
+  'PressPlate',
+)
+export const RouteHoverPlate = screen(
+  () => import('../chrome/RouteHover').then((m) => m.RouteHoverPlate),
+  'RouteHoverPlate',
 )
 export const AppFailureReport = screen(
   () => import('./AppFailureReport').then((m) => m.AppFailureReport),
@@ -107,6 +193,28 @@ export const VolunteerHours = screen(
 export const VolunteerImpact = screen(
   () => import('./VolunteerImpact').then((m) => m.VolunteerImpact),
   'VolunteerImpact',
+)
+// Challenges (#1780): the list, one challenge, and Browse - reached from
+// More, never on a first frame.
+export const Challenges = screen(
+  () => import('./Challenges').then((m) => m.Challenges),
+  'Challenges',
+)
+export const ChallengeDetail = screen(
+  () => import('./ChallengeDetail').then((m) => m.ChallengeDetail),
+  'ChallengeDetail',
+)
+export const ChallengeCampCard = screen(
+  () => import('../chrome/ChallengeCampCard').then((m) => m.ChallengeCampCard),
+  'ChallengeCampCard',
+)
+export const PlanChallenges = screen(
+  () => import('../chrome/PlanChallenges').then((m) => m.PlanChallenges),
+  'PlanChallenges',
+)
+export const ChallengeBrowse = screen(
+  () => import('./ChallengeBrowse').then((m) => m.ChallengeBrowse),
+  'ChallengeBrowse',
 )
 export const FindHike = screen(
   () => import('./FindHike').then((m) => m.FindHike),
@@ -147,6 +255,22 @@ export const HikeFinish = screen(
 // Imported statically from Today it rode into the eager bundle with its
 // note roll-up, photo and dispute readers behind it - measured 2026-09-10
 // at 254,104 of the 256,000-byte budget with it eager (#1374 review).
+// The crews section (#1440), deferred for FieldNoteSection's reason and by
+// the same measurement: Today is the first frame and is eager, and this
+// section carries a month calendar, a row component and six selection
+// helpers. Imported statically from Today it put the budget 1,641 bytes over
+// (measured 2026-09-15, features/LAUNCH_BUDGET.md §3) - and moving it here,
+// with the crew-against-a-walk helpers split into lib/crews.ts so they stop
+// riding on the eager lib/workProjects.ts, brought it back to 255,844.
+//
+// chrome/ReportPickBar.tsx was tried here too and is deliberately NOT: it is
+// small enough that the registry entry and the import stub cost 21 bytes MORE
+// than the module weighed. A lazy boundary that makes the bundle bigger is a
+// boundary bought for its own sake.
+export const CrewsSection = screen(
+  () => import('../chrome/CrewsSection').then((m) => m.CrewsSection),
+  'CrewsSection',
+)
 export const FieldNoteSection = screen(
   () => import('../chrome/FieldNoteSection').then((m) => m.FieldNoteSection),
   'FieldNoteSection',
@@ -166,6 +290,107 @@ export const FinishedHike = screen(
 export const ShareHike = screen(
   () => import('./ShareHike').then((m) => m.ShareHike),
   'ShareHike',
+)
+// Supporting OurHike (#1876): the gate that counts days and opens the
+// day-5 window, and the Your support page. Eager, they put the launch 4,341
+// bytes over §3's line: 250,101 against 245,760 in CI's `check:build` on
+// bff389d1 (2026-10-24). screens/SupportGate.tsx has the rest.
+export const SupportGate = screen(
+  () => import('./SupportGate').then((m) => m.SupportGate),
+  'SupportGate',
+)
+// Through the gate's module rather than its own, so the pair is one chunk
+// and one entry in the shell's preload map: each separate chunk costs the
+// launch its file name and dependency list, and this pair had no room.
+export const YourSupportPage = screen(
+  () => import('./SupportGate').then((m) => m.YourSupportPage),
+  'YourSupportPage',
+)
+
+// THE SHEETS, PANELS AND CARDS A TAP OPENS, deferred for the reason the
+// screens above are (#1735). App.tsx and two panel hooks rendered each of
+// these conditionally and imported it statically, so the closure a launch
+// parses before its first frame carried all ten for a Today screen that
+// opens none of them: 50,631 raw bytes, measured 2026-09-30 by attributing
+// the built chunks to their sources (DayHikeCard 8,863, DayHikePanel 7,292,
+// RouteEntranceSheet 7,262, RouteStopPicker 6,174, DayHikePickBar 5,231,
+// RouteStopsPanel 4,003, NextTurnCard 3,417, LineSheet 2,673, StepAwaySheet
+// 2,437; NoticeList 3,279 through chrome/noticesPanel.tsx). preloadScreens warms them on the first idle with the screens, so a
+// tap after that pays nothing; a tap before it waits for the chunk, which the
+// service worker serves from its cache on every launch but the first. Two of
+// them can be on screen when a launch starts - the turn card mid-walk and
+// the saved day-hike card - and arrive that one chunk later.
+export const DayHikeCard = screen(
+  () => import('./DayHikeCard').then((m) => m.DayHikeCard),
+  'DayHikeCard',
+)
+export const DayHikePanel = screen(
+  () => import('../chrome/DayHikePanel').then((m) => m.DayHikePanel),
+  'DayHikePanel',
+)
+export const DayHikePickBar = screen(
+  () => import('../chrome/DayHikePickBar').then((m) => m.DayHikePickBar),
+  'DayHikePickBar',
+)
+export const RouteStopPicker = screen(
+  () => import('../chrome/RouteStopPicker').then((m) => m.RouteStopPicker),
+  'RouteStopPicker',
+)
+export const RouteEntranceSheet = screen(
+  () => import('../chrome/RouteEntranceSheet').then((m) => m.RouteEntranceSheet),
+  'RouteEntranceSheet',
+)
+export const RouteStopsPanel = screen(
+  () => import('../chrome/RouteStopsPanel').then((m) => m.RouteStopsPanel),
+  'RouteStopsPanel',
+)
+export const NextTurnCard = screen(
+  () => import('../chrome/NextTurnCard').then((m) => m.NextTurnCard),
+  'NextTurnCard',
+)
+export const StepAwaySheet = screen(
+  () => import('../chrome/StepAwaySheet').then((m) => m.StepAwaySheet),
+  'StepAwaySheet',
+)
+export const NoticeList = screen(
+  () => import('../chrome/NoticeList').then((m) => m.NoticeList),
+  'NoticeList',
+)
+export const LineSheet = screen(
+  () => import('../chrome/LineSheet').then((m) => m.LineSheet),
+  'LineSheet',
+)
+// The planned-hike panel and the hazard area card (#1805), each
+// opened by a tap and rendered by chrome/noticesPanel.tsx only then - so the
+// first frame parses neither, for the reason the list above them is here.
+// The A.T. band's sheet and the workday pin's joined them in the same
+// change, to pay for them: the two panels' hook grew the closure to 245,851
+// bytes against the 245,760-byte line, measured 2026-10-04 by
+// check-build-output.mjs, and OrgNoticeSheet (1,364 raw bytes) and
+// WorkdaySheet (1,248) are two sheets only a tap on a map mark opens. The
+// band's alone left 187 bytes of room locally, under the ~400 a CI build
+// runs larger (the report window's note above).
+export const PlannedNoticeList = screen(
+  () => import('../chrome/PlannedNoticeList').then((m) => m.PlannedNoticeList),
+  'PlannedNoticeList',
+)
+export const HazardAreaSheet = screen(
+  () => import('../chrome/HazardAreaSheet').then((m) => m.HazardAreaSheet),
+  'HazardAreaSheet',
+)
+export const OrgNoticeSheet = screen(
+  () => import('../chrome/OrgNoticeSheet').then((m) => m.OrgNoticeSheet),
+  'OrgNoticeSheet',
+)
+export const WorkdaySheet = screen(
+  () => import('../chrome/WorkdaySheet').then((m) => m.WorkdaySheet),
+  'WorkdaySheet',
+)
+// A club closure's sheet (the maintainer's closure-map standard, 2026-10-11), opened only by a
+// tap on its mark, for the reason the two above are deferred.
+export const ClubClosureSheet = screen(
+  () => import('../chrome/ClubClosureSheet').then((m) => m.ClubClosureSheet),
+  'ClubClosureSheet',
 )
 
 /**

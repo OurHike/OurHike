@@ -50,26 +50,45 @@ and is unbuilt, so there is no private object to sweep yet; ACCOUNT_SYNC.md's
 "Decisions this document does not take" #3 - how long a deleted photo's
 object survives in R2 - is still open and is a maintainer's call, not this
 module's.
+
+The takedown ledger, `poi_photo_dismissals` (#1551). It names the hiker as
+the contributor whose photo came down, and it is a moderator's record in
+the same sense `reports.dismissed_by` is: somebody else's decision, kept so
+the next moderator can see a pattern. Not counted on the receipt, because
+it is not a contribution that stayed - it is a record about the account,
+and the export hands the hiker their own rows from it.
 """
 
+import secrets
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.core.analytics_accounts import keys_or_refuse
+from app.core.support import forget_addresses, mark_stop
 from app.core.time import utc_now
+from app.models.analytics import AnalyticsEvent, AnalyticsUser
 from app.models.app_failure import AppFailure
-from app.models.closure import Closure
+from app.models.closure import Closure, ClosureApproval
+from app.models.club import Club, OrgAdmin
+from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.org_registry import RegistrySignoff
+from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
+from app.models.ridge_runner import RidgeRunnerCommitment
+from app.models.support import SupportChoice, SupportStatus
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
+from app.models.trail_challenge import ChallengeEntry, ChallengeTag, ClubChallenge
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
+from app.models.work_project import WorkProject, WorkProjectSignup
 
 # Hours a club has already acted on. A `claimed` hour is a logbook entry and
 # nobody else's business (VOLUNTEERING.md §5: "the record is theirs first").
@@ -106,7 +125,25 @@ class DeletionSummary:
     assignments_deleted: int = 0
     hours_deleted: int = 0
     hours_kept: int = 0
+    #: The organization surface (features/ORG_ONBOARDING.md). A seat and a
+    #: signup are both permissions rather than contributions, so both go -
+    #: see the reasoning at each query in `delete_account`.
+    org_seats_released: int = 0
+    registry_signatures_withdrawn: int = 0
+    workday_signups_released: int = 0
+    commitments_deleted: int = 0
+    org_rows_unlinked: int = 0
     app_failures_unlinked: int = 0
+    #: Challenges (#1780) - see the reasoning at each query in `delete_account`.
+    challenge_tags_deleted: int = 0
+    challenge_entries_deleted: int = 0
+    #: Support choices this deletion asked to stop (#1876) - their ids, so the
+    #: router can email the founder to cancel each one after the commit.
+    support_stops_requested: list[str] = field(default_factory=list)
+    #: Usage measurement (#1902): the events this account linked by saying
+    #: yes. Its User-table rows go with them and are not counted separately -
+    #: they are the same events, summed.
+    usage_events_deleted: int = 0
     contributions_kept: dict[str, int] = field(default_factory=dict)
 
 
@@ -124,6 +161,11 @@ def scrub_profile(profile: Profile, now=None) -> None:
     the moderation queue reachable by whatever is left of the account.
     """
     profile.display_name = None
+    # A GitHub login names the person as surely as a display name does, and
+    # it is a CODEOWNERS entry while it stays (#1635). `github_login` is
+    # also unique, so leaving it here kept that account from being linked to
+    # anybody - including the same person signing up again.
+    profile.github_login = None
     profile.role = Role.hiker
     profile.deleted_at = now or utc_now()
 
@@ -136,9 +178,16 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
 
     Returns the counts rather than a bare success, so the endpoint can hand a
     hiker a receipt naming what went.
+
+    Raises `LinkedUsageUnreachable` (app/core/analytics_accounts.py), before
+    it deletes anything, when linked usage rows exist and no secret is
+    configured to find this account's among them: a receipt saying its usage
+    went, while it stayed linked in the table, is the one answer worse than
+    refusing.
     """
     now = now or utc_now()
     profile_id = profile.id
+    usage_keys = keys_or_refuse(db, profile_id)
 
     # --- The rows that were only ever theirs. These go outright. ---
 
@@ -177,6 +226,110 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         .delete(synchronize_session=False)
     )
 
+    # A seat at an organization is a PERMISSION, not a contribution. A
+    # deleted account cannot administer anything, and a row saying it can is
+    # a codeowner the organization would be waiting on forever - the same
+    # argument as the assignment above, where showing a section as covered by
+    # somebody who is gone is worse than showing it as uncovered.
+    org_seats = db.query(OrgAdmin).filter(OrgAdmin.person_id == profile_id).delete(synchronize_session=False)
+
+    # A SIGNATURE CANNOT OUTLIVE ITS SIGNER, and this is the one row here
+    # where that is a safety property rather than tidiness. A registry
+    # sign-off says a named person read this exact registry and confirmed it
+    # is accurate; with the account gone there is nobody standing behind that
+    # sentence, and a count of three that includes a deleted signer is three
+    # people the organization thinks read something.
+    #
+    # Deleting it is safe and self-correcting: nothing is unpublished, the
+    # count simply drops below `REGISTRY_APPROVALS_REQUIRED` and the
+    # remaining codeowners are asked again - exactly what the fingerprint
+    # already does when a section changes. See app/routers/org_registry.py.
+    registry_signatures = (
+        db.query(RegistrySignoff).filter(RegistrySignoff.person_id == profile_id).delete(synchronize_session=False)
+    )
+
+    # A hand put up for a workday, and a crew slot the organization may have
+    # allocated. Released for the same reason: an organization planning
+    # Saturday is better served by a free slot than by a name nobody can
+    # reach. VOLUNTEERING.md's "an introduction, not an enrolment" cuts this
+    # way too - nothing was ever a roster entry to preserve.
+    signups = db.query(WorkProjectSignup).filter(WorkProjectSignup.person_id == profile_id).delete(synchronize_session=False)
+
+    # The commitment window is a mode the app was in for this person, visible
+    # to nobody else and issuing nothing that functions as a badge
+    # (VOLUNTEERING.md §3). There is no third party relying on it.
+    commitments = (
+        db.query(RidgeRunnerCommitment).filter(RidgeRunnerCommitment.person_id == profile_id).delete(synchronize_session=False)
+    )
+
+    # A challenge tag is the hiker's own record of where they have been -
+    # "the hiker's record is theirs" is the design's sixth principle
+    # (features/CHALLENGES.md) - and all anybody else ever derives from it is
+    # a count a club sees, withheld below 25 hikers. Nobody relies on the row.
+    challenge_tags = db.query(ChallengeTag).filter(ChallengeTag.user_id == profile_id).delete(synchronize_session=False)
+
+    # AN ENTRY GOES TOO, and this is the one that could have gone the other
+    # way. A club may be relying on it - it is somebody's drawing entry - so
+    # the rule above ("stays if somebody else is relying on it") pulls toward
+    # keeping it. But what an entry IS is a name, an email and a home address,
+    # and keeping those after the account is gone is the retention gap
+    # features/IDENTITY_AND_PRIVACY.md names; scrubbing them, `reports`'
+    # answer, would leave a row that says only that somebody entered. So it
+    # goes, and the club's "finished" count drops by one. What this cannot
+    # reach is the copy a club already downloaded as CSV: that file is the
+    # club's, and nothing here pretends otherwise.
+    challenge_entries = db.query(ChallengeEntry).filter(ChallengeEntry.user_id == profile_id).delete(synchronize_session=False)
+
+    # USAGE MEASUREMENT (#1902). The events this account linked by saying yes
+    # are found by recomputing the key they were stored under - under every
+    # secret it was ever made with, current and previous - and go with the
+    # User-table rows summing them: both were only ever about this hiker, and a
+    # monthly figure already closed from them is a count that names nobody, so
+    # nothing anybody relies on moves. Events sent before the yes, or after a
+    # no, carry no key and name nobody - there is nothing of theirs to find
+    # among them, which is the point of rows like that. The keys were found
+    # before anything above was deleted, so a deployment that cannot find them
+    # refuses the whole deletion (see `delete_account`).
+    usage_events = 0
+    if usage_keys:
+        usage_events = db.query(AnalyticsEvent).filter(AnalyticsEvent.user_key.in_(usage_keys)).delete(synchronize_session=False)
+        db.query(AnalyticsUser).filter(AnalyticsUser.user_key.in_(usage_keys)).delete(synchronize_session=False)
+
+    # --- Organization rows that NAME them and belong to the organization.
+    # Every one of these columns is nullable, so the link can be forgotten
+    # while the row goes on being the organization's - the same thing
+    # `app_failures.reporter_id` does below, applied to four more tables. An
+    # organization does not lose its registry, its workdays, its audit trail
+    # or its embed keys because one of its admins closed their OurHike
+    # account. ---
+
+    unlinked = 0
+    for model, column in (
+        (Club, Club.created_by),
+        # The organization's agreement that a model may read its data
+        # survives the admin who recorded it - it was the organization's
+        # decision, and it does not lapse because one person closed their
+        # account. Their id does not survive it: `assist_opted_in_at` stays
+        # where it is and the name beside it goes, which is the same trade
+        # every row in this loop makes.
+        (Club, Club.assist_opted_in_by),
+        (WorkProject, WorkProject.created_by),
+        (ConsoleKey, ConsoleKey.created_by),
+        (RosterSyncRun, RosterSyncRun.run_by),
+        (RoleInvite, RoleInvite.invited_by),
+        # A challenge definition is the club's, whichever admin saved it last.
+        (ClubChallenge, ClubChallenge.updated_by),
+    ):
+        for row in db.query(model).filter(column == profile_id).all():
+            setattr(row, column.key, None)
+            unlinked += 1
+
+    # An invite this person CLAIMED is the audit row for a grant that has just
+    # gone with them, so it goes too rather than pointing at an account
+    # nobody can sign into. An invite they SENT is the organization's, and is
+    # unlinked above.
+    unlinked += db.query(RoleInvite).filter(RoleInvite.claimed_by == profile_id).delete(synchronize_session=False)
+
     # --- The rows that name them but are not about them. Link and contact go. ---
 
     # `reporter_id` is nullable here and null is the ORDINARY state (most app
@@ -190,10 +343,73 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         failure.reporter_id = None
         failure.contact = None
 
+    # A condition report stays - other people rely on it - but the name the
+    # hiker signed it with and their consent to be contacted go (#1563), for
+    # exactly the reason `contact` goes above: both were offered by a person
+    # who is now gone, and a real name on a row that outlives the account is
+    # the retention gap features/IDENTITY_AND_PRIVACY.md names. `reporter_id`
+    # stays, as it always has: the profile it points at is scrubbed below.
+    for report in db.query(Report).filter(Report.reporter_id == profile_id).all():
+        report.signed_name = None
+        report.signed_name_kind = None
+        report.contact_ok = False
+
+    # WHAT A HIKER GIVES OURHIKE (#1876): A PAYMENT STAYS AND STOPS; A CHOICE
+    # NOBODY PAID FOR IS EMPTIED. A row the provider confirmed is the money
+    # record the published total and any later refund question rely on,
+    # which is this module's rule for keeping a row. A choice that never
+    # became a payment is nobody's money record, so everything that says who
+    # made it goes - the address, the account, the accounting opt-in, the
+    # unsubscribe token. The row itself stays, `stopped`, under its id: a
+    # setup email or an open checkout tab can still be paid after the
+    # account is gone, and that payment names this id. Deleting the row
+    # would make it a payment nobody asked to stop; keeping it lets
+    # core/support.py recognise it as unwanted and stop it (the third #1885
+    # review). A deleted account can no longer reach More -> Your support to
+    # press Stop, so anything still charging is asked to stop here, exactly
+    # as Stop would - nobody deleting their account means "keep charging
+    # me". Whoever cancels it is asked by the router once the deletion has
+    # committed.
+    # Locked first, every row of this account's, so a payment confirmation
+    # committing meanwhile is read as paid rather than written over as
+    # emptied (the fourth #1885 review measured a deletion leave a $60
+    # subscription charging under a row with no account and no address).
+    db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).order_by(
+        SupportChoice.id
+    ).with_for_update().populate_existing().all()
+    unpaid = (
+        db.query(SupportChoice)
+        .filter(
+            SupportChoice.profile_id == profile_id,
+            SupportChoice.provider_ref.is_(None),
+            SupportChoice.started_at.is_(None),
+        )
+        .all()
+    )
+    forgotten = [choice.email for choice in unpaid]
+    for choice in unpaid:
+        choice.profile_id = None
+        choice.email = ""
+        choice.status = SupportStatus.stopped
+        choice.ended_at = choice.ended_at or now
+        choice.accounting_email = False
+        choice.accounting_email_at = None
+        choice.replaces_choice_id = None
+        choice.link_token = secrets.token_urlsafe(32)
+    db.flush()
+    # And the mail log and switch rows that still name those addresses.
+    forget_addresses(db, forgotten)
+    stopping = [
+        choice
+        for choice in db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).all()
+        if mark_stop(choice, now=now) or (choice.status == SupportStatus.stop_requested and choice.stop_notified_at is None)
+    ]
+
     # --- The rows other people are relying on. Untouched, and counted so the
     # hiker is told rather than left to assume. ---
 
     kept = _contributions_kept(db, profile_id)
+    kept["records of what you gave OurHike"] = db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).count()
     kept["volunteer hours a club confirmed"] = (
         db.query(VolunteerHoursRecord)
         .filter(
@@ -216,6 +432,15 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         hours_deleted=hours_gone,
         hours_kept=kept["volunteer hours a club confirmed"],
         app_failures_unlinked=len(failures),
+        org_seats_released=org_seats,
+        registry_signatures_withdrawn=registry_signatures,
+        workday_signups_released=signups,
+        commitments_deleted=commitments,
+        org_rows_unlinked=unlinked,
+        challenge_tags_deleted=challenge_tags,
+        challenge_entries_deleted=challenge_entries,
+        support_stops_requested=[choice.id for choice in stopping],
+        usage_events_deleted=usage_events,
         contributions_kept={name: count for name, count in kept.items() if count},
     )
 
@@ -246,4 +471,10 @@ def _contributions_kept(db: Session, profile_id: str) -> dict[str, int]:
         # a licence back, so this is the one place where "unattributed" is
         # not on offer and a hiker is entitled to know that in advance.
         "photos you shared": db.query(PoiPhoto).filter(PoiPhoto.contributor_id == profile_id).count(),
+        # An approval is a statement about a closure other hikers are already
+        # routing around - the same class of row as the closure itself, which
+        # this function has always kept. Withdrawing one could drop a closure
+        # back below the three it needed, which is a decision about that
+        # closure rather than about this account.
+        "closures you helped confirm": db.query(ClosureApproval).filter(ClosureApproval.person_id == profile_id).count(),
     }

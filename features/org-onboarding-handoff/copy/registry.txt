@@ -1,0 +1,258 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Onboarding
+        ›
+          Hike registry
+          STAGE 2 OF 3 · Hike registry · admins only
+        [svg]
+            STAGE 2 OF 3 · HIKE REGISTRY
+        [h1] Let's turn your GIS into sections hikers can read
+    Claude reads your files, keeps your own section names, and only asks about the lines it cannot resolve on its own.
+      Shapefiles from ArcGIS
+      GPX from field devices
+      KML / Google Earth
+      ArcGIS REST / Feature Server URL
+      WMS / WFS endpoint
+      A public folder or S3 bucket
+      A link to your downloads page
+      Or any URL — Claude works it out
+          CLAUDE · REGISTRY ASSISTANT
+            Point me at your GIS however it exists. Upload shapefiles, GPX or KML — or just paste a URL: an ArcGIS feature server, a WMS/WFS endpoint, an S3 bucket, or even your public downloads page. I will work out what is there.
+            It all lives on our ArcGIS server — gis.ramapotrails.org/arcgis/rest/services/Trails/FeatureServer/0. Section names are in SECT_NAME.
+            Found it. Three layers published: trail centrelines, maintainer sections, and points of interest. I am reading the sections layer and using the POIs as end anchors.
+            Read 312 sections and 41 featured hikes. I kept your SECT_NAME values and anchored each end to the nearest mile marker or trailhead.
+            18 lines need you rather than me: 11 have no name, 5 leave a gap between ends, 2 look like duplicates. The other 294 are clean.
+            [button] Review the 18
+            [button] See all 312
+          Ask Claude about a section, a name, or a file…
+          WHAT CLAUDE READ
+              Sections
+                312
+              Clean
+                294
+              Need your eye
+              18
+              Featured hikes
+              41
+          Section names come from your own
+            SECT_NAME
+          attribute. Ends are anchored to mile markers and trailhead POIs, so a report written years from now still finds the right maintainer.
+            WHERE IT CAME FROM
+            3 sources
+          Most orgs do not keep everything in one place. Point us at as many as you like — each is read on its own schedule, and Claude merges them into one registry.
+                  Main ArcGIS server
+                    3 changes waiting
+                gis.ramapotrails.org/…/FeatureServer/0
+                284 sections · 5 parks
+              ·
+                weekly, Mon 4am
+                  Palisades WFS
+                    in sync
+                gis.parks.ny.gov/wfs?…
+                22 sections · Palisades
+              ·
+                nightly, 4am
+                  Sterling Forest upload
+                    no server — re-upload to change
+                sterling_sections.shp · uploaded by Joseph
+                6 sections · Sterling Forest
+              ·
+                manual
+            [button] + Add another source
+          If two sources describe the same trail, Claude flags the overlap rather than publishing it twice. A changed source produces a diff for your admins — the published map never moves on its own.
+          WHERE IT CAME FROM
+          You gave us a server, not files:
+          gis.ramapotrails.org/arcgis/rest/services/Trails/FeatureServer/0
+            Re-read
+            Weekly, Mondays 4am
+          When your GIS changes we show your admins a diff to approve — the published map never moves on its own.
+        [button] Send to admins for sign-off
+        Your registry is committed to OurHike's public repository as a pull request — your admins review it there, in the open.
+      What Claude has built so far
+      Park or trail system, then trail, then miles. Click a row to see only that section on the map. This is the same table your admins will sign off.
+              PARK / TRAIL SYSTEM
+            TRAIL
+            MILES
+            STATUS
+              Harriman State Park
+              Ramapo–Dunderberg
+              6.2
+                clean
+              Harriman State Park
+              Pine Meadow
+              3.3
+                clean
+              Bear Mountain State Park
+              Timp–Torne
+              4.9
+                clean
+              Ramapo Mountain State Forest
+              Cannonball
+              2.4
+                named
+              Sterling Forest
+              unnamed route
+              1.8
+                unnamed
+              Palisades Interstate Park
+              Long Path
+              4.6
+                merged
+          +
+            306
+          more ·
+          [link] read the full diff
+              ON THE MAP
+            [svg]
+              red blaze
+              blue
+              yellow
+              white
+              no blaze
+              All 312 sections · click a row to isolate one
+      [h2] Your blaze colours, mapped to ours
+          4
+        need your eye
+      A hiker has to tell two blazes apart at a glance, in the rain — so the map paints a fixed set of colours. Your files use whatever your surveyors typed. Tell us what each of your values means; we keep your original text either way, this only decides what gets painted.
+          YOUR VALUE
+          WE PAINT IT
+          STATUS
+              W
+              96 sections
+          →
+                [select] white | red | blue | yellow | green | orange | teal | purple | black | unblazed
+              clear
+              R
+              71 sections
+          →
+                [select] white | red | blue | yellow | green | orange | teal | purple | black | unblazed
+              clear
+              BL
+              54 sections
+          →
+                [select] white | red | blue | yellow | green | orange | teal | purple | black | unblazed
+              clear
+              AQ
+              22 sections
+          →
+                [select] white | red | blue | yellow | green | orange | teal | purple | black | unblazed
+              Not a palette name. I matched it to the nearest one we can render.
+              my guess
+              Aqua
+              9 sections
+          →
+                [select] white | red | blue | yellow | green | orange | teal | purple | black | unblazed
+              Not a palette name. I matched it to the nearest one we can render.
+              my guess
+              lt blue
+              14 sections
+          →
+                [select] white | red | blue | yellow | green | orange | teal | purple | black | unblazed
+              Not a palette name. I matched it to the nearest one we can render.
+              my guess
+              Y/W
+              6 sections
+          →
+                [select] white | red | blue | yellow | green | orange | teal | purple | black | unblazed
+              Two colours in one value — is this a yellow trail with white dots, or a co-aligned pair?
+              needs you
+              (blank)
+              18 sections
+          →
+                [select] white | red | blue | yellow | green | orange | teal | purple | black | unblazed
+              clear
+            EVERYTHING WE CAN PAINT
+                white
+                red
+                blue
+                yellow
+                green
+                orange
+                teal
+                purple
+                black
+                unblazed
+          [button] Save this mapping
+        [h2] Where closures come from
+          6 active · 4 sources
+        A stale closure is worse than none — it sends somebody down a washed-out trail, or turns them around for nothing. So every source says how often it is checked, and a hiker sees that timestamp too.
+            SOURCE
+            WHAT IT IS
+            CHECKED
+            LAST READ
+            STATUS
+                Palisades Interstate Park Commission
+                Claude reads the page
+              Agency alerts page
+              every 6 hours
+              2 hours ago
+                3 active
+                NY State Parks closures
+                Automatic
+              Public JSON feed
+              every hour
+              18 minutes ago
+                1 active
+                Your own closures
+                Requested from Your Tread
+              Volunteers and supervisors
+              the moment they are approved
+              4 days ago
+                2 active
+                Harriman parkwide notices
+                A person has to enter these
+              Emailed PDF bulletin
+              weekly, by hand
+              6 days ago
+                stale · unowned
+              [button] + Add a source
+            A feed we can read hourly beats a bulletin somebody has to retype.
+        Closures skip the approval queue — they go live as soon as they are read, because a washout cannot wait on three codeowners. Everything else about your registry still needs sign-off. If a source goes quiet past its own schedule we mark it stale and tell your admins rather than showing hikers a closure we can no longer vouch for.
+      Saved once and reused on every future read of your GIS — a section blazed
+        AQ
+      next spring is painted correctly without asking you again. A value we have never seen before stops the build and asks rather than guessing.

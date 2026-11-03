@@ -217,7 +217,17 @@ origins:
     # actually covers a pull request that does not exist yet. `pr-1` is chosen
     # for being permanent in shape and meaningless in particular.
     probe: https://pr-1.ourhike-preview.pages.dev
-    app_path: /
+    # `/app/`, the same as production, since pr-preview.yml started uploading
+    # the marketing site alongside the app and building the app for the path
+    # production serves it at. It was `/` while a preview was the app alone at
+    # its own hostname.
+    #
+    # Nothing has to be re-pasted into Supabase for this: the production
+    # project's list already carries `https://*.ourhike-preview.pages.dev/**`,
+    # which is broader than the `/app/**` this now prints, and
+    # check_auth_redirects.py asks whether the app URL is ACCEPTED rather than
+    # whether the entry matches character for character (see redirect_globs).
+    app_path: /app/
     supabase: [production]
     serves: Pull-request previews, on Cloudflare Pages.
     # Losing this costs reviewers a preview, not hikers a map. It is still
@@ -227,7 +237,14 @@ origins:
 
   - pattern: https://ua.ourhike-preview.pages.dev
     probe: https://ua.ourhike-preview.pages.dev
-    app_path: /
+    # `/app/` since #1887, when ua.yml started serving the site at the root
+    # and the app under it, as production and every preview do. It was `/`
+    # while UA was the app alone. Unlike the preview entry above, this moves
+    # something in a dashboard: UA's Supabase project names this host
+    # exactly, so its Site URL becomes this origin plus `/app/`
+    # (check_auth_redirects.py's site_url check). Its redirect entry, `/**`,
+    # already accepts the app's URLs.
+    app_path: /app/
     supabase: [ua]
     # Deliberately absent from the bucket policy: the preview wildcard above
     # already covers this hostname, and `ua.yml` says so as the reason UA needs
@@ -236,6 +253,32 @@ origins:
     # because it must NOT carry the wildcard.
     cors: false
     serves: The release candidate, on the previews' Pages project.
+    hiker_facing: false
+
+  - pattern: https://docs.ourhike.org
+    probe: https://docs.ourhike.org
+    # The data docs and the data-quality page, on a host of their own, moved
+    # off ourhike.org/data/, where any script of theirs could read the session a
+    # signed-in hiker keeps on the app's origin. pages.yml's env names this
+    # origin and the Cloudflare Pages project serving it, and
+    # .github/tests/test_pages_publish.py holds the two to each other.
+    #
+    # ON THE BUCKET'S LIST because the quality page reads two
+    # data_quality.json files from it in the visitor's browser.
+    #
+    # ON NO SUPABASE LIST, and an empty one rather than none: the docs sign
+    # nobody in, and the point of the move is that nothing running here can
+    # hold a session. So check_auth_redirects.py demands this host on no
+    # project's allow-list, and asks every project to REFUSE a sign-in
+    # redirect to it, which is what it means for an allow-list never to hand
+    # an auth code to a page running dbt's code.
+    #
+    # No app_path: there is no app here.
+    supabase: []
+    serves: The data docs and the data-quality page, on the Cloudflare Pages project ourhike-docs.
+    # A hiker reads nothing here on the trail, so a refused CORS check on
+    # this origin costs a visitor the quality page's figures, not anybody
+    # their map.
     hiker_facing: false
 
   - pattern: http://localhost:5173

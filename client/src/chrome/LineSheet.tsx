@@ -15,7 +15,78 @@
 // situation it is for ~12% of spurs (the same restraint describeStewards
 // applies to an unassigned trail section).
 
+import { useEffect, useState } from 'react'
 import type { LineDetail } from '../lib/lineDetail'
+
+/**
+ * What the sheet says about a club's own line, in the words of
+ * the card the maintainer chose from (decisions-64-67-mock.html section 1).
+ *
+ * A club line is drawn as soon as its layer's rules are in, and joins routes,
+ * route distances and the trail graph only after a dedupe step has checked it
+ * against the lines already drawn - many repeat one (FLTC's and NCTA's shared
+ * stretch, three copies of the Superior Hiking Trail). Nothing in this build
+ * routes on one: the graph is built without it. So the sheet says so, and
+ * offers no day-hike point on it, rather than letting a tap promise a walk the
+ * builder will then refuse. Here rather than in lib/lineDetail.ts, which the
+ * launch loads, because this sheet is deferred (screens/deferred.ts).
+ *
+ * The sentence names the reason, a repeat of a trail already drawn, rather
+ * than the check that looks for one: "until it is checked against the lines
+ * already there" told a hiker a step was pending without saying why it
+ * mattered (the word-choice review of #1805, 2026-10-09).
+ */
+export const CLUB_LINE_SENTENCE =
+  'Shown, but not yet used for routes or distances: it may repeat a trail already on the map.'
+
+/**
+ * The steward's own marker for a line lib/trails.ts does not name, fetched
+ * only once a sheet is on screen.
+ *
+ * WHY IT IS LAZY AND NOT A FIELD ON `detail`. lib/lineDetail.ts is reached
+ * from App.tsx, so anything it names is parsed before the first frame, and a
+ * marker nobody sees until they tap a line does not belong there. So
+ * lib/stewardMarks.ts is its own `import()` chunk and this hook is the only
+ * thing that pulls it.
+ *
+ * THIS USED TO SAY the 32 names and URLs "measured 1,725 bytes over
+ * features/LAUNCH_BUDGET.md §3's eager budget when they sat in lib/trails.ts",
+ * and that comparison was against 256,000 - the budget until #1577 raised it
+ * to 300 KB on 2026-09-18. §3 has carried 307,200 since, so nothing was over
+ * anything. Corrected 2026-09-30; lib/stewardMarks.ts's header has the live
+ * figure and the live budget together, and `npm run build` prints both.
+ *
+ * NULL UNTIL IT RESOLVES, and null is the ordinary answer: most lines have no
+ * steward marker and the slot stays empty, which is what it did before this
+ * existed. So the sheet never waits on the chunk and never reserves room for
+ * a mark that may not arrive - it draws without one and the mark appears if
+ * there is one, the same way the registry mark already behaves for a line
+ * whose trail is not named.
+ */
+function useStewardMark(name: string | null, alreadyMarked: boolean): string | null {
+  const [mark, setMark] = useState<string | null>(null)
+  useEffect(() => {
+    if (name === null || alreadyMarked) {
+      setMark(null)
+      return
+    }
+    let live = true
+    void import('../lib/stewardMarks')
+      .then(({ stewardMarkForName }) => {
+        if (live) setMark(stewardMarkForName(name))
+      })
+      .catch(() => {
+        // A chunk that will not load is a marker nobody sees, which is the
+        // same outcome as no marker - never a broken image and never a throw
+        // that takes the sheet down with it.
+        if (live) setMark(null)
+      })
+    return () => {
+      live = false
+    }
+  }, [name, alreadyMarked])
+  return mark
+}
 
 export interface LineSheetProps {
   detail: LineDetail
@@ -57,6 +128,21 @@ export interface LineSheetProps {
   /** Let a tapped trail go - the plate back to the place or to "No trail
    *  taken". Passed only when `taken` is 'tap'. */
   onLetGo?: () => void
+  /**
+   * The hazard advisories for the stretch tapped (#1805): one per hunting
+   * area, shooting site or burned area the tapped point is inside or beside,
+   * each a heading and OurHike's own sentence (lib/hazardAreas.ts). Empty or
+   * absent, nothing is drawn. Never a closure: each says the trail is open.
+   * `notCurrent` is the area card's line once the area's own notice may no
+   * longer apply (lib/noticeCurrency.ts, the maintainer's frame A of
+   * 2026-10-10): the advisory greys and the line follows it.
+   */
+  advisories?: ReadonlyArray<{
+    id: string
+    heading: string
+    body: string
+    notCurrent?: string | null
+  }>
 }
 
 export function LineSheet({
@@ -66,7 +152,12 @@ export function LineSheet({
   taken,
   onTakeTrail,
   onLetGo,
+  advisories = [],
 }: LineSheetProps) {
+  // The registry's mark wins; the steward's is what a line it does not name
+  // can still wear.
+  const stewardMark = useStewardMark(detail.name, detail.trailMark !== null)
+  const trailMark = detail.trailMark ?? stewardMark
   return (
     <div className="closure-sheet" role="dialog" aria-label="Trail line">
       <div className="legend__head">
@@ -75,10 +166,10 @@ export function LineSheet({
               trail - the through-route, whose name is not repeated below.
               Decorative: the name is the words, the mark is the same fact
               drawn, so a screen reader hears it once. */}
-          {detail.trailMark !== null && detail.name === null && (
+          {trailMark !== null && detail.name === null && (
             <img
               className="line-sheet__trail-mark"
-              src={detail.trailMark}
+              src={trailMark}
               alt=""
               aria-hidden="true"
             />
@@ -96,16 +187,40 @@ export function LineSheet({
           mark gets no mark, not a placeholder. */}
       {detail.name !== null && (
         <p className="closure-sheet__status">
-          {detail.trailMark !== null && (
+          {trailMark !== null && (
             <img
               className="line-sheet__trail-mark"
-              src={detail.trailMark}
+              src={trailMark}
               alt=""
               aria-hidden="true"
             />
           )}
           {detail.name}
         </p>
+      )}
+
+      {/* The stretch's advisories first among the facts (#1805, decision
+          67): the mock the maintainer chose puts "Hunting allowed · Advisory"
+          on the card for the stretch, and it is the line a hiker acts on. */}
+      {advisories.map((advisory) =>
+        advisory.notCurrent ? (
+          <div className="notice--not-current" key={advisory.id}>
+            <p className="line-sheet__advisory">
+              <span className="planned-notices__tag planned-notices__tag--warn">
+                Advisory
+              </span>{' '}
+              <strong>{advisory.heading}.</strong> {advisory.body}
+            </p>
+            <p className="notice__not-current">{advisory.notCurrent}</p>
+          </div>
+        ) : (
+          <p className="line-sheet__advisory" key={advisory.id}>
+            <span className="planned-notices__tag planned-notices__tag--warn">
+              Advisory
+            </span>{' '}
+            <strong>{advisory.heading}.</strong> {advisory.body}
+          </p>
+        ),
       )}
 
       {detail.destinationLine !== null && (
@@ -126,11 +241,42 @@ export function LineSheet({
         <p className="closure-sheet__range">{detail.extentLine}</p>
       )}
 
+      {/* How much it climbs (#1476), directly under how far it goes, because
+          the two answer one question and reading them apart is what makes
+          "19.1 mi" sound like a flat nineteen miles. On the range class for
+          the same reason the extent line is: it is a fact about the trail,
+          not a status. */}
+      {detail.climbLine !== null && (
+        <p className="closure-sheet__range">{detail.climbLine}</p>
+      )}
+
+      {/* And what it rests on, or why there is no figure. `role="note"` is
+          DayHikeCard's own treatment of the same disclosure, and the same
+          reason applies: this is the sentence a hiker deciding whether they
+          beat the dark has to be able to weigh, and it must not read as part
+          of the number above it. */}
+      {detail.climbNote !== null && (
+        <p className="closure-sheet__meta" role="note">
+          {detail.climbNote}
+        </p>
+      )}
+
       {/* Two trails on one treadway (#1384, map/sharedGround.ts): the
           two-tone line says there are two, and this says which other one.
           On the range class, since it is a fact about where the trail is. */}
       {detail.sharedLine !== null && (
         <p className="closure-sheet__range">{detail.sharedLine}</p>
+      )}
+
+      {/* A club's own line: drawn and not routed, said under
+          what the line is and above the closure and the source, the order
+          the card the maintainer chose put it in. A tag and a sentence,
+          because the tag is what a hiker comparing two sheets scans for and
+          the sentence is what it means. */}
+      {detail.isClubLine && (
+        <p className="closure-sheet__meta line-sheet__club" role="note">
+          <span className="line-sheet__tag">Club line</span> {CLUB_LINE_SENTENCE}
+        </p>
       )}
 
       {/* The long-term closure (§3). On `closure-sheet__status`, which is the
@@ -147,6 +293,25 @@ export function LineSheet({
       {detail.sourceLine !== null && (
         <p className="closure-sheet__meta">{detail.sourceLine}</p>
       )}
+
+      {/* The paper map this spot is on (#1574), under the provenance because
+          it is the same kind of fact - whose this ground is, on paper. The
+          lead names the sheet and the organization; the product title,
+          verbatim, is the link, to their own store. No price: the store is
+          the source for that. */}
+      {detail.paperMaps.map((paperMap) => (
+        <p key={paperMap.url} className="closure-sheet__meta">
+          {paperMap.lead}{' '}
+          <a
+            className="closure-sheet__link"
+            href={paperMap.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {paperMap.title} ›
+          </a>
+        </p>
+      ))}
 
       {/* §2's refusal, last, and deliberately a sentence rather than a
           disabled button: a control that looks pressable and is not teaches a
@@ -166,12 +331,15 @@ export function LineSheet({
           line is right above this, and offering a hiker a walk down a trail
           the router will then decline to route is worse than offering
           nothing - it is the app promising with one sentence what it refuses
-          with the next. */}
-      {onAddToDayHike !== undefined && detail.closureLine === null && (
-        <button type="button" className="line-sheet__add" onClick={onAddToDayHike}>
-          Add this point to a day hike
-        </button>
-      )}
+          with the next. A club line the same: the day-hike
+          builder routes on the graph, which no club line is in. */}
+      {onAddToDayHike !== undefined &&
+        detail.closureLine === null &&
+        !detail.isClubLine && (
+          <button type="button" className="line-sheet__add" onClick={onAddToDayHike}>
+            Add this point to a day hike
+          </button>
+        )}
 
       {/* Taking the trail (the review of #1374): what puts its name and mark
           on the plate. A sentence where it is already taken, a button where

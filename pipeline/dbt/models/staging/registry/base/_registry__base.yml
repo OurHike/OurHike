@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: base_registry__sources
+    data_tests:
+      # Warns if the dedupe drops any row, which for one file never happens.
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('registry', 'raw_registry__sources')
+    description: >
+      pipeline/sources.json as its one row, keyed. The stg_registry__ models
+      read its sources, blocks, organizations and marks out of it.
+    columns:
+      - name: registry_document_key
+        description: >
+          The row's key: dbt_utils.generate_surrogate_key over
+          the file's name and its landed path.
+        data_tests: [not_null, unique]
+      - name: document_json
+        description: The registry as written, as JSON.
+        data_tests: [not_null]
+  - name: base_registry__nynjtc_paper_maps
+    data_tests:
+      # Warns if the dedupe drops any row, which for one file never happens.
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('registry', 'raw_registry__nynjtc_paper_maps')
+    description: >
+      reference/nynjtc_paper_maps.json as its one row, keyed. Read by
+      stg_registry__paper_maps.
+    columns:
+      - name: paper_map_table_key
+        description: >
+          The row's key: dbt_utils.generate_surrogate_key over
+          the file's name and its landed path.
+        data_tests: [not_null, unique]
+      - name: file_path
+        description: >
+          The file's path under pipeline/, which a store block's `paper_maps`
+          names to say this is its table.
+        data_tests: [not_null]
+      - name: document_json
+        description: The table as written, as JSON.
+        data_tests: [not_null]

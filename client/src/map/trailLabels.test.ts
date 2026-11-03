@@ -189,7 +189,13 @@ describe('where it sits in the stack', () => {
     const ids = layerIds()
 
     expect(ids.indexOf(TRAIL_LABEL_LAYER_ID)).toBeGreaterThan(-1)
-    expect(ids.indexOf(TRAIL_LABEL_LAYER_ID)).toBeLessThan(ids.indexOf(POI_LAYER_ID))
+    // THE PIN CLAUSE WENT ON 2026-09-20, and the safety rule it stood for did
+    // not. The waypoints moved below the trail lines so the line draws over
+    // them, which puts this label after the pins rather than before. A trail
+    // name still cannot suppress a waypoint - poiLayers.ts allows overlap and
+    // ignores placement, so no symbol can suppress one - and that is now
+    // asserted where the mechanism is, in liveTopo.test.ts.
+    expect(ids.indexOf(TRAIL_LABEL_LAYER_ID)).toBeGreaterThan(ids.indexOf(POI_LAYER_ID))
     expect(ids.indexOf(TRAIL_LABEL_LAYER_ID)).toBeLessThan(ids.indexOf(WARNING_LAYER_ID))
   })
 

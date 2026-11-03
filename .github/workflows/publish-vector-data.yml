@@ -39,25 +39,52 @@ on:
         type: choice
         options: [ua, production, dev]
         default: ua
-      # ~40 min for the three, MEASURED on run #63 (2026-08-27, the run that
-      # first published the per-edge profile): tiles 27s, the A.T. profile
-      # 6m33s, the per-edge climb 16m22s, the per-edge profile 16m24s. The
-      # figure here said ~25 min for two artifacts and was correct for those
-      # two - #1045 added the third and this is the whole cost now.
+      # ~30 min for the three, MEASURED on run #120 (2026-09-15, the first
+      # elevation run since the graph went nationwide): tiles 3m45s, the
+      # A.T. profile 1m01s, the per-edge climb 20m34s, the per-edge profile
+      # 3m24s - 28m44s end to end.
+      #
+      # THE OLD FIGURE WAS ~40 MIN AND IT WAS NOT SIMPLY OUT OF DATE. It was
+      # run #63's (2026-08-27) against a 40,596-edge graph; #1231 took that
+      # to 466,966 edges, and the same step was killed twice at the
+      # 120-minute ceiling on 2026-09-08 before #1287 stopped it reading
+      # whole DEM tiles and made it read only the blocks the trails touch.
+      # So the number to expect was genuinely unknown between those dates.
+      # What run #120 measured is that the per-edge climb cost 20m34s against
+      # 16m22s - 1.26x - across a graph that grew by roughly an order of
+      # magnitude in between (466,966 edges on 2026-09-07 against 40,596 on
+      # 2026-08-27; this run's own count is in its "Build the junction graph"
+      # step and is not copied here rather than guessed at). The two
+      # A.T.-only steps, on data that did not change at all, fell
+      # 6m33s -> 1m01s and 16m24s -> 3m24s: the same block reads, on the
+      # corridor's own thin ribbon.
+      #
+      # The tile fetch went the other way, 27s -> 3m45s, and that is the
+      # nationwide index doing what fetch_elevation.py says it does - one
+      # HEAD per 1-degree cell, over a cell list computed from every
+      # registered organization's lines rather than from the A.T. corridor.
       include_elevation:
-        description: "Also sample elevation: the A.T. profile behind the ribbon, the per-edge climb a day hike is priced from, and the per-edge profile a followed walk's ribbon is drawn from (~40 min). Untick and all three stay at the last elevation run's."
+        description: "Also sample elevation: the A.T. profile behind the ribbon, the per-edge climb a day hike is priced from, and the per-edge profile a followed walk's ribbon is drawn from (~30 min). Untick and all three stay at the last elevation run's."
         type: boolean
         default: false
       include_photos:
         description: "Fetch POI photos before exporting. Untick only to publish a release without them."
         type: boolean
         default: true
+      carry_archive_photos:
+        description: "Bring the recovered NYNJTC archive to the runner and park it. One-time; leave unticked."
+        type: boolean
+        default: false
+      refetch_photos:
+        description: "Fetch every photo again, ignoring the cached and published photo outcomes. One-time, for a bucket that does not hold the photos those outcomes vouch for; leave unticked."
+        type: boolean
+        default: false
       include_osm_water:
         description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min; a cached scan whose receipt verifies is reused without re-fetching). Untick to publish with opentrail's water alone."
         type: boolean
         default: true
       include_trail_water:
-        description: "Derive trail crossings and reachable site water (~5.7 GB of USGS subregions / ~30 min, plus the ~3.5 GB OSM extracts when this run has not already fetched them). Untick to reuse the last run's."
+        description: "Derive reachable site water for shelters and campsites (~5.7 GB of USGS subregions / ~30 min, plus the ~3.5 GB OSM extracts when this run has not already fetched them). Untick to reuse the last run's."
         type: boolean
         default: false
       regenerate_identity_ledger:
@@ -78,6 +105,12 @@ concurrency:
 
 permissions:
   contents: read
+  # Read-only, and for exactly one step: "Carry the confirmed archive
+  # photographs to the publisher" lists nynjtc-archive-recovery.yml's runs and
+  # downloads one of their artifacts, which the default `contents: read` token
+  # cannot do (#1550). It grants no write of any kind - a workflow cannot be
+  # dispatched, cancelled or re-run with it.
+  actions: read
 
 # Every line a step prints reaches the log the second it is printed, not
 # when the step exits.
@@ -130,7 +163,19 @@ jobs:
     # line landed with; this is the belt while the first run after the merge
     # measures whether they brought the build back under the old ceiling,
     # and it comes back down when that run says so.
-    timeout-minutes: 180
+    #
+    # A refetch_photos run gets 330 (2026-10-02). Run 165 (37051778628), the
+    # first cold photo fetch into our-hike, spent 1 h 39 m on ATC's photos and
+    # 36 m on Commons', and was cancelled at 180 inside "Form or read a route
+    # for every NYNJTC hike", before anything published, with elevation off.
+    # The steps after the photos took 44 m to reach that point, so a cold run
+    # reaches the routes at about 3 h. On warm run 166 (37073452481) the routes
+    # and every step after them took 8 m, so a cold run needs about 3 h 10 m;
+    # 330 leaves about 2 h for slower photo fetches and stays under a hosted
+    # runner's 360.
+    # @unvalidated: one cold run measured; what would settle it is the next
+    # refetch_photos run's own step times.
+    timeout-minutes: ${{ inputs.refetch_photos && 330 || 180 }}
     defaults:
       run:
         working-directory: pipeline
@@ -156,7 +201,8 @@ jobs:
         pipeline/data/raw/elevation
         pipeline/data/raw/nynjtc_long_path_guide
         pipeline/data/raw/external
-        pipeline/data/raw/nynjtc_hikes.json
+        pipeline/data/raw/hikefinder.json
+        pipeline/data/raw/hikefinder_gpx
 
     steps:
       - uses: actions/checkout@v7
@@ -227,7 +273,7 @@ jobs:
 
       # The other half of #812: the cache is an optimisation again, not the
       # only copy. These three are DERIVED - fetch_osm_water.py's scan,
-      # build_osm_water_reach.py's verdicts, fetch_trail_water.py's crossings -
+      # build_osm_water_reach.py's verdicts, fetch_trail_water.py's site water -
       # and until publish.py started shipping them as sidecars they existed
       # nowhere else. Not in the repository (data/ is gitignored, and
       # CONTRIBUTING's "data does not go in commits" is right about that), and
@@ -236,10 +282,14 @@ jobs:
       #
       # A miss is silent and it is a hiker's problem, not a build one:
       # export_poi.read_sources() reads what is on disk, so the run publishes a
-      # map short ~1,100 crossings and every reachable spring, with nothing
-      # saying so. Since #825 it is also a blocked publish, because those rows
-      # are live ledger rows - 1,247 of 4,230, 29.5% against a 20% retirement
-      # ceiling - so losing them trips the mass-retirement refusal too.
+      # map short every reachable spring, with nothing saying so (and, until
+      # #1674 withdrew them, ~1,100 crossings). Since #825 it is also a
+      # blocked publish, because those rows are live ledger rows - 1,247 of
+      # 4,230, 29.5% against a 20% retirement ceiling when #825 measured it,
+      # nearly all of them crossings - so losing them tripped the
+      # mass-retirement refusal too. With crossings withdrawn the rows at
+      # stake are the OSM points and the 39 site-water points; whether their
+      # loss alone still trips the ceiling has not been re-measured.
       #
       # BEFORE THE PREFLIGHT, unlike the photo restore below, and the ordering
       # is load-bearing in two directions. `export_poi.py --check` refuses when
@@ -256,6 +306,7 @@ jobs:
       - name: Restore derived water data from the published data
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          DATA_ENVIRONMENT: ${{ inputs.data_environment }}
         run: |
           if [ -z "$DATA_BASE_URL" ]; then
             echo "No DATA_BASE_URL repository variable - derived water starts cold."
@@ -265,7 +316,7 @@ jobs:
           for name in osm_water.geojson osm_water_reach.json trail_water.json; do
             if [ -e "data/raw/$name" ]; then
               echo "$name already present (cache hit) - keeping the local copy."
-            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/$name"; then
+            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/environments/${DATA_ENVIRONMENT}/$name"; then
               mv "data/raw/$name.download" "data/raw/$name"
               echo "Restored $name from the published data."
             else
@@ -350,10 +401,32 @@ jobs:
       # (or a fresh environment prefix), and an absent outcome file just means
       # a cold crawl - the state this step exists to make rare, not an error.
       # An empty DATA_BASE_URL variable skips the step entirely.
+      #
+      # refetch_photos: an outcome record says a photo was uploaded once, to
+      # the bucket it was published to, so after a bucket move it vouches for
+      # bytes that are not there. Run 164 (37000311109, 2026-10-02), the first
+      # vector publish after the public bucket moved to `our-hike` with no
+      # copy, restored the cached outcomes, and
+      # publish.py's verify_photo_promises rightly refused the release,
+      # uploading nothing: 3,033 photo keys the POI files referenced were
+      # neither local nor in the bucket. Starting cold makes the fetchers
+      # download every photo and publish.py upload it to the bucket that now
+      # serves it. The face gate is unchanged: its decisions are keyed by each
+      # photo's digest, and a re-fetched photo is the same bytes, so a held
+      # photo stays held (Reasoned: a source that re-encoded an image would
+      # give a new digest, which the gate then screens as a new photo).
+      - name: Start the photo outcomes cold
+        if: inputs.include_photos && inputs.refetch_photos
+        run: |
+          rm -f data/raw/poi_images.json data/raw/poi_images_atc.json
+          rm -rf data/raw/poi_photos
+          echo "Photo outcomes cleared: every photo is fetched again and uploaded to this run's bucket."
+
       - name: Restore photo outcomes from the published data
-        if: inputs.include_photos
+        if: inputs.include_photos && !inputs.refetch_photos
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          DATA_ENVIRONMENT: ${{ inputs.data_environment }}
         run: |
           if [ -z "$DATA_BASE_URL" ]; then
             echo "No DATA_BASE_URL repository variable - photo outcomes start cold."
@@ -363,7 +436,7 @@ jobs:
           for name in poi_images_atc.json poi_images.json; do
             if [ -e "data/raw/$name" ]; then
               echo "$name already present (cache hit) - keeping the local copy."
-            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/$name"; then
+            elif curl -fsS --retry 3 -o "data/raw/$name.download" "${DATA_BASE_URL%/}/environments/${DATA_ENVIRONMENT}/$name"; then
               mv "data/raw/$name.download" "data/raw/$name"
               echo "Restored $name from the published data."
             else
@@ -386,11 +459,100 @@ jobs:
         continue-on-error: true
         run: python fetch_poi_images.py
 
+      # The recovered NYNJTC photographs, brought to the runner so publish.py
+      # can park the whole corpus in R2 (#1567). ONE-TIME, which is why it is
+      # an input that defaults to false rather than something a routine
+      # publish does.
+      #
+      # WHAT IT REPLACES, because the first version of this step was wrong in
+      # a way worth leaving written down. #1550 gated it on `include_photos`,
+      # which defaults to TRUE, and `wayback_photos` is not in FETCH_OUTPUTS
+      # so the "already here" exit never fires on a fresh runner. Every vector
+      # publish therefore spent ~20 API calls and 40,609,870 bytes rebuilding
+      # a store whose contents cannot change - the archive recovery is
+      # finished, 403 frozen captures, nothing upstream left to fetch. The
+      # pull request that added it argued the work was bounded because
+      # publish.py uploads only what the bucket lacks; that was true of the
+      # UPLOAD and said nothing about the download, which is the part that
+      # recurred.
+      #
+      # WHY IT STILL EXISTS AT ALL. The park has to be filled once, and the
+      # bytes live in the recovery's own artifact - 14-day retention, and a
+      # branch cache the merge deleted. After that the prefix holds them for
+      # good and this stays unticked. A later confirmation batch needs one
+      # deliberate dispatch with this on, until the server-side copy out of
+      # the park exists (#1567, deliberately out of scope there).
+      #
+      # It carries the store whatever the confirm file says: the park is
+      # about the bytes surviving, and `reference/nynjtc_hike_photos.json`
+      # decides only what may reach a card.
+      - name: Carry the confirmed archive photographs to the publisher
+        if: inputs.carry_archive_photos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          store=data/raw/wayback_photos
+          if [ -d "$store" ]; then
+            echo "$store is already here ($(find "$store" -type f | wc -l) images) - nothing to carry."
+            exit 0
+          fi
+          cleared=$(python -c 'import publish; print(len(publish.cleared_archive_digests()))')
+          echo "$cleared photograph(s) confirmed for cards; carrying the whole store regardless, for the park."
+
+          # The BIGGEST unexpired artifact across the last 20 recovery runs,
+          # not the newest. Every stage uploads one and only some carry the
+          # store, so a probe run's few kilobytes of log would otherwise win
+          # on recency; the store is tens of megabytes and dominates the size
+          # of any artifact containing it.
+          best_id=""; best_size=0; best_run=""
+          # Through an assignment, never straight into the `for`: `set -e`
+          # does not see a failure inside a word list, so a rate-limited or
+          # unreachable API read as an empty list - "no artifact in the last
+          # 20 runs" - and the publish went on without the bytes it was told
+          # to carry. Assigned, a failed listing fails this step.
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nynjtc-archive-recovery.yml/runs?per_page=20" --jq '.workflow_runs[].id')"
+          for run in $runs; do
+            line=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" --jq \
+              '[.artifacts[] | select(.expired == false) | select(.name | startswith("nynjtc-archive-recovery-"))]
+               | sort_by(.size_in_bytes) | reverse | .[0] | select(. != null) | "\(.id) \(.size_in_bytes)"')
+            if [ -z "$line" ]; then continue; fi
+            size=${line##* }
+            if [ "$size" -gt "$best_size" ]; then best_id=${line%% *}; best_size=$size; best_run=$run; fi
+          done
+
+          if [ -z "$best_id" ]; then
+            echo "No unexpired nynjtc-archive-recovery artifact in the last 20 runs."
+            echo "Nothing to park. If the confirmed photographs are also absent from the bucket, publish.py fails loudly by name."
+            exit 0
+          fi
+
+          echo "Carrying artifact $best_id ($best_size bytes) from run $best_run."
+          tmp=$(mktemp -d)
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$best_id/zip" > "$tmp/recovery.zip"
+          unzip -q -o "$tmp/recovery.zip" -d "$tmp/unpacked"
+          # Found rather than assumed: upload-artifact roots its archive at the
+          # least common ancestor of the paths it matched, so where
+          # wayback_photos/ sits inside the zip depends on which OTHER paths
+          # that run happened to match - see .github/tests/test_artifact_handoff_paths.py.
+          src=$(find "$tmp/unpacked" -type d -name wayback_photos -print -quit)
+          if [ -z "$src" ]; then
+            echo "That artifact carries no wayback_photos/ directory - the run it came from recovered none."
+            rm -rf "$tmp"
+            exit 0
+          fi
+          mkdir -p "$(dirname "$store")"
+          mv "$src" "$store"
+          rm -rf "$tmp"
+          echo "Carried $(find "$store" -type f | wc -l) recovered image(s) into $store."
+
       # BEFORE THE THREE WATER STEPS, and that ordering is load-bearing
-      # rather than tidy (#1016). All three read this export's artifact:
-      # build_osm_water_reach.py measures OSM water against these lines,
-      # fetch_trail_water.py intersects streams with them, and export_poi.py
-      # widens its corridor around them. Below the water steps - where these
+      # rather than tidy (#1016). Two of them read this export's artifact:
+      # build_osm_water_reach.py measures OSM water against these lines, and
+      # export_poi.py widens its corridor around them. (fetch_trail_water.py
+      # was the third, intersecting streams with them, until #1674 withdrew
+      # crossings; its site water is measured against ATC's shelters and
+      # campsites, not against any trail line.) Below the water steps - where these
       # two sat until #1016 - every one of those reads an absent file and
       # gates exactly the A.T., which is the defect rather than a degraded
       # mode of it: it is what shipped four organizations' trails with no
@@ -434,12 +596,26 @@ jobs:
       # stretch download carries the network above the seam and not only the
       # ground under it. Cut here rather than in the basemap or DEM builds
       # because the archive it cuts is written by the step above, in this
-      # job, and hands off to nothing. `--context-zoom 8` is one below the
-      # archive's minimum zoom: no shared context, z9 rides in the cells -
-      # cut_cells.py's docstring carries the measurement (9.65 MB of z9
-      # nationwide, for a zoom the sketch already draws below and the cells
-      # draw above). publish.py collects the result inside the lines' own
-      # reaches_hikers gate, never through the ungated sheet loop.
+      # job, and hands off to nothing. publish.py collects the result inside
+      # the lines' own reaches_hikers gate, never through the ungated sheet
+      # loop.
+      #
+      # `--context-zoom 8` IS UNCHANGED AND NOW MEANS SOMETHING ELSE (#1613),
+      # which is worth saying rather than leaving a reader to infer. It used
+      # to be "one below the archive's minimum zoom: no shared context, z9
+      # rides in the cells" - true while export_nearby_trails.py cut from z9,
+      # and the reason `nearby_trails_context.pmtiles` has never existed on
+      # the bucket. That floor is 5 now, so the same flag splits the archive
+      # where it was always meant to: z5-z8 into one shared context artifact
+      # the corridor camera reads whole, z9-z14 into the cells. z9 still rides
+      # in the cells and cut_cells.py's measurement for it still holds
+      # (9.65 MB nationwide).
+      #
+      # THE FIRST RUN OF THIS AFTER #1613 IS WHAT MAKES THE CONTEXT ARCHIVE
+      # EXIST. Until it publishes, the client asks z5-z8 of an archive that
+      # holds neither and gets empty tiles, which is the state #1257 designed
+      # for; after it, the sketch's layers can be pointed at those tiles and
+      # the 12 MB network_overview.geojson can leave the launch.
       - name: Cut the network tiles into coverage cells
         run: python cut_cells.py data/processed/nearby_trails.pmtiles --family nearby_trails --context-zoom 8
 
@@ -482,19 +658,32 @@ jobs:
         continue-on-error: true
         run: python fetch_nynjtc_long_path_guide.py
 
-      # NYNJTC's Favorite Hikes (#1290): the twenty public write-ups, with
-      # their photographs, into data/raw/nynjtc_hikes.json (in FETCH_OUTPUTS
-      # above) and the content-addressed photo store. One listing request
-      # and one per photograph the cache does not already hold. The export
-      # that reads this cache runs far below, after the junction graph is
-      # built, because a published route is measured on that graph.
+      # NYNJTC's hikes, through the Hike Finder export (#1427): all 385
+      # write-ups into data/raw/hikefinder.json and the published GPX track
+      # for the 113 that have one into data/raw/hikefinder_gpx/ (both in
+      # FETCH_OUTPUTS above). 499 requests on a cold run and 386 on a warm
+      # one - a track is downloaded once and carried forward. This replaced
+      # fetch_nynjtc_hikes.py, which read nynjtc.org itself and reached 20
+      # hikes of 59; the maintainer asked for the scrape to stop.
+      #
+      # The two steps that READ this cache run far below, after the junction
+      # graph is built, because a formed route is measured on that graph.
       #
       # continue-on-error for the same reason as the guide fetch above: a
       # website's bad afternoon must not fail an A.T. publish, and the
       # export reads whatever the restore left on disk.
-      - name: Fetch NYNJTC's Favorite Hikes
+      #
+      # The export went behind a site password on 2026-09-15 (#1468). The
+      # secret is injected here rather than read from sources.json, which is
+      # published to hikers as registry.json. A run where the secret is unset
+      # fetches as an anonymous reader and, if the export is locked, lands on
+      # the fetcher's own listing guard - which is the whole reason this step
+      # is continue-on-error.
+      - name: Fetch NYNJTC's hikes from the Hike Finder export
         continue-on-error: true
-        run: python fetch_nynjtc_hikes.py
+        env:
+          HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+        run: python fetch_hikefinder.py
 
       - name: Export the waypoints other organizations publish
         run: python export_nearby_poi.py
@@ -548,13 +737,13 @@ jobs:
             echo "No osm_water.geojson - nothing to gate, and export_poi.py will not ask for it."
           fi
 
-      # Where the trail meets water, and which sites have water a hiker can
-      # reach (#529). Off by default, unlike the OSM points: it downloads
-      # ~5.7 GB of USGS subregions on top of reading the extracts, and its
-      # answer barely moves - NHD is a frozen snapshot and the trail does not
-      # often change where it fords a creek. The output rides FETCH_OUTPUTS,
-      # so an unticked run exports the last derivation's crossings rather
-      # than none, exactly as the photo fetches behave. Its elevation cache
+      # Which sites have water a hiker can reach (#529) - and, until #1674
+      # withdrew them, where the trail meets water. Off by default, unlike
+      # the OSM points: it downloads ~5.7 GB of USGS subregions on top of
+      # reading the extracts, and its answer barely moves - NHD is a frozen
+      # snapshot and ATC's shelters do not often move. The output rides
+      # FETCH_OUTPUTS, so an unticked run exports the last derivation's site
+      # water rather than none, exactly as the photo fetches behave. Its elevation cache
       # rides along too, so a re-run after a threshold change pays for the
       # hydrography and not for several hundred more EPQS round trips.
       #
@@ -656,7 +845,7 @@ jobs:
       # artifact at all.
       - name: Upload the reconciled ledger for review
         if: ${{ always() && inputs.regenerate_identity_ledger && steps.reconcile.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: poi-identity-ledger
           path: |
@@ -733,6 +922,23 @@ jobs:
       # a trail with nothing on it worth going to".
       - name: Export curated highlights
         run: python export_highlights.py
+
+      # The clubs' challenges (#1780, features/CHALLENGES.md), from the
+      # reviewed files under reference/challenges/. AFTER "Export POIs" for
+      # highlights' reason one step up - every item names a published POI
+      # id and copies that record's own mile and coordinate - and AFTER
+      # "Export trail lines", because each place is measured against the
+      # published centerline in trails.geojson and refused if it lies past
+      # its own tag radius without saying `off_trail`.
+      #
+      # No `if:` guard and no network. Drops are reported, not fatal: an
+      # unresolvable item or challenge is a stderr line and a `::warning::`
+      # annotation, and the trail data this job publishes is never held back
+      # by one bad row. A missing trails.geojson skips the distance check
+      # and says so as an annotation rather than passing unmeasured places
+      # quietly.
+      - name: Export challenges
+        run: python export_challenges.py
 
       # Who the map's data belongs to (#927). Reads sources.json in this
       # checkout and nothing else - no raw snapshot, no network - so it could
@@ -820,17 +1026,24 @@ jobs:
         if: inputs.include_elevation
         run: python export_network_profile.py
 
-      # The routes somebody wrote up (#1290, features/SUGGESTED_HIKES.md):
-      # NYNJTC's Favorite Hikes, each one's ends signed off by a person in
-      # reference/nynjtc_hike_routes.json and measured here on this run's
-      # own junction graph by lib/trail_graph_route.py, the twin of the
-      # phone's router. AFTER the two elevation steps and NOT gated on
-      # include_elevation: the export needs the graph, and prices climb only
-      # when this run also wrote a climb sidecar that fits it - a run
-      # without elevation ships the routes with their climb absent, which
-      # the card reads as unknown. Three gates decide what it writes, none of
-      # them this workflow's (the script's docstring); a run where no row
-      # is reviewed yet writes nothing, and publish.py collects nothing.
+      # Give every hike a route where one can be had honestly (#1427): the
+      # publisher's own GPX track for the 113 that carry one, and for the
+      # other 272 a route FORMED from the trailhead and the turn-by-turn
+      # description over this run's own junction graph, graded against
+      # everything the publisher independently stated about the walk. Writes
+      # the routes artifact and the sign-off sheet a person reads; it never
+      # fails a run for a hike it could not route, because a hike with no
+      # route is this script's ordinary output.
+      - name: Form or read a route for every NYNJTC hike
+        run: python route_hikefinder.py
+
+      # What that leaves, as the artifact a phone reads
+      # (features/SUGGESTED_HIKES.md). AFTER the two elevation steps and NOT
+      # gated on include_elevation: the export needs the graph, and prices
+      # climb only when this run also wrote a climb sidecar that fits it - a
+      # run without elevation ships the routes with their climb absent, which
+      # the card reads as unknown. The gates are the script's own, not this
+      # workflow's: the entry's reaches_hikers, and each route's grade.
       - name: Export the routes NYNJTC publishes
         run: python export_suggested_hikes.py
 
@@ -1030,7 +1243,7 @@ jobs:
       # Kept short-lived: these are inspectable evidence for a dry run, not a
       # distribution channel. R2 is the distribution channel.
       - name: Upload built artifacts for inspection
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vector-data
           path: |
@@ -1056,8 +1269,16 @@ jobs:
       # is exactly the drift #1262's tests exist to catch elsewhere in this
       # file. Short retention because nothing outside this same run ever
       # reads it.
+      #
+      # `wayback_photos/` is the SECOND photo store (#1550), and it is listed
+      # for a reason invisible from the publish job: collect_photos() reads an
+      # absent store as empty rather than as an error, so a handoff that
+      # dropped it would publish no archive photograph at all and say nothing
+      # about it. Listing it does not move the archive root the download
+      # reconstructs - it is another `pipeline/data/raw/` entry, so the least
+      # common ancestor stays `pipeline/data` (#1347).
       - name: Upload data for the publish job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vector-data-build-output
           path: |
@@ -1068,6 +1289,7 @@ jobs:
             pipeline/data/raw/osm_water_reach.json
             pipeline/data/raw/trail_water.json
             pipeline/data/raw/poi_photos/
+            pipeline/data/raw/wayback_photos/
           retention-days: 1
           if-no-files-found: warn
 
@@ -1100,6 +1322,23 @@ jobs:
   # its coalescing race against, per #838 finding 1) however long THIS job
   # takes, not however long the whole build does. Minutes, not two hours -
   # the actual latency the investigation behind #1265 was answering.
+  #
+  # WHAT IT DOES NOT BUY: a dispatch nobody approves promptly. `environment:`
+  # and `concurrency:` are both on this one job (see the reasoning at each
+  # key below), so a run that reaches `waiting` on the reviewer holds the
+  # group for as long as it sits there, not for however long the job itself
+  # takes once approved - measured 2026-09-08 (#1271): run #84 sat `waiting`
+  # for 92 minutes overnight, and `publish-conditions.yml`'s cron queued
+  # `pending` behind it the whole time rather than running. That is the
+  # safety layer - closures, serious warnings, field notes - stalled by an
+  # unattended dispatch, not merely a maintainer's re-dispatch chore.
+  # `build-basemap.yml`, `build-dem.yml` and `build-raster.yml`'s `publish`
+  # jobs share the identical shape and are equally capable of holding this
+  # group open. #1271 names three possible fixes - splitting the approval
+  # into its own job that owns no concurrency, a watchdog that cancels a
+  # long `waiting` run, or (this comment) documenting the risk - and leaves
+  # the choice open rather than picking one. Until it is picked: dispatch a
+  # real publish only when somebody can approve it within the hour.
   publish:
     needs: build
     # Unconditional on inputs.publish alone would run this job - and wait on
@@ -1144,7 +1383,7 @@ jobs:
         run: pip install -r requirements.txt
 
       # `pipeline/data/`, NOT `pipeline/` - and the difference is the whole
-      # of #1347. upload-artifact@v4 roots the archive at the LEAST COMMON
+      # of #1347. upload-artifact (v4, and v7 alike) roots the archive at the LEAST COMMON
       # ANCESTOR of its search paths, and the upload above names both
       # `pipeline/data/processed/` and six `pipeline/data/raw/` entries, so
       # that ancestor is `pipeline/data`. The archive therefore contains
@@ -1158,7 +1397,7 @@ jobs:
       # outright, so this pairing failing again is loud rather than silent,
       # and .github/tests/test_artifact_handoff_paths.py holds the two ends
       # together so a later edit to either path list cannot drift them apart.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: vector-data-build-output
           path: pipeline/data/

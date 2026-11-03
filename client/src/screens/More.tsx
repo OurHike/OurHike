@@ -102,6 +102,30 @@ export interface MoreProps extends SettingsProps {
    */
   volunteerScreen?: ReactNode
   /**
+   * Challenges (#1780): whichever of the list, one challenge or Browse the
+   * current page names, rendered by the shell for `volunteerScreen`'s reason
+   * - it holds the live state (the published list, the hiker's tags, the
+   * plan). Absent means the row leads to an empty page, never a crash.
+   */
+  challengesScreen?: ReactNode
+  /**
+   * Back from one challenge or from Browse, and what it names. They are
+   * pushed (App.tsx's openChallenge), so Back returns to wherever they were
+   * opened - Plan, a place card, Browse, the list - rather than always to the
+   * list. Absent: up one level, as before.
+   */
+  challengesUp?: { label: string; onPress: () => void }
+  /** The Challenges row's second line, e.g. the joined challenges' names. */
+  challengesSummary?: string
+  /**
+   * Your support (#1876), rendered by the shell for `volunteerScreen`'s
+   * reason - it holds the account and the backend's answer. Absent means the
+   * row leads to an empty page, never a crash.
+   */
+  supportScreen?: ReactNode
+  /** The Your support row's second line, e.g. "$60 a year". */
+  supportSummary?: string
+  /**
    * Opens the moderation queue, and present ONLY for a moderator (#235).
    *
    * An optional callback rather than an `isModerator` flag, deliberately:
@@ -322,6 +346,11 @@ export function More({
   sentReportCount = 0,
   yourWork,
   volunteerScreen,
+  challengesScreen,
+  challengesUp,
+  challengesSummary = 'Places clubs invite you to walk',
+  supportScreen,
+  supportSummary = 'Pay what you want, $0 included',
   onOpenModeration,
   onOpenRegistry,
   hikeSummary = null,
@@ -470,6 +499,37 @@ export function More({
     </section>
   )
 
+  if (page === 'challenges' || page === 'challenge' || page === 'challenge-browse') {
+    // Their own chrome - a pine header, a sheet - so not inside `.settings`.
+    // Back goes up one level: a challenge and Browse to the list, the list
+    // home.
+    const up: { page: MorePage; label: string } =
+      page === 'challenges'
+        ? { page: 'home', label: 'More' }
+        : { page: 'challenges', label: 'Challenges' }
+    return (
+      <div className="more">
+        <div className="more__pagebar">
+          <button
+            type="button"
+            className="more__back"
+            onClick={() =>
+              page !== 'challenges' && challengesUp !== undefined
+                ? challengesUp.onPress()
+                : onNavigate(up.page)
+            }
+          >
+            <span aria-hidden="true">‹ </span>
+            {page !== 'challenges' && challengesUp !== undefined
+              ? challengesUp.label
+              : up.label}
+          </button>
+        </div>
+        {challengesScreen}
+      </div>
+    )
+  }
+
   if (page !== 'home') {
     let panel: ReactNode
     if (page === 'you') {
@@ -594,6 +654,7 @@ export function More({
           <DisplaySettings
             preferences={settings.preferences}
             onChange={settings.onChange}
+            podcastApps={settings.podcastApps}
           />
           {/* Directly under the unit picker, which is the setting it reads
               with: a pace is a speed, so its own labels follow imperial or
@@ -647,6 +708,8 @@ export function More({
               with the same gate - see there. */}
         </>
       )
+    } else if (page === 'support') {
+      panel = supportScreen ?? null
     } else if (page === 'reports') {
       panel = yourReports ?? null
     } else if (page === 'work') {
@@ -745,7 +808,7 @@ export function More({
     )
   }
 
-  // ---- Home: the storage card, five rows, and the thank-you line. ----
+  // ---- Home: the storage card, seven rows, and the thank-you line. ----
 
   const face = storageFace(
     hikingStatus,
@@ -795,6 +858,27 @@ export function More({
           // for a test.
           'Report problems, or lend a hand'
 
+  /**
+   * THE SEVEN ROWS, AND THEY TAKE NO MODE INPUT (D23, #1437).
+   *
+   * Today, Map and Plan change with the mode switch. More does not, and the
+   * reason is what the screen is for: More is where somebody goes looking
+   * for a SPECIFIC thing, and a list that rearranges itself depending on a
+   * switch on another screen is a list you have to re-learn every visit. The
+   * volunteering row in particular stays put in all three - the way into
+   * volunteering cannot be behind the mode you are already in.
+   *
+   * It already worked this way; what was missing was anything that would
+   * fail the day a `mode === 'volunteer' &&` appeared in this array.
+   * screens/More.modeInvariance.test.tsx is that, and it compares all three
+   * renders rather than checking for a named row, so a row dropped, reworded
+   * or reordered for one mode fails too.
+   *
+   * ONE ROW READS THE MODE, deliberately: `youSummary` names it, because
+   * More -> You is where the mode switch itself lives. A control summarising
+   * its own current value is not a list rearranging itself. The test pins
+   * that exception to this row alone.
+   */
   const destinations: ReadonlyArray<{
     page: Exclude<MorePage, 'home'>
     title: string
@@ -810,6 +894,13 @@ export function More({
       sub: volunteerSummary,
       alert: stuckCount > 0,
     },
+    // After "Volunteer & report", the handoff's place for it (#1780). Present
+    // in every mode, for the reason the block above gives.
+    { page: 'challenges', title: 'Challenges', sub: challengesSummary },
+    // Before the sources row, which closes the list on how this map got here
+    // (#1876). In every mode, for the reason the block above gives: the way
+    // to Stop must never depend on a switch on another screen.
+    { page: 'support', title: 'Your support', sub: supportSummary },
     {
       page: 'sources',
       title: 'Where this map comes from',

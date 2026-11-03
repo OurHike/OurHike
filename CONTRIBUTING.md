@@ -23,12 +23,13 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) | How it is built and why those choices |
 | [WIREFRAMES.md](WIREFRAMES.md) | Screen-by-screen specification |
 | [features/](features/) | Full design drafts, one per feature (including [ORG_NOTICES.md](features/ORG_NOTICES.md) — how a notice from an org that is not the ATC reaches a hiker) |
+| [GLOSSARY.md](GLOSSARY.md) | The words this repository uses as if everybody knew them — and the ten that mean more than one thing |
 | [TESTING.md](TESTING.md) | Testing approach and standards |
 | [BRANCHING.md](BRANCHING.md) | Branching and pull request strategy, and running several at once |
 | [ROADMAP.md](ROADMAP.md) | Phase narrative — where the project is and what each phase means |
 | [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) | Ordered runbook for getting v1 deployed |
 | [RELEASING.md](RELEASING.md) | How a release is versioned, named, gated and shipped, and the three environments it moves through |
-| [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs |
+| [pipeline/ELT.md](pipeline/ELT.md), [pipeline/DBT.md](pipeline/DBT.md), [pipeline/DATA_RELEASES.md](pipeline/DATA_RELEASES.md) | Data platform designs: ELT.md is the dlt → dbt pipeline as it runs, DBT.md the history of the dbt layer's first phases |
 | [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md) | Where an artifact goes in the bucket and what it may be called |
 | [pipeline/SOURCE_SURVEY.md](pipeline/SOURCE_SURVEY.md) | Upstream A.T. data sources, surveyed and qualified (dated snapshot) |
 | [pipeline/NYC_SOURCE_SURVEY.md](pipeline/NYC_SOURCE_SURVEY.md) | Trail sources within a day of NYC — DEC, NYNJTC, the NJ side — surveyed and qualified (dated snapshot) |
@@ -36,6 +37,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [pipeline/POI_COVERAGE_SURVEY.md](pipeline/POI_COVERAGE_SURVEY.md) | Which POI types each org publishes and which of them ship — the matrix, its evidence, and what it refuses (dated snapshot) |
 | [pipeline/WATER_SOURCES.md](pipeline/WATER_SOURCES.md) | Water near shelters — measurements against every candidate source, and the options (dated snapshot) |
 | [pipeline/WATER_CONDITIONS.md](pipeline/WATER_CONDITIONS.md) | Whether the water is *flowing* — the hydrology and drought sources that carry a current low-water signal (dated snapshot) |
+| [pipeline/ORG_COVERAGE_SURVEY.md](pipeline/ORG_COVERAGE_SURVEY.md) | What every organization publishes, type by type, against what is loaded — the survey the dlt club folders start from (dated snapshot, October 2026) |
 
 **Issues track the delta between that and reality** — anything with a state, an owner or a date. Open work, bugs, decisions still to make.
 
@@ -52,6 +54,37 @@ If you are proposing something substantial, the design doc is usually the first 
 - [`blocked-external`](https://github.com/OurHike/OurHike/labels/blocked-external) — waiting on credentials or a third party; probably not a good starting point
 
 Area labels: `client`, `backend`, `pipeline`, `data`, `ops`, `docs`.
+
+### Two lanes, decided by whether a hiker can see it
+
+Work here runs in two lanes, and an issue's labels put it in one of them. The split is
+about **who reviews it**, not about how hard it is.
+
+- **`client` present — the maintainer's lane.** A change a hiker can see is reviewed on a
+  phone by somebody who can tell whether it looks right. CI cannot stand in for that, so
+  nothing unattended picks these up.
+- **No `client`, at least one area label — the night lane.** An unattended session may
+  claim it, branch, build it, and open a **draft** pull request. It merges nothing: the
+  maintainer's merge is the gate, exactly as it is for every other pull request here.
+- **`night-shift-hold` — never unattended**, whatever else the issue carries. The veto, for
+  the issues where the derived rule gets it wrong and for the ones whose answer is a
+  decision rather than a change: what OurHike costs to run, what the website should say,
+  what goes in a store listing.
+- **`blocked-external` and `needs-field-testing`** are in neither lane. Neither is waiting
+  on work — one waits on a third party, the other on somebody standing on a trail.
+
+```
+scripts/nightshift.sh             what an unattended session may take, and why not the rest
+scripts/nightshift.sh --triage    the issues carrying no label, which no rule can route
+scripts/nightshift.sh --census    the bucket counts
+```
+
+**An unlabeled issue is in no lane at all.** When #1463 was opened, 32 of 112 open issues
+carried no label, so nothing could route three quarters of the backlog — labelling one is
+a smaller job than working it and unblocks more.
+
+[`.claude/skills/night-shift/SKILL.md`](.claude/skills/night-shift/SKILL.md) is what a
+session does with the answer, and the six things it must never do unattended.
 
 ## Working on the code
 

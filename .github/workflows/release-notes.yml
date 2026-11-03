@@ -92,6 +92,15 @@ jobs:
             --name "$RELEASE_NAME" \
             ${PREVIOUS:+--previous "$PREVIOUS"}
 
+      # Both real dispatches (v1.3.0, v1.4.0) pushed this branch fine and then
+      # went red on the POST below with a 403 - #1501. The push is this
+      # step's real work and it always lands; opening the pull request is a
+      # dashboard-gated nicety on top of it ("Allow GitHub Actions to create
+      # and approve pull requests", unconfirmed - #1501 has the detail). So
+      # the POST is no longer allowed to fail the job: its status is read by
+      # hand instead of via `curl -f`, and a non-2xx falls back to printing
+      # the branch's compare URL rather than coloring the run red for work
+      # that already happened.
       - name: Open the pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -113,30 +122,56 @@ jobs:
           # cannot be indented, and every line of this script is inside an
           # indented YAML block. It is also prose, which is easier to edit in a
           # markdown file than inside a shell string.
-          number="$(jq -n \
+          #
+          # No `-f`: a refused POST must not exit non-zero here, or the status
+          # below never gets read. `-w '\n%{http_code}'` appends the code as
+          # its own trailing line, which `${response##*$'\n'}` /
+          # `${response%$'\n'*}` split back apart below - safe even though the
+          # response body is itself pretty-printed, multi-line JSON, since
+          # both only look at the *last* newline in the string.
+          request="$(jq -n \
             --arg title "Release notes: $VERSION — $NAME" \
             --arg head "$branch" \
             --rawfile body .github/scripts/release_pr_body.md \
-            '{title: $title, head: $head, base: "main", body: $body, draft: true}' \
-            | curl -fsS -X POST \
-                -H "Authorization: Bearer $GH_TOKEN" \
-                -H "Accept: application/vnd.github+json" \
-                "https://api.github.com/repos/$REPO/pulls" -d @- | jq -r '.number')"
-
-          # Without this the pull request fails "PR has a linked issue", which is
-          # correct of that check and wrong for this pull request - so the label
-          # goes on in the same breath as the opening rather than being left for
-          # somebody to discover from a red check.
-          curl -fsS -X POST \
+            '{title: $title, head: $head, base: "main", body: $body, draft: true}')"
+          response="$(curl -sS -w '\n%{http_code}' -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/issues/$number/labels" \
-            -d '{"labels":["no-issue"]}' > /dev/null
+            "https://api.github.com/repos/$REPO/pulls" -d "$request")"
+          status="${response##*$'\n'}"
+          payload="${response%$'\n'*}"
 
-          {
-            echo "### Notes drafted"
-            echo
-            echo "https://github.com/$REPO/pull/$number"
-            echo
-            echo "Edit the TODOs, merge, then tag \`$VERSION\` when the §8 gate is green."
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
+            number="$(jq -r '.number' <<<"$payload")"
+
+            # Without this the pull request fails "PR has a linked issue",
+            # which is correct of that check and wrong for this pull request
+            # - so the label goes on in the same breath as the opening
+            # rather than being left for somebody to discover from a red
+            # check.
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/issues/$number/labels" \
+              -d '{"labels":["no-issue"]}' > /dev/null
+
+            {
+              echo "### Notes drafted"
+              echo
+              echo "https://github.com/$REPO/pull/$number"
+              echo
+              echo "Edit the TODOs, merge, then tag \`$VERSION\` when the §8 gate is green."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Opening the pull request failed (HTTP $status). The branch pushed correctly; see the job summary for how to open it by hand."
+
+            {
+              echo "### Notes pushed, pull request not opened"
+              echo
+              echo "\`$branch\` is on \`$REPO\` with the drafted notes, but opening its pull request failed: the API answered HTTP $status. This is the #1501 failure mode - most likely \"Allow GitHub Actions to create and approve pull requests\" is off for this repository or organization."
+              echo
+              echo "https://github.com/$REPO/compare/main...$branch?expand=1"
+              echo
+              echo "Open that link to file the pull request by hand, add the \`no-issue\` label, then edit the TODOs, merge, and tag \`$VERSION\` when the §8 gate is green."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

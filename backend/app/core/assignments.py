@@ -31,12 +31,67 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import Profile
+
+
+def stood_behind() -> ColumnElement[bool]:
+    """The assignments a hiker-facing read may believe. Needs `Club` joined.
+
+    #1635 - The organization console's new endpoints trust self-registered
+    orgs with maintainer powers, seats and mail. Until it, every row in
+    `maintainer_assignments` carried the same weight here, and the console
+    made that unsafe: `POST /clubs` makes anybody whose verified address is at
+    the domain they typed a claimed org's approved admin, and that admin could
+    then write an assignment over any miles. One note from a "covering
+    maintainer" marks a spring missing on the map (`core/disputes.py`), and a
+    covering assignment receives other hikers' private thanks.
+
+    So a row counts for hikers when something other than the organization
+    itself stands behind it. Two things do, today:
+
+    - **A maintainer loaded it from a reviewed file** (`load_assignments.py`).
+      Those rows carry neither stamp: the loader writes no `proposed_by` and
+      no `confirmed_by`, and every console write since #1635 carries one or
+      the other (`routers/org_roles.py`; `test_org_console_authz.py` pins
+      the sync case, the one that used to write neither).
+    - **An admin confirmed it at an organization a maintainer wrote**:
+      `Club.maintainer_written`, set by the loader and by nothing
+      self-service, at an organization nobody has since proven a domain at
+      (`Club.verified_by`). Claiming and approving clear the flag, but code
+      from before the flag existed, serving against the migrated schema,
+      would claim without clearing it - and a claimed organization always
+      has `verified_by`. It used to be read off `created_by` being null, and
+      account deletion nulls `created_by`, so a registrant deleting their own
+      account made their organization "maintainer-written" (#1913 - Deleting
+      the registrant's account turns a self-registered organization into a
+      maintainer-written one, and lets an accomplice keep an admin seat).
+
+    **Never an unconfirmed proposal**, which is a supervisor's suggestion
+    waiting for an admin and was being counted as if it were the answer.
+
+    **What this costs, stated rather than hidden:** an organization that
+    registered or claimed itself through the console gives its volunteers no
+    weight with hikers until a maintainer puts the same stretch through the
+    reviewed file. That is the fail-closed direction, and a console-side way
+    for a maintainer to vouch for an organization is follow-up work nobody
+    has designed yet - the file is the one vouching path that exists.
+    """
+    loaded_from_a_file = and_(
+        MaintainerAssignment.proposed_by.is_(None),
+        MaintainerAssignment.confirmed_by.is_(None),
+    )
+    confirmed_at_a_maintainer_written_org = and_(
+        MaintainerAssignment.confirmed_at.isnot(None),
+        Club.maintainer_written.is_(True),
+        Club.verified_by.is_(None),
+    )
+    return or_(loaded_from_a_file, confirmed_at_a_maintainer_written_org)
 
 
 def assignments_covering(db: Session, mile: float, when: date) -> list[tuple[MaintainerAssignment, Club, Profile]]:
@@ -57,6 +112,7 @@ def assignments_covering(db: Session, mile: float, when: date) -> list[tuple[Mai
         .join(Club, Club.id == MaintainerAssignment.club_id)
         .join(Profile, Profile.id == MaintainerAssignment.maintainer_id)
         .filter(
+            stood_behind(),
             MaintainerAssignment.start_mile <= mile,
             MaintainerAssignment.end_mile >= mile,
             MaintainerAssignment.effective_from <= when,

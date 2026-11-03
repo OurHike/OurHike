@@ -68,22 +68,122 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # deferring to this sweep. e5b2f7c1a903 locked the table; this is what
     # notices if that lock ever comes undone in a live project.
     "alembic_version",
+    # Usage measurement (#1902, features/EVENTING.md §0). `analytics_events`
+    # holds every hiker's account id and GPS fix, sealed, beside a keyed hash
+    # of the account - readable with the anon key, that would be the
+    # identifier-next-to-a-place pair #252 removed, served to anyone. The
+    # other seven are the monthly figures, the User table, the public keys,
+    # the record of every opening, the intake counts and the data-quality
+    # findings. The archive's two (#1923) are its ledger of Parquet files and
+    # the daily counts of what moved - no rows and no positions, but a day's
+    # traffic all the same.
+    "analytics_anomalies",
+    "analytics_archive_parts",
+    "analytics_archived_daily",
+    "analytics_events",
+    "analytics_intake",
+    "analytics_monthly",
+    "analytics_months",
+    "analytics_openings",
+    "analytics_seal_keys",
+    "analytics_users",
     # The app-failure inbox (#848). It carries a contact detail somebody gave
     # while shaken, so of every table here it is the one where "readable with
     # the anon key" would be worst.
     "app_failures",
-    "clubs",
+    # What the assist panels spent (features/ORG_ONBOARDING.md). No prompt and
+    # no answer is stored here - see app/models/assist.py - but `client_hash`
+    # plus `created_at` is still a record of which addresses looked something
+    # up and when, and a readable one would be a traffic log we went out of
+    # our way not to keep.
+    "assist_usage",
+    # One proof-of-work nonce, spent (app/core/challenge.py). The nonces in
+    # it are public by construction, so this one is not about reading: an
+    # anon key that could DELETE a row here would make every solved
+    # challenge replayable, which is the whole of what that mechanism buys.
+    "challenge_spends",
+    # A club's challenge (#1780): the places a hiker tagged, and the entries
+    # they sent at the finish. `challenge_entries` is names, emails and home
+    # addresses sent to one club, and a readable one would send them to
+    # everybody else. `club_challenges` is a club's unpublished draft.
+    "challenge_entries",
+    "challenge_tags",
+    "closure_approvals",
     "closures",
+    "club_admins",
+    "club_challenges",
+    "clubs",
+    # The management-console embed's key store and its grant log
+    # (features/ORG_ONBOARDING.md, #1542). `console_keys` holds the origin
+    # allow-list and a secret hash; a readable one would hand somebody the
+    # list of sites a key is good on, which is half of guard 2.
+    "console_keys",
+    "console_token_grants",
+    # What this project has written to people who never asked to hear from
+    # it, and the list of the ones who told it to stop
+    # (features/ORG_ONBOARDING.md, app/core/mail.py). A readable
+    # `email_sends` is a record of which organizations we approached and
+    # when; a readable `email_suppressions` is worse, because it is a list
+    # of who complained.
+    "email_sends",
+    "email_suppressions",
     # The field-notes pair (features/FIELD_NOTES.md): notes carry a
     # reporter_id beside a position and a date - #252's route-reconstruction
     # pair - so their RLS staying on is worth a read an hour.
     "field_notes",
     "hikes",
     "maintainer_assignments",
+    # Who signed off which registry, and when. A readable one would name the
+    # people standing behind an organization's published trails, which is
+    # exactly the kind of "who maintains which mile" rule 4 keeps unpublished.
+    "registry_signoffs",
     "note_flags",
+    # A hiker offering somebody else's trails, and what the reading found
+    # (features/ORG_ONBOARDING.md). `nomination_contacts` is the one that
+    # matters most on this whole list: it holds named people's work email
+    # addresses, lifted off their organization's own pages, for an
+    # organization that has not yet agreed to any of this. A readable one is a
+    # contact database of volunteers who never heard of us.
+    "nomination_contacts",
+    "nomination_refusals",
+    "nomination_sources",
+    "org_nominations",
+    # An organization's own registry (features/ORG_ONBOARDING.md, #1540).
+    # Not yet published to anybody when it is written, which is the whole
+    # point of the sign-off: a readable one would serve an org's unpublished
+    # sections to anyone holding the anon key.
+    "org_parks",
+    "org_roles",
+    "org_sections",
+    "org_trails",
+    "poi_photo_dismissals",
     "poi_photos",
     "profiles",
     "reports",
+    # A volunteer trail monitor's own window (features/VOLUNTEERING.md §3,
+    # #763). The role is a mode the app is in, visible to its user and to
+    # the organization receiving the data, and to nobody else - "the app
+    # issues nothing that functions as a badge" is undone by a readable
+    # table saying who is out there this week.
+    "ridge_runner_commitments",
+    # A roster in two shapes: the names an organization invited by email,
+    # and the audit of every sync run. Rule 4 keeps nothing about a named
+    # volunteer published, and this is the table that breaks that first.
+    "role_invites",
+    "roster_sync_runs",
+    # What hikers chose to give OurHike (#1876): every supporter's email and
+    # amount. A readable one would publish the list of who pays and how much,
+    # which the published total exists precisely not to do.
+    "support_choices",
+    # And every event a payment provider sent about them (#1876): redacted
+    # of names and notes, but still a per-supporter amount and date history.
+    "support_events",
+    # And each charge (#1876): an amount and a date per supporter, which the
+    # published total sums so that nobody has to read these.
+    "support_charges",
+    # And which addresses turned support emails off (#1876): an address per
+    # row, the same claim as the two above.
+    "support_mail_preferences",
     # A hiker's own day hikes (#976): the same private-planning claim as the
     # #892 pair below - a route somebody intends to walk, served to nobody
     # else.
@@ -104,6 +204,17 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # A volunteer's own logbook (#761), locations and free-text notes - the
     # resource whose whole design is that it is private.
     "volunteer_hours",
+    # Each waypoint's mile from the published export (#1917 - A maintainer's
+    # note settles a water dispute anywhere on the trail, because the
+    # covering check reads the mile the note's author typed, not where the
+    # waypoint is). Public facts, copied from a public file; locked like
+    # every other table all the same.
+    "waypoint_miles",
+    # Workdays are public by design; who put their hand up for one is not
+    # (features/ORG_ONBOARDING.md rule 4). The pair is listed together so
+    # a reader sees that only one of them is a public resource.
+    "work_project_signups",
+    "work_projects",
 )
 
 TIMEOUT_SECONDS = 15

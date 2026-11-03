@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { get, set } from 'idb-keyval'
 import {
   BASEMAP_CELLS,
+  boundsContain,
   CELL_INDEX_STORE_KEY,
   cellDownloadRequests,
   cellPackageKey,
@@ -22,6 +23,7 @@ import {
   tileBounds,
   useCellIndexState,
   widen,
+  type Bounds,
   type CellIndex,
   type CoverageCell,
 } from './coverageCells'
@@ -145,6 +147,98 @@ describe('parseCellIndex', () => {
       cells: [{ name: 'n34w085', key: '', bounds: [-85, 34, -84, 35] }],
     }
     expect(parseCellIndex(noKey)).toBeNull()
+  })
+
+  it('falls back to the square when an index carries no covered bounds', () => {
+    // Every index published before #1458 - and the right answer for them:
+    // "no better claim than the square" is what the phone has always read,
+    // so an older release keeps exactly the coverage it had.
+    expect(N34W085.covered).toEqual(N34W085.bounds)
+  })
+
+  it('reads covered bounds where the cut says less than the square', () => {
+    // The measured New York City cell (2026-09-15, against the published
+    // at_basemap_cell_n40w074.pmtiles): it declares 40.0 to 41.0 and its 290
+    // tiles stop at 40.714, because the source it was cut from is clipped to
+    // the A.T. corridor and the corridor only clips the top of that square.
+    const withCovered = {
+      ...PUBLISHED,
+      cells: [
+        {
+          name: 'n40w074',
+          key: 'at_basemap_cell_n40w074.pmtiles',
+          bounds: [-74, 40, -73, 41],
+          covered: [-74, 40.714, -73.125, 41],
+        },
+      ],
+    }
+    const cell = (parseCellIndex(withCovered) as CellIndex).cells[0] as CoverageCell
+
+    expect(cell.bounds).toEqual([-74, 40, -73, 41])
+    expect(cell.covered).toEqual([-74, 40.714, -73.125, 41])
+    // Brooklyn is inside the square and outside what the cell draws. That
+    // gap is the whole of #1458: on `bounds` the phone called itself covered
+    // and drew blank paper.
+    expect(boundsContain(cell.bounds, -73.969, 40.66)).toBe(true)
+    expect(boundsContain(cell.covered, -73.969, 40.66)).toBe(false)
+  })
+
+  it('refuses the whole index over a covered box it cannot read', () => {
+    // Present and malformed is a corrupt row, not an absent key. A coverage
+    // claim that parsed half-way is what this function exists to not make.
+    // Malformed means NOT A BOX - three numbers, or a sentence - and not a
+    // box with nothing in it, which the next test is about.
+    const broken = {
+      ...PUBLISHED,
+      cells: [
+        {
+          name: 'n40w074',
+          key: 'at_basemap_cell_n40w074.pmtiles',
+          bounds: [-74, 40, -73, 41],
+          covered: [-74, 40.714, -73.125],
+        },
+      ],
+    }
+    expect(parseCellIndex(broken)).toBeNull()
+    expect(
+      parseCellIndex({
+        ...PUBLISHED,
+        cells: [{ ...broken.cells[0], covered: 'the top fifth of the square' }],
+      }),
+    ).toBeNull()
+  })
+
+  it('leaves out a cell whose covered box holds no ground, and keeps the rest (#1559)', () => {
+    // The two shapes release 2026-09-16-4 published, numbers verbatim. n38w082's
+    // tiles all lie south of its own south edge - routed in by the seam
+    // margin from n37w082 - so the cutter's clip put south at the edge and
+    // north below it; n59w135's lie exactly on its west edge, so west and
+    // east came out equal. Twenty-two cells like these, and the whole-index
+    // refusal over them switched off every stretch download on every phone.
+    // A cell that draws nothing inside its square is left out - the
+    // neighbour's own cell holds those tiles - and the other cells stand.
+    const withEmptyBoxes = {
+      ...PUBLISHED,
+      cells: [
+        ...PUBLISHED.cells,
+        {
+          name: 'n38w082',
+          key: 'at_basemap_cell_n38w082.pmtiles',
+          bounds: [-82, 38, -81, 39],
+          covered: [-81.210938, 38.0, -81.0, 37.996163],
+        },
+        {
+          name: 'n59w135',
+          key: 'nearby_trails_cell_n59w135.pmtiles',
+          bounds: [-135, 59, -134, 60],
+          covered: [-135.0, 59.175928, -135.0, 59.888937],
+        },
+      ],
+    }
+    const index = parseCellIndex(withEmptyBoxes)
+
+    expect(index).not.toBeNull()
+    expect(names((index as CellIndex).cells)).toEqual(['n34w085', 'n35w085', 'n34w084'])
   })
 
   it('refuses anything that is not an index at all', () => {
@@ -337,22 +431,42 @@ describe('priceStretch', () => {
   })
 })
 
+/** The seams' total drawn length, in degrees - the property that must not
+ *  change when `runs()` merges collinear pieces into fewer segments. */
+function totalLength(
+  edges: readonly (readonly [readonly [number, number], readonly [number, number]])[],
+): number {
+  return edges.reduce(
+    (sum, [from, to]) => sum + Math.abs(to[0] - from[0]) + Math.abs(to[1] - from[1]),
+    0,
+  )
+}
+
 describe('seamEdges', () => {
   it('draws all four edges of a lone cell', () => {
-    expect(seamEdges([N34W085], 1)).toHaveLength(4)
+    expect(seamEdges([N34W085])).toHaveLength(4)
   })
 
   it('leaves out the edge two held cells share - the map is continuous across it', () => {
-    const edges = seamEdges([N34W085, N34W084], 1)
-    expect(edges).toHaveLength(6)
+    const edges = seamEdges([N34W085, N34W084])
+    // FOUR, not six, and the difference is `runs()` rather than a change of
+    // shape: the two cells' southern edges are collinear and adjacent, so
+    // they come back as one segment from -85 to -83 instead of two meeting at
+    // -84. Same picture, and a better one - a dashed line drawn in two pieces
+    // restarts its dash pattern at the join and repeats the label
+    // map/coverageLayers.ts puts on a seam.
+    expect(edges).toHaveLength(4)
+    expect(totalLength(edges)).toBe(6) // two 1°×1° squares: 2 wide + 4 tall
     const onTheSeam = edges.filter(([from, to]) => from[0] === -84 && to[0] === -84)
     expect(onTheSeam).toEqual([])
   })
 
   it('leaves out the shared edge when the two held cells are stacked north-south', () => {
-    const edges = seamEdges([N34W085, N35W085], 1)
-    // Stacked north-south: the shared parallel at 35° N goes, the rest stay.
-    expect(edges).toHaveLength(6)
+    const edges = seamEdges([N34W085, N35W085])
+    // Stacked north-south: the shared parallel at 35° N goes, the rest stay -
+    // and the two west edges merge into one, as above.
+    expect(edges).toHaveLength(4)
+    expect(totalLength(edges)).toBe(6)
     // The seam runs west-east along 35° N, so both its endpoints sit at that
     // latitude and its longitudes differ. Filtering on a constant longitude
     // instead - which this assertion used to do - can only ever select a
@@ -366,7 +480,7 @@ describe('seamEdges', () => {
     // downloaded area rather than an internal join, and has to be drawn. This
     // is the direction the assertion above cannot check, and the case the
     // test that now sits above it was named for while checking the other one.
-    const edges = seamEdges([N34W085], 1)
+    const edges = seamEdges([N34W085])
     const onTheSeam = edges.filter(([from, to]) => from[1] === 35 && to[1] === 35)
     expect(onTheSeam).toEqual([
       [
@@ -376,8 +490,128 @@ describe('seamEdges', () => {
     ])
   })
 
+  it('draws the seam around what a partial cell carries, not around its square', () => {
+    // The n40w074 shape (#1458): the cell declares 40..41 and its tiles stop
+    // at 40.714, so the southern edge of the downloaded area runs along
+    // 40.714 - which is where a hiker walking south out of coverage actually
+    // crosses it. Drawn at 40.0 it was miles from the ground it described,
+    // and disagreed with the banner App.tsx raises off the same box.
+    const partial = {
+      name: 'n40w074',
+      key: 'at_basemap_cell_n40w074.pmtiles',
+      bounds: [-74, 40, -73, 41],
+      covered: [-74, 40.714, -73.125, 41],
+    } as const
+
+    const edges = seamEdges([partial])
+
+    expect(edges).toHaveLength(4)
+    const south = edges.filter(([from, to]) => from[1] === to[1] && from[1] === 40.714)
+    expect(south).toEqual([
+      [
+        [-74, 40.714],
+        [-73.125, 40.714],
+      ],
+    ])
+    expect(edges.some(([from, to]) => from[1] === 40 || to[1] === 40)).toBe(false)
+  })
+
+  it('draws a seam between two held cells whose covered ground does not meet', () => {
+    // Two whole squares side by side are continuous, but two PARTIAL cells
+    // can be held and still have a gap between them - and a hiker walking
+    // into that gap is leaving the downloaded area, so it is a real seam.
+    // This is the case the lattice walk could not see at all: it found the
+    // cells adjacent by their corners and drew nothing.
+    const west = {
+      name: 'a',
+      key: 'a.pmtiles',
+      bounds: [-75, 40, -74, 41],
+      covered: [-75, 40, -74.5, 41],
+    } as const
+    const east = {
+      name: 'b',
+      key: 'b.pmtiles',
+      bounds: [-74, 40, -73, 41],
+      covered: [-74, 40, -73, 41],
+    } as const
+
+    const edges = seamEdges([west, east])
+    const meridians = edges
+      .filter(([from, to]) => from[0] === to[0])
+      .map(([from]) => from[0])
+
+    expect(meridians.sort((a, b) => a - b)).toEqual([-75, -74.5, -74, -73])
+  })
+
   it('draws nothing for nothing', () => {
-    expect(seamEdges([], 1)).toEqual([])
+    expect(seamEdges([])).toEqual([])
+  })
+
+  // Every case above is one somebody thought of, which is the weakness they
+  // share: the sweep replaced a lattice walk, and the walk passed its own
+  // hand-written cases too. This one is written against an oracle instead.
+  //
+  // The oracle rasterises the union on a grid finer than any edge in the
+  // arrangement and counts the cell sides where covered meets uncovered.
+  // That is O(area) and far too slow to ship, but it shares no code, no
+  // lattice and no reasoning with the function under test - so the two
+  // agreeing on an arrangement neither was written for is evidence the
+  // hand-written cases cannot give. Boxes are generated on halves so the
+  // 0.5 grid lands exactly on every edge.
+  it('agrees with an independent rasteriser on 200 random arrangements', () => {
+    const covers = (boxes: Bounds[], x: number, y: number) =>
+      boxes.some(([w, s, e, n]) => x > w && x < e && y > s && y < n)
+
+    const rasterisedPerimeter = (boxes: Bounds[]) => {
+      const step = 0.5
+      let total = 0
+      for (let x = -12; x < 12; x += step) {
+        for (let y = -12; y < 12; y += step) {
+          const here = covers(boxes, x + step / 2, y + step / 2)
+          if (here !== covers(boxes, x - step / 2, y + step / 2)) total += step
+          if (here !== covers(boxes, x + step / 2, y - step / 2)) total += step
+        }
+      }
+      return total
+    }
+
+    // Seeded, so a failure is reproducible rather than a story about a
+    // machine that saw it once.
+    let seed = 20260915
+    const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+    const half = (span: number) => Math.round(rand() * span * 2) / 2
+
+    const disagreed: string[] = []
+    for (let trial = 0; trial < 200; trial += 1) {
+      const boxes: Bounds[] = []
+      for (let i = 0; i <= Math.floor(rand() * 4); i += 1) {
+        const west = half(8) - 4
+        const south = half(8) - 4
+        boxes.push([west, south, west + half(3) + 0.5, south + half(3) + 0.5])
+      }
+      const swept = totalLength(
+        // `bounds` is deliberately poisoned rather than set to the same box:
+        // reading it instead of `covered` IS the #1458 defect, and an oracle
+        // that passed either way would be checking the geometry while leaving
+        // the field the whole issue is about untested.
+        seamEdges(
+          boxes.map((b, i) => ({
+            name: `c${i}`,
+            key: `k${i}`,
+            bounds: [-99, -99, 99, 99] as Bounds,
+            covered: b,
+          })),
+        ),
+      )
+      const rasterised = rasterisedPerimeter(boxes)
+      if (Math.abs(swept - rasterised) > 1e-9) {
+        disagreed.push(
+          `${JSON.stringify(boxes)} swept ${swept}, rasterised ${rasterised}`,
+        )
+      }
+    }
+
+    expect(disagreed).toEqual([])
   })
 })
 

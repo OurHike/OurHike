@@ -44,6 +44,11 @@ anything this cannot verify reports UNKNOWN and exits non-zero rather than
 being rounded down to fine. Silence about a source nobody could check is
 exactly how stale data survives.
 
+The one exception is a source nothing records ON PURPOSE (#1665): topo quads
+while build-raster.yml is switched off (#855). That reports WITHDRAWN - still
+printed, never counted as unknown - and only while the workflow carries its
+switch; see withdrawn_sources().
+
     .venv/Scripts/python check_freshness.py
 
 The *recorded* side lives in lib/freshness_state.py, so that this check can
@@ -79,6 +84,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+import yaml
 
 from lib import freshness_state
 from lib.freshness_state import (
@@ -96,6 +102,7 @@ from lib.freshness_state import (
 from lib.source_registry import find_source, load_registry
 
 ROOT = Path(__file__).parent
+BUILD_RASTER_WORKFLOW = ROOT.parent / ".github" / "workflows" / "build-raster.yml"
 ATC_MANIFEST = ROOT / "data" / "raw" / "manifest.json"
 TOPO_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
 OPENTRAIL_STATE = ROOT / "data" / "raw" / "opentrail_state.json"
@@ -592,6 +599,36 @@ def gather_upstream(state: dict, *, local: bool = True) -> dict:
     return upstream
 
 
+def withdrawn_sources(workflow: Path | None = None) -> dict[str, str]:
+    """Sources nothing records right now by design, each with the reason.
+
+    `topo_quads` is recorded only by fetch_topo_quads.py, which only
+    build-raster.yml runs, and that workflow has been switched off since #855.
+    Its `run_despite_withdrawal` dispatch input IS the switch - the same input
+    scripts/pipeline_scopes.py's rerun_note() reads to call it withdrawn. So
+    while that input exists, a state with no topo_quads key is the design
+    rather than a gap, and reporting it as UNKNOWN every day buried the real
+    unknowns next to it (#1665).
+
+    Read from the parsed workflow rather than its text, so a comment naming
+    the input cannot switch this on (#1552 was that mistake). Removing the
+    input - reviving the build - returns {} and the row goes back to UNKNOWN
+    on its own; so does a checkout without the workflow file. Both fall to
+    the loud side, which is the side this check is built to fall to.
+    """
+    workflow = workflow or BUILD_RASTER_WORKFLOW
+    try:
+        parsed = yaml.safe_load(workflow.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+    # YAML 1.1 reads a bare `on:` key as boolean True.
+    triggers = parsed.get("on", parsed.get(True)) or {}
+    inputs = (triggers.get("workflow_dispatch") or {}).get("inputs") or {}
+    if "run_despite_withdrawal" in inputs:
+        return {"topo_quads": "build-raster.yml is withdrawn (#855), so nothing records it"}
+    return {}
+
+
 def check_all(state: dict | None = None) -> list[dict]:
     """Every source's verdict. Never raises: a source that cannot be checked
     reports UNKNOWN rather than taking the whole run down with it.
@@ -601,7 +638,7 @@ def check_all(state: dict | None = None) -> list[dict]:
     local = state is None
     if state is None:
         state = recorded_state()
-    return compare_state(state, gather_upstream(state, local=local))
+    return compare_state(state, gather_upstream(state, local=local), withdrawn_sources())
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -656,6 +693,7 @@ def verdict_document(reports: list[dict], state: dict | None) -> dict:
         "sources": sources,
         "needs_refetch": summary["needs_refetch"],
         "unknown": summary["unknown"],
+        "withdrawn": summary["withdrawn"],
     }
 
 
@@ -701,6 +739,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nNeeds refetch: {', '.join(summary['needs_refetch'])}")
     if summary["unknown"]:
         print(f"Could not check: {', '.join(summary['unknown'])} - treat as unverified, not current.")
+    if summary["withdrawn"]:
+        print(f"Not checked on purpose: {', '.join(summary['withdrawn'])} - nothing records it while its build is off.")
     if summary["exit_code"] == 0:
         print("\nEverything upstream is unchanged. No refetch or reprocessing needed.")
 

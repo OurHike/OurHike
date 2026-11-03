@@ -1,0 +1,164 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+      [link] OurHike
+      [link] Trails
+      [link] Get involved
+      [link] For orgs
+      [link] About
+      [link] Add your trails
+      [button] MAYour org
+      [img photos/blue-folds.jpg] Layered blue ridgelines folding away at dawn
+            FOR THE PEOPLE WHO CUT THE TREAD
+          [h1] Your trails, drawn from your own data.
+            Nobody knows your sections like you do — so nobody else should be the one to publish them. Hand us your GIS and your hikes, and we will put them on every phone that walks them, offline, for free.
+            [button] Add your trails
+            [button] See the demo org
+            [svg]
+                OurHike is a beta, and you should treat it as one.
+              Your data stays yours, every section you publish is dated and reversible, and if this project ever goes away the map and the tooling are open source — you fork it and keep going. That is the promise Avenza's shutdown taught us to make in writing.
+        Evelyn Mostrom · CC0
+    [svg]
+        [h2] Four reasons orgs register
+        Everything below is true on the day you finish. None of it asks you to change how you already work.
+          [svg]
+          [h3] Beautiful maps, free to every hiker
+            Your sections drawn from your own geometry, with your own blaze colours, working with no bars and no data plan.
+          [svg]
+          [h3] Crowd-source trail problems
+            A blowdown reported at noon reaches the maintainer who covers that mile — not a generic inbox.
+          [svg]
+          [h3] Every hiker learns about volunteering
+            Your workdays appear where hikers already look — engage more volunteers, more frequently.
+          [svg]
+          [h3] Members and donations reach you directly
+            The money goes to trail organizations, not a VC-backed tech company. OurHike is maintained by volunteers and keeps nothing beyond what running it costs — we publish the whole split, payment fees included, before we ever ask you to opt in.
+            [svg]
+              DEMO ORG · FAKE DATA, REAL GROUND
+              Central Park Throughikers
+              Want to see what your own pages would look like before you type anything? We keep a demo org on Central Park — six routes, 13.8 miles, 29 invented volunteers. Poke at all of it; nothing you do there matters.
+              [button] Open the demo org
+        [h2] What registering actually involves
+        Registering takes five minutes today. Three stages follow it, and any of your admins can pick up any of them — nothing expires. After sign-off your trails are live, and the volunteer work carries on from there.
+        [svg]
+              [svg]
+              THE ON-RAMP · TODAY
+            [h3] Register the org
+              Your web address, three admins, and where your giving pages live. About five minutes.
+              [svg]
+              STAGE 1 · A DAY OR TWO
+            [h3] Admins approve
+              Each of the three says yes by email. Whoever answers first picks up the registry.
+              [svg]
+              STAGE 2 · THE LONG CLIMB
+            [h3] The hike registry
+              Your GIS sections and featured hikes, read with you. An afternoon if your files are tidy.
+              [svg]
+              STAGE 3 · SIGN-OFF
+            [h3] All three confirm it
+              Your admins read the registry line by line. When they agree it publishes — and onboarding is done.
+              [svg]
+              THEN · ONGOING
+            [h3] Your volunteers
+              Roles, coverage, your roster and their welcome emails. Not a stage to finish — the work the tool exists for.
+              [svg]
+                  THE ON-RAMP · TODAY
+              [h1] Register your org
+            [svg]
+            Sign in first — registering puts your name on this
+            You are about to speak for an organisation, so we need to know who you are. Whoever registers becomes its first admin and is named in the record — that is the point, not a formality.
+              [button] Sign in to continue
+              [button] Look around a demo first
+            No account yet? Signing in creates one. You can read every page below, and the demo org, without signing in at all — this is only needed to submit.
+                Your web address
+              [input text] https://ramapotrails.org value=
+              Admins
+              You can start on your own. Three admins have to approve before your trails publish, so name them whenever you have them — this page waits.
+                    Maria Alvarez
+                    maria@ramapotrails.org
+                    Trails chair
+                    club domain
+                  remove
+                    Joseph Okafor
+                    joseph@ramapotrails.org
+                    Crew lead
+                    club domain
+                  remove
+                    Dana Whitfield
+                    dana@gmail.com
+                    Secretary
+                    outside domain
+                  remove
+              [svg]
+                  2 of 3 admins use an email at ramapotrails.org. At least one has to — an admin on the club’s own domain is how we confirm the club owns the site, alongside the DNS record.
+                [button] + Add admin
+              Where the money goes
+              Today this is a traffic job, not a treasury one: give us your own membership and donation pages and we put them in front of every hiker walking your sections. Hikers pay you directly, and we never see it.
+                    Membership page
+                  [input text] https://ramapotrails.org/join value=
+                    Donation page
+                  [input text] https://ramapotrails.org/give value=
+              [svg]
+                    If we ever collect on your behalf, here is who takes what.
+                  Money would pass through Open Source Collective as our nonprofit fiscal host, which charges 10%. Stripe takes its published card fee. OurHike keeps a small share for servers and map hosting — no profit, no investors. Everything left is yours. Longer term we may form our own non-profit, which would cut that 10% host fee down as far as we can get it — more of the money would reach you, never us. We are also weighing holding back 1–3% as a long-term fund for the tool itself, and for grants to the things that make a trail worth walking twice: a good bench, a summit register, a hand-carved sign. Help everyone hike their own hike.
+                    None of this is live yet, and none of it is promised. The shape being discussed is a quarterly payout once a club clears $1,000, net of those three shares. Want the exact rates emailed to your admins before anything starts?
+              [button] Keep us posted
+              [button] Give the money to another non-profit
+                  WHO DECIDED THIS · FULL HISTORY
+                  pipeline/reference/orgs/ramapo-trail-conference.yml
+                  Money decisions are committed to the public repository like everything else, so who chose what and when is a matter of record — not a setting somebody can flip. Changing it needs all three codeowners.
+                          Keep us posted — the org takes its own share
+                          Maria Alvarez
+                        ·
+                          today, not yet committed
+                        ·
+                          draft
+                          Membership and donation links set to ramapotrails.org
+                          Maria Alvarez
+                        ·
+                          Sep 12, 2026
+                        ·
+                          PR #1482
+                          Org registered · no payout program existed
+                          Maria Alvarez
+                        ·
+                          Sep 12, 2026
+                        ·
+                          PR #1482
+                Nothing to sign today. A financial contact would only be asked for once payouts actually open.
+              [button] Send approval requests
+              Nothing is published until all three admins approve.
+        [h2] Not here for your own org?
+        Two other ways in — both take about five minutes, and neither needs you to speak for anybody.
+          [svg]
+          [h3] A club you hike with isn't here
+            Give us their website and we go looking for their trail data. You submit it; they take it over whenever they are ready.
+              [button] Submit their trails
+          [svg]
+          [h3] Your org is already on here
+            Somebody may have submitted your trails already. If you have an email at your org's domain, that is enough to take it over.
+              [button] Claim your org
+            [svg]
+            OurHike
+            An independent, open-source project. Not affiliated with, or speaking for, any trail organization — every org publishes its own trails, in its own name.
+            FOR ORGS
+          [link] Why register
+          [link] What data we need
+          [link] Submit a club's trails
+          [link] Claim an org
+          [link] If OurHike disappears
+            PROJECT
+          [link] About
+          [link] Status and changelog
+          [link] Privacy
+        Trail data published by its own stewards. Base map and contours from USGS. Some data © OpenStreetMap contributors, ODbL.

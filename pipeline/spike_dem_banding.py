@@ -40,7 +40,7 @@ import numpy as np
 import requests
 from PIL import Image
 
-from export_dem import DEM_TILE_URL, floor_blue, quantize_unit
+from export_dem import DEM_TILE_URL, WEBP_EFFORT, floor_blue, quantize_unit
 
 ROOT = Path(__file__).parent
 OUT_DIR = ROOT / "data" / "spike_dem_banding"
@@ -129,12 +129,20 @@ def quantized(rgb: np.ndarray, step_m: float) -> np.ndarray:
 
 def webp_bytes(rgb: np.ndarray) -> int:
     """Lossless-WebP cost of a stitched block, encoded per 256px tile the way
-    the exporter ships them."""
+    the exporter ships them - WEBP_EFFORT included.
+
+    That import is the point rather than a tidiness: floor_blue and
+    quantize_unit are shared with export_dem so the TRANSFORM is not
+    reimplemented here, and until #1506 the save() call was a copy that nobody
+    noticed had drifted. It sets the effort dial, so a spike pricing bytes with
+    Pillow's default against an archive built at 100 reports a ratio that
+    describes neither - while its docstring claims it ships the exporter's."""
     total = 0
     for ty in range(0, rgb.shape[0], TILE_SIZE):
         for tx in range(0, rgb.shape[1], TILE_SIZE):
             buf = io.BytesIO()
-            Image.fromarray(rgb[ty : ty + TILE_SIZE, tx : tx + TILE_SIZE]).save(buf, format="WEBP", lossless=True)
+            tile = Image.fromarray(rgb[ty : ty + TILE_SIZE, tx : tx + TILE_SIZE])
+            tile.save(buf, format="WEBP", lossless=True, quality=WEBP_EFFORT)
             total += buf.getbuffer().nbytes
     return total
 

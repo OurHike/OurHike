@@ -99,14 +99,10 @@
 import type { addProtocol as AddProtocol } from 'maplibre-gl'
 import { PMTiles } from 'pmtiles'
 import { DATA_CONFIGURED, dataUrl, NEARBY_TRAILS_TILES_KEY } from '../lib/config'
-import {
-  cellPackageKey,
-  cellsForTile,
-  NETWORK_CELLS,
-  type CellIndex,
-} from '../lib/coverageCells'
+import { cellPackageKey, cellsForTile, NETWORK_CELLS } from '../lib/coverageCells'
 import { publishedSnapshot } from '../lib/dataManifest'
 import { IndexedDbArchiveSource } from './pmtilesSource'
+import { heldNetworkCells, onNetworkCellsSet, resetHeldCellsForTests } from './heldCells'
 
 export const NETWORK_SCHEME = 'network'
 export const NETWORK_TILES_URL = `${NETWORK_SCHEME}://{z}/{x}/{y}`
@@ -154,37 +150,27 @@ function archivePublished(): Promise<boolean> {
   return attempt
 }
 
-/** The cells the shell says this phone holds, by package key, and the index
- *  they are in (#1257 stage 2). Null until the shell has an index to hand
- *  over, which reads as "no cells" - the bucket is then the whole answer,
- *  exactly as before cells existed. */
-let cells: { index: CellIndex; held: ReadonlySet<string> } | null = null
+// The cells the shell says this phone holds live in map/heldCells.ts (#1591),
+// so the shell can set them without loading this handler; they are read on
+// every tile through heldNetworkCells().
 
 /** One reader per held cell (and the context, if one is ever published), by
  *  package key - created on first use and dropped on failure, on the
  *  published archive's own rule above. */
 const readers = new Map<string, PMTiles>()
 
-/**
- * What the shell knows about the network's cells, for the handler that cannot
- * ask - basemap.ts's `setBasemapCells`, for this family.
- *
- * `held` is package keys (lib/coverageCells.ts's `cellPackageKey` under
- * NETWORK_CELLS, plus its context key), and it is read on every tile rather
- * than copied into anything: a cell that finishes downloading mid-session is
- * answered from on the next tile the map asks for. A reader for a cell no
- * longer in the set is dropped - it would answer from bytes the hiker has
- * removed, or from a directory cached before a re-download replaced them.
- */
-export function setNetworkCells(
-  index: CellIndex | null,
-  held: ReadonlySet<string>,
-): void {
-  cells = index === null ? null : { index, held }
+/** The shell's setter, kept here by name for its readers - it lives in
+ *  map/heldCells.ts so the shell's import of it does not load this module. */
+export { setNetworkCells } from './heldCells'
+
+// A reader for a cell no longer in the set is dropped - it would answer from
+// bytes the hiker has removed, or from a directory cached before a
+// re-download replaced them.
+onNetworkCellsSet((held) => {
   for (const key of [...readers.keys()]) {
     if (!held.has(key)) readers.delete(key)
   }
-}
+})
 
 function reader(packageKey: string): PMTiles {
   let existing = readers.get(packageKey)
@@ -199,6 +185,7 @@ function reader(packageKey: string): PMTiles {
  *  cutter's own routing (`cellsForTile`), so a tile it wrote into a cell is
  *  looked for there, and near a seam more than one may hold it. */
 function localCandidates(z: number, x: number, y: number): string[] {
+  const cells = heldNetworkCells()
   if (cells === null) return []
   const { index, held } = cells
   const keys: string[] = []
@@ -319,6 +306,6 @@ export function resetNetworkTilesForTests(): void {
   registered = false
   archive = null
   published = null
-  cells = null
+  resetHeldCellsForTests()
   readers.clear()
 }

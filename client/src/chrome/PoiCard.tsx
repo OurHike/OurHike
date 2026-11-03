@@ -70,12 +70,11 @@
 // tapping one swaps the card to that part's own detail - its photo and
 // gallery, its description, its coordinates, its unverified line.
 //
-// The strip lives in the OPENED card since #941, not on the peek. A hiker who
-// tapped a shelter pin is answering a question about the shelter; picking a
-// different part of the site out of it is the next thing they do, and the peek
-// has two lines and cannot be both. Every part is still one pull and one tap
-// away, which is the same number of taps it was before the peek existed - the
-// pull replaced the scroll that used to be in front of the strip.
+// The strip is on the peek as well as the opened card (#1706). #941 had put
+// it in the opened card only, and a tapped shelter's peek then said nothing
+// about its privy or its water - which since f791187 ride the shelter's pin
+// and have no pin of their own. The chips' existence is the answer a hiker
+// stopped for, so it goes where the tap lands.
 //
 // The part you are on is a chip too, first in the row and marked as current.
 // The issue's own sketch listed only the members, on the reasoning that the
@@ -97,6 +96,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ReactNode,
   type RefObject,
 } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
@@ -108,12 +108,19 @@ import { poiColor, poiGlyphPath } from '../map/poiIcons'
 import { MapIcon } from '../map/MapIcon'
 import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
+import { formatWaterDistance } from '../lib/waterProvenance'
 import { waypointDistance } from '../lib/waypointDistance'
+import { isSafeLink } from '../lib/safeLink'
 import type { HikeDirection } from './Header'
-import { formatShortDistance, MIN_STATED_FEET, type UnitSystem } from '../lib/units'
+import {
+  feetFromMetres,
+  formatRoundShortDistance,
+  formatShortDistance,
+  type UnitSystem,
+} from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
-import { CARD_PHOTO_EDGE, type OwnPhotoSource } from '../lib/poiPhotos'
+import { CARD_PHOTO_EDGE, photoFrame, type OwnPhotoSource } from '../lib/poiPhotos'
 import { useOwnPhotos, type OwnCardPhoto } from '../lib/useOwnPhotos'
 import { useCommunityPhotos } from '../lib/useCommunityPhotos'
 import { enqueueAction } from '../lib/outbox'
@@ -121,6 +128,8 @@ import { syncOutbox } from '../lib/outboxSync'
 import { FieldNoteSection, type FieldNoteContext } from './FieldNoteSection'
 import { remainingLabel, sharePhase, takenClaimForShare } from '../lib/photoShare'
 import { PoiShareSheet } from './PoiShareSheet'
+import { WeatherPeekLine, WeatherSection } from './WeatherBand'
+import { useWaypointWeather } from '../lib/weatherData'
 import type { PoiPhotoSummary } from '../lib/api'
 
 export interface PoiDetail {
@@ -130,6 +139,18 @@ export interface PoiDetail {
   lat: number
   lon: number
   confidence: 'high' | 'low'
+  /** Every trail line within this many metres of this trailhead is closed
+   *  (#1695) - lib/trailData.ts's StoredPoi.trailsClosedWithinM, the radius
+   *  the release was computed with. The card says so above everything else. */
+  trailsClosedWithinM?: number
+  /**
+   * A tap or fountain whose publisher does not say when it is shut off for the
+   * season - lib/trailData.ts's StoredPoi.waterCaution. The
+   * card says so in its own line, apart from the unverified one: the pin
+   * already says "unconfirmed", and this says why a plumbed tap in particular
+   * may be dry when the hiker gets there.
+   */
+  waterCaution?: 'no_shutoff_season'
   /**
    * Which published source listed it - see poiSources.ts.
    *
@@ -172,6 +193,15 @@ export interface PoiDetail {
    * published one, never "no water" - the capacity rule.
    */
   waterDistanceFt?: number
+  /**
+   * How ATC arrived at that figure - `StoredPoi.waterDistanceSource`, CSI's
+   * own provenance value (#1728). partDistance hands it to
+   * lib/waterProvenance.ts, which puts a tilde in front of a steward's
+   * estimate and nothing in front of a measurement. Absent where the figure
+   * is, and on a download from before the column, when the figure prints as
+   * it always has.
+   */
+  waterDistanceSource?: string
   /**
    * One sentence about the place - what it is built of, what it has, when it
    * went up - for shelters and campsites.
@@ -290,12 +320,26 @@ export interface PoiCardProps {
    * gets rather than a guess.
    */
   direction?: HikeDirection
+  /**
+   * The podcast episodes tagged to a place (#1718 - Tag podcast episodes to
+   * the places they talk about, and show them last on each place's card), as
+   * the shell renders them for one POI id, or null where none is tagged.
+   *
+   * A function of the id rather than a node, because a chip swap is a
+   * different place with its own tags, exactly as it has its own notes.
+   * Absent means the shell has not wired podcasts, and the card renders as it
+   * did before they existed.
+   */
+  listenHere?: (poiId: string) => ReactNode
   onClose: () => void
   /** Where the share sheet's portal lands - the map screen's root, so the
    *  sheet hides with the held map instead of floating over another tab
    *  (PoiShareSheet.tsx's header has the whole argument). Optional for the
    *  same bare-render reason every optional field above states. */
   sheetContainer?: HTMLElement | null
+  /** "On your challenges" (#1780), rendered by MapScreen and placed here
+   *  above "About this place". Absent for a card with nothing on a list. */
+  challengeSection?: ReactNode
 }
 
 function mile(value: number): string {
@@ -446,19 +490,6 @@ function coordinates(lat: number, lon: number): string {
 }
 
 /**
- * One metre, in feet - lib/units.ts's `MIN_STATED_FEET`, aliased here so the
- * call site below reads as it always has.
- *
- * It lived in this file as a private constant until #1198, which gave the
- * figure a second reader: a day hike's stop rows print the same published
- * `water_distance_ft` and must floor it the same way. The reasoning moved
- * with it - see the constant's own note, and pipeline/lib/poi_description.py,
- * which floors what it publishes for the same reason. #694 floored it at a
- * metre back when this line printed only metres.
- */
-const MIN_PART_FT = MIN_STATED_FEET
-
-/**
  * How far a part of the site is from the pin, for its chip.
  *
  * FROM THE PIN, NOT FROM THE PART CURRENTLY OPEN. The pin is the one point on
@@ -499,13 +530,21 @@ const MIN_PART_FT = MIN_STATED_FEET
  * hands #694: ATC states it in feet, the artifact publishes it in feet, and
  * feet is what lib/units.ts formats from. It reached this line as metres only
  * because this line printed metres.
+ *
+ * AND IT PRINTS IN THE VOICE ITS PROVENANCE EARNS (#1728). A stated figure
+ * goes through lib/waterProvenance.ts, the one home every surface printing
+ * the column reads - the nearby sentence, a day hike's stop rows - which
+ * floors it at the metre this file used to floor it at (its private
+ * `MIN_PART_FT` moved there with the mark) and puts "~" in front of a
+ * steward's estimate: "Water ~250 ft" on the chip, "~250 ft away" on the
+ * meta line. A measured member's offset is a position, not a stated figure,
+ * and prints exactly as before.
  */
 function partDistance(pin: PoiDetail, part: PoiDetail, units: UnitSystem): string {
-  const feet =
-    part.type === 'water' && part.waterDistanceFt !== undefined
-      ? Math.max(MIN_PART_FT, part.waterDistanceFt)
-      : siteDistanceFeet(pin, part)
-  return formatShortDistance(feet, units)
+  if (part.type === 'water' && part.waterDistanceFt !== undefined) {
+    return formatWaterDistance(part.waterDistanceFt, part.waterDistanceSource, units)
+  }
+  return formatShortDistance(siteDistanceFeet(pin, part), units)
 }
 
 /**
@@ -546,6 +585,9 @@ function usePinAnchor(
    *  pulled open (#941), which is a sheet or a docked column and is placed by
    *  the stylesheet - there is no pin-relative answer to give. */
   tethered: boolean,
+  /** Anything else that changes the card's height while it hangs off its
+   *  pin - the forecast line arriving after the card has opened (#1056). */
+  heightKey?: unknown,
 ): CardPlacement | null {
   const [placement, setPlacement] = useState<CardPlacement | null>(null)
 
@@ -597,9 +639,18 @@ function usePinAnchor(
     // shorter than its shelter (no capacity, usually no description, often no
     // photo credit), and a card placed BELOW its pin is positioned by its own
     // height, so a stale one sits over the pin it is describing.
-  }, [map, anchor, shown, card, tethered])
+  }, [map, anchor, shown, card, tethered, heightKey])
 
   return placement
+}
+
+/** The peek's pull, named for what is behind it (#941): "Notes & details" only
+ *  where there are notes, and weather named only where a forecast is. */
+function expandLabel(notes: boolean, weather: boolean): string {
+  if (notes && weather) return 'Notes, weather & details'
+  if (notes) return 'Notes & details'
+  if (weather) return 'Weather & details'
+  return 'Details'
 }
 
 export function PoiCard({
@@ -610,8 +661,10 @@ export function PoiCard({
   noteContext,
   hikerMile,
   direction,
+  listenHere,
   onClose,
   sheetContainer,
+  challengeSection,
 }: PoiCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null)
 
@@ -674,7 +727,11 @@ export function PoiCard({
   // Tethered only while it peeks: an opened card has let go of its pin, so
   // there is nothing for the geometry to answer and re-measuring it on every
   // frame of a pan would re-render a sheet to move it nowhere.
-  const placement = usePinAnchor(map, poi, shown, cardRef, !open)
+  // NOAA's forecast at the square the shown part is in (#1056). `none` until
+  // there is one to show - see lib/weatherData.ts for every case that stays
+  // `none`, and why that leaves the card exactly as it was before weather.
+  const weather = useWaypointWeather(shown.lon, shown.lat)
+  const placement = usePinAnchor(map, poi, shown, cardRef, !open, weather)
   const source = sourceLabel(shown.source)
   // Whether the conditions surface will render anything - the same question
   // FieldNoteSection answers for itself by returning null, asked here because
@@ -695,6 +752,9 @@ export function PoiCard({
   const regionId = useId()
   const mediaId = `${regionId}media`
   const bodyId = `${regionId}body`
+  // What a chip swaps while the card peeks: the peek is one region, name,
+  // meta line, existence sentence and conditions row all driven from `shown`.
+  const peekId = `${regionId}peek`
 
   // What to say out loud when a chip replaces the card under someone who cannot
   // see it happen. `aria-current` below is an ARIA *property*: a screen reader
@@ -949,6 +1009,18 @@ export function PoiCard({
   const [photoFailed, setPhotoFailed] = useState(false)
   useEffect(() => setPhotoFailed(false), [current?.url])
 
+  // How big the photograph on screen actually is, read off the decoded image
+  // rather than taken from anything the pipeline said about it - so a card
+  // showing a 250px recovery and a card showing a 640px rendering are told
+  // apart by the file itself (#1495).
+  //
+  // Reset with the URL for the same reason `photoFailed` is: the previous
+  // photo's width must not decide this one's frame for the frame or two
+  // before the new image decodes.
+  const [naturalWidth, setNaturalWidth] = useState<number | null>(null)
+  useEffect(() => setNaturalWidth(null), [current?.url])
+  const frame = photoFrame(naturalWidth)
+
   const accent = poiColor(shown.type)
   const showPhoto = current !== undefined && !photoFailed
   // "Your photo" instead of an author for rung 1: the one photo on this card
@@ -1070,6 +1142,28 @@ export function PoiCard({
     </p>
   )
 
+  /* A trailhead whose every trail line within its radius is closed (#1695):
+     the reason its pin on the map is a cross, said in words. Above the
+     unverified line and never behind the expand, for that line's own reason
+     below - a hiker picking a start needs this before anything else here.
+
+     The sentence claims no more than the pipeline checked. "Trails OurHike
+     tracks" because only the published trail lines and the A.T. were read,
+     and the basemap's pale footpaths were not. "Marked closed" because the
+     status is the steward's. And "about", rounded to 10 of the hiker's unit,
+     because the radius is a round pick nobody surveyed
+     (lib/units.ts's formatRoundShortDistance). */
+  const closedWithinM = shown.type === 'trailhead' ? shown.trailsClosedWithinM : undefined
+  const closedLine =
+    closedWithinM !== undefined ? (
+      <p className="poi-card__trails-closed" role="note">
+        {`Every trail OurHike tracks within about ${formatRoundShortDistance(
+          feetFromMetres(closedWithinM),
+          units,
+        )} of this trailhead is marked closed.`}
+      </p>
+    ) : null
+
   /* The existence claim, and the reason this card is worth having (see the
      header of this file). Hoisted for `metaLine`'s reason, and placed by the
      same rule in both heights: as high as the card goes.
@@ -1083,6 +1177,201 @@ export function PoiCard({
         Unverified — nobody has confirmed this one is really there.
       </p>
     ) : null
+
+  /* The season caution (the maintainer's poll of 2026-10-04, from the
+     drawn card in the mock's section 2): a plumbed tap
+     whose publisher records no shutoff season. Its own line, under the
+     unverified one and never folded into it: that line says nobody vouched
+     for the pin, and this one says why a tap in particular can be dry even
+     where it is real. Placed by the same rule, as high as the card goes at
+     both heights, for the same reason - a hiker deciding how much water to
+     carry must not have to pull the card open to learn the tap may be off.
+
+     "Out of season" rather than the mock's "in winter": a fixed season is a
+     guess that flips wrong in the South, which is the alternative the poll
+     turned down. "Its listing" rather than "the agency", because two of
+     the layers are clubs' (NCTA's and FLTC's), not agencies'; and rather
+     than "its publisher", which did not say who, or "its source", which on
+     a tap reads as the water's own supply. "The next water" for the same
+     reason: "the next source" meant a water point in one sentence and a
+     publisher in the line before it (the word-choice review of #1805,
+     2026-10-09). */
+  const seasonCautionLine =
+    shown.type === 'water' && shown.waterCaution === 'no_shutoff_season' ? (
+      <p className="poi-card__season-caution" role="note">
+        Tap water. Its listing doesn’t say when it’s turned off for the season, and taps
+        like this are often off out of season. Carry enough to reach the next water.
+      </p>
+    ) : null
+
+  /* Every part of this place, the one you are on included, at BOTH heights.
+
+     The peek carries it since #1706. #941 had moved it into the opened card, on
+     the reasoning that picking a different part out of a site is the second
+     thing a hiker does, not the first - and that left a tapped shelter's peek
+     saying nothing about its privy or its water, on a map where both ride the
+     shelter's pin (f791187) and have no pin of their own to say it. The
+     maintainer, 2026-09-28: "Shelters and Campsites lost the ability to see
+     their children." Chosen from a drawn mock of three options (this row, a
+     "1 of 4" stepper, this row plus a swipe) over the real peek; the stepper
+     was not taken because it cannot say what is there without stepping
+     through it, which is features/POI_SITES.md §5's whole argument for chips.
+     One function rather than two copies, so the two heights cannot come to
+     disagree about which parts a place has or what a chip is called.
+
+     `controls` is what a chip swaps at the height it is drawn on: the media
+     box and the body when opened, the peek itself when peeking. `shownId` is
+     one piece of state for both, so a part picked on the peek is the part
+     the pull opens.
+
+     NOT a `role="tablist"`. It stays plain buttons and `aria-current` on the
+     one you are reading, and the reason is a choice rather than a
+     constraint: the strip is one of two navigations on this card (the other
+     is the pull), and a `tablist`'s arrow-key contract is a second keyboard
+     model to learn on a surface that already has one. @unvalidated - nobody
+     has watched a screen-reader user work this card, and if #105/#106's
+     field testing reaches assistive tech, this is the decision to bring back.
+
+     What screens/Tabs.tsx's pattern is reused for is its rule: ONE panel
+     rendered, not three hidden with CSS. Everything a chip swaps is driven
+     from `shown`, so a part nobody is looking at has no gallery buttons in
+     the tab order and nothing for a screen reader to announce. The rest of
+     that pattern's contract is `aria-controls` - an ID-reference LIST, so it
+     can name two regions without a wrapper - and the card-level live region
+     in the markup below, since `aria-current` changing is not an
+     announcement. */
+  const partsStrip = (controls: string) =>
+    parts.length === 0 ? null : (
+      <div
+        className="poi-card__chips"
+        role="group"
+        // The anchor's own name, which is what the pipeline publishes as
+        // `site_name` (features/POI_SITES.md §3). Taken from the anchor
+        // itself - the same point the first chip stands for - so the two
+        // cannot disagree about what this place is called.
+        aria-label={`Parts of ${anchor.name}`}
+      >
+        {parts.map((part) => {
+          // "This is the part you are on", which since the words came off
+          // every chip is read in one place only - `aria-current`, and the
+          // inset ring chrome.css hangs off it. It was two readings while the
+          // selected chip also spelt itself out, and they could drift: a chip
+          // wearing the current ring with its label hidden is a pin with a
+          // circle round it and nothing saying what it is. Now the ring is the
+          // whole of the marking, and the words for that part are on the meta
+          // line below rather than in the strip.
+          const isShown = part.id === shown.id
+
+          return (
+            <button
+              key={part.id}
+              type="button"
+              className="poi-card__chip"
+              data-testid="poi-card-chip"
+              // `aria-current`, the "one of a set of related items you are on"
+              // attribute, rather than `aria-pressed`: these are not toggles,
+              // and exactly one of them is true at a time.
+              aria-current={isShown}
+              // Both boxes, because a chip really does swap both, and a list
+              // is what the attribute is for. It is the programmatic link
+              // between the control and what it changes that the plain-button
+              // markup would otherwise be missing.
+              aria-controls={controls}
+              onClick={() => {
+                setShownId(part.id)
+                setAnnounced(`Showing ${part.name}`)
+              }}
+            >
+              <MapIcon
+                className="poi-card__chip-icon"
+                type={part.type}
+                // The rim, unlike the legend's (Legend.tsx passes none, on the
+                // grounds that a key says what a category's symbol IS and a
+                // symbol that changed as you panned would not be a key). A
+                // chip is not a key: it stands for one privy, so the broken
+                // rim is a fact about that privy, the same fact its own panel
+                // spells out in words once you tap it.
+                confidence={part.confidence}
+              />
+              {/* EVERY CHIP IS ITS PIN, THE ONE YOU ARE READING INCLUDED.
+
+              #711 took the words off the UNSELECTED chips and left the
+              selected one spelling itself out, and its own table named what
+              that left behind: `Campsite · 181 ft` was 172 px of the 364 a
+              five-part strip still wanted out of 240. Finishing the job has
+              two consequences worth stating.
+
+              The strip goes back to FIXED GEOMETRY, which #711 knowingly
+              spent. The current-chip marker is an inset ring (chrome.css)
+              precisely so that marking a chip does not resize it; a chip
+              that grew when selected undid that, and the row shifted
+              sideways under the thumb that had just tapped it.
+
+              And the whole strip fits at every site size the trail has.
+              Measured in Chromium 1194 at the card's real width against this
+              file's own fixtures plus the four-fact case the meta line needs
+              below (2026-08-16), as chip boxes plus gaps rather than
+              scrollWidth - which floors at the container and hides the
+              headroom, so #711's "240" for a fitting case and its "240" for
+              the container are the same number by accident:
+
+                3 parts, as it opens        180 -> 140   fits (was: fits)
+                3 parts, campsite open      244 -> 140   fits
+                5 parts, as it opens        276 -> 236   fits
+                5 parts, campsite open      348 -> 236   fits
+
+              Five 44 px chips and four 4 px gaps is 236 of 240, so five
+              parts - the largest site on the trail (features/POI_SITES.md
+              §5) - is the last size that fits, with 4 px to spare. SIX would
+              ask 284 and scroll, and nothing here changes what happens then:
+              `overflow-x: auto` with no scrollbar is reachable and not
+              discoverable, which is #711's bug returning at a site size that
+              does not exist yet. That is the number to re-run this against
+              if #529's water gap closes and sites grow.
+
+              HIDING THE SELECTED CHIP'S WORDS COSTS NOTHING, which is why
+              this is small rather than a trade. Its category was already on
+              the meta line below and its name in the heading above; the one
+              fact that lived nowhere else is its distance, and that moves
+              down to the meta line rather than going away.
+
+              `visually-hidden` rather than `display: none`, unchanged from
+              #711: the words stay in the accessibility tree, so the button's
+              name is still "Privy 131 ft" and nothing a screen reader does
+              here changes at all. What a sighted hiker gives up is unchanged
+              too, and still real - a chip is a symbol they have to recognise
+              until they tap it. @unvalidated, and inherited rather than
+              introduced: that a 44 px pin is legible and hittable with a
+              gloved thumb in sun is the field test HIKER_SAFETY.md §5
+              declines to guess at, which #711 flagged for the chips it had
+              already made pins and this extends to one more per card. */}
+              <span className="poi-card__chip-label visually-hidden">
+                {typeLabel(part.type)}
+                {part.id !== poi.id && (
+                  <>
+                    {/* The middot is punctuation for eyes only, as it is on
+                    the meta line - but a button's accessible name is its
+                    contents CONCATENATED, and with the separator hidden
+                    there is nothing left between the two facts: this
+                    announced "Privy40 m" until the spaces were made real
+                    text nodes of their own. They cost nothing visually,
+                    because a flex container drops a whitespace-only run
+                    instead of making an item of it, and the gap is what
+                    does the spacing - which is why the span wrapping them
+                    is a flex container of its own and not a plain
+                    inline. */}{' '}
+                    <span aria-hidden="true">·</span>{' '}
+                    <span className="poi-card__chip-distance">
+                      {partDistance(poi, part, units)}
+                    </span>
+                  </>
+                )}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    )
 
   /* The conditions section (FIELD_NOTES.md, #759's card surface) - what the
      field has said about this place and the one-tap way to answer back.
@@ -1109,6 +1398,8 @@ export function PoiCard({
         context={noteContext}
       />
     )
+
+  const listening = open ? (listenHere?.(shown.id) ?? null) : null
 
   return (
     <div
@@ -1147,6 +1438,23 @@ export function PoiCard({
         <span aria-hidden="true">×</span>
       </button>
 
+      {/* The announcement itself, empty until a chip is tapped. Rendered
+          whenever there is a strip rather than conditionally on there being
+          something to say: a live region has to be in the DOM BEFORE its text
+          changes, or the change is the region appearing and nothing is read.
+          Visually hidden because the swap is not news to anyone who can see
+          the card - they watched it happen.
+
+          At the card's level rather than inside either height, since both
+          carry the strip (#1706): the pull swaps the peek for the opened card
+          wholesale, and a region inside each would be one region vanishing
+          and another appearing with its text already set. */}
+      {parts.length > 0 && (
+        <p className="visually-hidden" role="status">
+          {announced}
+        </p>
+      )}
+
       {open ? (
         <>
           <div className="poi-card__header">
@@ -1173,194 +1481,14 @@ export function PoiCard({
               somebody filed it under. */}
           <div className="poi-card__scroll" data-testid="poi-card-scroll">
             <div className="poi-card__body" id={bodyId}>
-              {/* Every part of this place, the one you are on included.
+              {partsStrip(`${mediaId} ${bodyId}`)}
 
-                  NOT a `role="tablist"`, and the argument for that has CHANGED
-                  SHAPE under #941 - which is worth saying rather than leaving a
-                  comment that reads as settled when it is not.
-
-                  It used to be structural and airtight: the photo, the gallery and
-                  the credit are as member-specific as the text is, and they were
-                  ABOVE this strip, so a `tabpanel` could only have contained the
-                  text while the image it claimed to control changed silently over
-                  the hiker's head. The alternative named here was "reorder the card
-                  to put the photo inside a panel", rejected because it moves the
-                  media box off the card's top edge and re-parents the close button
-                  out of the corner it is drawn for.
-
-                  That reorder has now happened for a different reason. The opened
-                  card leads with its heading, the strip is above the photograph,
-                  and the close button has moved to the card's own corner - so a
-                  wrapper round the media and the body IS available, and the
-                  geometry no longer decides this.
-
-                  It stays plain buttons and `aria-current` on the one you are
-                  reading, and the reason is now a choice rather than a constraint:
-                  the strip is one of two navigations on this card (the other is the
-                  pull that opened it), and a `tablist`'s arrow-key contract is a
-                  second keyboard model to learn on a surface that already has one.
-                  @unvalidated - nobody has watched a screen-reader user work this
-                  card, and if #105/#106's field testing reaches assistive tech,
-                  this is the decision to bring back.
-
-                  What screens/Tabs.tsx's pattern is reused for is the part that
-                  matters either way, which is its rule: ONE panel rendered, not
-                  three hidden with CSS. There is one media box and one body here,
-                  both driven from `shown`, so a part nobody is looking at has no
-                  gallery buttons in the tab order and nothing for a screen reader
-                  to announce.
-
-                  The rest of that pattern's contract is what the two things after the
-                  strip put back: `aria-controls` naming both regions a chip drives -
-                  the objection above is to a tabpanel WRAPPER, and does not reach an
-                  attribute that takes an ID-reference LIST - and a live region that
-                  actually produces the announcement, since `aria-current` changing is
-                  not one. */}
-              {parts.length > 0 && (
-                <div
-                  className="poi-card__chips"
-                  role="group"
-                  // The anchor's own name, which is what the pipeline publishes as
-                  // `site_name` (features/POI_SITES.md §3). Taken from the anchor
-                  // itself - the same point the first chip stands for - so the two
-                  // cannot disagree about what this place is called.
-                  aria-label={`Parts of ${anchor.name}`}
-                >
-                  {parts.map((part) => {
-                    // "This is the part you are on", which since the words came off
-                    // every chip is read in one place only - `aria-current`, and the
-                    // inset ring chrome.css hangs off it. It was two readings while the
-                    // selected chip also spelt itself out, and they could drift: a chip
-                    // wearing the current ring with its label hidden is a pin with a
-                    // circle round it and nothing saying what it is. Now the ring is the
-                    // whole of the marking, and the words for that part are on the meta
-                    // line below rather than in the strip.
-                    const isShown = part.id === shown.id
-
-                    return (
-                      <button
-                        key={part.id}
-                        type="button"
-                        className="poi-card__chip"
-                        data-testid="poi-card-chip"
-                        // `aria-current`, the "one of a set of related items you are on"
-                        // attribute, rather than `aria-pressed`: these are not toggles,
-                        // and exactly one of them is true at a time.
-                        aria-current={isShown}
-                        // Both boxes, because a chip really does swap both, and a list
-                        // is what the attribute is for. It is the programmatic link
-                        // between the control and what it changes that the plain-button
-                        // markup would otherwise be missing.
-                        aria-controls={`${mediaId} ${bodyId}`}
-                        onClick={() => {
-                          setShownId(part.id)
-                          setAnnounced(`Showing ${part.name}`)
-                        }}
-                      >
-                        <MapIcon
-                          className="poi-card__chip-icon"
-                          type={part.type}
-                          // The rim, unlike the legend's (Legend.tsx passes none, on the
-                          // grounds that a key says what a category's symbol IS and a
-                          // symbol that changed as you panned would not be a key). A
-                          // chip is not a key: it stands for one privy, so the broken
-                          // rim is a fact about that privy, the same fact its own panel
-                          // spells out in words once you tap it.
-                          confidence={part.confidence}
-                        />
-                        {/* EVERY CHIP IS ITS PIN, THE ONE YOU ARE READING INCLUDED.
-
-                            #711 took the words off the UNSELECTED chips and left the
-                            selected one spelling itself out, and its own table named what
-                            that left behind: `Campsite · 181 ft` was 172 px of the 364 a
-                            five-part strip still wanted out of 240. Finishing the job has
-                            two consequences worth stating.
-
-                            The strip goes back to FIXED GEOMETRY, which #711 knowingly
-                            spent. The current-chip marker is an inset ring (chrome.css)
-                            precisely so that marking a chip does not resize it; a chip
-                            that grew when selected undid that, and the row shifted
-                            sideways under the thumb that had just tapped it.
-
-                            And the whole strip fits at every site size the trail has.
-                            Measured in Chromium 1194 at the card's real width against this
-                            file's own fixtures plus the four-fact case the meta line needs
-                            below (2026-08-16), as chip boxes plus gaps rather than
-                            scrollWidth - which floors at the container and hides the
-                            headroom, so #711's "240" for a fitting case and its "240" for
-                            the container are the same number by accident:
-
-                              3 parts, as it opens        180 -> 140   fits (was: fits)
-                              3 parts, campsite open      244 -> 140   fits
-                              5 parts, as it opens        276 -> 236   fits
-                              5 parts, campsite open      348 -> 236   fits
-
-                            Five 44 px chips and four 4 px gaps is 236 of 240, so five
-                            parts - the largest site on the trail (features/POI_SITES.md
-                            §5) - is the last size that fits, with 4 px to spare. SIX would
-                            ask 284 and scroll, and nothing here changes what happens then:
-                            `overflow-x: auto` with no scrollbar is reachable and not
-                            discoverable, which is #711's bug returning at a site size that
-                            does not exist yet. That is the number to re-run this against
-                            if #529's water gap closes and sites grow.
-
-                            HIDING THE SELECTED CHIP'S WORDS COSTS NOTHING, which is why
-                            this is small rather than a trade. Its category was already on
-                            the meta line below and its name in the heading above; the one
-                            fact that lived nowhere else is its distance, and that moves
-                            down to the meta line rather than going away.
-
-                            `visually-hidden` rather than `display: none`, unchanged from
-                            #711: the words stay in the accessibility tree, so the button's
-                            name is still "Privy 131 ft" and nothing a screen reader does
-                            here changes at all. What a sighted hiker gives up is unchanged
-                            too, and still real - a chip is a symbol they have to recognise
-                            until they tap it. @unvalidated, and inherited rather than
-                            introduced: that a 44 px pin is legible and hittable with a
-                            gloved thumb in sun is the field test HIKER_SAFETY.md §5
-                            declines to guess at, which #711 flagged for the chips it had
-                            already made pins and this extends to one more per card. */}
-                        <span className="poi-card__chip-label visually-hidden">
-                          {typeLabel(part.type)}
-                          {part.id !== poi.id && (
-                            <>
-                              {/* The middot is punctuation for eyes only, as it is on
-                                  the meta line - but a button's accessible name is its
-                                  contents CONCATENATED, and with the separator hidden
-                                  there is nothing left between the two facts: this
-                                  announced "Privy40 m" until the spaces were made real
-                                  text nodes of their own. They cost nothing visually,
-                                  because a flex container drops a whitespace-only run
-                                  instead of making an item of it, and the gap is what
-                                  does the spacing - which is why the span wrapping them
-                                  is a flex container of its own and not a plain
-                                  inline. */}{' '}
-                              <span aria-hidden="true">·</span>{' '}
-                              <span className="poi-card__chip-distance">
-                                {partDistance(poi, part, units)}
-                              </span>
-                            </>
-                          )}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* The announcement itself, empty until a chip is tapped. Rendered
-                  whenever there is a strip rather than conditionally on there being
-                  something to say: a live region has to be in the DOM BEFORE its text
-                  changes, or the change is the region appearing and nothing is read.
-                  Visually hidden because the swap is not news to anyone who can see
-                  the card - they watched it happen. */}
-              {parts.length > 0 && (
-                <p className="visually-hidden" role="status">
-                  {announced}
-                </p>
-              )}
-
-              <div className="poi-card__media" id={mediaId}>
+              {/* `data-testid` as well as the id: the id is what the expander
+                  points `aria-controls` at, and preview-shots/waypoint-photo.mjs
+                  needs a handle that is present in BOTH states - a photograph and
+                  the category glyph - so a waypoint with no picture photographs as
+                  itself rather than timing out. */}
+              <div className="poi-card__media" id={mediaId} data-testid="poi-card-media">
                 {/* A just-picked photo under review covers the media box: the
                   preview IS the prepared rendering a Keep would store, so what
                   the hiker approves is what they get, byte for byte. Nothing has
@@ -1374,13 +1502,18 @@ export function PoiCard({
                   />
                 ) : showPhoto ? (
                   <img
-                    className="poi-card__photo"
+                    className={`poi-card__photo poi-card__photo--${frame}`}
                     data-testid="poi-card-photo"
+                    // What the frame was decided from, for a reviewer and for
+                    // the tests - the decision is otherwise invisible in a
+                    // jsdom render, where nothing has a size.
+                    data-frame={frame}
                     src={current.url}
                     // Empty on purpose: the app knows nothing about the photo beyond
                     // which waypoint it belongs to, and the name is the next line
                     // down. Announcing "photo of {name}" would say the name twice.
                     alt=""
+                    onLoad={(event) => setNaturalWidth(event.currentTarget.naturalWidth)}
                     onError={() => setPhotoFailed(true)}
                   />
                 ) : (
@@ -1401,13 +1534,13 @@ export function PoiCard({
 
                 {/* The credit rides the photo, never the placeholder: it is a fact
                   about a photo on screen, and the licence's price for it being
-                  there. A link when the file page is known - full terms live
-                  there - and plain text when it is not, because a credit is owed
-                  either way. */}
+                  there. A link when the file page is known and is a web page -
+                  full terms live there - and plain text when it is not, because a
+                  credit is owed either way. */}
                 {review === null &&
                   showPhoto &&
                   credit !== null &&
-                  (current.page !== undefined ? (
+                  (current.page !== undefined && isSafeLink(current.page) ? (
                     <a
                       className="poi-card__credit"
                       href={current.page}
@@ -1760,12 +1893,30 @@ export function PoiCard({
                   gets the band with no heading, because "Conditions" is a
                   promise about water, shelter, campsites and resupply and
                   this file must not make it about anything else. */}
-              {(notesShown || unverifiedLine !== null) && (
+              {(notesShown ||
+                unverifiedLine !== null ||
+                seasonCautionLine !== null ||
+                closedLine !== null) && (
                 <section className="poi-card__section">
                   {notesShown && <h3 className="poi-card__section-title">Conditions</h3>}
+                  {closedLine}
                   {unverifiedLine}
+                  {seasonCautionLine}
                   {conditions('open')}
                 </section>
+              )}
+
+              {/* After Conditions and before About, where the mock the
+                  maintainer chose put it (#1056, 2026-09-30): what the field
+                  says about this place first, then what NOAA expects here,
+                  then where the pin came from. */}
+              {weather.kind === 'forecast' && (
+                <WeatherSection
+                  weather={weather}
+                  units={units}
+                  lat={shown.lat}
+                  lon={shown.lon}
+                />
               )}
 
               {/* Where the coordinates and the provenance went. They are
@@ -1773,6 +1924,12 @@ export function PoiCard({
                   was that they outranked the answer the hiker tapped the pin
                   for - so they are last, under a heading that says what they
                   are, rather than gone. */}
+              {/* A place's challenges (#1780) - above "About this place",
+                  which #941 moved to the foot of the card; the handoff drew
+                  this section under the description when the description
+                  still sat near the top. */}
+              {challengeSection}
+
               <section className="poi-card__section">
                 <h3 className="poi-card__section-title">About this place</h3>
                 {shown.description !== undefined && (
@@ -1805,11 +1962,22 @@ export function PoiCard({
                   )}
                 </p>
               </section>
+
+              {/* "Listen here" (#1718), the maintainer's frame P1: the
+                  episodes tagged to this place, LAST - under the facts that
+                  keep a hiker safe and under where the pin came from, never
+                  above either. `shown`, for the reason `conditions` gives. */}
+              {listening !== null && (
+                <section className="poi-card__section" data-testid="poi-card-listen">
+                  <h3 className="poi-card__section-title">Listen here</h3>
+                  {listening}
+                </section>
+              )}
             </div>
           </div>
         </>
       ) : (
-        <div className="poi-card__peek" data-testid="poi-card-peek">
+        <div className="poi-card__peek" id={peekId} data-testid="poi-card-peek">
           <div className="poi-card__peek-head">
             {/* THE CATEGORY'S OWN SILHOUETTE, NEVER A PHOTOGRAPH, and the
                 reason is the credit rather than the layout. A CC BY / BY-SA
@@ -1834,7 +2002,31 @@ export function PoiCard({
             </div>
           </div>
 
+          {closedLine}
+
+          {/* Under the name, on the surface a tap opens (#1706): the chips'
+              existence is the answer to "is there a privy, is there water",
+              and that answer is not worth a pull. After `closedLine`, which
+              never renders beside it - that line is trailheads only, and a
+              trailhead is never part of a site (map/poiSites.ts's
+              SITE_ANCHOR_TYPES and SITE_MEMBER_TYPES) - so the order only
+              says which comes first if that ever changes. */}
+          {partsStrip(peekId)}
+
+          {/* One line of forecast under the chips - frame A of the mock the
+              maintainer chose over a peek without it (#1056, poll
+              2026-09-30). */}
+          {weather.kind === 'forecast' && (
+            <WeatherPeekLine
+              weather={weather}
+              units={units}
+              lat={shown.lat}
+              lon={shown.lon}
+            />
+          )}
+
           {unverifiedLine}
+          {seasonCautionLine}
           {conditions('peek')}
 
           {/* One deliberate pull, named for what is behind it. "Notes &
@@ -1848,7 +2040,7 @@ export function PoiCard({
             aria-expanded={false}
             onClick={() => setOpen(true)}
           >
-            {notesShown ? 'Notes & details' : 'Details'}
+            {expandLabel(notesShown, weather.kind === 'forecast')}
             <span className="poi-card__expand-caret" aria-hidden="true">
               ▲
             </span>

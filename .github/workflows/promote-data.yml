@@ -1,0 +1,115 @@
+# Promote a data release: point an environment's phones at a release UA was
+# tested on, by copying it, not rebuilding it (the maintainer, 2026-10-16).
+#
+#   gh workflow run promote-data.yml -f confirm="promote to production"
+#   gh workflow run promote-data.yml -f release=2026-09-24-2 -f confirm="promote to production"   # rollback
+#   gh workflow run promote-data.yml -f target=ua -f release=2026-10-03-2 -f confirm="promote to ua"   # rollback in UA
+#
+# pipeline/channels.py's `promote` does the work: it copies every object of
+# environments/ua/releases/<release>/ into production's releases/<release>/
+# server side, the folder's manifest last, checks each copy's size and plain
+# MD5 ETag against its source, and only then rewrites production's
+# channels.json and appends the move to its channels_history.json. A release
+# production already holds is not copied again, only checked, which is what a
+# rollback is. With `target: ua` it is a rollback within UA: the release must
+# already be in UA's tree, and nothing is copied.
+#
+# NEVER UNATTENDED. Dispatch only - no schedule, no push - and a promotion to
+# production runs in the `production` environment, whose required reviewer
+# (.github/expected-protections.yml, RELEASING.md §12) approves the job before
+# it starts. A rollback within UA runs in `ua`, which has no reviewer, as a UA
+# publish does (#1330 - A routine UA publish waits on the same production
+# approval as a real release). .github/tests/test_promote_data.py holds all of
+# this. Phones read the moved pointer on their next launch, and a phone that
+# holds data is asked before anything it holds is replaced
+# (client/src/lib/dataRefresh.ts).
+name: Promote a data release
+
+run-name: "${{ format('Point {0} at {1}', inputs.target, inputs.release != '' && inputs.release || 'UA''s current release') }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Whose phones move: production, or ua for a rollback within UA"
+        type: choice
+        options: [production, ua]
+        default: production
+      release:
+        description: "The release id to point at, such as 2026-10-10-2. Empty: the release UA's channels.json names now"
+        type: string
+        required: false
+        default: ""
+      schema_version:
+        description: "The schema version whose entry moves (v1, v2, ...)"
+        type: string
+        required: false
+        default: v1
+      confirm:
+        description: "Type `promote to <target>`, such as `promote to production`, to confirm"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  promote:
+    name: Copy the release, check it, and move the pointer
+    runs-on: ubuntu-latest
+    # The production environment's reviewer for a production promotion; UA's,
+    # which has none, for a rollback within UA. `target` is a choice of those
+    # two, so no value reaches anything else.
+    environment: ${{ inputs.target == 'production' && 'production' || 'ua' }}
+    # Pointer and history writes are a read, a change and a write of an
+    # environment's root keys, so in the group every other writer holds.
+    concurrency:
+      group: publish-data
+      cancel-in-progress: false
+    # @unvalidated: one server-side copy and one HEAD per object, sixteen at a
+    # time (publish.PUBLISH_CONCURRENCY), for a release of about 4,449
+    # objects (2026-10-10-2 in UA, Measured 2026-10-15). Nobody has timed a
+    # promotion; its log prints the count, and its run time settles this.
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      # Before the checkout and before any secret: a dispatch whose
+      # confirmation does not name its own target stops here.
+      - name: Refuse a dispatch whose confirmation does not name its target
+        working-directory: .
+        env:
+          TARGET: ${{ inputs.target }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "promote to $TARGET" ]; then
+            echo "::error title=Not confirmed::confirm must be exactly \`promote to $TARGET\`. Nothing was copied and no pointer moved."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Promote (channels.py promote)
+        env:
+          R2_WRITE_ENABLED: "true"
+          TARGET: ${{ inputs.target }}
+          RELEASE: ${{ inputs.release }}
+          SCHEMA_VERSION: ${{ inputs.schema_version }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python channels.py promote --from ua --to "$TARGET" --release "$RELEASE" --schema-version "$SCHEMA_VERSION"

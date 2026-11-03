@@ -1,0 +1,165 @@
+/* The location picker (#1563) - one control, drawn inside the report window,
+   the long form and the closure form. Every colour is a token: the app has a
+   full dark theme that re-points these aliases, and a hex here would break it.
+
+   Sunken against whatever surface holds it, so it reads as a drawer that
+   opened rather than as another card - the same call the window's old
+   passed-places list made, whose styles these replace. */
+.location-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px);
+  background: var(--bg-page);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+}
+
+/* Why the picker opened by itself. An alert in tone as well as in role: a
+   tap on a tile is about to be refused until this is answered. */
+.location-picker__needed {
+  margin: 0;
+  padding: var(--space-2, 8px) 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: var(--radius-m, 8px);
+}
+
+.location-picker__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.location-picker__heading {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.location-picker__search {
+  min-height: 40px;
+  padding: 0 10px;
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-size: 13px;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+}
+
+/* Capped and scrolled, so the window does not grow without bound - and so a
+   long list is visibly scrollable rather than looking like the whole list. */
+.location-picker__places,
+.location-picker__options {
+  max-height: 188px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+}
+
+.location-picker__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-2, 8px);
+  row-gap: 1px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: 7px 10px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border-1);
+  cursor: pointer;
+}
+
+.location-picker__places li:first-child .location-picker__row,
+.location-picker__options li:first-child .location-picker__row {
+  border-top: 0;
+}
+
+.location-picker__row:hover {
+  background: var(--bg-page);
+}
+
+/* The chosen one. A rule at the edge rather than a fill, so it stays legible
+   under both themes and never hides the meta line it is qualifying. */
+.location-picker__row[aria-pressed='true'] {
+  box-shadow: inset 3px 0 0 var(--brand-primary);
+}
+
+.location-picker__row--door {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* Truncates, because a place name can be long and the line under it must
+   not be pushed off the row. */
+.location-picker__name {
+  grid-column: 1;
+  overflow: hidden;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-1);
+}
+
+/* How far, which mile, how sure - the provenance line, in tabular figures so
+   a scrolling list does not jitter. */
+.location-picker__meta {
+  grid-column: 1;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  color: var(--fg-2);
+}
+
+.location-picker__chevron {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 16px;
+  color: var(--fg-3);
+}
+
+.location-picker__empty {
+  padding: var(--space-3, 12px);
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.location-picker__words {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.location-picker__textarea {
+  padding: var(--space-2, 8px) 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+  resize: vertical;
+}
+
+.location-picker__hint {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fg-3);
+}

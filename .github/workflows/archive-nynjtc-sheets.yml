@@ -1,0 +1,107 @@
+# Archives the footprint of every NYNJTC paper map sheet into the bucket's
+# own `archive/` folder (#1574 - A hiker on NYNJTC ground has nowhere to buy
+# the paper map for where they are).
+#
+# ON DEMAND ONLY, ONCE, by instruction. There is no schedule and no push
+# trigger, and the maintainer's rule for this data is the reason
+# (2026-09-17): "If you use avenza, that will eventually go away. It
+# shouldn't be a real pipeline that runs regularly. Just an archive that sits
+# in its own folder in r2." The source is the Avenza Map Store, a third
+# party that sells NYNJTC's sheets as georeferenced PDFs and prints each
+# sheet's footprint on its product page. That store may stop selling them;
+# the object this writes is the copy that survives.
+#
+# NOTHING HERE IS THE REGULAR PUBLISHER, and that is load-bearing:
+# scripts/pipeline_scopes.py rosters a workflow as a publishing path by
+# finding the publisher's filename in its text, so that name is deliberately
+# not written anywhere in this file (nynjtc-archive-recovery.yml records the
+# incident that made this a rule). The regular vector publish reads the
+# reviewed table in pipeline/reference/ and never this archive; the phone
+# reads this archive on its own, at the bucket root beside `conditions/`
+# (client/src/lib/mapSheets.ts).
+#
+# TWO INPUTS. `upload: false` (the default) reads Avenza, writes the file,
+# and attaches it to the run for a person to read - a rehearsal that touches
+# no bucket. `upload: true` also puts it at `archive/nynjtc_map_sheets.json`
+# under the chosen data environment's prefix. UA carries no environment gate
+# (#1330); production is the release train's promotion and needs its
+# approval, exactly as the vector publish does.
+#
+# The publish-data concurrency group is NOT joined: this writes one key
+# nothing else writes and never touches latest.json, so the race that group
+# exists for (#645) cannot happen here.
+
+name: Archive NYNJTC map sheets
+
+on:
+  workflow_dispatch:
+    inputs:
+      data_environment:
+        description: "Which data environment's tree to write (features/DATA_ENVIRONMENTS.md)"
+        type: choice
+        default: ua
+        options:
+          - ua
+          - production
+      upload:
+        description: "Put the archive in the bucket. Off: read Avenza, write the file, attach it to the run."
+        type: boolean
+        default: false
+
+concurrency:
+  group: archive-nynjtc-sheets
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The gate is the environment's: production needs its approval, UA has
+    # none. A dry run still names the environment so a person reading the
+    # run sees which tree an upload WOULD have gone to.
+    environment: ${{ inputs.data_environment == 'production' && 'production' || inputs.data_environment }}
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 41 product pages at one a second, so about a minute. The script
+      # refuses to upload unless R2_WRITE_ENABLED is exactly "true", and that
+      # variable is set only on the upload path below, so a dry run cannot
+      # write however the secrets are configured.
+      - name: Read each sheet's footprint from Avenza and write the archive
+        if: ${{ !inputs.upload }}
+        run: python archive_nynjtc_sheet_extents.py
+
+      - name: Read each sheet's footprint from Avenza, write the archive and upload it
+        if: ${{ inputs.upload }}
+        env:
+          R2_WRITE_ENABLED: "true"
+          OURHIKE_DATA_ENV: ${{ inputs.data_environment }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python archive_nynjtc_sheet_extents.py --upload
+
+      # The file itself, whichever path ran, so what was (or would have been)
+      # written is readable from the run without opening the bucket.
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: nynjtc-map-sheets-${{ inputs.data_environment }}
+          path: pipeline/data/archive/nynjtc_map_sheets.json
+          if-no-files-found: error

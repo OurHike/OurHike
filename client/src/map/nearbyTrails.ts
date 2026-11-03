@@ -35,10 +35,13 @@
 // trail draws over it. map/style.ts's header, rule 2, has the whole history.
 //
 // WHY IT IS STILL A LAYER SPLIT: it was made one because `line-dasharray`
-// is not data-driven - it takes zoom expressions only, so a per-feature
-// dash was not something MapLibre would honour - and it stays one because
-// its two halves are named in every tap handler, probe and test, and what
-// changed on 2026-09-10 was the drawing, not the names. The rule is two
+// was not data-driven then - zoom expressions only, so a per-feature dash
+// was not something MapLibre would honour - and it stays one because its
+// two halves are named in every tap handler, probe and test, and what
+// changed on 2026-09-10 was the drawing, not the names. (The property takes
+// a per-feature expression in the MapLibre this build ships, which is how
+// #1588 dashes the context trails and not the through-routes on the same
+// layers - map/style.ts's contextDashExpression.) The rule is two
 // FILTERS, built here from CHOSEN_SYSTEM_SOURCES so that admitting a source
 // cannot leave one of them behind, and map/style.ts draws each side of the
 // split with the same builder and a different width taper below the seam.

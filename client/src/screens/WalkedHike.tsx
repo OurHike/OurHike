@@ -45,7 +45,7 @@ import { useDraftField } from '../lib/useDraftField'
 
 import type { ResolvedDayHike } from '../lib/dayHikeCard'
 import { distinctLegSources, MAX_NOTE_CHARS, type DayHike } from '../lib/dayHikes'
-import { dayLongDateLabel } from '../lib/planDisplay'
+import { dayLongDateLabel, legLabel } from '../lib/planDisplay'
 import { orgLabelFrom, type Stewards } from '../lib/stewards'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import './plan.css'
@@ -160,9 +160,7 @@ export function WalkedHike({
           <ul className="sheet__legs day-hike-card__legs">
             {legs.map((leg, at) => (
               <li key={`${leg.name ?? 'unnamed'}-${at}`} className="day-hike-card__leg">
-                <span className="day-hike-card__leg-name">
-                  {leg.name ?? 'Unnamed trail'}
-                </span>
+                <span className="day-hike-card__leg-name">{legLabel(leg.name)}</span>
                 <span className="day-hike-card__leg-miles">
                   {formatDistance(leg.miles, units)}
                 </span>

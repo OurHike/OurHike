@@ -16,25 +16,36 @@ way. Several tests below exist only to pin that direction.
 """
 
 import json
+import math
 import re
 from pathlib import Path
 
 import pytest
 from pmtiles.reader import MmapSource, Reader
+from shapely import wkt as shapely_wkt
 from shapely.geometry import shape
 
 import export_nearby_trails as ex
 
 # Harriman-ish, and far enough from any real data that nothing here can be
 # confused for a measurement. The default place a fixture feature sits.
-HARRIMAN = [(-74.1, 41.25), (-74.09, 41.26)]
+#
+# 0.04 DEGREES RATHER THAN 0.01 SINCE #1775, and the size is now load-bearing
+# where it used to be arbitrary: write_overview drops anything whose bounding
+# box is under OVERVIEW_MIN_FEATURE_M - one pixel at the zoom the tiles take
+# over, about 1,874 m - and the old 0.01° span was 1.4 km. Every sketch
+# assertion in this file would have read an empty artifact and passed only
+# where it expected nothing. About 4.4 km across, still one screen of input,
+# and still far under NAMED_TRAIL_THRESHOLD_MILES for the tests that need a
+# feature to fall into the unnamed haze.
+HARRIMAN = [(-74.1, 41.25), (-74.06, 41.29)]
 # Two places this export USED TO refuse to draw, kept as fixtures because the
 # refusal is what #1019 removed: north of the old ring's 42.55° cut (the Long
 # Path's Albany end, in miniature) and east of its -73.4° edge. Named for the
 # boundary rather than for the ground so the geography tests below read as the
 # inversion they are.
-PAST_THE_OLD_NORTH_CUT = [(-74.0, 43.1), (-73.99, 43.11)]
-PAST_THE_OLD_EAST_EDGE = [(-72.0, 41.2), (-71.99, 41.21)]
+PAST_THE_OLD_NORTH_CUT = [(-74.0, 43.1), (-73.96, 43.14)]
+PAST_THE_OLD_EAST_EDGE = [(-72.0, 41.2), (-71.96, 41.24)]
 
 
 def _feature(coords, properties, feature_id=1):
@@ -109,6 +120,7 @@ def _usfs_source(**overrides):
     trails by MEDIUM (trail_type TERRA/SNOW/WATER) rather than by use, and
     TERRA is exactly the walkable set. See sources.json's foot_allowed_comment
     for why hiker_pedestrian_managed - the obvious candidate - cannot be used.
+    Motorized trails are excluded on `terra_motorized` (#1711).
     """
     source = {
         "key": "usfs_trails",
@@ -121,33 +133,19 @@ def _usfs_source(**overrides):
         "blaze_default": "Unknown",
         "foot_field": "trail_type",
         "foot_allowed": ["TERRA"],
+        "excluded_when": {"terra_motorized": ["Y"]},
         "reaches_hikers": True,
     }
     source.update(overrides)
     return source
 
 
-def _granit_source(**overrides):
-    """The shape of the real nh_granit_trails entry, minus the prose.
-
-    The only source using `excluded_when`: its PED column cannot be an
-    allowlist (blank means unrecorded, not no), so it filters on GRANIT's
-    positive motorized flags instead.
-    """
-    source = {
-        "key": "nh_granit_trails",
-        "title": "New Hampshire Trails",
-        "kind": "external_arcgis_layer",
-        "url": "https://example.test/granit",
-        "steward": "NH GRANIT, Earth Systems Research Center, University of New Hampshire",
-        "attribution": "NH GRANIT, University of New Hampshire",
-        "blaze_field": "BLAZE",
-        "name_field": "TRAILNAME",
-        "excluded_when": {"SNOWMBL": ["1"], "ATV": ["1"]},
-        "reaches_hikers": True,
-    }
-    source.update(overrides)
-    return source
+def _usfs_properties(**overrides):
+    """One non-motorized foot trail, the commonest live shape (45,151 of the
+    TERRA rows read terra_motorized 'N', measured 2026-09-28)."""
+    props = {"trail_name": "JEWELL", "trail_type": "TERRA", "terra_motorized": "N"}
+    props.update(overrides)
+    return props
 
 
 def _centerline_source():
@@ -192,7 +190,14 @@ def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None, centerli
 # --------------------------------------------------------------------------
 
 
-def test_publishes_the_five_properties_the_client_draws_from(tmp_path, monkeypatch):
+def test_publishes_the_six_properties_the_client_draws_from(tmp_path, monkeypatch):
+    """`length_miles` is the sixth, added by #1516 so a phone can tell a whole
+    trail from part of one. It is asserted separately from the exact-equality
+    check below because its value is the WGS84 ellipsoid's rather than this
+    writer's, and pinning the literal would turn a test of what
+    gets published into a test of the geodesic.
+    test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length pins
+    the measure."""
     _, body = _run(
         tmp_path,
         monkeypatch,
@@ -202,13 +207,22 @@ def test_publishes_the_five_properties_the_client_draws_from(tmp_path, monkeypat
     )
 
     (feature,) = body["features"]
-    assert feature["properties"] == {
+    properties = dict(feature["properties"])
+    length_miles = properties.pop("length_miles")
+
+    assert properties == {
         "id": "oprhp_trails:1",
         "source": "oprhp_trails",
         "name": "Ramapo-Dunderberg",
         "blaze_color": "Red",
         "trail_status": "open",
     }
+    # A real length, on a fixture that draws a real line. The bound that
+    # matters is the lower one: zero or absent is what lineClimb reads as
+    # "nothing to compare against", and shipping that for every feature is
+    # the defect #1516 fixed.
+    assert isinstance(length_miles, float)
+    assert 0 < length_miles < 100
 
 
 # --------------------------------------------------------------------------
@@ -949,7 +963,10 @@ def test_the_manifest_reports_the_ground_the_export_actually_covers(tmp_path, mo
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
-    assert manifest["bbox"] == pytest.approx([-74.1, 41.25, -73.99, 43.11])
+    # The two fixtures' own corners - HARRIMAN's west/south and
+    # PAST_THE_OLD_NORTH_CUT's east/north, both 0.04 degrees across since
+    # #1775 lengthened them past the sketch's floor.
+    assert manifest["bbox"] == pytest.approx([-74.1, 41.25, -73.96, 43.14])
     assert "ring_bbox" not in manifest
 
 
@@ -1065,11 +1082,9 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
     rather than against the boolean. A point is not a walkable section, so
     there is nothing to close.
 
-    NOT the same as a trail running ALONG the boundary, which shapely counts
-    as inside the polygon because a polygon contains its own edge - and which
-    this deliberately leaves closed. A trail coincident with the edge of a
-    closed area is on the line the steward drew, and erring open there would
-    be guessing in the direction that gets somebody hurt.
+    A trail running ALONG the boundary is the next test's case: shapely
+    counts it as inside, because a polygon contains its own edge, and the
+    rule "Only inside closes" (the maintainer, 2026-10-15) opens it.
     """
     touches_the_corner = [(-74.15, 41.15), (-74.10, 41.20)]
     manifest, body = _run(
@@ -1087,6 +1102,31 @@ def test_a_trail_that_only_touches_at_a_point_stays_open(tmp_path, monkeypatch):
     assert feature["properties"]["trail_status"] == "open"
     assert "closure_kind" not in feature["properties"]
     assert manifest["closures"]["closed"] == 0
+
+
+def test_a_trail_along_the_edge_of_a_closed_area_stays_open(tmp_path, monkeypatch):
+    """A trail lying within AREA_EDGE_M (2 m) of the closed area's outline
+    runs along its edge, not inside it, so it ships open, whole. 0.00001 degrees of longitude is 0.84 m at this
+    latitude; the trail beside it 0.0001 in (8.4 m) is inside, and closes."""
+    along_the_west_edge = [(-74.09999, 41.21), (-74.09999, 41.29)]
+    just_inside = [(-74.0999, 41.21), (-74.0999, 41.29)]
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source(), _closure_source()],
+        {
+            "oprhp_trails": [
+                _feature(along_the_west_edge, _oprhp_properties(Name="Edge Trail")),
+                _feature(just_inside, _oprhp_properties(Name="Inner Trail")),
+            ],
+            "oprhp_trail_closures": [_area(CLOSED_SQUARE)],
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    status = {feature["properties"]["name"]: feature["properties"]["trail_status"] for feature in body["features"]}
+    assert status == {"Edge Trail": "open", "Inner Trail": "closed"}
+    assert manifest["closures"]["closed"] == 1
 
 
 def test_an_empty_closures_layer_is_a_good_week_not_a_failure(tmp_path, monkeypatch):
@@ -1230,11 +1270,16 @@ def test_the_overview_groups_by_the_three_properties_the_paint_and_tape_read(tmp
     assert all(f["geometry"]["type"] == "MultiLineString" for f in features)
 
 
-def test_overview_coordinates_carry_the_at_sketchs_own_four_decimals(tmp_path, monkeypatch):
-    # OVERVIEW_COORDINATE_DECIMALS, imported from export_trails.py rather than
-    # restated - four decimals is ~11 m of longitude, an order finer than the
-    # 100 m tolerance, and survey-noise digits are what the sketch exists to
-    # shed.
+def test_overview_coordinates_stop_an_order_below_the_sketchs_own_tolerance(tmp_path, monkeypatch):
+    # OVERVIEW_SEAM_DECIMALS, this export's own since #1775 rather than
+    # export_trails.py's four: three decimals is ~111 m of longitude, an order
+    # finer than the 937 m this sketch is now cut to, and survey-noise digits
+    # are what a sketch exists to shed. The rule did not change - "an order
+    # finer than the tolerance" is the same rule the four-decimal version
+    # stated - only the tolerance it is measured against did.
+    #
+    # The fixture spans about 2.2 km, which clears OVERVIEW_MIN_FEATURE_M: a
+    # shorter one would test the floor instead and find no coordinates at all.
     survey_noise = [(-74.123456789, 41.251234567), (-74.109876543, 41.267654321)]
     _run(
         tmp_path,
@@ -1246,8 +1291,15 @@ def test_overview_coordinates_carry_the_at_sketchs_own_four_decimals(tmp_path, m
 
     (feature,) = _overview(tmp_path)["features"]
     (line,) = feature["geometry"]["coordinates"]
-    assert line[0] == [-74.1235, 41.2512]
-    assert line[-1] == [-74.1099, 41.2677]
+    # Asserted as a digit count rather than as literals: the cut runs through
+    # EPSG:5070 and back, so the last digit is the projection's and pinning it
+    # would be pinning pyproj's version rather than this export's contract.
+    for lon, lat in line:
+        for value in (lon, lat):
+            decimals = len(str(value).partition(".")[2])
+            assert decimals <= ex.OVERVIEW_SEAM_DECIMALS, f"{value} carries {decimals} decimals"
+    assert line[0][0] == pytest.approx(-74.1235, abs=0.001)
+    assert line[-1][1] == pytest.approx(41.2677, abs=0.001)
 
 
 def test_the_overview_rides_the_manifest_the_publish_gate_reads(tmp_path, monkeypatch):
@@ -1267,7 +1319,7 @@ def test_the_overview_rides_the_manifest_the_publish_gate_reads(tmp_path, monkey
     assert len(overview["sha256"]) == 64
     assert overview["feature_count"] == 1
     assert overview["coordinate_count"] >= 2
-    assert overview["tolerance_m"] == 100.0
+    assert overview["tolerance_m"] == ex.OVERVIEW_SEAM_TOLERANCE_M
 
 
 # --- Naming a long-distance trail below the seam (#1307) --------------------
@@ -1369,9 +1421,9 @@ def test_usfs_snow_and_water_corridors_are_dropped_and_terra_ships(tmp_path, mon
         [_usfs_source()],
         {
             "usfs_trails": [
-                _feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1),
-                _feature(HARRIMAN, {"trail_name": "ROSEBROOK SNOMO", "trail_type": "SNOW"}, feature_id=2),
-                _feature(HARRIMAN, {"trail_name": "A PADDLE ROUTE", "trail_type": "WATER"}, feature_id=3),
+                _feature(HARRIMAN, _usfs_properties(trail_name="JEWELL"), feature_id=1),
+                _feature(HARRIMAN, _usfs_properties(trail_name="ROSEBROOK SNOMO", trail_type="SNOW"), feature_id=2),
+                _feature(HARRIMAN, _usfs_properties(trail_name="A PADDLE ROUTE", trail_type="WATER"), feature_id=3),
             ]
         },
     )
@@ -1398,10 +1450,10 @@ def test_a_usfs_trail_with_no_hiker_season_still_ships(tmp_path, monkeypatch):
             "usfs_trails": [
                 _feature(
                     HARRIMAN,
-                    {"trail_name": "SEASONED", "trail_type": "TERRA", "hiker_pedestrian_managed": "01/01-12/31"},
+                    _usfs_properties(trail_name="SEASONED", hiker_pedestrian_managed="01/01-12/31"),
                     feature_id=1,
                 ),
-                _feature(HARRIMAN, {"trail_name": "UNRECORDED", "trail_type": "TERRA"}, feature_id=2),
+                _feature(HARRIMAN, _usfs_properties(trail_name="UNRECORDED"), feature_id=2),
             ]
         },
     )
@@ -1409,104 +1461,61 @@ def test_a_usfs_trail_with_no_hiker_season_still_ships(tmp_path, monkeypatch):
     assert [f["properties"]["name"] for f in body["features"]] == ["SEASONED", "UNRECORDED"]
 
 
-def test_granit_drops_motorized_corridors_on_a_positive_flag(tmp_path, monkeypatch):
-    # Measured in the Whites 2026-09-02: 1,209 blank-PED rows are flagged
-    # SNOWMBL '1' and 124 ATV '1'. Those are positive assertions about what a
-    # corridor is FOR, and acting on one is sound where acting on an absence
-    # is not.
+def test_usfs_motorized_trails_are_dropped_and_unrecorded_ones_ship(tmp_path, monkeypatch):
+    """The maintainer's filter of 2026-09-28 (#1711): no motorized trails.
+
+    Measured nationwide that day across trail_type TERRA: terra_motorized
+    reads 'Y' on 23,195 rows (29,199 mi) - every one carrying a motorcycle,
+    ATV or 4WD code in allowed_terra_use - 'N' on 45,151, and 'N/A' on 9,810
+    rows whose every use column is empty. The 'N/A' rows SHIP: they include
+    about 570 mi of the Pacific Crest Trail and the Arizona Trail, and an
+    empty use column is unrecorded, not motorized.
+    """
     manifest, body = _run(
         tmp_path,
         monkeypatch,
-        [_granit_source()],
+        [_usfs_source()],
         {
-            "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
-                _feature(HARRIMAN, {"TRAILNAME": "Camp 7 Snowmobile", "BLAZE": " ", "PED": " ", "SNOWMBL": "1"}, feature_id=2),
-                _feature(HARRIMAN, {"TRAILNAME": "An OHV run", "BLAZE": " ", "PED": " ", "ATV": "1"}, feature_id=3),
+            "usfs_trails": [
+                _feature(HARRIMAN, _usfs_properties(trail_name="JEWELL"), feature_id=1),
+                _feature(HARRIMAN, _usfs_properties(trail_name="GREAT WESTERN TRAIL", terra_motorized="Y"), feature_id=2),
+                _feature(HARRIMAN, _usfs_properties(trail_name="PACIFIC CREST TRAIL", terra_motorized="N/A"), feature_id=3),
             ]
         },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
     )
 
-    assert [f["properties"]["name"] for f in body["features"]] == ["Air Line"]
-    assert manifest["sources"]["nh_granit_trails"]["dropped"] == {
-        "excluded use: SNOWMBL='1'": 1,
-        "excluded use: ATV='1'": 1,
-    }
+    assert [f["properties"]["name"] for f in body["features"]] == ["JEWELL", "PACIFIC CREST TRAIL"]
+    assert manifest["sources"]["usfs_trails"]["dropped"] == {"excluded use: terra_motorized='Y'": 1}
 
 
-def test_a_granit_trail_with_blank_ped_and_no_other_flag_still_ships(tmp_path, monkeypatch):
-    # The counterpart, and the reason PED is not a foot_field. 2,541 of the
-    # 3,760 blank-PED rows in the Whites carry NO use flag of any kind and are
-    # ordinary hiking trails - one of them literally named "Appalachian Trail
-    # - road link". A PED allowlist would delete them.
-    _, body = _run(
-        tmp_path,
-        monkeypatch,
-        [_granit_source()],
-        {
-            "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail - road link", "BLAZE": " ", "PED": " "}, feature_id=1),
-            ]
-        },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
-    )
+def test_a_registry_field_absent_from_every_fetched_feature_fails_the_run(tmp_path, monkeypatch):
+    """#1646's failure, pinned: a renamed column must stop the run.
 
-    assert [f["properties"]["name"] for f in body["features"]] == ["Appalachian Trail - road link"]
-
-
-def test_an_unblazed_whites_trail_draws_as_unblazed_not_unknown(tmp_path, monkeypatch):
-    # The maintainer's correction of 2026-09-02: the Whites largely do not use
-    # paint blazes, so GRANIT's blank BLAZE - 7,574 of 7,643 rows - is the
-    # ground rather than a gap. reference/blaze_mapping.json keys the literal
-    # ' ' to "None", which the client renders as "Unblazed"; "Unknown" would
-    # print a hedge in place of a true fact. The A.T. is the one white line
-    # through the range (61 of the 62 White rows carry TRAILSYS 'Appalachian
-    # Trail').
-    _, body = _run(
-        tmp_path,
-        monkeypatch,
-        [_granit_source()],
-        {
-            "nh_granit_trails": [
-                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
-                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail", "BLAZE": "White", "PED": "1"}, feature_id=2),
-            ]
-        },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
-    )
-
-    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
-    assert blazes == {"Air Line": "None", "Appalachian Trail": "White"}
-
-
-def test_the_two_whites_sources_report_two_different_absences(tmp_path, monkeypatch):
-    """GRANIT's blank is "Unblazed"; USFS's silence is "Blaze not recorded".
-
-    Both cover the same White Mountains ground and neither paints most of it,
-    which makes it tempting to treat the two absences as one. They are not.
-    GRANIT records a blaze where one exists - the A.T.'s white - so its blank
-    is evidence that a trail is unblazed. USFS publishes no blaze column at
-    all, so it has said nothing. Collapsing them would tell a hiker the Forest
-    Service had checked.
-
-    Pinned together in one test because the distinction only exists in the
-    comparison, and a future simplification would erase it by making both
-    sources agree.
+    NH GRANIT republished in September 2026 with SNOWMBL/ATV renamed. The
+    registry still named the old columns, `properties.get` returned None on
+    every row, the exclusion matched nothing, and every snowmobile corridor in
+    New Hampshire shipped as a hiking trail from a green run. Here the same
+    thing happens to usfs_trails' `terra_motorized`: the layer stops carrying
+    it, and a green run would ship every ATV trail in the country.
     """
-    _, body = _run(
-        tmp_path,
-        monkeypatch,
-        [_granit_source(), _usfs_source()],
-        {
-            "nh_granit_trails": [_feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1)],
-            "usfs_trails": [_feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1)],
-        },
-        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
-    )
+    renamed = [_feature(HARRIMAN, {"trail_name": "GREAT WESTERN TRAIL", "trail_type": "TERRA", "motorized": "Y"})]
+    with pytest.raises(SystemExit, match=r"usfs_trails: sources.json names \['terra_motorized'\]"):
+        _run(tmp_path, monkeypatch, [_usfs_source()], {"usfs_trails": renamed})
 
-    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
-    assert blazes == {"Air Line": "None", "JEWELL": "Unknown"}
+
+def test_a_registry_field_null_on_every_feature_is_not_a_schema_change():
+    """The guard asks whether a column EXISTS, not whether it is populated.
+
+    A steward publishing a column and leaving it empty is a data question the
+    filters already answer (an absent blaze draws "Unknown"); only a column
+    missing from every row means the registry describes a different layer.
+    """
+    source = _usfs_source()
+    assert ex.missing_declared_fields(source, [{"properties": _usfs_properties(terra_motorized=None)}]) == []
+    assert ex.missing_declared_fields(source, [{"properties": {"trail_name": "JEWELL"}}]) == [
+        "trail_type",
+        "terra_motorized",
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -1629,3 +1638,1270 @@ def test_a_network_with_no_shared_ground_still_cuts_its_tiles(tmp_path, monkeypa
     _, metadata = _tiles_header(manifest)
     (layer,) = metadata["vector_layers"]
     assert not {"concurrent_with", "concurrent_source", "concurrent_side"} & set(layer["fields"])
+
+
+# --- A steward's placeholder is not a name (#1432) -------------------------
+
+
+def _nyc_source(**extra):
+    return {
+        "key": "nyc_parks_trails",
+        "name_field": "trail_name",
+        "name_placeholders": ["Unnamed Official Trail", "Name TBD", "TBD"],
+        **extra,
+    }
+
+
+def test_a_registered_placeholder_reads_as_no_name():
+    """NYC Parks fills `trail_name` on every row, and on 53% of them what it
+    fills it with is a placeholder. Reading those as names is a display
+    outrunning its source, and at scale: measured live, 'Unnamed Official
+    Trail' totals 128.7 miles, which clears NAMED_TRAIL_THRESHOLD_MILES, so
+    the overview shipped ONE feature named 'Unnamed Official Trail' marked
+    `through_route: true` and drawn at through-route weight across five
+    boroughs beside the Appalachian Trail.
+    """
+    source = _nyc_source()
+
+    assert ex.declared_name(source, {"trail_name": "Blue Trail"}) == "Blue Trail"
+    assert ex.declared_name(source, {"trail_name": "Unnamed Official Trail"}) is None
+    assert ex.declared_name(source, {"trail_name": "Name TBD"}) is None
+    assert ex.declared_name(source, {"trail_name": "TBD"}) is None
+
+
+def test_placeholder_matching_ignores_case_and_surrounding_space():
+    """A placeholder is prose typed by whoever surveyed the segment, not a
+    coded domain, so it arrives however it was typed."""
+    source = _nyc_source()
+
+    assert ex.declared_name(source, {"trail_name": "  unnamed official trail "}) is None
+    assert ex.declared_name(source, {"trail_name": "TBD "}) is None
+
+
+def test_a_source_with_no_placeholders_keeps_every_name_it_is_given():
+    """The default must not change for the nine sources that declare none -
+    'Unnamed Official Trail' is NYC Parks' idiom, not a global stop-list, and
+    another steward could legitimately name a trail something this one uses as
+    a placeholder."""
+    plain = {"key": "mohonk_trails", "name_field": "Name"}
+
+    assert ex.declared_name(plain, {"Name": "Unnamed Official Trail"}) == "Unnamed Official Trail"
+    assert ex.declared_name(plain, {"Name": "Undercliff Carriage Road"}) == "Undercliff Carriage Road"
+
+
+def test_an_absent_name_stays_absent():
+    assert ex.declared_name(_nyc_source(), {}) is None
+    assert ex.declared_name(_nyc_source(), {"trail_name": None}) is None
+
+
+def test_build_records_publishes_no_name_for_a_placeholder_row():
+    """End to end through the exporter, since that is where the overview and
+    every map label read it from."""
+    features = [
+        {
+            "type": "Feature",
+            "id": "row-a",
+            "properties": {"trail_name": "Blue Trail"},
+            "geometry": {"type": "LineString", "coordinates": [[-73.89, 40.89], [-73.88, 40.90]]},
+        },
+        {
+            "type": "Feature",
+            "id": "row-b",
+            "properties": {"trail_name": "Unnamed Official Trail"},
+            "geometry": {"type": "LineString", "coordinates": [[-73.87, 40.91], [-73.86, 40.92]]},
+        },
+    ]
+
+    records, _ = ex.build_records(_nyc_source(blaze_default="Unknown"), features, {})
+
+    assert [r["name"] for r in records] == ["Blue Trail", None]
+
+
+# ------------------------------------------------- declared duplicate pairs
+
+
+def _src(key, **extra):
+    return {"key": key, **extra}
+
+
+def test_a_declared_pair_is_read_off_the_registry():
+    """Declared rather than derived, one pair at a time, by somebody who has
+    looked at the measurement for that pair (#1459, lib/duplicates.py)."""
+    sources = [_src("nyc_parks_trails"), _src("nyc_dot_greenways", duplicate_of="nyc_parks_trails")]
+
+    assert ex.declared_duplicate_pairs(sources) == [("nyc_parks_trails", "nyc_dot_greenways")]
+
+
+def test_a_junior_whose_senior_is_not_shipping_is_skipped():
+    """The safety case. A steward held back by `reaches_hikers` drops out of
+    `network_line_sources`, and a junior still pointing at them must NOT then
+    be judged against nothing - or, worse, be removed on the strength of a
+    source this release does not carry. No senior, no pair, both lines ship."""
+    sources = [_src("nyc_dot_greenways", duplicate_of="nyc_parks_trails")]
+
+    assert ex.declared_duplicate_pairs(sources) == []
+
+
+def test_sources_without_the_key_declare_nothing():
+    assert ex.declared_duplicate_pairs([_src("oprhp_trails"), _src("dec_trails")]) == []
+
+
+def test_deduplicate_removes_the_junior_and_reports_what_it_cost():
+    """The stats ride into the manifest, because a rule that removes somebody's
+    lines has to say how many and how far in the artifact it produced."""
+    line = "LINESTRING (-73.97 40.66, -73.97 40.6636)"
+    beside = "LINESTRING (-73.96995 40.66, -73.96995 40.6636)"
+    records = [
+        {"id": "p1", "source": "nyc_parks_trails", "name": "Park Loop", "wkt": line},
+        {"id": "g1", "source": "nyc_dot_greenways", "name": "Greenway", "wkt": beside},
+        {"id": "g2", "source": "nyc_dot_greenways", "name": "Far", "wkt": "LINESTRING (-74.2 40.5, -74.2 40.54)"},
+    ]
+
+    kept, stats = ex.deduplicate(records, [("nyc_parks_trails", "nyc_dot_greenways")])
+
+    assert [r["id"] for r in kept] == ["p1", "g2"]
+    assert stats[0]["senior"] == "nyc_parks_trails"
+    assert stats[0]["junior"] == "nyc_dot_greenways"
+    assert stats[0]["duplicates"] == 1
+    assert stats[0]["junior_miles_removed"] > 0
+
+
+def test_no_declared_pairs_leaves_every_record_alone():
+    records = [{"id": "a", "source": "oprhp_trails", "wkt": "LINESTRING (0 0, 0 1)"}]
+
+    kept, stats = ex.deduplicate(records, [])
+
+    assert kept == records
+    assert stats == []
+
+
+def test_a_merged_record_ships_whose_copy_it_swallowed():
+    """#1459 claimed the loser "is kept on the survivor rather than
+    discarded" - features/POI_DEDUPLICATION.md §3's line in the identity
+    ledger - and the field was set on 271 records and then dropped by the
+    property whitelist, so the claim was true of the pipeline and false of
+    the artifact. Verified against UA release 4bf46523: nyc_dot_greenways
+    published 2,603 of the 3,030 it fetched, exactly the 427 removed, and
+    `duplicate_of` appeared nowhere in 242 MB of it.
+
+    `closure_source` was this same finding once (#1142): set on every area
+    record since #964 and never shipped. A merge nobody can see from the
+    artifact is a merge nobody can check."""
+    geojson = ex.records_to_geojson(
+        [
+            {
+                "id": "p1",
+                "source": "nyc_parks_trails",
+                "name": "Park Loop",
+                "blaze_color": "Unknown",
+                "wkt": "LINESTRING (-73.97 40.66, -73.96 40.67)",
+                "duplicate_of": "nyc_dot_greenways",
+            },
+            {
+                "id": "p2",
+                "source": "nyc_parks_trails",
+                "name": "Untouched",
+                "blaze_color": "Unknown",
+                "wkt": "LINESTRING (-73.5 40.1, -73.4 40.2)",
+            },
+        ]
+    )
+
+    merged, plain = (f["properties"] for f in geojson["features"])
+    assert merged["duplicate_of"] == "nyc_dot_greenways"
+    # Omitted rather than null on a record that swallowed nothing - the rule
+    # every optional property in this writer follows.
+    assert "duplicate_of" not in plain
+
+
+def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_whole():
+    """#1516. client/src/lib/lineClimb.ts compares the graph edges a phone
+    holds against this property: materially shorter means the line runs past
+    the downloaded cells, so the climb it could sum would be silently low.
+
+    v1.3.0 shipped that comparison against a field no exporter wrote, so the
+    guard could never fire and every tap fell through to `measured` - the
+    confidently-wrong answer on the band a hiker uses to judge daylight. The
+    assertion that matters here is simply that the key exists on every
+    feature; the client's own suite covers what it does with it.
+
+    The value is measured from the geometry being published rather than taken
+    from a steward's stated mileage, which is both why it is the right number
+    for a coverage check - it describes the same clipped line the phone holds
+    edges of - and why nothing may present it as the steward's claim."""
+    # A degenerate one-point line alongside a real one: it measures 0.0,
+    # and 0 is the value lineClimb treats as "nothing to compare
+    # against" rather than as a zero-length trail.
+    geojson = ex.records_to_geojson(
+        [
+            {
+                "id": "long",
+                "source": "oprhp_trails",
+                "name": "A real line",
+                "blaze_color": "Red",
+                "wkt": "LINESTRING (-74.0 41.0, -74.0 41.1)",
+            },
+            {
+                "id": "degenerate",
+                "source": "oprhp_trails",
+                "name": "One point twice",
+                "blaze_color": "Red",
+                "wkt": "LINESTRING (-74.0 41.0, -74.0 41.0)",
+            },
+        ]
+    )
+
+    real, degenerate = (f["properties"] for f in geojson["features"])
+
+    # Always written, never omitted: an absent key is the case that cost
+    # v1.3.0 its guard, so this property is not optional the way closure_kind
+    # and duplicate_of are.
+    assert "length_miles" in real
+    assert "length_miles" in degenerate
+
+    # 0.1 degree of latitude is about 6.9 miles. Asserted as a range rather
+    # than a literal because the exact figure is the WGS84 geodesic's, which
+    # test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length
+    # pins, and pinning it here would make this a test of the measure rather
+    # than of the writer.
+    assert 6.5 < real["length_miles"] < 7.5
+    assert degenerate["length_miles"] == 0.0
+
+    # Two decimals, matching what the client reads and never more precision
+    # than the clipped geometry earns.
+    assert real["length_miles"] == round(real["length_miles"], 2)
+
+
+# Five miles due north on the WGS84 ellipsoid, each end placed with pyproj's
+# Geod(ellps="WGS84").fwd at azimuth 0, which leaves the longitude unchanged.
+# EPSG:5070 reads the Anchorage line 4.44 miles and the Harriman one 5.04
+# (measured 2026-10-06 with pyproj). The two-part line is the Anchorage one in
+# two halves of 2.5 miles, the second moved a degree east: the jump between
+# the parts is no part of the trail.
+FIVE_MILES_NORTH = {
+    "at Anchorage, Alaska": ("LINESTRING (-149.9 61.2, -149.9 61.27221126419307)", 4.44),
+    "at Harriman, New York": ("LINESTRING (-74.1 41.25, -74.1 41.32245417114151)", 5.04),
+    "in two parts at Anchorage, Alaska": (
+        "MULTILINESTRING ((-149.9 61.2, -149.9 61.23610572896938), (-148.9 61.23610572896938, -148.9 61.27221126419307))",
+        4.44,
+    ),
+}
+
+
+@pytest.mark.parametrize(("wkt", "conus_albers_miles"), FIVE_MILES_NORTH.values(), ids=FIVE_MILES_NORTH.keys())
+def test_length_miles_is_the_lines_wgs84_geodesic_not_its_epsg5070_length(wkt, conus_albers_miles):
+    """The maintainer, 2026-10-06: `length_miles` is measured on the WGS84 ellipsoid, as the graph's edges are. EPSG:5070 is equal-area for the lower 48 only and its metre is not the ground's, so
+    `length_miles` read `conus_albers_miles` here before. The line sheet prints it, and lineClimb compares it with
+    the graph edges' geodesic metres to tell a whole trail from part of one."""
+    geojson = ex.records_to_geojson(
+        [{"id": "north", "source": "oprhp_trails", "name": "Five miles north", "blaze_color": "Red", "wkt": wkt}]
+    )
+
+    (feature,) = geojson["features"]
+    assert feature["properties"]["length_miles"] == 5.0, f"EPSG:5070 reads {conus_albers_miles}"
+
+
+# --- The boundary a reviewed list is about (#1533) -------------------------
+#
+# `nyc_park_drives` names ten street names in two boroughs and calls them
+# car-free park drives. The SAME NAMES outside those two parks are ordinary
+# streets carrying cars, so the boundary is not a geographic limit on a source
+# - #1019 removed those and they stay removed - but the definition of which
+# rows the list is about. These pin that distinction, because a future reader
+# meeting `boundary_source` in keep_reason will reasonably wonder whether the
+# ring came back.
+
+# A square degree-ish "park" big enough to hold the fixture lines below.
+PARK_BOX = [(-73.98, 40.76), (-73.95, 40.76), (-73.95, 40.80), (-73.98, 40.80), (-73.98, 40.76)]
+
+
+def _boundary(ring=PARK_BOX):
+    return shape({"type": "Polygon", "coordinates": [[[lon, lat] for lon, lat in ring]]})
+
+
+def _drives_source(**extra):
+    """The shape of the real nyc_park_drives entry, minus the prose."""
+    return {"key": "nyc_park_drives", "name_field": "stname_label", "blaze_default": "Unknown", **extra}
+
+
+def test_a_drive_inside_the_park_is_kept():
+    line = shape({"type": "LineString", "coordinates": [[-73.97, 40.77], [-73.97, 40.79]]})
+    assert ex.keep_reason(_drives_source(), {"stname_label": "EAST DR"}, line, {}, _boundary()) is None
+
+
+def test_a_street_of_the_same_name_outside_the_park_is_dropped():
+    """The failure this boundary exists to prevent. Queens has its own EAST DR
+    and WEST DR; measured on the real layer, four of the ten reviewed names
+    also run on past the park edge - 0.30 miles of Brooklyn EAST DR alone.
+    Drawn as a car-free park drive, that is a city street with cars on it."""
+    elsewhere = shape({"type": "LineString", "coordinates": [[-73.85, 40.74], [-73.85, 40.75]]})
+    reason = ex.keep_reason(_drives_source(), {"stname_label": "EAST DR"}, elsewhere, {}, _boundary())
+    assert reason == "outside the boundary its registry entry names"
+
+
+def test_a_drive_leaving_the_park_at_an_entrance_is_still_kept():
+    """Most-of-it-inside rather than all-of-it-inside, and this is the case
+    that decides between them: a real drive whose last stretch crosses the
+    boundary at a park entrance must not be thrown away for it."""
+    crossing = shape({"type": "LineString", "coordinates": [[-73.97, 40.77], [-73.97, 40.799], [-73.97, 40.802]]})
+    assert ex.inside_boundary(crossing, _boundary()) is True
+    assert ex.keep_reason(_drives_source(), {"stname_label": "WEST DR"}, crossing, {}, _boundary()) is None
+
+
+def test_a_street_merely_clipping_the_park_corner_is_dropped():
+    """The other side of the same threshold. A line mostly outside does not
+    become a park drive by touching one."""
+    clipping = shape({"type": "LineString", "coordinates": [[-73.955, 40.799], [-73.90, 40.799]]})
+    assert ex.inside_boundary(clipping, _boundary()) is False
+
+
+def test_a_source_naming_no_boundary_is_asked_no_geography_question():
+    """#1019's decision, still in force: an organization's layer ships whole.
+    Only a source that names a boundary_source is cut to one."""
+    far_away = shape({"type": "LineString", "coordinates": list(PAST_THE_OLD_NORTH_CUT)})
+    assert ex.keep_reason(_oprhp_source(), _oprhp_properties(), far_away, {}) is None
+
+
+def test_inside_boundary_calls_a_zero_length_line_outside():
+    """A degenerate line is not inside anything, and saying so here keeps the
+    ratio from being what decides it."""
+    point = shape({"type": "LineString", "coordinates": [[-73.97, 40.77], [-73.97, 40.77]]})
+    assert ex.inside_boundary(point, _boundary()) is False
+
+
+def test_build_records_drops_the_outside_rows_and_counts_them_by_name():
+    inside = _feature([(-73.97, 40.77), (-73.97, 40.79)], {"stname_label": "EAST DR"}, feature_id=1)
+    outside = _feature([(-73.85, 40.74), (-73.85, 40.75)], {"stname_label": "EAST DR"}, feature_id=2)
+    records, stats = ex.build_records(_drives_source(), [inside, outside], {}, _boundary())
+
+    assert stats["kept"] == 1
+    assert stats["dropped"] == {"outside the boundary its registry entry names": 1}
+    assert [r["name"] for r in records] == ["EAST DR"]
+
+
+def test_load_boundary_returns_none_for_a_source_that_names_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "RAW_DIR", tmp_path)
+    assert ex.load_boundary(_oprhp_source()) is None
+
+
+def test_load_boundary_unions_only_the_parks_boundary_names_asks_for(tmp_path, monkeypatch):
+    """`boundary_names` is what stops "a street inside any park is walkable",
+    which the real measurement refutes: 61.58 miles of park-interior street
+    across 79 parks is marked vehicular by the city, and includes a bus
+    terminal loop and two zoo service roads."""
+    monkeypatch.setattr(ex, "RAW_DIR", tmp_path)
+    (tmp_path / "nyc_park_polygons.geojson").write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"signname": "Central Park"},
+                        "geometry": {"type": "Polygon", "coordinates": [[[lon, lat] for lon, lat in PARK_BOX]]},
+                    },
+                    {
+                        "type": "Feature",
+                        "properties": {"signname": "Somebody Else's Park"},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[-73.80, 40.70], [-73.70, 40.70], [-73.70, 40.75], [-73.80, 40.70]]],
+                        },
+                    },
+                ],
+            }
+        )
+    )
+    source = _drives_source(boundary_source="nyc_park_polygons", boundary_names=["Central Park"])
+    boundary = ex.load_boundary(source)
+
+    inside = shape({"type": "LineString", "coordinates": [[-73.97, 40.77], [-73.97, 40.79]]})
+    in_the_other_park = shape({"type": "LineString", "coordinates": [[-73.78, 40.705], [-73.76, 40.709]]})
+    assert ex.inside_boundary(inside, boundary) is True
+    assert ex.inside_boundary(in_the_other_park, boundary) is False
+
+
+def test_load_boundary_refuses_a_name_that_matches_no_polygon(tmp_path, monkeypatch):
+    """Every row would be dropped, so this fails loudly rather than shipping an
+    empty source - the same argument export_nearby_poi makes for the key."""
+    monkeypatch.setattr(ex, "RAW_DIR", tmp_path)
+    (tmp_path / "nyc_park_polygons.geojson").write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"signname": "Central Park"},
+                        "geometry": {"type": "Polygon", "coordinates": [[[lon, lat] for lon, lat in PARK_BOX]]},
+                    }
+                ],
+            }
+        )
+    )
+    source = _drives_source(boundary_source="nyc_park_polygons", boundary_names=["A Park That Is Not There"])
+    with pytest.raises(SystemExit, match="no polygon"):
+        ex.load_boundary(source)
+
+
+def test_load_boundary_refuses_a_missing_layer(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "RAW_DIR", tmp_path)
+    source = _drives_source(boundary_source="nyc_park_polygons")
+    with pytest.raises(FileNotFoundError, match="boundary_source"):
+        ex.load_boundary(source)
+
+
+# --- the batch forms (#1661) -----------------------------------------------------
+#
+# records_to_geojson, _named_lengths and write_overview (here and in
+# export_trails.py) now round, measure and cut every record in array calls.
+# The artifacts are compared by hash, so these hold each array form to the
+# per-record function it replaced, to the character of the JSON.
+
+
+def _awkward_geometries():
+    """Lines at full precision, a line and a MultiLineString part the
+    six-decimal cut collapses (two vertices ~1 cm apart), a negative zero,
+    a line with Z, and empties - every branch of _rounded_geometry."""
+    import random
+
+    import numpy as np
+    from shapely.geometry import LineString, MultiLineString
+
+    rng = random.Random(1661)
+
+    def wander(steps):
+        lon, lat = rng.uniform(-74.3, -73.9), rng.uniform(41.0, 41.4)
+        coords = [(lon, lat)]
+        for _ in range(steps):
+            lon += rng.uniform(-0.0005, 0.0005)
+            lat += rng.uniform(-0.0005, 0.0005)
+            coords.append((lon, lat))
+        return LineString(coords)
+
+    sliver = LineString([(-74.1000001, 41.1000001), (-74.10000012, 41.10000012)])
+    geoms = [wander(rng.randint(1, 80)) if n % 4 else MultiLineString([wander(20), wander(5)]) for n in range(300)]
+    geoms += [
+        sliver,
+        MultiLineString([wander(10), sliver]),
+        LineString([(-0.0000001, 41.0), (0.5, 41.5)]),
+        LineString([(-74.0, 41.0, 300.0), (-74.01, 41.01, 320.0)]),
+        LineString(),
+        MultiLineString(),
+    ]
+    return np.array(geoms, dtype=object)
+
+
+def test_rounded_geometries_write_what_rounded_geometry_wrote():
+    geoms = _awkward_geometries()
+
+    batched = ex._rounded_geometries(geoms)
+
+    assert json.dumps(batched) == json.dumps([ex._rounded_geometry(geom) for geom in geoms])
+    # The fixture reaches the fallback it exists for: the sliver keeps its
+    # full-precision vertices rather than collapsing onto one grid point.
+    assert batched[300]["coordinates"][0][0] == -74.1000001
+
+
+def test_miles_all_measures_what_miles_measured():
+    geoms = _awkward_geometries()
+
+    assert ex._miles_all(geoms) == [ex._miles({"wkt": geom.wkt}) for geom in geoms]
+
+
+def test_overview_coordinates_all_cuts_what_overview_coordinates_cut():
+    import numpy as np
+
+    import export_trails
+
+    geoms = [geom for geom in _awkward_geometries() if not geom.has_z]
+    for decimals in (export_trails.OVERVIEW_COORDINATE_DECIMALS, 6):
+        batched = export_trails._overview_coordinates_all(np.array(geoms, dtype=object), decimals)
+        assert json.dumps(batched) == json.dumps([export_trails._overview_coordinates(g, decimals) for g in geoms])
+
+
+# --- the sketch's floor (#1775) --------------------------------------------------
+#
+# write_overview stopped owning the whole zoom range when the tiles took
+# z5-z9, so it is cut for a pixel at OVERVIEW_SEAM_ZOOM instead of one at the
+# seam. These hold the two halves of that: a segment smaller than a pixel
+# there is dropped, and a through-route is kept whatever it measures.
+
+
+def _straight(lon: float, lat: float, metres: float) -> str:
+    """A due-north line `metres` long, near enough at these latitudes - one
+    degree of latitude is close to 111,320 m everywhere."""
+    return f"LINESTRING ({lon} {lat}, {lon} {lat + metres / 111_320})"
+
+
+def test_a_trail_smaller_than_a_pixel_at_the_seam_is_not_in_the_sketch(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    # Either side of OVERVIEW_MIN_FEATURE_M, which is one pixel at
+    # OVERVIEW_SEAM_ZOOM - about 1,874 m. Both are longer than the 100 m the
+    # sketch used to be cut at, so neither is dropped by simplification.
+    records = [
+        {
+            "id": "big",
+            "source": "oprhp_trails",
+            "name": None,
+            "blaze_color": "Blue",
+            "trail_status": "open",
+            "wkt": _straight(-74.1, 41.25, ex.OVERVIEW_MIN_FEATURE_M * 2),
+        },
+        {
+            "id": "small",
+            "source": "oprhp_trails",
+            "name": None,
+            "blaze_color": "Blue",
+            "trail_status": "open",
+            "wkt": _straight(-74.3, 41.25, ex.OVERVIEW_MIN_FEATURE_M / 4),
+        },
+    ]
+
+    entry = ex.write_overview(records)
+
+    assert entry["records_before_floor"] == 2
+    assert entry["records_after_floor"] == 1
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    # One feature, and the vertex that survived is the long line's - the two
+    # sit 0.2 degrees apart so the longitude alone says which.
+    drawn = [line for feature in body["features"] for line in feature["geometry"]["coordinates"]]
+    assert len(drawn) == 1
+    assert drawn[0][0][0] == pytest.approx(-74.1, abs=0.01)
+
+
+def test_a_through_route_stays_in_the_sketch_however_short_its_sections_are(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    # #1307's threshold is about the WHOLE trail, and one trail is ordinarily
+    # many rows - the Long Path published 43. A floor applied row by row would
+    # erase a long trail section by section while keeping a single-row trail
+    # of the same length, which is the failure _above_the_seam_floor's
+    # qualifying-name branch exists to prevent.
+    sections = int(ex.NAMED_TRAIL_THRESHOLD_MILES) + 5
+    records = [
+        {
+            "id": f"lp{n}",
+            "source": "nynjtc_long_path",
+            "name": "Long Path",
+            "blaze_color": "Aqua",
+            "trail_status": "open",
+            # A mile each, well under one pixel at the seam, and each
+            # starting where the last ended - 55 miles of ONE CONTINUOUS
+            # trail. The sections have to meet (#1776): they were drawn
+            # 0.02 degrees apart, side by side, which is 55 parallel lines
+            # rather than a trail, and qualification now asks whether a
+            # name's rows share tread rather than only what they sum to.
+            # The real Long Path is continuous - 43 section records end to
+            # end as of #1019's measurement - so the fixture was wrong about
+            # the very thing this test is named for.
+            "wkt": _straight(-74.0, 41.0 + n * (1_609.34 / 111_320), 1_609.34),
+        }
+        for n in range(sections)
+    ]
+    assert 1_609.34 < ex.OVERVIEW_MIN_FEATURE_M, "the fixture has to be sub-pixel for this to test anything"
+
+    entry = ex.write_overview(records)
+
+    assert entry["records_after_floor"] == sections
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    named = [f for f in body["features"] if f["properties"].get("through_route")]
+    assert [f["properties"]["name"] for f in named] == ["Long Path"]
+
+
+def test_the_sketch_is_cut_for_its_own_top_zoom_and_not_the_ats(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    import export_trails
+
+    # The two sketches answer different questions since the tiles took z5-z9,
+    # and export_trails.py's constant carries the A.T. sketch's own safety
+    # ceiling ("a trail drawn somewhere it does not go"). This export must not
+    # drag it along: half a pixel at z5 is an order coarser than 100 m, and a
+    # shared constant would be one of the two artifacts being wrong.
+    assert ex.OVERVIEW_SEAM_ZOOM == ex.TILES_MIN_ZOOM
+    assert ex.OVERVIEW_SEAM_TOLERANCE_M == pytest.approx(ex.OVERVIEW_MIN_FEATURE_M / 2)
+    assert ex.OVERVIEW_SEAM_TOLERANCE_M > export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M * 5
+    assert export_trails.OVERVIEW_SIMPLIFY_TOLERANCE_M == 100.0
+
+    entry = ex.write_overview(
+        [
+            {
+                "id": "a",
+                "source": "oprhp_trails",
+                "name": None,
+                "blaze_color": "Blue",
+                "trail_status": "open",
+                "wkt": _straight(-74.1, 41.25, ex.OVERVIEW_MIN_FEATURE_M * 3),
+            }
+        ]
+    )
+    assert entry["tolerance_m"] == ex.OVERVIEW_SEAM_TOLERANCE_M
+    assert entry["min_feature_m"] == ex.OVERVIEW_MIN_FEATURE_M
+
+
+# --- what the three-decimal cut leaves behind -------------------------------------
+#
+# CDTC publishes the Continental Divide as eight lines, one a state, and five
+# of them are MultiLineStrings carrying closed rings a few metres round as
+# parts of their own (UA's release 2026-10-03-2, read back 2026-10-05: 27
+# rings 0.2 to 21.3 m long, of 3 to 6 vertices, in cdtc_centerline:2, 3, 5, 7
+# and 8). The fixture is that shape at one screen's size: a dense 5 km line,
+# 5 m between vertices with a 2 m wiggle, and a ring about 2 m across, every
+# vertex of the ring inside one 0.001-degree grid cell.
+
+
+def _dense_line_with_a_ring() -> dict:
+    dense = ", ".join(f"{-106.5004 + (i % 2) * 0.00002:.5f} {39.00005 + i * 0.000045:.6f}" for i in range(1000))
+    ring = "-106.4504 39.0204, -106.45038 39.0204, -106.45038 39.02042, -106.4504 39.02042, -106.4504 39.0204"
+    return {
+        "id": "cdt-shaped",
+        "source": "cdtc_centerline",
+        "name": None,
+        "blaze_color": "Unknown",
+        "trail_status": "open",
+        "wkt": f"MULTILINESTRING (({dense}), ({ring}))",
+    }
+
+
+def _sketch_lines(records: list[dict]) -> list[list[list[float]]]:
+    ex.write_overview(records)
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    return [line for feature in body["features"] for line in feature["geometry"]["coordinates"]]
+
+
+def test_no_sketch_line_repeats_the_vertex_before_it_once_cut_to_three_decimals(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    repeats = [(n, i) for n, line in enumerate(lines) for i in range(1, len(line)) if line[i] == line[i - 1]]
+    assert repeats == [], f"{len(repeats)} vertices repeat the one before them"
+
+
+def test_a_sketch_line_the_three_decimal_cut_leaves_as_one_point_is_not_written(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    assert all(len({tuple(vertex) for vertex in line}) >= 2 for line in lines)
+    # The dense line is still drawn, from one end to the other; the ring, at
+    # -106.450, is not.
+    (line,) = lines
+    assert (line[0], line[-1]) == ([-106.5, 39.0], [-106.5, 39.045])
+
+
+def test_a_sketch_group_whose_every_line_cuts_to_one_point_writes_no_feature(monkeypatch, tmp_path):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    # A closed ring a few metres round on a through route, which the floor
+    # never drops, closed where the rest of the trail is open: its own group,
+    # and every vertex of it on the grid point (-74.000, 41.000).
+    run = _chained_run("nynjtc_long_path", "Long Path", -74.0, 41.0, int(ex.NAMED_TRAIL_THRESHOLD_MILES) + 1, "lp")
+    ring = {
+        **_one_named_row("closed-ring", "nynjtc_long_path", "Long Path", -74.0, 41.0, 0),
+        "trail_status": "closed",
+        "wkt": "LINESTRING (-74 41, -73.99998 41, -73.99998 41.00002, -74 41.00002, -74 41)",
+    }
+
+    ex.write_overview(run + [ring])
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    assert [f["properties"]["trail_status"] for f in body["features"]] == ["open"]
+    assert body["features"][0]["properties"]["name"] == "Long Path"
+
+
+def test_a_ring_too_small_to_simplify_leaves_the_rest_of_its_trail_simplified_in_the_sketch(monkeypatch, tmp_path):
+    # Douglas-Peucker hands a closed ring shorter than its tolerance back as
+    # its two equal endpoints, and simplify_records keeps the WHOLE line it
+    # was given when any part comes back like that. One ring per state was
+    # enough to ship 1,244,673 of the CDT's coordinates at their 1 m density.
+    # The 5 km dense line here is straight to within 2 m, so at the sketch's
+    # tolerance it is its two ends.
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+
+    lines = _sketch_lines([_dense_line_with_a_ring()])
+
+    assert lines == [[[-106.5, 39.0], [-106.5, 39.045]]]
+
+
+def test_each_part_of_a_multilinestring_keeps_its_own_vertices_only_where_simplifying_would_collapse_it():
+    record = _dense_line_with_a_ring()
+    dense, ring = shapely_wkt.loads(record["wkt"]).geoms
+
+    (out,) = ex._simplified_part_by_part([record], ex.OVERVIEW_SEAM_TOLERANCE_M)
+
+    simplified_dense, kept_ring = shapely_wkt.loads(out["wkt"]).geoms
+    assert len(simplified_dense.coords) == 2 < len(dense.coords)
+    assert list(kept_ring.coords) == list(ring.coords)
+    assert {k: v for k, v in out.items() if k != "wkt"} == {k: v for k, v in record.items() if k != "wkt"}
+
+
+def test_a_multilinestring_with_no_collapsing_part_simplifies_exactly_as_simplify_records_does():
+    record = {
+        **_dense_line_with_a_ring(),
+        "wkt": "MULTILINESTRING ((-106.5 39, -106.50001 39.01, -106.5 39.045), (-106.4 39, -106.43 39.02, -106.4 39.045))",
+    }
+    line = {**record, "id": "line", "wkt": "LINESTRING (-106.3 39, -106.30001 39.01, -106.3 39.045)"}
+
+    for tolerance in (ex.OVERVIEW_SIMPLIFY_TOLERANCE_M, ex.OVERVIEW_SEAM_TOLERANCE_M):
+        assert ex._simplified_part_by_part([record, line], tolerance) == ex.simplify_records([record, line], tolerance)
+
+
+# --- a trail whose name is the layer (#1778) --------------------------------------
+#
+# Some stewards publish one trail as a layer with no name column: PCTA's
+# centerline is a single feature carrying OBJECTID and Shape__Length. The name
+# is not missing from that layer, it is the layer - so a row may declare
+# `name_constant`, and these hold the two halves of letting it.
+
+
+def test_a_layer_that_is_one_trail_takes_its_name_from_the_registry():
+    # PCTA's real shape: no name column anywhere, so declared_name has nothing
+    # to read and the feature would reach the export nameless - into the
+    # unnamed haze, at the thinnest weight the sketch draws, for the trail
+    # whose own steward published it.
+    source = {"key": "pcta_centerline", "name_constant": "Pacific Crest Trail"}
+    assert ex.declared_name(source, {"OBJECTID": 1, "Shape__Length": 44.27}) == "Pacific Crest Trail"
+    # Every feature, not just the first: CDTC publishes eight, one per state
+    # run, and a name on one of them would draw seven anonymous lines beside it.
+    assert ex.declared_name(source, {"OBJECTID": 8}) == "Pacific Crest Trail"
+
+
+def test_a_name_constant_does_not_quietly_beat_a_name_column():
+    # The registry may say where to read a name or that there is nowhere to
+    # read it, never both - declared_name takes the constant and never opens
+    # the column, so a row claiming both would leave a column name sitting in
+    # sources.json looking enforced while nothing read it.
+    both = {"key": "confused", "name_constant": "Some Trail", "name_field": "TRLNAME"}
+    assert ex.name_constant_conflicts([both]) == ["confused"]
+    assert ex.name_constant_conflicts([{"key": "a", "name_field": "TRLNAME"}]) == []
+    assert ex.name_constant_conflicts([{"key": "b", "name_constant": "Ice Age Trail"}]) == []
+
+
+def test_a_placeholder_is_still_read_as_no_name_where_a_column_exists():
+    # #1432's rule is untouched by #1778: a steward writing "Name TBD" into a
+    # column that cannot be empty is saying "no name", and the constant is for
+    # the different case of no column at all.
+    source = {"key": "nyc_parks_trails", "name_field": "trail_name", "name_placeholders": ["Name TBD"]}
+    assert ex.declared_name(source, {"trail_name": "Name TBD"}) is None
+    assert ex.declared_name(source, {"trail_name": "Shore Road Path"}) == "Shore Road Path"
+
+
+def _one_named_row(key: str, source: str, name: str, lon: float, lat: float, metres: float) -> dict:
+    """One named row of a trail, for the #1776 qualification cases."""
+    return {
+        "id": key,
+        "source": source,
+        "name": name,
+        "blaze_color": "Blue",
+        "trail_status": "open",
+        "wkt": _straight(lon, lat, metres),
+    }
+
+
+def _chained_run(source: str, name: str, lon: float, lat: float, miles: int, tag: str) -> list[dict]:
+    """`miles` one-mile sections chained end to end, running north from
+    (lon, lat) - one continuous trail of that length."""
+    step = 1_609.34 / 111_320
+    return [_one_named_row(f"{tag}{n}", source, name, lon, lat + n * step, 1_609.34) for n in range(miles)]
+
+
+def test_one_name_in_two_places_is_two_trails_and_neither_is_a_through_route(monkeypatch, tmp_path):
+    """#1776's defect: usfs_trails publishes 27 unrelated GREEN MOUNTAINs in 27
+    national forests, and summing every row that shares a name inside one
+    organization made them a single 82-mile "through route" spanning 50.5
+    degrees of longitude - drawn with the casing and the badge the Long Path
+    was given.
+
+    Two runs of 30 miles, a continent apart. Together they clear the 50-mile
+    threshold and separately neither does, so the old pass qualified them and
+    this one must not."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    records = _chained_run("usfs_trails", "GREEN MOUNTAIN", -122.0, 44.0, 30, "west") + _chained_run(
+        "usfs_trails", "GREEN MOUNTAIN", -72.0, 44.0, 30, "east"
+    )
+    assert 60 > ex.NAMED_TRAIL_THRESHOLD_MILES, "the two runs must sum past the threshold"
+    assert 30 < ex.NAMED_TRAIL_THRESHOLD_MILES, "and neither run may reach it alone"
+
+    ex.write_overview(records)
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    assert [f for f in body["features"] if f["properties"].get("through_route")] == []
+
+
+def test_a_trail_whose_rows_touch_is_a_through_route_however_they_are_spelled(monkeypatch, tmp_path):
+    """The other half of #1776: USFS publishes the Continental Divide under
+    five spellings, each qualified separately, so one trail became several
+    features and any spelling whose rows fell under the threshold dropped into
+    the haze while its siblings kept a casing.
+
+    Two spellings the reviewed alias table folds into one trail, meeting end to
+    end, 30 miles each. Neither reaches the threshold alone."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    step = 1_609.34 / 111_320
+    records = _chained_run("usfs_trails", "CONTINENTAL DIVIDE", -106.5, 39.0, 30, "a") + _chained_run(
+        "usfs_trails", "CDNST", -106.5, 39.0 + 30 * step, 30, "b"
+    )
+
+    ex.write_overview(records)
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    named = [f for f in body["features"] if f["properties"].get("through_route")]
+    # ONE feature, under the TRAIL's name rather than either spelling: a map
+    # labelling 30 of these miles "CDNST" has told a hiker less than it knows.
+    assert [f["properties"]["name"] for f in named] == ["Continental Divide Trail"]
+
+
+def test_two_organizations_sharing_a_name_are_still_never_summed(monkeypatch, tmp_path):
+    """The restraint #1307 already had, which #1776 must not spend. Two
+    stewards' 30-mile trails called the same thing, drawn on top of each other
+    so they would chain if the source were not part of the identity."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path / "processed")
+    records = _chained_run("oprhp_trails", "Ridge Trail", -74.0, 41.0, 30, "a") + _chained_run(
+        "dec_hiking_trails", "Ridge Trail", -74.0, 41.0, 30, "b"
+    )
+
+    ex.write_overview(records)
+
+    body = json.loads((ex.OUT_DIR / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+    assert [f for f in body["features"] if f["properties"].get("through_route")] == []
+
+
+def test_the_join_distance_is_twice_the_simplification_it_reads():
+    """CHAIN_TOLERANCE_M is derived rather than picked, and the derivation is
+    the thing worth holding: the records qualification reads have been through
+    OVERVIEW_SIMPLIFY_TOLERANCE_M, and Douglas-Peucker may move a point that
+    far - so two rows that really met can sit at twice it, one having moved
+    that far each way. A smaller join would let the simplification break
+    chains that exist in the source."""
+    assert ex.CHAIN_TOLERANCE_M == 2 * ex.OVERVIEW_SIMPLIFY_TOLERANCE_M
+
+
+def test_every_alias_spelling_belongs_to_a_source_the_network_exports():
+    """A spelling filed under a source this export never reads is a reviewed
+    row that can never fire - and it would look like coverage."""
+    table = json.loads(ex.TRAIL_ALIASES_PATH.read_text())
+    index = ex._alias_index()
+    assert index, "the alias table must not read as empty"
+    for entry in table["trails"].values():
+        for source, spellings in entry["published_as"].items():
+            assert spellings, f"{entry['trail']} lists {source} with no spelling"
+            for spelling in spellings:
+                assert index[(source, spelling)] == entry["trail"]
+
+
+def _tile_input_rows(lines_sql, most):
+    import duckdb
+
+    con = duckdb.connect()
+    con.execute("LOAD spatial")
+    return con.sql(f"SELECT id, name, ST_AsText(geom) FROM ({ex.tile_input_sql(lines_sql, most)})").fetchall()
+
+
+def test_the_tiler_reads_a_long_line_as_runs_that_share_their_ends_and_nothing_else_changes():
+    """#1796: a line over TILES_CHUNK_VERTICES reaches GDAL as consecutive runs, never altered or reordered.
+
+    A 2,501-vertex line between two short ones, cut at 1,000: three runs whose
+    vertices, joined at their shared ends, are the line's own, each with the
+    line's properties; the short lines pass through as they were; and every
+    row keeps its place, so the draw order inside a tile does not move.
+    """
+    coords = [(i, i % 7) for i in range(2501)]
+    long_wkt = "LINESTRING (" + ", ".join(f"{x} {y}" for x, y in coords) + ")"
+    lines_sql = f"""SELECT * FROM (VALUES
+        (1, 'before', ST_GeomFromText('LINESTRING (0 0, 1 1)')),
+        (2, 'Continental Divide Trail', ST_GeomFromText('{long_wkt}')),
+        (3, 'after', ST_GeomFromText('LINESTRING (9 9, 8 8)'))
+    ) AS t(id, name, geom)"""
+
+    rows = _tile_input_rows(lines_sql, 1000)
+
+    assert [(row[0], row[1]) for row in rows] == [(1, "before"), *[(2, "Continental Divide Trail")] * 3, (3, "after")]
+    assert rows[0][2] == "LINESTRING (0 0, 1 1)" and rows[-1][2] == "LINESTRING (9 9, 8 8)"
+    runs = [[tuple(map(float, point.split())) for point in wkt[len("LINESTRING (") : -1].split(", ")] for _, _, wkt in rows[1:4]]
+    assert [len(run) for run in runs] == [1000, 1000, 503]
+    assert all(previous[-1] == following[0] for previous, following in zip(runs, runs[1:]))
+    joined = runs[0] + [point for run in runs[1:] for point in run[1:]]
+    assert joined == [(float(x), float(y)) for x, y in coords]
+
+
+def test_a_line_at_the_tile_cap_reaches_the_tiler_whole():
+    coords = ", ".join(f"{i} 0" for i in range(1000))
+    rows = _tile_input_rows(f"SELECT 1 AS id, 'x' AS name, ST_GeomFromText('LINESTRING ({coords})') AS geom", 1000)
+    assert len(rows) == 1 and rows[0][2].count(",") == 999
+
+
+def test_a_long_line_still_cuts_a_tile_archive_the_client_can_read(tmp_path, monkeypatch):
+    """The cut runs go through GDAL's PMTiles driver as the whole lines did: one layer, the client's zooms."""
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(ex, "TILES_CHUNK_VERTICES", 100)
+    coordinates = [[-74.0 + i * 0.0005, 41.2 + (i % 5) * 0.0001] for i in range(2501)]
+    path = tmp_path / "lines.geojson"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "id": "cdtc:1",
+                            "source": "cdtc_centerline",
+                            "name": "Continental Divide Trail",
+                            "blaze_color": "Unknown",
+                            "trail_status": "open",
+                        },
+                        "geometry": {"type": "LineString", "coordinates": coordinates},
+                    }
+                ],
+            }
+        )
+    )
+
+    tiles = ex.write_tiles(path)
+
+    assert tiles["tile_count"] > 0
+    with Path(tiles["path"]).open("rb") as f:
+        header = Reader(MmapSource(f)).header()
+    assert (header["min_zoom"], header["max_zoom"]) == (ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM)
+
+
+# --- The context zooms carry what the map reads there -------
+#
+# z5-z8 used to be cut with every line's every property, which filled a
+# dense tile past GDAL's MAX_SIZE and had GDAL redraw it on a coarser grid:
+# the staircases and boxes the maintainer saw over Washington. These hold
+# the fix's three promises - fewer properties at z5-z8 and every one of
+# them a line still draws with, every vertex where it was, everything from
+# z9 up byte for byte what the single cut wrote - and the check that fails
+# the cut if GDAL coarsens a tile anyway.
+
+# Two pieces of one trail meeting end to end, a closed trail with the closing
+# organization's words on it, and an unnamed line: all inside one z8 tile.
+_CONTEXT_LINES = [
+    (
+        {
+            "id": "oprhp_trails:1",
+            "source": "oprhp_trails",
+            "name": "Ramapo-Dunderberg Trail",
+            "blaze_color": "Red",
+            "length_miles": 0.6,
+            "trail_status": "open",
+        },
+        [[-74.10, 41.25], [-74.09, 41.255], [-74.08, 41.26]],
+    ),
+    (
+        {
+            "id": "oprhp_trails:2",
+            "source": "oprhp_trails",
+            "name": "Ramapo-Dunderberg Trail",
+            "blaze_color": "Red",
+            "length_miles": 0.7,
+            "trail_status": "open",
+        },
+        [[-74.08, 41.26], [-74.07, 41.262], [-74.06, 41.27]],
+    ),
+    (
+        {
+            "id": "oprhp_trails:3",
+            "source": "oprhp_trails",
+            "name": "Timp-Torne Trail",
+            "blaze_color": "Blue",
+            "length_miles": 0.4,
+            "trail_status": "closed",
+            "closure_kind": "temporary",
+            "closure_reason": "Bridge out at the brook",
+            "closure_source": "oprhp_trail_closures",
+        },
+        [[-74.05, 41.23], [-74.04, 41.24]],
+    ),
+    (
+        {
+            "id": "oprhp_trails:4",
+            "source": "oprhp_trails",
+            "name": None,
+            "blaze_color": "Unknown",
+            "length_miles": 0.3,
+            "trail_status": "open",
+        },
+        [[-74.12, 41.28], [-74.11, 41.285]],
+    ),
+]
+
+
+def _lines_file(directory, lines):
+    path = directory / "lines.geojson"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {"type": "Feature", "properties": properties, "geometry": {"type": "LineString", "coordinates": coordinates}}
+                    for properties, coordinates in lines
+                ],
+            }
+        )
+    )
+    return path
+
+
+def _mvt_value(message):
+    # The MVT Value message: one of string, float, double, int, uint, sint, bool.
+    import struct
+
+    for field, value in ex._protobuf_fields(message):
+        if field == 1:
+            return value.decode()
+        if field in (4, 5):
+            return value
+        if field == 6:
+            return (value >> 1) ^ -(value & 1)
+        if field == 7:
+            return bool(value)
+    # Floats and doubles are fixed-width and _protobuf_fields skips their bytes.
+    return struct.unpack("<d", message[-8:])[0] if message and message[0] == 0x19 else None
+
+
+def _features_by_tile(archive):
+    """{(z, x, y): [(properties, [[(tile x, tile y), ...], ...])]} - every line of the archive, decoded."""
+    import gzip
+
+    from pmtiles.reader import all_tiles
+
+    tiles = {}
+    with Path(archive).open("rb") as f:
+        for zxy, data in all_tiles(MmapSource(f)):
+            raw = gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+            features = []
+            for field, layer in ex._protobuf_fields(raw):
+                if field != 3:
+                    continue
+                keys, values, encoded = [], [], []
+                for layer_field, value in ex._protobuf_fields(layer):
+                    if layer_field == 3:
+                        keys.append(value.decode())
+                    elif layer_field == 4:
+                        values.append(_mvt_value(value))
+                    elif layer_field == 2:
+                        encoded.append(value)
+                for feature in encoded:
+                    tags, commands = [], []
+                    for feature_field, value in ex._protobuf_fields(feature):
+                        if feature_field in (2, 4):
+                            packed, i = [], 0
+                            while i < len(value):
+                                number = shift = 0
+                                while True:
+                                    byte = value[i]
+                                    i += 1
+                                    number |= (byte & 0x7F) << shift
+                                    shift += 7
+                                    if byte < 0x80:
+                                        break
+                                packed.append(number)
+                            if feature_field == 2:
+                                tags = packed
+                            else:
+                                commands = packed
+                    parts, x, y, i = [], 0, 0, 0
+                    while i < len(commands):
+                        command, count = commands[i] & 7, commands[i] >> 3
+                        i += 1
+                        for _ in range(count if command in (1, 2) else 0):
+                            x += (commands[i] >> 1) ^ -(commands[i] & 1)
+                            y += (commands[i + 1] >> 1) ^ -(commands[i + 1] & 1)
+                            i += 2
+                            if command == 1:
+                                parts.append([(x, y)])
+                            else:
+                                parts[-1].append((x, y))
+                    properties = {keys[tags[j]]: values[tags[j + 1]] for j in range(0, len(tags), 2)}
+                    features.append((properties, parts))
+            tiles[zxy] = features
+    return tiles
+
+
+def _lon_lat(z, x, y, unit_x, unit_y):
+    """A tile unit back to longitude and latitude, on GDAL's 4096-unit grid."""
+    n = 2**z
+    lon = (x + unit_x / ex.TILES_EXTENT) / n * 360 - 180
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + unit_y / ex.TILES_EXTENT) / n))))
+    return lon, lat
+
+
+def test_the_context_zooms_carry_only_what_the_map_reads_there_and_z9_up_carries_everything(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+
+    tiles = _features_by_tile(ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))["path"])
+
+    for z in range(ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM + 1):
+        keys = {key for (zoom, _, _), features in tiles.items() if zoom == z for properties, _ in features for key in properties}
+        if z <= ex.TILES_CONTEXT_MAX_ZOOM:
+            # What the band's paint, filter, legend and badges read - nothing a
+            # tap's sheet alone wants. An unnamed line simply has no `name`.
+            assert keys == set(ex.TILES_CONTEXT_PROPERTIES), z
+        else:
+            # The sheet's own zooms: every property the lines file has.
+            assert {"id", "length_miles", "closure_kind", "closure_reason", "closure_source"} | set(
+                ex.TILES_CONTEXT_PROPERTIES
+            ) == keys, z
+
+
+def test_lines_that_differ_in_nothing_kept_merge_into_one_and_keep_every_vertex(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+
+    tiles = _features_by_tile(ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))["path"])
+
+    # Above the context zooms the pieces stay apart; the byte-for-byte test
+    # below holds that.
+    for (z, x, y), features in tiles.items():
+        names = sorted(str(properties.get("name")) for properties, _ in features)
+        if z <= ex.TILES_CONTEXT_MAX_ZOOM:
+            # The two pieces of the Ramapo-Dunderberg are one line at the
+            # context zooms - joined end to end, not drawn as two.
+            assert names == ["None", "Ramapo-Dunderberg Trail", "Timp-Torne Trail"], (z, x, y)
+            ((_, parts),) = [f for f in features if f[0].get("name") == "Ramapo-Dunderberg Trail"]
+            assert len(parts) == 1 and len(parts[0]) == 5
+            # Every vertex of both pieces is on it, to within GDAL's own grid
+            # (a 4096th of the tile), in the order the trail runs.
+            drawn = [_lon_lat(z, x, y, ux, uy) for ux, uy in parts[0]]
+            given = _CONTEXT_LINES[0][1] + _CONTEXT_LINES[1][1][1:]
+            if drawn[0][0] > drawn[-1][0]:
+                drawn.reverse()
+            unit = 360 / 2**z / ex.TILES_EXTENT
+            assert all(abs(a - c) <= unit and abs(b - d) <= unit for (a, b), (c, d) in zip(drawn, given)), (z, drawn)
+
+
+def test_the_zooms_above_the_context_are_the_bytes_the_single_cut_wrote(tmp_path, monkeypatch):
+    """z9-z14 are cut by the statement write_tiles ran before it split the zooms,
+    with GDAL's own defaults spelled out and the tile budget raised from
+    500,000 to TILES_MAX_BYTES. Every tile that fit the old budget - every
+    tile these lines make - must be identical, byte for byte, to that cut's."""
+    import duckdb
+    from pmtiles.reader import all_tiles
+
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    lines = _lines_file(tmp_path, _CONTEXT_LINES)
+    new = ex.write_tiles(lines)["path"]
+    old = tmp_path / "single_cut.pmtiles"
+    con = duckdb.connect()
+    con.execute("LOAD spatial")
+    con.execute(
+        f"""
+        COPY ({ex.tile_input_sql(f"SELECT * FROM ST_Read('{lines.as_posix()}')")})
+        TO '{old.as_posix()}'
+        WITH (
+            FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{ex.TILES_LAYER}',
+            DATASET_CREATION_OPTIONS (
+                'MINZOOM={ex.TILES_MIN_ZOOM}', 'MAXZOOM={ex.TILES_MAX_ZOOM}',
+                'NAME={ex.TILES_ARTIFACT_NAME.removesuffix(".pmtiles")}',
+                'DESCRIPTION=Trail lines other organizations maintain, as vector tiles'
+            )
+        )
+        """
+    )
+
+    def above_context(path):
+        with Path(path).open("rb") as f:
+            return {zxy: data for zxy, data in all_tiles(MmapSource(f)) if zxy[0] > ex.TILES_CONTEXT_MAX_ZOOM}
+
+    before = above_context(old)
+    assert before and above_context(new) == before
+
+
+def test_the_same_lines_cut_the_same_archive(tmp_path, monkeypatch):
+    """A merge whose order followed the scheduler would hand publish.py a new
+    hash every run for the same lines."""
+    import time
+
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    lines = _lines_file(tmp_path, _CONTEXT_LINES)
+    # Two different seconds on the clock, so a timestamp written anywhere into
+    # the archive (pmtiles' writer gzips with the time in each header) shows.
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_000.0)
+    first = ex.write_tiles(lines)["sha256"]
+    monkeypatch.setattr(time, "time", lambda: 1_800_000_000.0)
+    assert ex.write_tiles(lines)["sha256"] == first
+
+
+def test_a_tile_gdal_would_redraw_on_a_coarser_grid_fails_the_cut(tmp_path, monkeypatch):
+    # 100 bytes is the smallest MAX_SIZE GDAL accepts, and less than any of
+    # these tiles: GDAL halves the grid until one fits, which is the defect.
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(ex, "TILES_MAX_BYTES", 100)
+
+    with pytest.raises(SystemExit, match=r"did not write \d+ tile\(s\) whole - z5/\d+/\d+ \(a \d+-unit grid, not 4096\)"):
+        ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))
+
+
+def test_a_tile_at_gdals_line_cap_fails_the_cut(tmp_path, monkeypatch):
+    # At the cap GDAL keeps the grid and drops the shortest lines instead -
+    # a hole with no coarse grid to give it away, so it is counted.
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(ex, "TILES_MAX_FEATURES", 2)
+
+    with pytest.raises(SystemExit, match=r"\(\d+ lines, GDAL's cap\)"):
+        ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))
+
+
+def test_a_whole_archive_reads_back_as_written_whole(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    tiles = ex.write_tiles(_lines_file(tmp_path, _CONTEXT_LINES))
+    assert ex.degraded_tiles(Path(tiles["path"])) == []
+
+
+def test_a_network_too_small_for_the_context_zooms_still_declares_every_zoom(tmp_path, monkeypatch):
+    # Ten metres of trail is under one unit of GDAL's grid at z5-z9, so those
+    # zooms hold no tile - and the archive must still say it covers z5-z14,
+    # as the single cut's did, or the map is told the wrong zooms to ask for.
+    from pmtiles.reader import all_tiles
+
+    monkeypatch.setattr(ex, "OUT_DIR", tmp_path)
+    ten_metres = [({**_CONTEXT_LINES[0][0]}, [[-74.10, 41.25], [-74.10012, 41.25]])]
+
+    tiles = ex.write_tiles(_lines_file(tmp_path, ten_metres))
+
+    with Path(tiles["path"]).open("rb") as f:
+        header = Reader(MmapSource(f)).header()
+        zooms_with_tiles = {z for (z, _, _), _ in all_tiles(MmapSource(f))}
+    assert (header["min_zoom"], header["max_zoom"]) == (ex.TILES_MIN_ZOOM, ex.TILES_MAX_ZOOM)
+    assert zooms_with_tiles and min(zooms_with_tiles) > ex.TILES_CONTEXT_MAX_ZOOM
+
+
+def test_the_shared_ground_halves_change_nothing_at_the_context_zooms(tmp_path, monkeypatch):
+    """Nothing draws a shared-ground half below z9: map/style.ts builds those
+    layers from CORRIDOR_MAX_ZOOM, and both of the band's filters refuse a
+    feature carrying `concurrent_with` (map/nearbyTrails.ts's
+    SHARED_GROUND_EXCLUDED). z5-z8 carry no `concurrent_with`, so a half cut
+    into them would pass those filters and draw as a second plain line over
+    its own trail. The pairs file must leave every tile there byte for byte
+    what the lines alone make - and still reach z9 and up, pair fields and all."""
+    from pmtiles.reader import all_tiles
+
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        _two_trails_sharing_ground(),
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red", "Yellow": "Yellow"}}},
+    )
+    lines, pairs = Path(manifest["path"]), Path(manifest["concurrent"]["path"])
+    assert manifest["concurrent"]["feature_count"] == 2
+
+    def cut(*paths):
+        with Path(ex.write_tiles(*paths)["path"]).open("rb") as f:
+            return dict(all_tiles(MmapSource(f)))
+
+    def context(tiles):
+        return {zxy: data for zxy, data in tiles.items() if zxy[0] <= ex.TILES_CONTEXT_MAX_ZOOM}
+
+    alone = cut(lines)
+    with_pairs = cut(lines, pairs)
+
+    assert context(alone) and context(with_pairs) == context(alone)
+    halves = [
+        properties["concurrent_with"]
+        for (z, _, _), features in _features_by_tile(ex.OUT_DIR / ex.TILES_ARTIFACT_NAME).items()
+        if z > ex.TILES_CONTEXT_MAX_ZOOM
+        for properties, _ in features
+        if "concurrent_with" in properties
+    ]
+    assert set(halves) == {"Ramapo-Dunderberg Trail", "Suffern-Bear Mountain Trail"}

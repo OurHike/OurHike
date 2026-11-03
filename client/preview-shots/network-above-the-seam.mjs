@@ -84,7 +84,7 @@ import { seedLongHike } from './fixtures/longHike.mjs'
 export const caption =
   'Harriman at zoom 12, the A.T. taken from its legend row in the drive (#1306) — the A.T. a solid white blaze with its dark casing at full strength, wearing its badge (the ATC mark on a paper plate, with the name beside it wherever the pins leave room for one); every other trail a solid line too since 2026-09-10 (the dot rhythm of #1283 is gone), in its own blaze hue, ghosted, with its name set along it; the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
-  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid white line inside a thin dark casing, with a small paper plate on it carrying the round ATC trail mark, and the name Appalachian National Scenic Trail beside the mark where the surrounding pins leave room; the park’s other blazed trails as fainter solid lines in their own colours around and across it, each with its name running along it'
+  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid white line inside a thin dark casing, with a small paper plate on it carrying the round ATC trail mark, and the name Appalachian Trail beside the mark where the surrounding pins leave room; the park’s other blazed trails as fainter solid lines in their own colours around and across it, each with its name running along it'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */

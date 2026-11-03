@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { MapIcon, TrailLineSwatch } from './MapIcon'
-import { blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
+import { blazePaintColor, NEUTRAL_BLAZE_COLOR, PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import { NEARBY_TRAIL_OPACITY } from './nearbyTrails'
 import {
   CASING_OVERHANG,
@@ -9,37 +9,47 @@ import {
   RED_LIGHT_BLAZE_COLOR,
   SIDE_TRAIL_WIDTH,
   trailCasingColor,
+  MAP_BACKDROP,
+  mapBackdrop,
 } from './style'
 import {
   glyphPath,
   pinGeometry,
   poiGlyphPath,
+  poiTier,
+  waypointPinGeometry,
+  waypointPinInks,
   POI_COLORS,
   POI_FALLBACK_COLOR,
   PIN_EDGE_COLOR,
   PIN_HALO_COLOR,
-  RIM_DASHES,
   UNKNOWN_POI_TYPE,
 } from './poiIcons'
 import { WARNING_GLYPH } from './warningPin'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
-  CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
-  CLOSURE_STRIPE_EDGE,
-  CLOSURE_TAPE_CADENCE,
+  CLOSURE_CROSS_ARM,
+  CLOSURE_CROSS_HALO_WIDTH,
+  CLOSURE_CROSS_STROKE,
+  CLOSURE_INK,
+  CLOSURE_PAPER_WIDTH,
+  CLOSURE_TRACE_OPACITY,
+  CLOSURE_TRACE_WIDTH,
 } from '../lib/closureStyle'
 
 // The map's pins, drawn in the DOM for the legend (#572).
 //
 // The whole value of this component is that it is not a second drawing of the
 // pin, so what is tested is fidelity rather than appearance: every number in
-// the SVG is checked against pinGeometry(), the colours against POI_COLORS,
-// the silhouettes against GLYPHS, and the broken rim against RIM_DASHES. A
-// test that only asserted "renders a circle" would pass just as happily over
-// a legend teaching a symbol the map does not use.
+// the SVG is checked against the geometry the rasteriser uses -
+// waypointPinGeometry() for a waypoint since #1682, pinGeometry() for the
+// warning's coin - the inks against waypointPinInks(), and the silhouettes
+// against GLYPHS. A test that only asserted "renders a circle" would pass just
+// as happily over a legend teaching a symbol the map does not use.
 
 const PIN = pinGeometry(1)
+const WAYPOINT = waypointPinGeometry(1, 1)
 
 afterEach(cleanup)
 
@@ -62,43 +72,26 @@ function num(element: Element, attribute: string): number {
 
 describe('MapIcon: a waypoint pin', () => {
   it('takes its disc straight from the pin geometry, in a unit box', () => {
+    // The unit is the DRAWN pin, not its 38 px footprint: a legend slot is a
+    // key, and the footprint's margin would only shrink the pin in it.
     const svg = draw(<MapIcon type="water" />)
 
     expect(svg.getAttribute('viewBox')).toBe('0 0 1 1')
-    expect(num(part(svg, 'map-icon__disc'), 'r')).toBeCloseTo(PIN.rDisc)
-    expect(num(part(svg, 'map-icon__disc'), 'cx')).toBeCloseTo(PIN.center)
+    expect(num(part(svg, 'map-icon__disc'), 'r')).toBeCloseTo(WAYPOINT.rDisc)
+    expect(num(part(svg, 'map-icon__disc'), 'cx')).toBeCloseTo(WAYPOINT.center)
   })
 
-  it('puts the dark hairline exactly where the rasteriser puts it', () => {
-    // buildPinImage inks the outermost `edgeWidth` of the rim dark, so a
-    // stroke of that width centred half of it inside rOuter is the same band.
-    const svg = draw(<MapIcon type="water" />)
-    const edge = part(svg, 'map-icon__edge')
-
-    expect(num(edge, 'r')).toBeCloseTo(PIN.rOuter - PIN.edgeWidth / 2)
-    expect(num(edge, 'stroke-width')).toBeCloseTo(PIN.edgeWidth)
-    expect(edge.getAttribute('stroke')).toBe(PIN_EDGE_COLOR)
-  })
-
-  it('overlaps the halo under both its neighbours, so no seam can show', () => {
-    // The rasteriser picks one colour per pixel and its bands simply abut.
-    // SVG antialiases each shape against what is behind it, so two shapes that
-    // merely touch leave a hairline of page between them. Asserted as bounds
-    // rather than as exact numbers - how much bleed is a tuning question, that
-    // there is some is not.
+  it('puts the paper hairline exactly where the rasteriser puts it', () => {
+    // buildSlimPinImage inks paper between rDisc and rInk; a paper disc of
+    // radius rInk under the coloured one is the same band, with no seam.
     const svg = draw(<MapIcon type="water" />)
     const halo = part(svg, 'map-icon__halo')
-    const inner = num(halo, 'r') - num(halo, 'stroke-width') / 2
-    const outer = num(halo, 'r') + num(halo, 'stroke-width') / 2
 
-    expect(inner).toBeLessThan(PIN.rDisc)
-    expect(outer).toBeGreaterThanOrEqual(PIN.rOuter - PIN.edgeWidth)
-    expect(halo.getAttribute('stroke')).toBe(PIN_HALO_COLOR)
+    expect(num(halo, 'r')).toBeCloseTo(WAYPOINT.rInk)
+    expect(halo.getAttribute('fill')).toBe(PIN_HALO_COLOR)
   })
 
   it('draws the glyph in the box the rasteriser samples it in', () => {
-    // Which is what keeps a glyph's corners off the halo: glyphBox is derived
-    // from rDisc so its half-diagonal stays inside the disc.
     const svg = draw(<MapIcon type="shelter" />)
     const glyph = part(svg, 'map-icon__glyph')
     const numbers = (glyph.closest('g')?.getAttribute('transform') ?? '')
@@ -107,9 +100,9 @@ describe('MapIcon: a waypoint pin', () => {
 
     expect(numbers).toHaveLength(3)
     const [tx, ty, scale] = numbers ?? []
-    expect(scale).toBeCloseTo(PIN.glyphBox)
-    expect(tx).toBeCloseTo(PIN.center - PIN.glyphBox / 2)
-    expect(ty).toBeCloseTo(PIN.center - PIN.glyphBox / 2)
+    expect(scale).toBeCloseTo(WAYPOINT.glyphBox)
+    expect(tx).toBeCloseTo(WAYPOINT.center - WAYPOINT.glyphBox / 2)
+    expect(ty).toBeCloseTo(WAYPOINT.center - WAYPOINT.glyphBox / 2)
   })
 
   it('fills the glyph even-odd, which is what keeps the doorway open', () => {
@@ -118,13 +111,17 @@ describe('MapIcon: a waypoint pin', () => {
     expect(part(svg, 'map-icon__glyph').getAttribute('fill-rule')).toBe('evenodd')
   })
 
-  it.each(Object.keys(POI_COLORS))('draws %s in its own map colour and shape', (type) => {
+  it.each(Object.keys(POI_COLORS))('draws %s in its own map inks and shape', (type) => {
     const svg = draw(<MapIcon type={type} />)
+    const inks = waypointPinInks(type, 'high')
 
-    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(
-      POI_COLORS[type as keyof typeof POI_COLORS],
-    )
+    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(inks.fill)
+    expect(part(svg, 'map-icon__glyph').getAttribute('fill')).toBe(inks.glyph)
     expect(part(svg, 'map-icon__glyph').getAttribute('d')).toBe(poiGlyphPath(type))
+    // A loud pin is its accent; a quiet one a pale tint with the accent on it.
+    const accent = POI_COLORS[type as keyof typeof POI_COLORS]
+    if (poiTier(type) === 'loud') expect(inks.fill).toBe(accent)
+    else expect(inks.glyph).toBe(accent)
   })
 
   it('falls back to the neutral diamond for a type this build never heard of', () => {
@@ -133,7 +130,7 @@ describe('MapIcon: a waypoint pin', () => {
     // instead of silently missing a row's icon.
     const svg = draw(<MapIcon type="hot_springs" />)
 
-    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(POI_FALLBACK_COLOR)
+    expect(part(svg, 'map-icon__glyph').getAttribute('fill')).toBe(POI_FALLBACK_COLOR)
     expect(part(svg, 'map-icon__glyph').getAttribute('d')).toBe(
       poiGlyphPath(UNKNOWN_POI_TYPE),
     )
@@ -147,36 +144,43 @@ describe('MapIcon: a waypoint pin', () => {
   })
 })
 
-describe('MapIcon: the rim says whether anyone has verified the waypoint', () => {
-  it('leaves a verified rim solid, with no dash pattern at all', () => {
-    // Absent rather than a solid-looking pattern, so "unbroken" is visible in
-    // the DOM instead of being a number someone has to evaluate.
+describe('MapIcon: hollow says nobody has verified the waypoint (#1682)', () => {
+  it('fills a verified loud pin with its accent and draws no ring', () => {
     const svg = draw(<MapIcon type="water" confidence="high" />)
 
-    expect(part(svg, 'map-icon__edge')).not.toHaveAttribute('stroke-dasharray')
-    expect(part(svg, 'map-icon__halo')).not.toHaveAttribute('stroke-dasharray')
+    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(POI_COLORS.water)
+    expect(svg.querySelector('.map-icon__ring')).toBeNull()
   })
 
-  it.each(['map-icon__edge', 'map-icon__halo'])(
-    'breaks %s into the rasteriser’s own rhythm when nobody has verified it',
-    (className) => {
-      // buildPinImage inks the rim where floor(turns * RIM_DASHES * 2) is
-      // even: sixteen equal arcs, alternating, around the full turn. Checked
-      // against this ring's own circumference rather than against a literal,
-      // which is what makes it the same rhythm and not a similar one.
-      const svg = draw(<MapIcon type="water" confidence="low" />)
-      const ring = part(svg, className)
-      const [dash, gap] = (ring.getAttribute('stroke-dasharray') ?? '')
-        .split(' ')
-        .map(Number)
+  it('draws an unverified pin hollow: paper inside a solid accent ring', () => {
+    const svg = draw(<MapIcon type="water" confidence="low" />)
+    const ring = part(svg, 'map-icon__ring')
 
-      expect(dash).toBeCloseTo(gap)
-      expect(dash * RIM_DASHES * 2).toBeCloseTo(2 * Math.PI * num(ring, 'r'))
-    },
-  )
+    expect(part(svg, 'map-icon__disc').getAttribute('fill')).toBe(PIN_HALO_COLOR)
+    expect(ring.getAttribute('stroke')).toBe(POI_COLORS.water)
+    expect(num(ring, 'stroke-width')).toBeCloseTo(WAYPOINT.hollowRing)
+    expect(num(ring, 'r') + num(ring, 'stroke-width') / 2).toBeCloseTo(WAYPOINT.rDisc)
+    // Never broken: the old rim's rhythm belongs to the coin now.
+    expect(ring).not.toHaveAttribute('stroke-dasharray')
+    expect(part(svg, 'map-icon__glyph').getAttribute('fill')).toBe(POI_COLORS.water)
+  })
 })
 
 describe('MapIcon: a serious warning', () => {
+  it('is the coin, from pinGeometry, in a unit box', () => {
+    const svg = draw(<MapIcon type="serious-warning" />)
+
+    expect(svg.getAttribute('viewBox')).toBe('0 0 1 1')
+    expect(num(part(svg, 'map-icon__disc'), 'r')).toBeCloseTo(PIN.rDisc)
+    const edge = part(svg, 'map-icon__edge')
+    expect(num(edge, 'r')).toBeCloseTo(PIN.rOuter - PIN.edgeWidth / 2)
+    expect(num(edge, 'stroke-width')).toBeCloseTo(PIN.edgeWidth)
+    expect(edge.getAttribute('stroke')).toBe(PIN_EDGE_COLOR)
+    const halo = part(svg, 'map-icon__halo')
+    expect(num(halo, 'r') - num(halo, 'stroke-width') / 2).toBeLessThan(PIN.rDisc)
+    expect(halo.getAttribute('stroke')).toBe(PIN_HALO_COLOR)
+  })
+
   it('is the hollow hazard triangle, in the warning pin’s own red', () => {
     const svg = draw(<MapIcon type="serious-warning" />)
 
@@ -196,56 +200,82 @@ describe('MapIcon: a serious warning', () => {
 })
 
 describe('MapIcon: a closure', () => {
-  it('is the barrier tape the map draws, not a pin', () => {
+  // The legend's half of #1677: the swatch is the crossed-out mark the map
+  // draws, at the map's own full-zoom sizes, so a hiker who learns it here
+  // recognises it there.
+
+  it('is the crossed-out trail the map draws, not a pin', () => {
     const svg = draw(<MapIcon type="closure" />)
 
-    expect(part(svg, 'map-icon__closure-band').getAttribute('stroke')).toBe(CLOSURE_COLOR)
-    expect(part(svg, 'map-icon__closure-casing').getAttribute('stroke')).toBe(
-      CLOSURE_CASING_COLOR,
-    )
+    expect(part(svg, 'map-icon__closure-cross').getAttribute('stroke')).toBe(CLOSURE_INK)
+    expect(svg.querySelectorAll('.map-icon__closure-trace').length).toBeGreaterThan(1)
     expect(svg.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('draws the stripes at the map’s own cadence, in the map’s own units', () => {
-    // The swatch's viewBox is in CSS pixels at the tape's width, so every
-    // number here is the number map/closureTape.ts rasterises - no conversion,
-    // and nothing for the legend to drift from the map by.
+  it('draws no closure red, as the map no longer does', () => {
+    // Every trail is that red by default (#1575); a swatch in it would teach
+    // the red-on-red mark the map stopped drawing.
     const svg = draw(<MapIcon type="closure" />)
-    const band = svg.querySelectorAll('.map-icon__closure-band')
-
-    expect(band.length).toBeGreaterThan(1)
-    expect(band[0]?.getAttribute('stroke-width')).toBe(
-      String(CLOSURE_TAPE_CADENCE.stripe),
-    )
-  })
-
-  it('edges each stripe rather than laying a casing behind them all', () => {
-    // THE DEFECT THIS SWATCH USED TO SHOW, held so it cannot come back. The
-    // legend drew a filled casing rect with a dashed band over it - which was
-    // honest, because that is what the map drew, and both were a near-black
-    // line with red ticks in it. There is no rect now, and the casing is a
-    // stroke wider than the stripe it outlines.
-    const svg = draw(<MapIcon type="closure" />)
-    const edge = Number(
-      part(svg, 'map-icon__closure-casing').getAttribute('stroke-width'),
-    )
-
-    expect(svg.querySelector('rect')).toBeNull()
-    expect(edge).toBe(CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2)
-  })
-
-  it('leaves the ground between the stripes alone', () => {
-    // What the map does, restated in the legend: the tape's gaps are
-    // transparent, so nothing here may paint them either. A fill anywhere in
-    // this swatch would be a legend claiming the map hides the trail.
-    const svg = draw(<MapIcon type="closure" />)
-
     for (const node of svg.querySelectorAll('*')) {
-      expect(node.getAttribute('fill')).toBeNull()
+      expect(node.getAttribute('fill')).not.toBe(CLOSURE_COLOR)
+      expect(node.getAttribute('stroke')).not.toBe(CLOSURE_COLOR)
     }
   })
-})
 
+  it('draws every part at the map\u2019s own size, in the map\u2019s own units', () => {
+    // The swatch's viewBox is in CSS pixels, so each number resolves from a
+    // constant the map ships - nothing for the legend to drift from.
+    const svg = draw(<MapIcon type="closure" />)
+
+    expect(Number(part(svg, 'map-icon__closure-paper').getAttribute('height'))).toBe(
+      CLOSURE_PAPER_WIDTH,
+    )
+    const dot = part(svg, 'map-icon__closure-trace')
+    expect(Number(dot.getAttribute('r'))).toBe(CLOSURE_TRACE_WIDTH / 2)
+    expect(Number(dot.getAttribute('fill-opacity'))).toBe(CLOSURE_TRACE_OPACITY)
+    expect(
+      Number(part(svg, 'map-icon__closure-cross').getAttribute('stroke-width')),
+    ).toBe(CLOSURE_CROSS_STROKE)
+    expect(Number(part(svg, 'map-icon__closure-halo').getAttribute('stroke-width'))).toBe(
+      CLOSURE_CROSS_STROKE + CLOSURE_CROSS_HALO_WIDTH * 2,
+    )
+    // Both diagonals, each CLOSURE_CROSS_ARM out from the centre.
+    const d = part(svg, 'map-icon__closure-cross').getAttribute('d') ?? ''
+    expect(d.match(/M/g)).toHaveLength(2)
+    const numbers = d.match(/-?[\d.]+/g)?.map(Number) ?? []
+    expect(Math.abs(numbers[2] - numbers[0])).toBeCloseTo(CLOSURE_CROSS_ARM * 2, 6)
+  })
+
+  it('lays the map\u2019s own paper and ink for the sheet, red light included', () => {
+    // The paper is the field day sheet's by default, the same white beside a
+    // night map (closureTapeGround, 2026-09-18), and red light's own ink with
+    // the mark in red light's one hue.
+    const day = draw(<MapIcon type="closure" />)
+    expect(part(day, 'map-icon__closure-paper').getAttribute('fill')).toBe(
+      mapBackdrop({ theme: 'light' }),
+    )
+    expect(part(day, 'map-icon__closure-halo').getAttribute('stroke')).toBe(
+      mapBackdrop({ theme: 'light' }),
+    )
+
+    const night = draw(<MapIcon type="closure" appearance={{ theme: 'dark' }} />)
+    expect(part(night, 'map-icon__closure-paper').getAttribute('fill')).toBe(
+      MAP_BACKDROP.light,
+    )
+    expect(part(night, 'map-icon__closure-cross').getAttribute('stroke')).toBe(
+      CLOSURE_INK,
+    )
+
+    const redLight = { mapStyle: 'night_hike', redLight: true } as const
+    const under = draw(<MapIcon type="closure" appearance={redLight} />)
+    expect(part(under, 'map-icon__closure-paper').getAttribute('fill')).toBe(
+      mapBackdrop(redLight),
+    )
+    expect(part(under, 'map-icon__closure-cross').getAttribute('stroke')).toBe(
+      RED_LIGHT_BLAZE_COLOR,
+    )
+  })
+})
 describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
   // Same rule as the pins above: fidelity, not appearance. Every number is
   // checked against the constants the map's own layers are built from.
@@ -339,6 +369,22 @@ describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
     const svg = swatch({ appearance: { mapStyle: 'night_hike', redLight: true } })
     expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
       RED_LIGHT_BLAZE_COLOR,
+    )
+  })
+
+  it('keeps the blaze hue while the appearance has blaze colours off (#1575)', () => {
+    // The one place the swatch and the line disagree on purpose: the map
+    // draws every line PLAIN_TRAIL_COLOR with the switch off, and the row's
+    // swatch stays the blaze - "Changing the color option should only
+    // affect the map itself, not the other options" (the maintainer,
+    // 2026-09-17) - so the legend is where a named trail's blaze is read
+    // while the map is red.
+    const svg = swatch({ appearance: { theme: 'light', blazeColorsShown: false } })
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      blazePaintColor('Blue'),
+    )
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).not.toBe(
+      PLAIN_TRAIL_COLOR,
     )
   })
 

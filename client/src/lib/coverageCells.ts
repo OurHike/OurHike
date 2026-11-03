@@ -41,6 +41,7 @@ import {
   BASEMAP_CELLS_KEY,
   DATA_CONFIGURED,
   dataUrl,
+  DEM_CELLS_KEY,
   NEARBY_TRAILS_CELLS_KEY,
   TRAIL_GRAPH_CELLS_KEY,
 } from './config'
@@ -61,8 +62,32 @@ export interface CoverageCell {
    * Core bounds. The 3 km seam margin the archive carries past these is
    * generosity in the bytes and never a promise in the metadata
    * (cut_cells.py) - so nothing here treats a margin as coverage.
+   *
+   * THE GROUND THIS CELL IS THE UNIT OF, which is not the same as the ground
+   * it draws - see `covered`. Every routing question is this one: which cell
+   * holds a tile, which cells a hike crosses, which to fetch. Those are
+   * questions about the grid and must never move onto `covered`, or a tile
+   * inside a cell stops being asked for from the cell that has it.
    */
   bounds: Bounds
+  /**
+   * The part of `bounds` the cut actually put tiles in (#1458).
+   *
+   * THE COVERAGE QUESTION, and the only one that may read this: is there map
+   * here. A cell is a whole graticule square but its tiles are whatever the
+   * source archive held over that square, and a source clipped to a trail
+   * corridor holds a band across one corner. Measured 2026-09-15 against the
+   * published `at_basemap_cell_n40w074.pmtiles`: it declares 40.0 to 41.0 and
+   * its 290 tiles stop at 40.714, so a phone holding it over Brooklyn read
+   * the square, called itself covered, and drew blank paper with no banner.
+   *
+   * `bounds` when the index does not carry it, so an older release answers
+   * exactly as it did rather than losing coverage it has. The pipeline
+   * guarantees this is inside `bounds` and holds every tile of the cell that
+   * is (cut_cells.covered_bounds), so reading it here can only stop a claim
+   * that was false - never hide a tile the phone would have drawn.
+   */
+  covered: Bounds
 }
 
 export interface CellIndex {
@@ -109,6 +134,29 @@ export const BASEMAP_CELLS: CellFamily = {
   packagePrefix: 'ourhike:basemap-cell:',
   contextPackageKey: 'ourhike:basemap-context',
   indexStoreKey: 'ourhike:basemap-cells-index',
+}
+
+/**
+ * The terrain under the hiking sheet, in the same cells (#1475,
+ * config.ts's DEM_CELLS_KEY) - what map/demTiles.ts asks before the whole
+ * `ourhike:dem` package and long before AWS.
+ *
+ * A FOURTH FAMILY RATHER THAN A SECOND ARCHIVE UNDER THE BASEMAP'S KEYS, for
+ * the reason the interface above gives: `n41w075` is the same ground whichever
+ * sheet holds it, so one key space would let the basemap's Harriman overwrite
+ * the terrain's. It is the same square and two different archives, which is
+ * exactly what a family is for.
+ *
+ * Unlike NETWORK_CELLS this one HAS a context archive - `export_dem.py` walks
+ * its region at every zoom, so there is a z0-9 pyramid to share - and nothing
+ * here assumes either way: the index says, and `cellDownloadRequests` and
+ * `priceStretches` both read `context` off it.
+ */
+export const DEM_CELLS: CellFamily = {
+  indexKey: DEM_CELLS_KEY,
+  packagePrefix: 'ourhike:dem-cell:',
+  contextPackageKey: 'ourhike:dem-context',
+  indexStoreKey: 'ourhike:dem-cells-index',
 }
 
 /** The other organizations' trail lines as tiles, cut into the same cells
@@ -195,11 +243,23 @@ export const STRETCH_MARGIN_KM = 3
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 
-function boundsOf(raw: unknown): Bounds | null {
+/** Four finite numbers in the index's [west, south, east, north] order: the
+ *  SHAPE of a box, before asking whether it holds any ground. */
+function boxOf(raw: unknown): Bounds | null {
   if (!Array.isArray(raw) || raw.length !== 4 || !raw.every(isFiniteNumber)) return null
   const [west, south, east, north] = raw as number[]
-  if (!(west < east) || !(south < north)) return null
   return [west, south, east, north]
+}
+
+/** Whether a box holds any ground at all: west strictly before east, south
+ *  strictly before north. */
+function hasArea([west, south, east, north]: Bounds): boolean {
+  return west < east && south < north
+}
+
+function boundsOf(raw: unknown): Bounds | null {
+  const box = boxOf(raw)
+  return box !== null && hasArea(box) ? box : null
 }
 
 /**
@@ -208,6 +268,12 @@ function boundsOf(raw: unknown): Bounds | null {
  * Whole or nothing, deliberately. A row with no key is a piece that cannot be
  * fetched; a row with no bounds is one that cannot be placed; keeping the rest
  * would offer a stretch missing a cell in its middle and call it complete.
+ *
+ * One row is left out rather than refused, and it is not an exception to that
+ * rule but the same reasoning read the other way: a cell whose `covered` box
+ * is readable and holds no ground is a piece that can be fetched and placed
+ * and draws nothing inside its own square. Leaving it out loses no coverage;
+ * refusing the index over it loses all of it (#1559, below).
  */
 export function parseCellIndex(raw: unknown): CellIndex | null {
   if (typeof raw !== 'object' || raw === null) return null
@@ -225,12 +291,36 @@ export function parseCellIndex(raw: unknown): CellIndex | null {
   const cells: CoverageCell[] = []
   for (const entry of record.cells) {
     if (typeof entry !== 'object' || entry === null) return null
-    const { name, key, bounds } = entry as Record<string, unknown>
+    const { name, key, bounds, covered } = entry as Record<string, unknown>
     const box = boundsOf(bounds)
     if (typeof name !== 'string' || name === '') return null
     if (typeof key !== 'string' || key === '') return null
     if (box === null) return null
-    cells.push({ name, key, bounds: box })
+    // Absent is ordinary - every index published before #1458 - and means
+    // "no better answer than the square". Present and unreadable - not four
+    // finite numbers - is a corrupt row, refused like every other, because a
+    // coverage claim that parsed half-way is the thing this function exists
+    // to not produce.
+    if (covered === undefined) {
+      cells.push({ name, key, bounds: box, covered: box })
+      continue
+    }
+    const drawn = boxOf(covered)
+    if (drawn === null) return null
+    // Present, readable and EMPTY - west at or past east, or south at or past
+    // north - is neither of those (#1559). It is what cut_cells.py wrote for a
+    // cell whose every tile lay outside its own square, routed in by the seam
+    // margin from a neighbour: release 2026-09-16-4 carried 22 of them
+    // (n38w082's box was [-81.21, 38.0, -81.0, 37.996], south above north),
+    // and refusing the three indexes over them switched every stretch download
+    // off on every phone. Such a cell draws nothing inside the square it
+    // names - its tiles are the neighbour's, and the neighbour's own cell
+    // holds them - so the honest reading is that it covers nothing here, and
+    // it is left out. Falling back to the square would claim ground with no
+    // tile in it, which is the #1458 failure exactly. The cutter no longer
+    // builds these; the tolerance stays for the indexes already published.
+    if (!hasArea(drawn)) continue
+    cells.push({ name, key, bounds: box, covered: drawn })
   }
 
   return {
@@ -434,56 +524,123 @@ export function priceStretches(
 /** One straight edge of the downloaded area, as the two ends of a line. */
 export type SeamEdge = readonly [readonly [number, number], readonly [number, number]]
 
-function corner(west: number, south: number): string {
-  return `${west.toFixed(4)}|${south.toFixed(4)}`
+/**
+ * The OUTER boundary of the held cells: every edge of the covered ground with
+ * nothing covered on the other side of it. Two neighbouring held cells share
+ * an edge that is not a seam - the map is continuous across it - and drawing
+ * it would put a dashed line through the middle of somebody's coverage.
+ *
+ * A hiker crossing a seam sees a dead-straight edge that reads as a rendering
+ * fault unless it is named (OFFLINE_COVERAGE.md §7). map/coverageLayers.ts
+ * draws these dashed and labelled for exactly that reason.
+ *
+ * `covered`, NOT CORE BOUNDS, AND THIS IS THE SECOND HALF OF #1458. The first
+ * half made the BANNER honest - App.tsx narrows its footprints onto `covered`
+ * - and left this drawing the square, so on a cell carrying less than its
+ * square the two disagreed: "outside the downloaded area" over blank paper,
+ * with the nearest dashed line miles away. The banner was the half that
+ * mattered and this is the half that finishes it.
+ *
+ * WHY A SWEEP AND NOT THE LATTICE WALK IT REPLACES. The old version found a
+ * cell's neighbour by its south-west corner one cell over, which works only
+ * while every box is a whole graticule square. `covered` boxes do not tile,
+ * so that walk would have found no neighbours and drawn a dashed line down
+ * the middle of continuous coverage - a worse failure than the one it fixes,
+ * which is why the first half of #1458 left it alone rather than changing it
+ * carelessly. The sweep below asks the question the walk was a shortcut for:
+ * is the ground on the other side of this edge covered by ANY held cell.
+ *
+ * It is exact rather than sampled, and cheap: every box edge contributes a
+ * line to a lattice, between two consecutive lines the answer cannot change,
+ * so at most n×n tiles are each wholly in or wholly out. `held` is the cells
+ * on one phone - a handful for a stretch, 62 for the whole published sheet -
+ * so the grid is small enough that the quadratic costs nothing.
+ *
+ * Note that a full-square cell gives exactly the old answer, because
+ * `covered` falls back to `bounds` for an index that does not carry it
+ * (`parseCellIndex`) and a square IS its own covered box. Every release
+ * already on a phone therefore draws the seams it always drew.
+ */
+export function seamEdges(held: readonly CoverageCell[]): SeamEdge[] {
+  const boxes = held.map((cell) => cell.covered)
+  if (boxes.length === 0) return []
+
+  // The lattice the boxes induce. Every edge of every box contributes a line,
+  // and between two consecutive lines the answer to "is this covered" cannot
+  // change - so the whole plane reduces to a grid of at most n x n tiles that
+  // are each wholly in or wholly out. That is what makes the sweep below
+  // exact rather than sampled.
+  const xs = [...new Set(boxes.flatMap(([w, , e]) => [w, e]))].sort((a, b) => a - b)
+  const ys = [...new Set(boxes.flatMap(([, s0, , n]) => [s0, n]))].sort((a, b) => a - b)
+
+  const inside = (col: number, row: number): boolean => {
+    if (col < 0 || row < 0 || col >= xs.length - 1 || row >= ys.length - 1) return false
+    // The MIDPOINT, so a shared edge belongs to neither tile and no
+    // comparison lands on a boundary coordinate.
+    const x = (xs[col]! + xs[col + 1]!) / 2
+    const y = (ys[row]! + ys[row + 1]!) / 2
+    return boxes.some(([w, s0, e, n]) => x > w && x < e && y > s0 && y < n)
+  }
+
+  // A tile's side is on the outer boundary when the tile is covered and its
+  // neighbour is not. Two held cells that meet exactly therefore emit nothing
+  // along their join - the rule this function has always had, arrived at by
+  // the geometry rather than by a lattice walk over cell corners.
+  const vertical: [number, number, number][] = [] // x, south, north
+  const horizontal: [number, number, number][] = [] // y, west, east
+  for (let col = 0; col < xs.length - 1; col += 1) {
+    for (let row = 0; row < ys.length - 1; row += 1) {
+      if (!inside(col, row)) continue
+      if (!inside(col - 1, row)) vertical.push([xs[col]!, ys[row]!, ys[row + 1]!])
+      if (!inside(col + 1, row)) vertical.push([xs[col + 1]!, ys[row]!, ys[row + 1]!])
+      if (!inside(col, row - 1)) horizontal.push([ys[row]!, xs[col]!, xs[col + 1]!])
+      if (!inside(col, row + 1)) horizontal.push([ys[row + 1]!, xs[col]!, xs[col + 1]!])
+    }
+  }
+
+  return [
+    ...runs(vertical).map(([x, from, to]): SeamEdge => [
+      [x, from],
+      [x, to],
+    ]),
+    ...runs(horizontal).map(([y, from, to]): SeamEdge => [
+      [from, y],
+      [to, y],
+    ]),
+  ]
 }
 
 /**
- * The OUTER boundary of the held cells: every cell edge with no held cell on
- * the other side of it. Two neighbouring held cells share an edge that is not
- * a seam - the map is continuous across it - and drawing it would put a
- * dashed line through the middle of somebody's coverage.
+ * Collinear pieces joined back into one segment.
  *
- * 1° cells make every seam a meridian or a parallel, and a hiker crossing one
- * sees a dead-straight edge that reads as a rendering fault unless it is
- * named (OFFLINE_COVERAGE.md §7). map/coverageLayers.ts draws these dashed
- * and labelled for exactly that reason.
+ * The sweep above emits a piece per lattice tile, so one edge of one cell can
+ * come out in four parts where four other boxes happen to share its span. A
+ * dashed line drawn in parts is not the same picture as a dashed line - the
+ * dash pattern restarts at every join - and the label map/coverageLayers.ts
+ * puts on a seam would repeat once per piece.
  */
-export function seamEdges(
-  held: readonly CoverageCell[],
-  cellDegrees: number,
-): SeamEdge[] {
-  const corners = new Set(held.map((cell) => corner(cell.bounds[0], cell.bounds[1])))
-  const edges: SeamEdge[] = []
-  for (const {
-    bounds: [west, south, east, north],
-  } of held) {
-    if (!corners.has(corner(west - cellDegrees, south))) {
-      edges.push([
-        [west, south],
-        [west, north],
-      ])
-    }
-    if (!corners.has(corner(east, south))) {
-      edges.push([
-        [east, south],
-        [east, north],
-      ])
-    }
-    if (!corners.has(corner(west, south - cellDegrees))) {
-      edges.push([
-        [west, south],
-        [east, south],
-      ])
-    }
-    if (!corners.has(corner(west, north))) {
-      edges.push([
-        [west, north],
-        [east, north],
-      ])
-    }
+function runs(pieces: [number, number, number][]): [number, number, number][] {
+  const byLine = new Map<number, [number, number][]>()
+  for (const [line, from, to] of pieces) {
+    const spans = byLine.get(line)
+    if (spans) spans.push([from, to])
+    else byLine.set(line, [[from, to]])
   }
-  return edges
+
+  const merged: [number, number, number][] = []
+  for (const [line, spans] of byLine) {
+    spans.sort((a, b) => a[0] - b[0])
+    let [start, end] = spans[0]!
+    for (const [from, to] of spans.slice(1)) {
+      if (from <= end) end = Math.max(end, to)
+      else {
+        merged.push([line, start, end])
+        ;[start, end] = [from, to]
+      }
+    }
+    merged.push([line, start, end])
+  }
+  return merged
 }
 
 /** The basemap family's index record, under its old name. */

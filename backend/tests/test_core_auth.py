@@ -27,7 +27,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core import auth as auth_module
-from app.core.auth import get_current_user, require_role, verify_supabase_jwt
+from app.core.auth import get_current_user, get_current_user_optional, require_role, verify_supabase_jwt
 from app.models.profile import Profile, Role
 from tests.tokens import es256_keypair, make_es256_token, make_token, other_es256_key
 
@@ -269,3 +269,130 @@ def test_a_malformed_token_fails_as_an_auth_error_not_a_crash(db_session):
         get_current_user(credentials=_credentials("not-a-jwt"), db=db_session)
 
     assert raised.value.status_code == 401
+
+
+# The JWKS is fetched over the network, synchronously, on the first request
+# after PyJWKClient's five-minute cache lapses - so a Supabase key endpoint
+# that times out is a failure this backend meets in the middle of verifying
+# somebody. It is not a verdict on their token, and the unfixed tree said it
+# was: 401, "Invalid or expired token".
+
+
+def test_a_jwks_outage_is_a_503_not_an_invalid_token(db_session, monkeypatch):
+    def unreachable(_token):
+        raise jwt.PyJWKClientConnectionError('Fail to fetch data from the url, err: "<urlopen error timed out>"')
+
+    monkeypatch.setattr(auth_module, "signing_key_for", unreachable)
+
+    with pytest.raises(HTTPException) as raised:
+        get_current_user(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session)
+
+    assert raised.value.status_code == 503
+    assert raised.value.headers["Retry-After"]
+
+
+def test_a_key_the_jwks_does_not_hold_is_still_an_invalid_token(db_session, monkeypatch):
+    # The fetch WORKED and no key matched the token's `kid`: that is a fact
+    # about the token, and PyJWT raises the parent class for it.
+    def unknown(_token):
+        raise jwt.PyJWKClientError('Unable to find a signing key that matches: "nobody"')
+
+    monkeypatch.setattr(auth_module, "signing_key_for", unknown)
+
+    with pytest.raises(HTTPException) as raised:
+        get_current_user(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session)
+
+    assert raised.value.status_code == 401
+
+
+def test_the_optional_dependency_reads_a_jwks_outage_as_anonymous(db_session, monkeypatch):
+    # A browse never needed the token; taking the public list down with the
+    # key server would be the wrong degradation.
+    def unreachable(_token):
+        raise jwt.PyJWKClientConnectionError("timed out")
+
+    monkeypatch.setattr(auth_module, "signing_key_for", unreachable)
+
+    assert get_current_user_optional(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session) is None
+
+
+def test_a_token_with_no_expiry_is_refused(db_session):
+    # PyJWT checks an `exp` it finds and says nothing about one it does not,
+    # so this token used to verify for ever (#1545). Every token Supabase
+    # issues carries the claim; one without it is not Supabase's.
+    claims = {"sub": "hiker-no-expiry", "role": "authenticated", "aud": settings.supabase_jwt_audience}
+    token = jwt.encode(claims, settings.supabase_jwt_secret, algorithm="HS256")
+
+    with pytest.raises(HTTPException) as raised:
+        get_current_user(credentials=_credentials(token), db=db_session)
+
+    assert raised.value.status_code == 401
+
+
+# #1754: PyJWKClient answers an unknown `kid` with a forced JWKS refresh, and the
+# `kid` is read from an unverified header, so an unauthenticated caller could buy
+# one outbound fetch per request. These use the real client class with only its
+# network call (`fetch_data`) replaced by a counter.
+
+
+def _throttled_client(monkeypatch, clock):
+    _, public = es256_keypair()
+    jwk = {**jwt.algorithms.ECAlgorithm.to_jwk(public, as_dict=True), "kid": "real-kid", "use": "sig"}
+    client = auth_module._ThrottledJWKClient("https://example.invalid/jwks.json")
+    fetches = []
+
+    def fetch_data():
+        fetches.append(clock())
+        client.jwk_set_cache.put({"keys": [jwk]})
+        return {"keys": [jwk]}
+
+    monkeypatch.setattr(client, "fetch_data", fetch_data)
+    monkeypatch.setattr(auth_module.time, "monotonic", clock)
+    return client, fetches
+
+
+def test_unknown_kids_cause_one_forced_jwks_fetch_per_throttle_window(monkeypatch):
+    now = [1000.0]
+    client, fetches = _throttled_client(monkeypatch, lambda: now[0])
+
+    for i in range(50):
+        with pytest.raises(jwt.PyJWKClientError):
+            client.get_signing_key(f"random-kid-{i}")
+
+    # One for the empty cache, one forced refresh; the other 49 forced
+    # refreshes were answered from the cached set.
+    assert len(fetches) == 2
+
+
+def test_a_forced_refresh_is_allowed_again_once_the_window_has_passed(monkeypatch):
+    now = [1000.0]
+    client, fetches = _throttled_client(monkeypatch, lambda: now[0])
+
+    with pytest.raises(jwt.PyJWKClientError):
+        client.get_signing_key("unknown-1")
+    assert len(fetches) == 2
+
+    now[0] += auth_module.JWKS_FORCED_REFRESH_MIN_SECONDS + 1
+    with pytest.raises(jwt.PyJWKClientError):
+        client.get_signing_key("unknown-2")
+
+    assert len(fetches) == 3
+
+
+def test_the_throttle_does_not_refuse_a_kid_the_cached_set_holds(monkeypatch):
+    client, fetches = _throttled_client(monkeypatch, lambda: 1000.0)
+
+    assert client.get_signing_key("real-kid").key_id == "real-kid"
+    assert client.get_signing_key("real-kid").key_id == "real-kid"
+    assert len(fetches) == 1
+
+
+def test_the_jwks_client_is_built_with_the_short_fetch_timeout():
+    auth_module._jwk_client.cache_clear()
+    try:
+        client = auth_module._jwk_client()
+    finally:
+        auth_module._jwk_client.cache_clear()
+
+    assert isinstance(client, auth_module._ThrottledJWKClient)
+    assert client.timeout == auth_module.JWKS_FETCH_TIMEOUT_SECONDS == 5.0

@@ -73,7 +73,8 @@ import { ElevationChart } from '../chrome/ElevationChart'
 import { DayHikeList } from './DayHikeList'
 import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
-import { PlanHome, type PlanRoom } from './PlanHome'
+import { PlanHome } from './PlanHome'
+import type { PlanRoom } from '../lib/planRoom'
 import { WhatsLeft } from './WhatsLeft'
 import './plan.css'
 
@@ -254,6 +255,13 @@ export interface PlanScreenProps {
    * only from the bench: on a phone there is no third pane to keep in step.
    */
   onSelectStretch?: (stretch: BenchStretch | null) => void
+  /**
+   * Challenge places on this route, or the one challenge suggested for it
+   * (#1780, frames #6 and #6b), rendered by the shell under the day list.
+   * It never changes the route, the mileage or a day's target - it is read
+   * off the plan, never written into it.
+   */
+  challengeCard?: ReactNode
 }
 
 export function PlanScreen({
@@ -311,6 +319,7 @@ export function PlanScreen({
   onPlanFrom,
   mapPane,
   onSelectStretch,
+  challengeCard = null,
 }: PlanScreenProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -942,6 +951,7 @@ export function PlanScreen({
             <>
               {legend}
               {timeline}
+              {challengeCard}
               {/* Days of food are days in every unit system, so this block
                   takes no units - the one figure on the Plan tab that does
                   not convert. */}
@@ -969,6 +979,7 @@ export function PlanScreen({
               <div className="plan-bench__timeline">
                 {legend}
                 {timeline}
+                {challengeCard}
                 <FoodBlock sections={sections} />
               </div>
             </div>

@@ -123,3 +123,91 @@ describe('every screen has a home', () => {
     ).toEqual([])
   })
 })
+
+// The same graph, walked with `import()` NOT followed: what a browser parses
+// before the first frame (features/LAUNCH_BUDGET.md §4.4).
+//
+// WHY A SECOND WALK. A static value import puts the whole exporting module in
+// the importer's chunk - Rollup cannot take one constant and leave the file -
+// so the shell reading a number out of a screen drags the screen into the
+// eager closure. `App.tsx` did exactly that: `import { FIT_PADDING } from
+// './map/MapView'`, one integer used twice, and with it 14,808 raw bytes of
+// map code on a Today screen that mounts no map (measured 2026-09-15 through
+// the build's sourcemap; the figures and the breakdown are in §4.4).
+//
+// scripts/check-build-output.mjs could not see it. That check finds MapLibre
+// in the eager closure BY NAME - two markers out of the library's own source -
+// and nothing here is MapLibre; its other arm is the byte budget, which said
+// only that the total was 159 bytes too big, not what had moved. So this test
+// is the named half: the map view has a door, `chrome/MapScreen.tsx`, and that
+// door is behind `import()`.
+//
+// DELIBERATELY ONE MODULE, NOT A RULE ABOUT THE DIRECTORY. Plenty of
+// `src/map/` is eager on purpose - the shell composes the map's overlays
+// itself, and screens/deferred.ts says which. Widening this to "no map module
+// is eager" would fail on that design rather than on a defect.
+const EAGER_FORBIDDEN = ['map/MapView.tsx'] as const
+
+function staticImportsOf(file: string): string[] {
+  const source = readFileSync(file, 'utf8')
+  const found: string[] = []
+  // The first two patterns only; the third is `import('./y')`, which is the
+  // boundary this walk exists to stop at.
+  for (const pattern of IMPORT_SPECIFIERS.slice(0, 2)) {
+    for (const match of source.matchAll(pattern)) {
+      // `import type … from './y'` is erased by the compiler and reaches no
+      // bundle, so it is not something the first frame parses. Six panels
+      // import `MapScreenProps` this way and none of them carries the map
+      // screen's code; counting them would have this walk report a defect
+      // that does not exist. A statement mixing a type in with values
+      // (`import { X, type Y }`) still counts, correctly - it emits.
+      if (/^(?:import|export)\s+type\s/.test(match[0].trimStart())) continue
+      const target = resolveModule(file, match[1])
+      if (target !== null) found.push(target)
+    }
+  }
+  return found
+}
+
+function eagerFrom(root: string): Set<string> {
+  const seen = new Set<string>()
+  const queue = [root]
+  while (queue.length > 0) {
+    const file = queue.pop()!
+    if (seen.has(file)) continue
+    seen.add(file)
+    queue.push(...staticImportsOf(file))
+  }
+  return seen
+}
+
+describe('what the first frame parses', () => {
+  const eager = eagerFrom(ROOT)
+
+  it('walks a graph that stops at import()', () => {
+    // The same fail-open guard the walk above carries, plus the one thing
+    // that separates this walk from that one: the shell is in it, and a
+    // deferred screen is not.
+    expect(eager.has(join(SRC, 'App.tsx'))).toBe(true)
+    expect(eager.has(join(SRC, 'screens/Today.tsx'))).toBe(true)
+    expect(eager.has(join(SRC, 'screens/Plan.tsx'))).toBe(false)
+  })
+
+  it('does not reach the map view', () => {
+    const eagerly = EAGER_FORBIDDEN.filter((module) => eager.has(join(SRC, module)))
+    expect(
+      eagerly,
+      'Something the shell imports statically reaches the map view, so every byte ' +
+        'of it is parsed before a Today screen that mounts no map. A constant it ' +
+        'exports belongs in a module of its own - map/fitPadding.ts is the one this ' +
+        'test was written for. See features/LAUNCH_BUDGET.md §4.4.',
+    ).toEqual([])
+  })
+
+  it('still reaches it through its door', () => {
+    // The other half of the claim, so a MapView that nothing rendered at all
+    // could not pass the assertion above by being unreachable.
+    const reachedAnyhow = reachableFrom(ROOT)
+    expect(reachedAnyhow.has(join(SRC, 'map/MapView.tsx'))).toBe(true)
+  })
+})

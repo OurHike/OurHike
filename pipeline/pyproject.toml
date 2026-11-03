@@ -2,6 +2,9 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "--cov=. --cov-report=term-missing"
+markers = [
+    "robots_txt_read: the test reads each origin's robots.txt through requests_mock, as a run does (tests/conftest.py)",
+]
 
 [tool.coverage.run]
 omit = [".venv/*", "tests/*"]

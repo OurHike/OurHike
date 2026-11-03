@@ -24,6 +24,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import { del, get, getMany, set, update } from 'idb-keyval'
 import { loadMapEngine } from '../map/mapEngineLoader'
 import { resetMapLibreMock } from './mocks/maplibre-gl'
+import { forgetVerifiedCompanions } from '../lib/trailGraphData'
 import { PREFERENCES_KEY } from '../lib/preferences'
 import { forgetLaunchMirror, writeLaunchMirror } from '../lib/launchMirror'
 import { TAKEN_TRAIL_KEY } from '../lib/takenTrail'
@@ -170,6 +171,14 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
     // The mirror lives in localStorage, which jsdom keeps across the tests in
     // a file; a test that did not onboard must not inherit one.
     forgetLaunchMirror()
+    // Same shape, one module over (#1275). The companion-cell cache is
+    // module-level - it lives as long as the tab does, which is right in
+    // production and wrong in a suite, where every test in a file shares it
+    // and a later one can be served bytes an earlier one fetched. Three tests
+    // in App.dayHike.test.tsx found that immediately: they count fetches, or
+    // assert the refusal a MISSING geometry raises, and a warm cache makes
+    // both read as the opposite of what happened.
+    forgetVerifiedCompanions()
     resetMapLibreMock()
 
     // Primes the deferred map engine (#722) before anything renders.
@@ -238,11 +247,18 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
     }
 
     if (objectUrls) {
-      vi.stubGlobal('URL', {
-        ...URL,
+      // A SUBCLASS, because the object-spread version was not constructible.
+      // `{...URL}` copies URL's own enumerable statics onto a plain object and
+      // throws its call signature away, so `new URL(href)` under this harness
+      // raised "URL is not a constructor" - which took down any code parsing a
+      // href during render. It went unnoticed while nothing did; the org
+      // router reads window.location on App's first frame and does.
+      class StubbedUrl extends URL {}
+      Object.assign(StubbedUrl, {
         createObjectURL: vi.fn(() => 'blob:trails'),
         revokeObjectURL: vi.fn(),
       })
+      vi.stubGlobal('URL', StubbedUrl)
     }
   })
 

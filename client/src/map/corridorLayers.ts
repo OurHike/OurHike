@@ -8,7 +8,7 @@
 // nothing about either, and this is the module that knows about MapLibre. The
 // published artifact carries mile ranges and no geometry, so `trailSlice` is
 // what makes it drawable - and its MultiLineString result is why the runs
-// below are multi-part rather than one line each.
+// map/corridorFeatures.ts builds are multi-part rather than one line each.
 //
 // TWO COLOURS, AND BOTH ALREADY EXISTED
 //
@@ -26,7 +26,9 @@
 //
 // WHY THESE LAYERS STOP AT THE SEAM
 //
-// `maxzoom: POI_PIN_MIN_ZOOM` on every one of them. Above the seam a hiker is
+// `maxzoom: CORRIDOR_MAX_ZOOM` on every one of them - the zoom the tiled
+// network begins at, which is what this ceiling has meant since #1585 took
+// the waypoints out to z8 and left the trails here. Above it a hiker is
 // navigating by the line, and map/style.test.ts's "a blaze never changes colour
 // where a hiker is navigating by it" is the assertion that keeps this layer out
 // of that. Below it the line is representational - 2.5 px standing for 2,197
@@ -80,12 +82,20 @@ import type {
   PointLike,
 } from 'maplibre-gl'
 import { NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
-import { clubBoundaryMiles, clubTimeline, type ClubSections } from '../lib/clubSections'
-import { PROFILED_TRAIL } from '../lib/highlightDetail'
-import type { Highlight } from '../lib/highlights'
-import { trailPointAtMile, trailSlice, type TrailIndex } from '../lib/trailPosition'
-import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { whenStyleReady } from './styleReady'
+import {
+  CORRIDOR_KIND_PROPERTY,
+  HIGHLIGHT_ID_PROPERTY,
+  UNATTRIBUTED_KIND,
+  type CorridorFeatureCollection,
+} from './corridorFeatures'
+
+// The features themselves - kinds, properties, the collection and the
+// functions that build it - live in map/corridorFeatures.ts, so the shell
+// can build the collection without bringing this module into the eager
+// bundle (features/LAUNCH_BUDGET.md §4.4). Re-exported, so nothing that
+// imported one from here has to change.
+export * from './corridorFeatures'
 
 export const CORRIDOR_SOURCE_ID = 'corridor'
 
@@ -94,29 +104,43 @@ export const CORRIDOR_UNATTRIBUTED_LAYER_ID = 'corridor-unattributed'
 export const CORRIDOR_BOUNDARY_LAYER_ID = 'corridor-boundary'
 export const CORRIDOR_HIGHLIGHT_LAYER_ID = 'corridor-highlight'
 
-/** Which of this source's two kinds of feature a layer wants. Both ride in one
- *  source because they are one answer - the corridor read end to end - and a
- *  second source would be a second thing to keep in step. */
-export const CORRIDOR_KIND_PROPERTY = 'corridor_kind'
-export const UNATTRIBUTED_KIND = 'unattributed'
-export const BOUNDARY_KIND = 'boundary'
-export const HIGHLIGHT_KIND = 'highlight'
-
-/** Where a highlight marker carries its id, so a tap resolves to a record.
- *  A property rather than the GeoJSON feature id, for the reason
- *  CLOSURE_ID_PROPERTY gives: MapLibre runs a string feature id through
- *  parseInt, and a highlight id is a slug. */
-export const HIGHLIGHT_ID_PROPERTY = 'highlight_id'
-
 /**
- * Where the corridor view gives way to the waypoint map.
+ * Where the corridor view's drawn trails give way to the tiled ones.
  *
- * Its own name rather than POI_PIN_MIN_ZOOM inline, because the two are the
- * same number for one reason and could stop being: the seam is where the map
- * changes subject (features/POI_VISIBILITY.md), and both halves are keyed to
- * it so neither can drift alone.
+ * THEY HAVE STOPPED BEING THE SAME NUMBER (#1585, 2026-09-18), which is what
+ * an earlier version of this docstring said would eventually happen: "the
+ * two are the same number for one reason and could stop being". The waypoint
+ * seam moved out, to where a hundred-mile resupply carry fits a phone
+ * (map/poiLayers.ts's POI_PIN_MIN_ZOOM); this ceiling did not move, and must
+ * not, because it is answering a different question.
+ *
+ * WHAT IT IS ANSWERING is where the SKETCH hands the other organizations'
+ * trails over to the real tiles. `nearby_trails.pmtiles` is cut from
+ * NEARBY_TRAILS_TILES_MIN_ZOOM (lib/config.ts) and a vector source asked for a
+ * zoom its archive does not hold draws nothing, silently - so a ceiling BELOW
+ * the cut would leave a whole band of ground with no trails on it but the
+ * A.T.'s. That is the failure this constant exists to refuse.
+ *
+ * IT WAS `= NEARBY_TRAILS_TILES_MIN_ZOOM` AND IS A LITERAL AGAIN (#1613),
+ * because that spelling made it follow the cut DOWNWARDS as well as up, and
+ * only one of those two directions is safe. Lowering the cut to z5 so a
+ * context archive gets written moved this ceiling to 5 with it, which handed
+ * the corridor view over to tiles at z5 - tiles no published release holds
+ * until the cut has run, and would not hold on any phone carrying an older
+ * release ever. corridorLayers.test.ts caught it on the pin seam: the sketch
+ * would have stopped at z5 while the pins start at z7.
+ *
+ * So the rule is the inequality rather than the equality, and the test below
+ * holds it that way: **the archive may hold zooms coarser than this ceiling,
+ * never fewer.** A cut that reaches further down than the layers ask for
+ * costs some archive bytes nobody reads; a ceiling under the cut costs a
+ * hiker the other organizations' trails on the camera the app opens on.
+ *
+ * 9 is where it has been since #1257 and is not a new decision. It moves when
+ * the sketch's layers are pointed at the context tiles - #1613's client half,
+ * which waits for a release that carries them.
  */
-export const CORRIDOR_MAX_ZOOM = POI_PIN_MIN_ZOOM
+export const CORRIDOR_MAX_ZOOM = 9
 
 /**
  * The dash rhythm on an unattributed run, in multiples of the line's width -
@@ -137,7 +161,8 @@ export const BOUNDARY_RADIUS = 2.6
  *
  * Bigger than a boundary tick and smaller than a waypoint pin: it is the one
  * thing on this map a hiker is meant to want to tap, and it competes with
- * nothing - the pins do not draw down here at all (POI_PIN_MIN_ZOOM).
+ * nothing - no waypoint draws below the pin seam (map/poiLayers.ts's
+ * POI_PIN_MIN_ZOOM), and this view's own band sits under it.
  *
  * @unvalidated Picked against the approved mock-up rather than measured. What
  * would settle it is the same outdoor pass #105 owes the rest of the chrome.
@@ -160,131 +185,6 @@ export interface CorridorTrailPaint {
   blazeWidth: number
   /** The casing under it, already including its overhang. */
   casingWidth: number
-}
-
-interface CorridorProperties {
-  [CORRIDOR_KIND_PROPERTY]: string
-  /** Present only on a highlight mark. */
-  [HIGHLIGHT_ID_PROPERTY]?: string
-}
-
-export interface CorridorFeatureCollection {
-  type: 'FeatureCollection'
-  features: Array<{
-    type: 'Feature'
-    geometry:
-      | { type: 'MultiLineString'; coordinates: Array<Array<[number, number]>> }
-      | { type: 'Point'; coordinates: [number, number] }
-    properties: CorridorProperties
-  }>
-}
-
-export const EMPTY_CORRIDOR: CorridorFeatureCollection = {
-  type: 'FeatureCollection',
-  features: [],
-}
-
-/**
- * The published attribution, in map coordinates.
- *
- * A run or a boundary the centerline index cannot place yields no coordinates
- * and is dropped. That is a gap in what this build knows rather than a
- * decision, and it is safe to drop for the reason closureBands gives about its
- * own: the words are elsewhere. A hiker who taps a stretch this declines to
- * draw still gets the club from lib/clubSections.ts, which never needed
- * geometry to answer.
- */
-export function corridorFeatures(
-  sections: ClubSections,
-  index: TrailIndex,
-): CorridorFeatureCollection {
-  const timeline = clubTimeline(sections)
-
-  const unattributed = sections.unattributed.flatMap((range) => {
-    const lines = trailSlice(index, range.startMile, range.endMile)
-    if (lines.length === 0) return []
-    return [
-      {
-        type: 'Feature' as const,
-        geometry: { type: 'MultiLineString' as const, coordinates: lines },
-        properties: { [CORRIDOR_KIND_PROPERTY]: UNATTRIBUTED_KIND },
-      },
-    ]
-  })
-
-  const boundaries = clubBoundaryMiles(timeline).flatMap((mile) => {
-    const point = trailPointAtMile(index, mile)
-    if (point === null) return []
-    return [
-      {
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: point },
-        properties: { [CORRIDOR_KIND_PROPERTY]: BOUNDARY_KIND },
-      },
-    ]
-  })
-
-  return { type: 'FeatureCollection', features: [...unattributed, ...boundaries] }
-}
-
-/**
- * The highlights, as one mark each at the start of the first A.T. leg (#858).
- *
- * A POINT rather than a line along the walk, and that is the two-colour
- * decision showing through: the trail's own colour means `blaze_color`, so a
- * highlight cannot recolour the ground it covers. It marks where the walk
- * BEGINS and the sheet says how far it runs - which is also the only thing
- * that stays true for a highlight whose other legs are on trails this map may
- * not be drawing (features/NEARBY_TRAILS.md: one chosen trail at a time).
- *
- * One mark, not every leg: a loop that leaves the A.T. and comes back is one
- * place on the corridor, and three marks for it would read as three walks.
- *
- * The FIRST leg that is on the A.T., rather than the first leg outright. All
- * ten entries published today are single-leg A.T. highlights, so nothing
- * exercises the difference yet - but a loop is naturally written in walking
- * order, and Franconia Ridge's is `[Falling Waters, A.T., Old Bridle Path]`.
- * Keyed off leg zero, that record would draw no mark at all and simply not be
- * on the map, which is the silent absence rather than the honest one.
- */
-export function highlightFeatures(
-  highlights: readonly Highlight[],
-  index: TrailIndex,
-): CorridorFeatureCollection {
-  const features = highlights.flatMap((highlight) => {
-    const leg = highlight.legs.find((candidate) => candidate.trail === PROFILED_TRAIL)
-    // A highlight entirely off the A.T. has no place on this map to mark. It
-    // still exists as a record; features/NEARBY_TRAILS.md's one-trail-at-a-time
-    // rule is what would eventually draw it.
-    if (leg === undefined) return []
-    const point = trailPointAtMile(index, leg.startMile)
-    if (point === null) return []
-    return [
-      {
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: point },
-        properties: {
-          [CORRIDOR_KIND_PROPERTY]: HIGHLIGHT_KIND,
-          [HIGHLIGHT_ID_PROPERTY]: highlight.id,
-        },
-      },
-    ]
-  })
-  return { type: 'FeatureCollection', features }
-}
-
-/** The corridor and the highlights in one collection - one source, because
- *  they are one answer about the same stretch of map. */
-export function corridorWithHighlights(
-  sections: ClubSections,
-  highlights: readonly Highlight[],
-  index: TrailIndex,
-): CorridorFeatureCollection {
-  const corridor = corridorFeatures(sections, index)
-  return {
-    type: 'FeatureCollection',
-    features: [...corridor.features, ...highlightFeatures(highlights, index).features],
-  }
 }
 
 /**

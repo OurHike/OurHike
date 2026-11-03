@@ -47,7 +47,16 @@ def _write_tiny_geotiff(path):
 
 
 def _artifact_entry(path, content, feature_count):
+    """Write a placeholder artifact and describe it the way a manifest would.
+
+    A .json or .geojson placeholder is written as a JSON document holding
+    `content`, because check 7 (json_verdict) reads every such file under
+    PROCESSED_DIR the way a phone would - "a complete, passing set" includes
+    documents a phone can open, the same way it includes the fetch receipts.
+    The hash is of what was written, so the manifest still matches the file."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix in check_output_quality.JSON_SUFFIXES and not content.lstrip().startswith(("{", "[")):
+        content = json.dumps({"placeholder": content})
     path.write_text(content)
     return {"path": str(path), "sha256": check_output_quality.sha256_file(path), "feature_count": feature_count}
 
@@ -268,15 +277,18 @@ def test_poi_verdict_is_problem_when_manifest_is_missing(tmp_path):
     assert report["verdict"] is Verdict.PROBLEM
 
 
-def test_poi_verdict_ok_when_every_type_has_features_except_crossing(tmp_path):
+def test_poi_verdict_counts_no_crossings_since_the_type_was_withdrawn(tmp_path):
+    """#1674. poi_verdict walks POI_TYPES, so a withdrawn type has no count
+    to record - and flag_drops lets a name absent from this run go, so the
+    baseline's last crossing count raises nothing either."""
     manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0})))
+    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {})))
 
     report = check_output_quality.poi_verdict(manifest_path)
 
     assert report["verdict"] is Verdict.OK
-    assert report["counts"]["poi:crossing"] == 0
-    assert report["counts"]["poi:shelter"] == 5
+    assert "poi:crossing" not in report["counts"]
+    assert check_output_quality.flag_drops(report["counts"], {"poi:crossing": 5318}) == []
 
 
 def test_poi_verdict_ok_when_trailhead_is_the_only_empty_type(tmp_path):
@@ -316,9 +328,9 @@ def test_the_two_poi_gates_read_one_allowed_empty_set():
         assert poi_type in check_output_quality.POI_TYPES
 
 
-def test_poi_verdict_flags_a_zero_count_poi_type_other_than_crossing(tmp_path):
+def test_poi_verdict_flags_a_zero_count_poi_type_other_than_trailhead(tmp_path):
     manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0, "shelter": 0})))
+    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"trailhead": 0, "shelter": 0})))
 
     report = check_output_quality.poi_verdict(manifest_path)
 
@@ -326,17 +338,17 @@ def test_poi_verdict_flags_a_zero_count_poi_type_other_than_crossing(tmp_path):
     assert any("poi:shelter" in p for p in report["problems"])
 
 
-def test_poi_verdict_does_not_flag_crossing_at_zero():
-    """Mirrors export_poi.py's own minimums={"crossing": 0} - there is no
-    NHD-crossing fetch script yet, so an empty crossing layer is expected,
-    not a bug."""
-    problems = check_output_quality.count_problems({"poi:crossing": 0, "poi:shelter": 5}, minimums={"poi:crossing": 0})
+def test_poi_verdict_does_not_flag_an_allowed_empty_type_at_zero():
+    """Mirrors export_poi.py's own minimums - trailhead's today, crossing's
+    until #1674 withdrew it - so an empty layer the schema expects is not a
+    bug."""
+    problems = check_output_quality.count_problems({"poi:trailhead": 0, "poi:shelter": 5}, minimums={"poi:trailhead": 0})
 
     assert problems == []
 
 
 def test_poi_verdict_flags_a_kind_missing_within_an_otherwise_present_poi_type(tmp_path):
-    manifest = _poi_manifest(tmp_path, {"crossing": 0})
+    manifest = _poi_manifest(tmp_path, {"trailhead": 0})
     del manifest["shelter"]["fgb"]
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(manifest))
@@ -348,7 +360,7 @@ def test_poi_verdict_flags_a_kind_missing_within_an_otherwise_present_poi_type(t
 
 
 def test_poi_verdict_flags_geojson_fgb_feature_count_disagreement_for_one_poi_type(tmp_path):
-    manifest = _poi_manifest(tmp_path, {"crossing": 0})
+    manifest = _poi_manifest(tmp_path, {"trailhead": 0})
     manifest["shelter"]["fgb"]["feature_count"] = 4  # geojson stayed at 5 - a real write-path bug would look like this
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(manifest))
@@ -1072,7 +1084,7 @@ def test_flag_drops_ignores_a_name_absent_from_current():
 
 
 def test_flag_drops_ignores_a_zero_baseline():
-    assert check_output_quality.flag_drops({"poi:crossing": 0}, {"poi:crossing": 0}) == []
+    assert check_output_quality.flag_drops({"poi:trailhead": 0}, {"poi:trailhead": 0}) == []
 
 
 def test_baseline_verdict_is_skipped_when_no_baseline_exists_yet(tmp_path):
@@ -1126,6 +1138,7 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
         monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
     monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+    monkeypatch.setattr(check_output_quality, "PROCESSED_DIR", tmp_path / "processed")
 
     reports = check_output_quality.check_all()
 
@@ -1135,6 +1148,7 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
         "elevation",
         "spurs",
         "manifests",
+        "json",
         "corridor",
         "topo_quads",
         "water_reach",
@@ -1149,11 +1163,13 @@ def test_check_all_topo_quads_and_baseline_are_skipped_not_problem_when_nothing_
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
     monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo.json")
     monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+    monkeypatch.setattr(check_output_quality, "PROCESSED_DIR", tmp_path / "processed")
 
     reports = check_output_quality.check_all()
 
     by_check = {r["check"]: r["verdict"] for r in reports}
     assert by_check["topo_quads"] is Verdict.SKIPPED
+    assert by_check["json"] is Verdict.SKIPPED
     assert by_check["baseline"] is Verdict.SKIPPED
     assert by_check["trails"] is Verdict.PROBLEM
 
@@ -1343,7 +1359,7 @@ def passing_pipeline(tmp_path, monkeypatch):
     )
 
     poi_manifest = tmp_path / "poi_manifest.json"
-    poi_manifest.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0})))
+    poi_manifest.write_text(json.dumps(_poi_manifest(tmp_path, {"trailhead": 0})))
 
     elevation_manifest = tmp_path / "elevation_manifest.json"
     elevation_entry = _artifact_entry(tmp_path / "elevation_profile.json", "elevation bytes", 0)
@@ -1412,7 +1428,8 @@ def test_main_writes_a_new_baseline_only_when_everything_passes(passing_pipeline
     baseline = json.loads(check_output_quality.BASELINE_PATH.read_text())
     assert baseline["counts"]["trails"] == 10
     assert baseline["counts"]["elevation"] == 139219
-    assert baseline["counts"]["poi:crossing"] == 0
+    assert baseline["counts"]["poi:trailhead"] == 0
+    assert "poi:crossing" not in baseline["counts"]
 
 
 def test_main_does_not_write_a_baseline_when_a_check_fails(passing_pipeline, tmp_path):
@@ -1432,7 +1449,7 @@ def test_main_flags_a_baseline_drop_on_a_second_run(passing_pipeline, tmp_path):
     real 80% decline that stays technically non-empty."""
     assert check_output_quality.main() == 0
 
-    collapsed_poi_manifest = _poi_manifest(tmp_path, {"crossing": 0, "shelter": 1})
+    collapsed_poi_manifest = _poi_manifest(tmp_path, {"trailhead": 0, "shelter": 1})
     check_output_quality.POI_MANIFEST.write_text(json.dumps(collapsed_poi_manifest))
 
     second_poi_report = check_output_quality.poi_verdict(check_output_quality.POI_MANIFEST)
@@ -1584,7 +1601,7 @@ def test_main_accepts_a_changed_source_that_explains_the_drop(passing_pipeline, 
     explanation supplied on the command line."""
     assert check_output_quality.main() == 0
 
-    collapsed_poi_manifest = _poi_manifest(tmp_path, {"crossing": 0, "shelter": 1})
+    collapsed_poi_manifest = _poi_manifest(tmp_path, {"trailhead": 0, "shelter": 1})
     check_output_quality.POI_MANIFEST.write_text(json.dumps(collapsed_poi_manifest))
 
     # 'atc' is what COUNT_UPSTREAM_SOURCES says feeds poi:shelter.
@@ -1596,7 +1613,7 @@ def test_main_still_flags_a_drop_an_unrelated_changed_source_cannot_explain(pass
     dropped - naming an unrelated one must not wave the drop through."""
     assert check_output_quality.main() == 0
 
-    collapsed_poi_manifest = _poi_manifest(tmp_path, {"crossing": 0, "shelter": 1})
+    collapsed_poi_manifest = _poi_manifest(tmp_path, {"trailhead": 0, "shelter": 1})
     check_output_quality.POI_MANIFEST.write_text(json.dumps(collapsed_poi_manifest))
 
     # poi:shelter is fed by 'atc' alone, so an elevation refresh explains nothing.
@@ -1622,3 +1639,67 @@ def test_trails_verdict_checks_the_vertex_miles_when_the_manifest_claims_them(tm
 
     assert report["verdict"] is Verdict.PROBLEM
     assert any("trail_miles.json" in p and "sha256 mismatch" in p for p in report["problems"])
+
+
+# --- Check 7: JSON a phone can parse ----------------------------------------
+
+
+def test_json_verdict_is_skipped_when_nothing_has_been_written(tmp_path):
+    report = check_output_quality.json_verdict(tmp_path / "processed")
+
+    assert report["verdict"] is Verdict.SKIPPED
+    assert report["problems"] == []
+
+
+def test_json_verdict_is_ok_when_every_document_parses(tmp_path):
+    (tmp_path / "poi").mkdir()
+    (tmp_path / "poi" / "shelter.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    (tmp_path / "trails_manifest.json").write_text('{"geojson": {"sha256": "abc"}}')
+    (tmp_path / "background.pmtiles").write_bytes(b"not json and not read")
+
+    report = check_output_quality.json_verdict(tmp_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"] == {"json_documents": 2}
+
+
+def test_json_verdict_names_the_document_carrying_a_token_no_phone_can_parse(tmp_path):
+    """The exporter's own `json.dumps` wrote this file and check 1 would re-hash
+    it happily; a WebView rejects it on the token. Only the strict read tells."""
+    (tmp_path / "elevation").mkdir()
+    bad = tmp_path / "elevation" / "profile.json"
+    bad.write_text(json.dumps({"points": [{"distance_mi": 1.0, "elevation_ft": float("nan")}]}))
+    (tmp_path / "spurs.json").write_text('{"spurs": []}')
+
+    report = check_output_quality.json_verdict(tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert report["problems"] == [
+        "elevation/profile.json: NonFiniteNumber: NaN is not JSON: Python writes and reads it, JSON.parse on a phone rejects the whole document on it"
+    ]
+
+
+def test_json_verdict_names_a_document_that_does_not_parse_at_all(tmp_path):
+    """A write cut short is the other thing a phone cannot read."""
+    (tmp_path / "trails.geojson").write_text('{"type": "FeatureCollection", "features": [{"type": "Fea')
+
+    report = check_output_quality.json_verdict(tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert report["problems"][0].startswith("trails.geojson: JSONDecodeError:")
+
+
+def test_json_verdict_runs_inside_check_all_and_never_raises(tmp_path, monkeypatch):
+    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST", "SPURS_MANIFEST", "TOPO_QUADS_MANIFEST"):
+        monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
+    monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
+    monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    (processed / "trail_miles.json").write_text("[NaN]")
+    monkeypatch.setattr(check_output_quality, "PROCESSED_DIR", processed)
+
+    by_check = {r["check"]: r for r in check_output_quality.check_all()}
+
+    assert by_check["json"]["verdict"] is Verdict.PROBLEM
+    assert by_check["json"]["problems"][0].startswith("trail_miles.json: NonFiniteNumber")

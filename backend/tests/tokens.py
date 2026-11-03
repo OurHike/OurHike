@@ -33,11 +33,29 @@ def make_token(
     secret: str | None = None,
     expires_delta: timedelta = timedelta(hours=1),
     audience: str | None | object = _CONFIGURED,
+    email: str | None = None,
+    github_login: str | None = None,
 ) -> str:
     """A signed JWT for `user_id`, carrying the claims Supabase really sends.
 
     `audience` defaults to the configured one; pass `None` to omit the claim
     entirely, or a string to mint a token for some other consumer.
+
+    `email` is omitted unless a test asks for it, and that default is the
+    honest one: **whether a real Supabase access token carries an `email`
+    claim is @unvalidated** (#1169 asked for it to be confirmed against a live
+    token, and this environment has no Supabase project). Defaulting it on
+    here would make every test agree with an assumption nobody has checked.
+    The org tests that need a verified address pass it explicitly, which keeps
+    "this path needs an email claim" visible at each call site.
+
+    `github_login` is the same bargain one provider further out, and is
+    **@unvalidated for a second reason**: it goes in `user_metadata` as
+    `user_name`, which is where Supabase is documented to put a GitHub
+    OAuth login, but the provider is not enabled on this project so nobody
+    has seen a real one. `app/core/auth.py` reads `preferred_username` as
+    well for that reason. What would settle it is one real token from a
+    GitHub sign-in, printed once.
     """
     payload: dict = {
         "sub": user_id,
@@ -45,6 +63,11 @@ def make_token(
         "role": "authenticated",
         "iss": f"{settings.supabase_url}/auth/v1",
     }
+    if email is not None:
+        payload["email"] = email
+    if github_login is not None:
+        payload["app_metadata"] = {"provider": "github"}
+        payload["user_metadata"] = {"user_name": github_login}
 
     resolved = settings.supabase_jwt_audience if audience is _CONFIGURED else audience
     if resolved:
@@ -53,9 +76,9 @@ def make_token(
     return jwt.encode(payload, secret if secret is not None else settings.supabase_jwt_secret, algorithm="HS256")
 
 
-def auth_headers(user_id: str) -> dict[str, str]:
+def auth_headers(user_id: str, *, email: str | None = None, github_login: str | None = None) -> dict[str, str]:
     """The Authorization header a signed-in client would send."""
-    return {"Authorization": f"Bearer {make_token(user_id)}"}
+    return {"Authorization": f"Bearer {make_token(user_id, email=email, github_login=github_login)}"}
 
 
 # The shape a *hosted* Supabase project actually issues: ES256, with a `kid`

@@ -13,7 +13,7 @@ Postgres does to the assumptions a direct connection lets you make.
 from collections.abc import Generator
 from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -54,8 +54,24 @@ def engine_options(database_url: str, *, prepared_statements: bool) -> dict[str,
     driver: `connect_args` goes straight to the DBAPI, so handing it to any
     other driver would be a TypeError at connect time rather than a helpful
     message.
+
+    **`hide_parameters`** keeps the values a statement was bound to out of
+    SQLAlchemy's exception messages. Without it, a database error's message
+    ends `[parameters: {...}]`, and that text reaches two logs that must not
+    hold it. uvicorn prints the API's traceback to the host's log, so a
+    failed `POST /reports` would log the hiker's note, coordinates and signed
+    name, which app/core/logs.py promises never happens. A scheduled job's
+    traceback lands in a public Actions log - for the usage rollup and quality
+    jobs, a month's counts. The statement and the error still print, which is
+    what a reader debugging it needs, and app/core/logs.py's
+    `describe_failure` goes further, naming a failure without even the
+    statement. What this cannot hide is Postgres's own message, which quotes
+    the one value it rejected - an invalid cast's input, a duplicate key's
+    `DETAIL` (tests/test_engine_options.py pins the cast). That is a single
+    value at the site of a bug, where the dump was every value of every
+    failing statement.
     """
-    options: dict[str, Any] = {"pool_pre_ping": True}
+    options: dict[str, Any] = {"pool_pre_ping": True, "hide_parameters": True}
 
     if not prepared_statements and make_url(database_url).get_driver_name() == "psycopg":
         options["connect_args"] = {"prepare_threshold": None}
@@ -78,3 +94,26 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def database_host(database_url: str) -> str:
+    """The host:port of `database_url`, and nothing else.
+
+    What a startup failure may print. `URL.render_as_string(hide_password=True)`
+    would also print the username, and a Supabase pooler username embeds the
+    project ref, so only the part an operator needs to tell "wrong pooler string"
+    from "right string, database down" is kept.
+    """
+    url = make_url(database_url)
+    host = url.host or "(no host)"
+    return f"{host}:{url.port}" if url.port else host
+
+
+def check_database() -> None:
+    """Run `SELECT 1` on a pooled connection; raises whatever the driver raises.
+
+    One definition for the two callers that need the same answer: the startup
+    check in app/main.py's lifespan (#1756) and the `/ready` endpoint.
+    """
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))

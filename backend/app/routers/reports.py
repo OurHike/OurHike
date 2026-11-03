@@ -9,20 +9,25 @@ it to and, later, moderate against.
 from datetime import datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.assignments import assignments_covering
-from app.core.auth import get_current_user, get_current_user_optional
-from app.core.orm import commit_and_refresh, get_or_404
+from app.core.assignments import assignments_covering, stood_behind
+from app.core.auth import get_current_user, get_current_user_optional, still_signed_in
+from app.core.edge_cache import shared_at_edge
+from app.core.orm import commit_and_refresh, release_before_waiting
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
+    FIRST_PHOTO_INDEX,
     JPEG_MAGIC,
     MAX_PHOTO_BYTES,
+    MAX_REPORT_PHOTOS,
     PHOTO_URL_TTL_SECONDS,
     PhotoStorageUnavailable,
+    discard_refused_upload,
     photo_storage_configured,
     photo_uploads_enabled,
     presigned_photo_url,
@@ -30,6 +35,7 @@ from app.core.photos import (
 )
 from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
+from app.models.club import Club
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType, Visibility
@@ -149,7 +155,8 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
     the request and stored.
 
     So the rule is: **what the hiker named wins, and what they left blank is
-    resolved.** Someone who knows the name is the case SAYING_THANKS.md's
+    resolved** - where "named" means a person the trail record stands behind
+    (#1914, the paragraph in the body below). Someone who knows the name is the case SAYING_THANKS.md's
     "optionally tagging the maintainer responsible" exists for, and a lookup
     must not overrule them. The two fields resolve independently - naming a
     club without a person is the ordinary way to thank a stretch.
@@ -185,6 +192,16 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
         return None, None
 
     named_maintainer, named_club = payload.maintainer_id, payload.club_id
+    # A NAMED PERSON COUNTS ONLY IF THE TRAIL RECORD STANDS BEHIND THEM (#1914 -
+    # GET /clubs publishes every admin's account id and decline reason to
+    # anyone, and an account id is all it takes to write into that person's
+    # private thanks inbox). "What the hiker named wins" delivered a thanks to
+    # any account id at all, and thanks never reach the moderation queue. The
+    # maintainer's rule, by poll on 2026-10-27: a name counts only if
+    # `stood_behind()` believes one of that person's assignments. Anyone else
+    # is dropped, and the thanks resolves by location, as a blank name does.
+    if named_maintainer is not None and not _the_record_stands_behind(db, named_maintainer):
+        named_maintainer = None
     if named_maintainer is not None and named_club is not None:
         return named_maintainer, named_club
 
@@ -215,6 +232,22 @@ def _credit_for(db: Session, payload: ReportCreate, authored: datetime) -> tuple
         named_maintainer or (maintainers.pop() if len(maintainers) == 1 else None),
         named_club or (clubs.pop() if len(clubs) == 1 else None),
     )
+
+
+def _the_record_stands_behind(db: Session, person_id: str) -> bool:
+    """Whether any of `person_id`'s assignments is one a hiker-facing read believes.
+
+    Any date, not only the authored one: a thanks written in June for June's
+    maintainer still reaches them after a July handover, which is the reason
+    `_credit_for` resolves by the authored date in the first place.
+    """
+    believed = (
+        db.query(MaintainerAssignment.id)
+        .join(Club, Club.id == MaintainerAssignment.club_id)
+        .filter(MaintainerAssignment.maintainer_id == person_id, stood_behind())
+        .first()
+    )
+    return believed is not None
 
 
 @router.post("", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
@@ -272,6 +305,9 @@ def create_report(
 
     timestamp = authored if authored is not None else now
     credited_maintainer, credited_club = _credit_for(db, payload, timestamp)
+    signed_name = payload.signed_name.strip() if payload.signed_name is not None else None
+    if signed_name == "":
+        signed_name = None
 
     report = Report(
         # None lets the model's own default mint one - the same fallback
@@ -286,9 +322,23 @@ def create_report(
         # re-derive it against (#244). A client that omits it leaves the
         # column null, which is the honest answer for an off-trail fix.
         mile=payload.mile,
+        # Stored as sent, like the mile, and for the same reason: the fix
+        # these describe was seen by the phone and by nothing here (#1563).
+        location_source=payload.location_source,
+        location_accuracy_m=payload.location_accuracy_m,
+        location_fix_age_s=payload.location_fix_age_s,
         reporter_type=payload.reporter_type,
         note=payload.note,
-        photo_url=payload.photo_url,
+        # The hiker's chosen name and their consent to be contacted (#1563),
+        # stored as sent. A kind without a name is a claim about nothing, so
+        # it is dropped rather than stored; whitespace is not a name.
+        signed_name=signed_name,
+        signed_name_kind=payload.signed_name_kind if signed_name is not None else None,
+        contact_ok=payload.contact_ok,
+        # Stored as prose and resolved to nothing (#1439). A report that
+        # carries this carries no coordinates either, deliberately - see
+        # ReportCreate.place_words and the model's column.
+        place_words=payload.place_words,
         visibility=_visibility_for(payload.type),
         maintainer_id=credited_maintainer,
         club_id=credited_club,
@@ -326,7 +376,7 @@ def create_report(
         return ReportOut.for_viewer(settled, current_user)
 
 
-@router.get("", response_model=list[ReportOut])
+@router.get("", response_model=list[ReportOut], dependencies=[Depends(shared_at_edge)])
 def list_reports(
     db: Session = Depends(get_db),
     current_user: Profile | None = Depends(get_current_user_optional),
@@ -385,7 +435,9 @@ def list_my_thanks(
 
     **Three ways to be a recipient, and the third is the one that matters.**
 
-    1. Named directly. A hiker who knew the name tagged it.
+    1. Named directly. A hiker who knew the name tagged it - and the trail
+       record stands behind the caller (#1914), the same test a name has to
+       pass when the thanks is written.
     2. Addressed to a club the caller CURRENTLY holds an assignment for.
        Club-level is SAYING_THANKS.md's default, and the common case - the
        hiker knew the stretch, not the person. "Currently" is load-bearing
@@ -414,12 +466,31 @@ def list_my_thanks(
     A hiker with no assignments gets an empty list, which is the true answer
     rather than a 403 about a resource that concerns them not at all.
     """
-    mine = db.query(MaintainerAssignment).filter(MaintainerAssignment.maintainer_id == current_user.id).all()
+    # Only assignments something other than their own organization stands
+    # behind (`core/assignments.py`'s `stood_behind`, #1635). A thanks is a
+    # hiker's private words to whoever looks after a stretch, and an
+    # organization that registered itself must not be able to read every
+    # one written along the trail by assigning itself the miles.
+    mine = (
+        db.query(MaintainerAssignment)
+        .join(Club, Club.id == MaintainerAssignment.club_id)
+        .filter(MaintainerAssignment.maintainer_id == current_user.id, stood_behind())
+        .all()
+    )
 
-    # Named directly. Stands alone: somebody can be thanked by name without
-    # holding any assignment at all - a maintainer between sections, or one
-    # whose club has not been loaded into the table yet.
-    recipient = [Report.maintainer_id == current_user.id]
+    # Named directly, and only a name the trail record stands behind:
+    # `_the_record_stands_behind`, the same check `_credit_for` makes of a
+    # named `maintainer_id` when a thanks is written (#1914 - GET /clubs
+    # publishes every admin's account id and decline reason to anyone, and an
+    # account id is all it takes to write into that person's private thanks
+    # inbox). Asked again here because the stored column is no proof of it: a
+    # row written before that rule shipped, or by an instance still running
+    # the old code during a rolling deploy, names whatever account id its
+    # hiker sent. Any of the caller's believed assignments counts, past ones
+    # included, so a maintainer between sections still gets a thanks
+    # addressed to them. Someone holding no believed assignment at all - one
+    # whose club has not been loaded yet, too - is not reachable by name.
+    recipient = [Report.maintainer_id == current_user.id] if _the_record_stands_behind(db, current_user.id) else []
 
     # Club membership is judged now, not ever (#642). The stretch clause
     # below judges by the report's authored time because the work has a date;
@@ -450,6 +521,11 @@ def list_my_thanks(
             covers.append(Report.timestamp < datetime.combine(assignment.effective_to + timedelta(days=1), time.min))
         recipient.append(and_(*covers))
 
+    if not recipient:
+        # The record stands behind none of the caller's assignments, so no
+        # clause above applies - and `or_()` of nothing is not a filter.
+        return []
+
     rows = (
         db.query(Report)
         # Dismissal is the abuse-removal path - the one moderation action a
@@ -467,6 +543,38 @@ def list_my_thanks(
         .all()
     )
 
+    return [ReportOut.for_viewer(row, current_user) for row in rows]
+
+
+@router.get("/mine", response_model=list[ReportOut])
+def list_my_reports(
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+) -> list[ReportOut]:
+    """The caller's own reports at any status, on a path of its own.
+
+    #1916 - A signed-in hiker's app sends its token on the three edge-cached
+    reads, so they either skip the cache or hide the hiker's own queued
+    report. `GET /reports` is the same list for every anonymous caller, which
+    is what lets a shared cache in front of the API keep one copy of it. A
+    token changes two things on it. It adds the caller's own reports at any
+    status. And `ReportOut.for_viewer` unmasks `reporter_id`, `received_at`,
+    `signed_name`, `signed_name_kind`, `contact_ok`, `maintainer_id` and
+    `club_id` on the caller's own rows, and on every row for a caller whose
+    role is in `MODERATOR_ROLES`. The app's conditions read needs only the
+    first - `ReportSummary` in client/src/lib/api.ts declares none of those
+    fields - so it reads `GET /reports` with no token and this with one, and
+    merges the two (`reports` in client/src/lib/useConditions.ts).
+
+    `list_reports` still answers a token the way it always has, for every app
+    installed before that change.
+
+    One person's list, so no cache may keep it, and ordered by id for
+    `list_reports`'s reason.
+    """
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    rows = db.query(Report).filter(Report.reporter_id == current_user.id).order_by(Report.id).all()
     return [ReportOut.for_viewer(row, current_user) for row in rows]
 
 
@@ -533,6 +641,50 @@ async def read_capped_body(request: Request, limit: int) -> bytes:
 
 
 @router.put(
+    "/{report_id}/photos/{index}",
+    response_model=ReportOut,
+    summary="Attach one of a report's photos, by its place in the set",
+    responses={
+        404: {"description": "No such report, or not one you filed."},
+        409: {"description": "That index is out of sequence, or past the cap."},
+        413: {"description": "Photo is larger than the cap."},
+        415: {"description": "Not a JPEG, by header or by magic bytes."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+async def upload_report_photo_at(
+    report_id: str,
+    index: int,
+    request: Request,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReportOut:
+    """Store photo `index` of a report and record how far the set now runs.
+
+    ONE PHOTO PER REQUEST, NUMBERED BY THE CALLER (#1439). A blowdown is three
+    trunks and one photo rarely shows it, so a report holds several - and the
+    keys stay derived (`reports/{id}/{n}.jpg`), which is what keeps "which
+    objects belong to this report" answerable from the id alone. The caller
+    names the index because the outbox does: it re-sends photo 2 as photo 2,
+    so a retry lands on the object it landed on last time instead of appending
+    a duplicate. That is the same property the single-photo endpoint had, kept
+    now that there is more than one.
+
+    **The sequence is dense, and refusing a gap is what keeps it so.** An
+    index may be one past the end (append) or anywhere inside it (a retry, or
+    a replacement). It may not skip: a report claiming four photos with
+    nothing at index 3 would have `photo_count` describing a set the bucket
+    does not hold, and the count is the only thing that says how far to read.
+
+    Everything else - owner only, JPEG by header AND by magic bytes, the size
+    cap enforced as the body arrives, the row written last - is unchanged from
+    the single-photo endpoint below, and is shared with it rather than copied.
+    """
+    uploader_id = await run_in_threadpool(_checked_then_released, db, report_id, index, current_user)
+    return await _store_report_photo(report_id, index, request, db, uploader_id)
+
+
+@router.put(
     "/{report_id}/photo",
     response_model=ReportOut,
     summary="Attach a photo to a report you filed",
@@ -568,6 +720,67 @@ async def upload_report_photo(
     `GET /reports/{id}/photo` below, which checks the report's own visibility
     and status first. Nothing here makes a photo reachable.
     """
+    uploader_id = await run_in_threadpool(_checked_then_released, db, report_id, FIRST_PHOTO_INDEX, current_user)
+    return await _store_report_photo(report_id, FIRST_PHOTO_INDEX, request, db, uploader_id)
+
+
+def _checked_then_released(db: Session, report_id: str, index: int, current_user: Profile) -> str:
+    """Every check that needs no bytes, then the connection handed back.
+
+    Run before the body is read, so a refusal costs the phone nothing but the
+    headers. The connection goes back to the pool before the wait
+    (`release_before_waiting`), and `_record_stored_photo` runs the same
+    checks again, on the row as it is once the photo is in the bucket.
+
+    Returns the caller's id as a plain string, because nothing may read
+    `current_user` again before then: the release expires it, and reading an
+    expired row is a query that takes a connection back out of the pool and
+    keeps it (app/core/orm.py).
+    """
+    uploader_id = current_user.id
+    _upload_target(db.get(Report, report_id), index, uploader_id)
+    release_before_waiting(db)
+    return uploader_id
+
+
+def _upload_target(report: Report | None, index: int, uploader_id: str) -> Report:
+    """The report photo `index` may be written to, or the refusal that says why not.
+
+    Handed the row rather than looking it up, because its two callers look it
+    up differently: plainly before the body is read, and locked once the photo
+    is in the bucket (`_record_stored_photo`).
+    """
+    report = _report_this_caller_may_upload_to(report, uploader_id)
+
+    if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A report holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
+        )
+    if index > report.photo_count + 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This report has {report.photo_count} photos; the next one is {report.photo_count + 1}.",
+        )
+    return report
+
+
+def _report_this_caller_may_upload_to(report: Report | None, uploader_id: str) -> Report:
+    """The report, if there is a bucket to store into and this caller filed it.
+
+    BOTH CHECKS, WHICH IS WHY THE NAME IS NOT `_owned_report_or_404`. It was,
+    and the name described half of what the body did - the 503 below was
+    folded in when the two upload endpoints were merged, and a reader had no
+    way to know from the call site that ownership was not the whole of it
+    (#1439 review). Two gates in one function is right here: they are the
+    pair every upload passes before a byte is read, and splitting them would
+    invite an endpoint to take one and not the other.
+
+    404, not 403: a report that is not yours is one you have no business
+    knowing exists, and distinguishing "wrong owner" from "no such id" turns a
+    guessed UUID into a way to confirm one - the same reasoning create_report
+    applies to a resend under someone else's id.
+    """
     if not photo_uploads_enabled():
         # 503 rather than 500: nothing is broken, this deployment simply has
         # no bucket - which is true of every developer machine. The client
@@ -577,14 +790,20 @@ async def upload_report_photo(
             detail="Photo uploads are not configured on this server.",
         )
 
-    report = get_or_404(db, Report, report_id, detail="Report not found")
-    if report.reporter_id != current_user.id:
-        # 404, not 403: a report that is not yours is one you have no business
-        # knowing exists, and distinguishing "wrong owner" from "no such id"
-        # turns a guessed UUID into a way to confirm one - the same reasoning
-        # create_report applies to a resend under someone else's id.
+    if report is None or report.reporter_id != uploader_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    return report
 
+
+async def _store_report_photo(
+    report_id: str,
+    index: int,
+    request: Request,
+    db: Session,
+    uploader_id: str,
+) -> ReportOut:
+    """Read, check and store one photo, then record it. One code path for both
+    endpoints above, because the checks are the part worth not copying."""
     content_type = (request.headers.get("content-type") or "").split(";")[0].strip()
     if content_type != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -605,19 +824,139 @@ async def upload_report_photo(
             detail=f"Report photos must be {ALLOWED_CONTENT_TYPE}.",
         )
 
+    # Everything after the read is blocking I/O (the R2 put, then the record
+    # step's queries), so it leaves the event loop for the threadpool, as every
+    # `def` handler already does. Left on the loop, a 2 MiB put stalled every
+    # other request, /health included (#1753 - The four async upload handlers
+    # run synchronous SQLAlchemy and boto3 calls on the event loop, so one
+    # 2 MiB photo put stalls every other request, /health included).
+    report, viewer = await run_in_threadpool(_store_then_record_photo, db, report_id, index, body, uploader_id)
+    return ReportOut.for_viewer(report, viewer)
+
+
+def _store_then_record_photo(db: Session, report_id: str, index: int, body: bytes, uploader_id: str) -> tuple[Report, Profile]:
+    """Put the photo in the bucket holding no database connection, then record it.
+
+    The put comes before any query, and that order is the point. It used to
+    run inside the transaction the re-check had just opened, so a slow R2 held
+    a pooled connection `idle in transaction` exactly as a slow phone had
+    before the release (#1915 - A photo upload holds a pooled database
+    connection inside an open transaction while the phone sends the bytes, so
+    fifteen slow uploads make every other read 500). With R2 slow instead of
+    the phone, the outage came back one step later; the review of #1925 - Hand
+    the database connection back before a photo upload waits for its bytes -
+    found it, and tests/test_upload_releases_connection.py now holds both
+    waits.
+    """
     try:
-        key = store_photo(report.id, body)
+        key = store_photo(report_id, body, index)
     except PhotoStorageUnavailable as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        # `error.detail`, never `str(error)`: the message names the endpoint
+        # the write failed against, and the endpoint names the account (see
+        # PhotoStorageUnavailable).
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
-    # The row last, and only once the object is really there: the report is
-    # the authoritative half, so a `photo_url` pointing at nothing would be
-    # the one direction of drift this design refuses (app/core/photos.py).
-    report.photo_url = key
-    return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
+    return _record_stored_photo(db, report_id, index, key, uploader_id)
 
 
-def _authorised_photo_url(report_id: str, db: Session, viewer: Profile | None) -> str:
+def _record_stored_photo(db: Session, report_id: str, index: int, key: str, uploader_id: str) -> tuple[Report, Profile]:
+    """Record a photo that is already in the bucket, or refuse it and take the object back out.
+
+    ONE SHORT TRANSACTION, ON A LOCKED ROW: the report read `FOR UPDATE`, the
+    account and `_upload_target` checked again, then the write, then the
+    commit that releases the lock. Nothing in it waits on anything but
+    Postgres: the put is before it, and a refusal's delete after it.
+
+    What can really change in the meantime is the account. `DELETE
+    /profiles/me` sent while the photo is in flight keeps the report, so its
+    ownership still passes, and only `still_signed_in` stops a deleted
+    account's photo landing. Of what `_upload_target` reads, little can change
+    for a report - nothing in the API deletes one, and the count only rises,
+    so the index rule cannot newly fail - but a row gone by any means has to
+    be a 404 here, not an UPDATE of nothing.
+
+    WHY A LOCK AND NOT `GREATEST`. The count used to be computed from a copy
+    of the row read before the put, so a slow put could shrink it: photo 2's
+    first put finishing after its own retry and photo 3 took `photo_count`
+    from 3 back to 2, with all three objects in the bucket (found in review of
+    #1925 - Hand the database connection back before a photo upload waits for
+    its bytes; tests/test_upload_releases_connection.py reproduces it).
+    `SET photo_count = GREATEST(photo_count, :index)` would fix the count and
+    nothing else: the checks would still read a row that could change before
+    the write, unless they moved into the UPDATE's WHERE clause, where "0
+    rows" cannot say which of the 404 and the 409 to answer. The lock makes
+    the checks and the write one step, and leaves `_record_photo` the only
+    writer of the two columns. Its cost is that two uploads to one report
+    record one after the other.
+
+    A REFUSAL TAKES THE OBJECT BACK OUT (`discard_refused_upload`), because
+    nothing else ever would - unless a recorded photo is still using it. The
+    key is derived, so a refused upload at an index already in the set has
+    overwritten that photo, and deleting it would leave the row pointing at
+    nothing, the one direction of drift app/core/photos.py refuses. That photo
+    keeps this upload's bytes: a retry's are the same bytes, and a
+    replacement's are the photo its hiker chose.
+    """
+    report = db.get(Report, report_id, with_for_update=True, populate_existing=True)
+    try:
+        uploader = still_signed_in(db, uploader_id)
+        _upload_target(report, index, uploader_id)
+    except HTTPException:
+        unrecorded = report is None or index > report.photo_count
+        # The transaction ends, and the lock with it, before R2 is asked for
+        # anything.
+        db.rollback()
+        if unrecorded:
+            discard_refused_upload(key)
+        raise
+
+    _record_photo(report, index, key)
+    commit_and_refresh(db, report)
+    # Read again here, off the event loop, for `ReportOut.for_viewer` to use.
+    db.refresh(uploader)
+    return report, uploader
+
+
+def _record_photo(report: Report, index: int, key: str) -> None:
+    """The row, last, and only once the object is really there.
+
+    The report is the authoritative half, so a count describing objects that
+    are not in the bucket is the one direction of drift this design refuses
+    (app/core/photos.py).
+
+    **THE ONE PLACE `photo_url` AND `photo_count` ARE WRITTEN AT ALL**, which
+    is what makes two columns about one fact safe for as long as they both
+    exist. The invariant, stated once: `photo_url` is photo 1's key exactly
+    when `photo_count >= 1`.
+
+    That sentence is true because this is the only writer. It was NOT true
+    when it was first written - `create_report` stored a `photo_url` a caller
+    could set without uploading anything, so a report could hold a key for an
+    object that did not exist and a `photo_count` of nought. The field is
+    still DECLARED, because removing it would break six retained baselines,
+    and is no longer STORED (app/schemas/report.py): that is what turned the
+    claim from plausible into checkable, and
+    tests/test_report_photo_set.py holds it.
+
+    `photo_count` is the authoritative half of the pair - it is what says how
+    far `reports/{id}/{n}.jpg` runs - and `photo_url` is kept written because
+    the previous release still reads it during a rollout (RELEASING.md §8c).
+    A later revision drops it, and this function is the only line that has to
+    change.
+    """
+    if index == FIRST_PHOTO_INDEX:
+        report.photo_url = key
+    # max(), not +1: an index inside the set is a retry or a replacement, and
+    # re-sending photo 2 must not claim a third.
+    report.photo_count = max(report.photo_count, index)
+
+
+def _authorised_photo_url(
+    report_id: str,
+    db: Session,
+    viewer: Profile | None,
+    index: int = FIRST_PHOTO_INDEX,
+) -> str:
     """A signed URL for a report's photo, or the HTTPException that refuses it.
 
     **The whole check, in one place, because two endpoints hand out the same
@@ -644,13 +983,17 @@ def _authorised_photo_url(report_id: str, db: Session, viewer: Profile | None) -
         )
 
     report = db.get(Report, report_id)
-    if report is None or not _visible_to(report, viewer) or report.photo_url is None:
+    # `photo_count` rather than `photo_url`, and for photo 1 the two say the
+    # same thing (see `_record_photo`'s invariant). An index past the end is
+    # refused the same way everything else here is: a 404 that does not say
+    # which of the four reasons it was.
+    if report is None or not _visible_to(report, viewer) or not FIRST_PHOTO_INDEX <= index <= report.photo_count:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report photo not found")
 
     try:
-        return presigned_photo_url(report.id)
+        return presigned_photo_url(report.id, index)
     except PhotoStorageUnavailable as error:  # pragma: no cover - guarded above
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
 
 @router.get(
@@ -764,5 +1107,67 @@ def get_report_photo(
     # dismissed or made private an hour from now would still be reachable from
     # whatever cached the hop. Re-asking is cheap; the check has to run every
     # time for the answer to mean anything.
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return response
+
+
+@router.get(
+    "/{report_id}/photos/{index}/link",
+    response_model=ReportPhotoLink,
+    summary="Ask for one of a report's photo URLs, if you may see the report",
+    responses={
+        404: {"description": "No such report, no photo at that index, or not one you may see."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+def get_report_photo_link_at(
+    report_id: str,
+    index: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: Profile | None = Depends(get_current_user_optional),
+) -> ReportPhotoLink:
+    """Photo `index`, as a URL rather than a redirect (#1439).
+
+    The indexed twin of the link endpoint above, and everything that one says
+    holds here: it exists because an `<img>` cannot carry a token, the body IS
+    a bearer capability, and the TTL is deliberately unchanged. The only
+    difference is which of the report's photos is asked for - a moderation
+    screen showing three of them asks three times, against the same check each
+    time, which is the property that made the single-photo form re-askable in
+    the first place.
+    """
+    url = _authorised_photo_url(report_id, db, current_user, index)
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return ReportPhotoLink(url=url, expires_in=PHOTO_URL_TTL_SECONDS)
+
+
+@router.get(
+    "/{report_id}/photos/{index}",
+    response_class=RedirectResponse,
+    status_code=status.HTTP_302_FOUND,
+    summary="Fetch one of a report's photos, if you may see the report",
+    responses={
+        302: {"description": "Redirect to a short-lived signed URL for the image."},
+        404: {"description": "No such report, no photo at that index, or not one you may see."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+def get_report_photo_at(
+    report_id: str,
+    index: int,
+    db: Session = Depends(get_db),
+    current_user: Profile | None = Depends(get_current_user_optional),
+) -> RedirectResponse:
+    """Photo `index` of a report, behind the report's own visibility (#1439).
+
+    The indexed twin of the redirect above, sharing its check rather than
+    repeating it. A photo inherits the report's audience whichever of the set
+    it is: the fourth photo on a `bad_hikers` report is as much a photo of a
+    person as the first.
+    """
+    signed = _authorised_photo_url(report_id, db, current_user, index)
+
+    response = RedirectResponse(signed, status_code=status.HTTP_302_FOUND)
     response.headers["Cache-Control"] = "private, no-store, max-age=0"
     return response

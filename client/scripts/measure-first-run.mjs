@@ -215,59 +215,164 @@ await cdp.send('Network.emulateNetworkConditions', {
 
 const ENTRY_TITLE = '.onboarding__title'
 
-/** The step's way past itself. Two of the three steps say Skip; the map-size
- *  step says "Decide this later" (#1054), and clicking Skip three times used
- *  to stall on it. */
-const SKIP = /^(Skip|Decide this later)$/
+/**
+ * The card's own way past itself, named by what it IS rather than by what it
+ * says.
+ *
+ * Every card carries exactly one decline control: `src/screens/Onboarding.tsx`
+ * gives `what-ourhike-is`, `hiker-mode`, `default-place` and `map-size` an
+ * `onboarding__skip`, and `location-permission` an `onboarding__secondary`
+ * (both of ITS buttons call `finish()`, so it has no `next`). Measured against
+ * the live bundle 2026-09-15 - `curl
+ * https://ourhike.org/app/assets/main-Bx2gadkk.js` carries 5
+ * `onboarding__title`, 4 `onboarding__skip` and 1 `onboarding__secondary`,
+ * matching the checkout exactly.
+ *
+ * WHY NOT THE BUTTON'S NAME, WHICH IS WHAT THIS USED TO READ (#1376). It was
+ * `/^(Skip|Decide this later)$/`, clicked exactly three times, and PR #1374 -
+ * One pathway from first run to a walk finished: the front-end rebuild from
+ * the ClaudeDesign flow review (merged 2026-09-14 17:55) broke both halves at
+ * once. `Skip` became `Skip - take me to the map`, which is what crashed the
+ * launch check the next morning - run 34975488353 spent three of its four
+ * minutes inside one 180-second timeout and never started the stopwatch.
+ *
+ * AND THE COUNT WAS NEVER A CONSTANT. It is not five now and it was not three
+ * before: the first card's decline says "straight to the map, with every
+ * default" and finishes the flow outright, so DECLINING walks one card, while
+ * the other four are only reached by accepting `Get set up`. Measured here
+ * against a build of main on 2026-09-15: one card ("A map that works where
+ * there is no signal."), then no heading at all. So the old loop, even with
+ * the name fixed, would click once and then wait out two more 180-second
+ * timeouts for a button that is not on screen. Ending on "is the flow still
+ * showing" is the only form that survives the next rewording of it.
+ *
+ * Copy is the thing that moved twice in one week; the role each button plays
+ * in the flow has not. `check-deployed-app.mjs` keeps a name-based matcher for
+ * a reason that does not apply here - it asserts against a DEPLOYED build that
+ * may be older than this checkout, where a class is no safer than a name. This
+ * one drives a build to a stopwatch reading, and the bundle measurement above
+ * is what says today's deployment carries these classes rather than an
+ * assumption that it does.
+ */
+const PAST_THE_CARD = '.onboarding__skip, .onboarding__secondary'
+
+/** A runaway guard on the loop below, not a count of the cards - the count is
+ *  what got this wrong twice. One card is walked today and five is the most
+ *  the flow could ask for; reaching ten means something is looping. It raises
+ *  rather than returning, because a run that quietly gave up here goes on to
+ *  time the onboarding screen and call it a launch. */
+const MAX_CARDS = 10
+
+/** The card on screen, by its heading, or null once onboarding is done. */
+const currentCard = () =>
+  page.evaluate(
+    (selector) => document.querySelector(selector)?.textContent ?? null,
+    ENTRY_TITLE,
+  )
 
 async function clickThrough() {
   await page.waitForSelector(ENTRY_TITLE, { timeout: 180_000 })
-  for (let step = 0; step < 3; step += 1) {
-    await page.getByRole('button', { name: SKIP }).first().click({ timeout: 180_000 })
+  for (let card = 0; card < MAX_CARDS; card += 1) {
+    const before = await currentCard()
+    if (before === null) return
+    await page.locator(PAST_THE_CARD).first().click({ timeout: 180_000 })
+    // Wait for the card to actually change before looking for the next one.
+    // Without this the loop can click the same still-mounted button twice and
+    // land two cards short with no error - the silent half of #1376.
+    await page.waitForFunction(
+      ([selector, previous]) =>
+        (document.querySelector(selector)?.textContent ?? null) !== previous,
+      [ENTRY_TITLE, before],
+      { timeout: 180_000 },
+    )
   }
+  await refuseToMeasureOnboarding()
 }
 
-/** The release is on the phone: the waypoints are stored and the partial
- *  marker is down (lib/trailData.ts). Read out of IndexedDB rather than off
- *  the screen, because the screen a launch lands on is Today now (#1054) and
- *  says nothing about waypoint counts. */
+/**
+ * Raise if onboarding is STILL up after `MAX_CARDS`, and say nothing if it is
+ * not.
+ *
+ * The null check is the whole point and is not defensive: a flow of exactly
+ * `MAX_CARDS` cards is walked to its end by the loops above and then falls out
+ * of them, so a bare throw here would fail a run that had in fact finished -
+ * and print `still showing "null"` while doing it, which is a message asserting
+ * the opposite of what happened.
+ */
+async function refuseToMeasureOnboarding() {
+  const stuck = await currentCard()
+  if (stuck === null) return
+  throw new Error(
+    `onboarding still showing "${stuck}" after ${MAX_CARDS} cards - ` +
+      'the flow grew, or a card has no .onboarding__skip / .onboarding__secondary. ' +
+      'Measuring past this point would time the wrong screen (#1376).',
+  )
+}
+
+/**
+ * The release is on the phone: the waypoints are stored and the partial
+ * marker is down (lib/trailData.ts). Read out of IndexedDB rather than off
+ * the screen, because the screen a launch lands on is Today now (#1054) and
+ * says nothing about waypoint counts.
+ *
+ * POLLED FROM HERE WITH `page.evaluate`, NOT WITH `page.waitForFunction`.
+ * The predicate has to open IndexedDB, so it returns a Promise - and
+ * Playwright does not await a Promise a waitForFunction predicate returns:
+ * the Promise object is itself truthy, so the wait ended on its first poll,
+ * before a byte of the release had landed. Measured 2026-09-30 in the agent
+ * sandbox: a predicate resolving `false` after 100 ms came back from
+ * waitForFunction in 131 ms with the unresolved Promise as its value, and a
+ * `--returning` run then timed a launch that was re-downloading the whole
+ * release - which is what every "waypoints ready: not reached" row this
+ * script had printed was. `page.evaluate` awaits the Promise, so the loop
+ * below only ends on a phone that actually holds the release.
+ */
 async function releaseLanded() {
-  await page.waitForFunction(
-    () =>
-      new Promise((resolve) => {
-        const open = indexedDB.open('keyval-store')
-        open.onsuccess = () => {
-          const db = open.result
-          const store = db.transaction('keyval').objectStore('keyval')
-          const pois = store.get('ourhike:pois')
-          const partial = store.get('ourhike:trail-data-partial')
-          let left = 2
-          let ready = true
-          const done = () => {
-            left -= 1
-            if (left === 0) {
-              db.close()
-              resolve(ready)
+  const deadline = Date.now() + 600_000
+  for (;;) {
+    const landed = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const open = indexedDB.open('keyval-store')
+          open.onsuccess = () => {
+            const db = open.result
+            const store = db.transaction('keyval').objectStore('keyval')
+            const pois = store.get('ourhike:pois')
+            const partial = store.get('ourhike:trail-data-partial')
+            let left = 2
+            let ready = true
+            const done = () => {
+              left -= 1
+              if (left === 0) {
+                db.close()
+                resolve(ready)
+              }
+            }
+            pois.onsuccess = () => {
+              if (pois.result === undefined) ready = false
+              done()
+            }
+            partial.onsuccess = () => {
+              if (partial.result === true) ready = false
+              done()
+            }
+            pois.onerror = partial.onerror = () => {
+              ready = false
+              done()
             }
           }
-          pois.onsuccess = () => {
-            if (pois.result === undefined) ready = false
-            done()
-          }
-          partial.onsuccess = () => {
-            if (partial.result === true) ready = false
-            done()
-          }
-          pois.onerror = partial.onerror = () => {
-            ready = false
-            done()
-          }
-        }
-        open.onerror = () => resolve(false)
-      }),
-    null,
-    { timeout: 600_000, polling: 1000 },
-  )
+          open.onerror = () => resolve(false)
+        }),
+    )
+    if (landed === true) return
+    if (Date.now() > deadline) {
+      throw new Error(
+        'the release did not land within 600 s of first run starting, so there is ' +
+          'no returning launch to measure - check the data URL the build was given',
+      )
+    }
+    await page.waitForTimeout(1000)
+  }
 }
 
 if (warm || returning) {
@@ -372,22 +477,26 @@ if (returning) {
   console.log(`first entry step reachable      ${Date.now() - started} ms`)
 }
 
+// The first-run walk, timed card by card. `clickThrough` above is the same
+// walk untimed, for the warming pass whose numbers nobody reads.
+//
+// Bounded by the cards on screen rather than by a count (#1376): the loop
+// stops when a card's own click takes the heading away, which is the flow
+// telling it there is nothing left. The previous version ran exactly three
+// times and special-cased the third as the end - a shape that only ever fit
+// one version of the flow, and does not fit the one card declining walks now.
 const stepChanges = []
-for (let step = 0; step < (returning ? 0 : 3); step += 1) {
+for (let step = 0; !returning && step < MAX_CARDS; step += 1) {
   await page.waitForTimeout(pauseMs)
-  const before = await page.evaluate(
-    (selector) => document.querySelector(selector)?.textContent ?? null,
-    ENTRY_TITLE,
-  )
+  const before = await currentCard()
+  if (before === null) break
   const asked = Date.now()
-  await page.getByRole('button', { name: SKIP }).first().click({ timeout: 180_000 })
+  await page.locator(PAST_THE_CARD).first().click({ timeout: 180_000 })
   const clicked = Date.now()
   await page.waitForFunction(
-    ([selector, previous]) => {
-      const now = document.querySelector(selector)?.textContent ?? null
-      return previous === null ? now === null : now !== previous
-    },
-    [ENTRY_TITLE, step === 2 ? null : before],
+    ([selector, previous]) =>
+      (document.querySelector(selector)?.textContent ?? null) !== previous,
+    [ENTRY_TITLE, before],
     { timeout: 180_000 },
   )
   stepChanges.push({
@@ -395,6 +504,10 @@ for (let step = 0; step < (returning ? 0 : 3); step += 1) {
     changed: Date.now() - clicked,
   })
 }
+// Same refusal as the warming walk, and for the same reason: everything below
+// this line times what is on screen, so a walk that ran out of attempts with a
+// card still up must not reach it.
+if (!returning) await refuseToMeasureOnboarding()
 
 // Long enough for whatever the last tap started to finish, so the timeline
 // covers the hand-over into the map screen as well as the steps themselves.
@@ -409,24 +522,31 @@ const paint = await page.evaluate(() =>
 for (const entry of paint) console.log(`${entry.name.padEnd(31)} ${entry.at} ms`)
 
 // The app's own marks (#1299, src/lib/launchMarks.ts), read from the page so
-// this prints the SAME five moments Settings -> About this build shows on a
+// this prints the SAME seven moments Settings -> About this build shows on a
 // phone and the bug-report prefill carries. That is the whole point of the
 // marks: a number from a hiker's device and a number from this profile name
 // the same events, so the two can finally be compared.
 //
 // A moment the launch never reached prints as such rather than being left
 // out, for the reason the screen says it: an omitted row reads as instant.
-const marks = await page.evaluate(() =>
-  [
-    ['ourhike:script', 'app code started'],
-    ['ourhike:shell', 'tab bar rendered'],
-    ['ourhike:preferences', 'settings read'],
-    ['ourhike:today', 'waypoints ready'],
-    ['ourhike:index', 'trail index ready'],
-  ].map(([name, label]) => {
-    const entry = performance.getEntriesByName(name, 'mark')[0]
-    return { label, at: entry === undefined ? null : Math.round(entry.startTime) }
-  }),
+const MARK_NAMES = [
+  ['ourhike:script', 'app code started'],
+  ['ourhike:shell', 'tab bar rendered'],
+  ['ourhike:preferences', 'settings read'],
+  ['ourhike:today', 'waypoints ready'],
+  ['ourhike:index', 'trail index ready'],
+  // The map's own two (#1560): a phone landing on Today never reaches
+  // them, and prints "not reached" for both - which is the right answer.
+  ['ourhike:map', 'map built'],
+  ['ourhike:map-drawn', 'map drawn'],
+]
+const marks = await page.evaluate(
+  (names) =>
+    names.map(([name, label]) => {
+      const entry = performance.getEntriesByName(name, 'mark')[0]
+      return { label, at: entry === undefined ? null : Math.round(entry.startTime) }
+    }),
+  MARK_NAMES,
 )
 for (const mark of marks) {
   console.log(
@@ -446,7 +566,7 @@ if (returning) {
   }
 }
 
-if (!returning) console.log('\ntaps on Skip')
+if (!returning) console.log('\ntaps past each card')
 stepChanges.forEach((change, index) => {
   const tap = perf.taps[index]
   const timing =
@@ -504,6 +624,45 @@ for (const [key, ms] of [...byFunction].sort((a, b) => b[1] - a[1]).slice(0, 15)
   console.log(`  ${String(Math.round(ms)).padStart(6)} ms  ${key}`)
 }
 
+// Which of those marks this BUILD declares, as distinct from which the launch
+// reached (#1488). Production moves only on a `v*` tag, so for days after a
+// mark lands on main the deployed bundle predates it - and a check that saw
+// only "no entry" called that a launch that never got there. It happened:
+// #1376 read "the tab bar rendered - never reached" from 2026-09-10 to
+// 09-14 while the same runs measured the first tap on that tab bar at 223 ms.
+//
+// Read from the eager closure - the entry module and its modulepreloads,
+// which is where src/lib/launchMarks.ts's names live, because main.tsx
+// imports it statically. That is the part that matters: a chunk that never
+// loaded could not report a name it holds, so reading every loaded chunk
+// would turn a broken launch into "not in this build". Done after every
+// measurement above, so the fetches cannot land inside a timed window. Null
+// when the bundle cannot be read, which the checker treats as "declares
+// everything" - the loud side.
+const declaredMarks = await page.evaluate(async (names) => {
+  const urls = [
+    ...document.querySelectorAll(
+      'script[type="module"][src], link[rel="modulepreload"][href]',
+    ),
+  ].map((element) => element.src || element.href)
+  if (urls.length === 0) return null
+  try {
+    const bodies = await Promise.all(
+      urls.map(async (url) => {
+        const response = await fetch(url)
+        if (!response.ok) throw new Error(`${response.status} ${url}`)
+        return response.text()
+      }),
+    )
+    const bundle = bodies.join('\n')
+    return Object.fromEntries(
+      names.map(([name, label]) => [label, bundle.includes(name)]),
+    )
+  } catch {
+    return null
+  }
+}, MARK_NAMES)
+
 if (jsonPath !== null) {
   const { writeFileSync } = await import('node:fs')
   writeFileSync(
@@ -517,6 +676,7 @@ if (jsonPath !== null) {
         tiles_stubbed: stubTiles,
         paint: Object.fromEntries(paint.map((entry) => [entry.name, entry.at])),
         marks: Object.fromEntries(marks.map((mark) => [mark.label, mark.at])),
+        declared_marks: declaredMarks,
         taps: returning
           ? tabTaps.map((tap) => ({
               at: tap.at,

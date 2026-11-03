@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: base_alaska_trails__alaska_trails
+    data_tests:
+      # Warns when the dedupe dropped any row, each an exact copy
+      # (duplicates_are_exact on the raw table), and is an error once the
+      # copies are half the raw table (the generic test's).
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('alaska_trails', 'raw_alaska_trails__alaska_trails')
+    description: >
+      Alaska Trail Database, every row, keyed and deduped. Nothing reads it
+      yet: the stage-3 unions of #1793 do.
+    columns:
+      - name: trail_segment_key
+        description: >
+          The row's key: dbt_utils.generate_surrogate_key over
+          alaska_trails, trailname, trailtype, geometry_key(geom), the
+          registry key first and then the columns measured unique for this
+          layer.
+        data_tests: [not_null, unique]

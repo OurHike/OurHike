@@ -149,11 +149,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          # Split rather than `&&`: `apt-get update` exits non-zero when any
-          # repository preinstalled on the runner image fails, which stopped
-          # the install running at all. See backend-tests.yml for the measured
-          # case and the trade (#1361).
-          sudo apt-get update -qq || true
+          # Ask apt only about Ubuntu's own archives, so a bad index in a
+          # repository the runner image ships and this project never uses
+          # cannot fail the install - while a failure in the archive we DO
+          # depend on stays loud. backend-tests.yml holds the measured case
+          # and the argument against the `|| true` this replaces (#1366).
+          sudo mkdir -p /etc/apt/sources.list.d
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
+            ! -name 'ubuntu.sources' ! -name 'ubuntu.list' -print -delete
+          sudo apt-get update -qq
           sudo apt-get install -y -qq osmium-tool
           osmium --version | head -1
 
@@ -189,6 +193,10 @@ jobs:
       # and the summary read "(did not run)". A spike that can fail silently
       # is worse than no spike, because it produces a result-shaped absence.
       - name: Build (control and both arms, or the disk probe)
+        env:
+          MAX_ZOOM: ${{ inputs.max_zoom }}
+          STATES: ${{ inputs.states }}
+          REGIONS: ${{ matrix.regions }}
         run: |
           set -o pipefail
           # -u because Planetiler writes straight to the inherited stdout while
@@ -197,10 +205,10 @@ jobs:
           # was supposed to be explaining, which is how the last failure read.
           python -u spike_shard_seam.py \
             --planetiler-jar planetiler.jar \
-            --max-zoom "${{ inputs.max_zoom || '14' }}" \
+            --max-zoom "${MAX_ZOOM:-14}" \
             --mode "${{ matrix.mode }}" \
             --geofabrik-base "${{ matrix.base }}" \
-            --states ${{ inputs.states != '' && inputs.states || matrix.regions }} \
+            --states ${STATES:-$REGIONS} \
             | tee build.log
 
       # continue-on-error because the matrix legs race: both may miss the
@@ -271,7 +279,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           df -h /
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: shard-seam-spike-${{ matrix.scenario }}

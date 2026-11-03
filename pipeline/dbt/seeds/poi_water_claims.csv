@@ -1,0 +1,6 @@
+provenance,claim
+FarOut,ATC measured how far the nearest water waypoint in FarOut is from {placed_on}
+NHDP_HR_Stream,ATC measured how far the nearest USGS-mapped stream is from {placed_on}
+NHDP_HR_Pond,ATC measured how far the nearest USGS-mapped pond is from {placed_on}
+OSA_Field_Estimate,An ATC steward estimated how far water is from {placed_on}
+*,ATC's index gives how far water is from {placed_on}

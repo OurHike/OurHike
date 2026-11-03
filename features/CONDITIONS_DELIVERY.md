@@ -102,11 +102,16 @@ warning, and then via the stable-indirection option, not a longer signature.
 ### 2. How it is produced
 
 A scheduled job reads verified rows from Postgres and writes the artifacts — the same
-shape as `publish-vector-data.yml`, on a daily schedule.
+shape as `publish-vector-data.yml`. Its cron asks for **hourly** (since 2026-08-15, #720).
+GitHub's scheduler delivers about **every four hours**, measured on 2026-09-25 (#1316):
+40 scheduled runs, 2026-09-18 16:42Z to 2026-09-25 08:10Z, all successful: median gap 4.0 h, mean 4.1 h, max 6.3 h. So a closure verified just after a run can take around six hours to reach the bucket,
+not one. The maintainer accepted that cadence rather than adding an outside trigger (poll,
+2026-09-25), the same answer given for weather on 2026-09-24 (`features/WEATHER.md`).
 
-**Daily is the maintainer's stated tolerance** (2026-08-08): *"a closure can be latent by a
+**A day is still the maintainer's stated tolerance** (2026-08-08): *"a closure can be latent by a
 day. we won't be adjusting minute by minute."* Recorded here because it is the number the
-whole design rests on, and because a future reader will otherwise assume it was guessed.
+whole design rests on, and because a future reader will otherwise assume it was guessed. The
+measured cadence sits well inside it.
 
 **It needs a read-only database credential, distinct from the two that already exist.**
 The repository already draws this distinction twice — `*_MIGRATION_DATABASE_URL` is not
@@ -211,6 +216,64 @@ The existence question is asked first and with `to_regclass()`, because `has_tab
 and a `::regclass` cast both raise on a relation that is not there — which is what a
 production database looks like between an exporter landing on `main` and a human dispatching
 `migrate.yml` for it.
+
+#### Two paths, one switch (#1793)
+
+**#1793 — Rebuild the data platform as dlt → dbt: seven contracted marts, a monthly
+refresh, published docs, and lighter phone downloads** adds a second way to produce the same
+files, and `publish-conditions.yml` chooses between them with one value per environment,
+`PHONE_FILES`:
+
+- **`exporters`** is everything above. Production ran it until the cutover of 2026-10-23,
+  **#1880 — Production still builds its notices, closures and hazard areas with the
+  exporters, so 78 organizations' notices reach UA only**. The rollback is one line
+  (`PRODUCTION_PHONE_FILES`); a dispatch picks either path for one run with `phone_files`.
+- **`dbt`** is ELT.md's hourly lane, which UA runs. Per leg: dlt reads OurHike's own rows
+  through these same queries (`extract/_shared/ourhike/`), NWS, ATC, NYNJTC, OPRHP's trail
+  closures and the work projects into the private raw store, one dlt pipeline per leg
+  (`conditions_production`, `conditions_ua`); the newest served copy of every other club's
+  notices is added beside them (below); `build_marts.py --lane hourly` builds the `closures`
+  and `warnings` marts and their `pub_` writers; and `publish.py` runs with
+  `OURHIKE_PHONE_FILES=dbt`, taking `closures.json`, `reports.json`, `atc_updates.json` and
+  `nynjtc_alerts.json` from the writers while the exporters still write the files no writer
+  owns yet (drought, notes and disputes among them).
+
+**Two jobs feed the hourly lane.** Every club's and agency's notices are read by a job of
+their own, `extract-notices.yml`, every 4 hours with up to an hour to read. This hourly job
+keeps what a storm or a moderator's closure turns on: NWS's alerts, OurHike's own moderated
+closures and reports, and ATC's and NYNJTC's notices, which with OPRHP's closures and the
+work projects are the twelve tables `extract/_run.py`'s `HOURLY_JOB_TABLES` names. The
+notices job reads the rest into its own legs' stores (`notices_production`, `notices_ua`),
+then copies what a build reads, write-once, under each store's `served/`
+(`extract/_warehouse.py`, "THE SERVED COPY"), and this job adds the newest copy to its
+warehouse each hour. So the closures and warnings marts carry every club's notices hourly, as
+old as that job's last read: up to about 4 hours, plus however late GitHub fires its cron,
+and the phone already says how old. The copy exists because a notices load deletes a table's
+files before it writes the new ones; reading the store while one commits could find a
+closures layer half gone. A copy that will not read falls back to the one before, and the
+run goes red after publishing; no copy at all yet is a warning. Neither stops this job's own
+publish, and in both the build saves no row history, so a notice missing for an hour is never
+recorded as lifted.
+
+**One club's failure is its own on the dbt path, and OurHike's is still everyone's.** A leg
+reads each upstream separately, within a 150-second budget (1,800 seconds on a notices leg),
+and one that fails, runs out of time or is refused by the run check is left out, with its last
+committed table standing and the run turned red after the rest has published. That keeps the
+bake's own carry-forward for ATC and NYNJTC. OurHike's own closures and reports keep the rule
+above, "either of them failing the same check is a regression and still stops the run": a
+carried-forward table would publish under a new `generated_at`, an "as of" fresher than its
+data.
+
+**The production leg runs only from `main`.** A dispatch from any other ref, or one from
+`main` asking for `ua`, publishes UA alone (`.github/tests/test_conditions_production_leg_needs_main.py`).
+That is what lets the UA soak dispatch the dbt path from a pull request's branch without that
+branch ever writing what hikers read.
+
+**The budget.** On the runner, 28 green UA dispatches (2026-10-04 to 06) took the whole job
+288 to 383 s, the extract step 60 to 98 s and the build step 134 to 203 s (Measured from the
+Actions API's step times). The job's cap is 16 minutes, held by
+`.github/tests/test_conditions_build_budget.py`. On the fixtures the four files came out with
+no differences from today's exporters (`parity.py`).
 
 ### 3. How the client reads it
 

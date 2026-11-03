@@ -42,6 +42,8 @@ import { TABS, type TabId } from './tabs'
 import { HIKER_MODE_LABELS, type HikerMode } from '../lib/hikerMode'
 import { ModeIcon } from './ModeIcon'
 import logoIcon from '../design-system/assets/logo-icon.svg'
+import { AccountButton } from './AccountButton'
+import { useDesktop } from '../lib/useDesktop'
 
 export interface TabBarProps {
   active: TabId
@@ -91,6 +93,25 @@ export interface TabBarProps {
   mode?: HikerMode
   /** Open the one mode control. Without it the row still reads, as text. */
   onOpenMode?: () => void
+  /**
+   * The account, for the button in the sidebar's TOP-LEFT corner - null
+   * signed out, which is the state this app works in.
+   *
+   * DRAWN IN THIS LAYOUT AND NOWHERE ELSE. Above the breakpoint Today and
+   * the map are side by side, so the button #1596 put on each of their
+   * headers appeared TWICE on one screen - the maintainer's report,
+   * 2026-09-20, looking at the desktop frame. The sidebar is the one piece
+   * of chrome both of those screens share, so one button in it is one
+   * button on the page, whichever tab is up. The phone keeps the header
+   * buttons, where only ever one screen is drawn at a time.
+   *
+   * Undefined rather than null means "this build cannot sign anybody in";
+   * both this and `onOpenAccount` have to arrive before anything is drawn,
+   * which is the same guard Header.tsx and Today.tsx use.
+   */
+  account?: { email: string } | null
+  /** Opens the sign-in window. See `account`. */
+  onOpenAccount?: () => void
 }
 
 export function TabBar({
@@ -100,6 +121,8 @@ export function TabBar({
   hikeSwitch,
   mode,
   onOpenMode,
+  account,
+  onOpenAccount,
 }: TabBarProps) {
   const readout =
     mode === undefined ? null : (
@@ -116,8 +139,32 @@ export function TabBar({
       </>
     )
 
+  // WHY A HOOK AND NOT A MEDIA QUERY, which is the question useDesktop.ts's
+  // own docstring answers: "a few things cannot be done in CSS". A button
+  // hidden by `display: none` is gone from a browser's accessibility tree but
+  // still in the DOM, and the three places this app can draw an account
+  // button have to add up to ONE. Doing it in CSS left all three in the
+  // markup, which jsdom - loading no stylesheet - reported as three matches
+  // for "Sign in" in App.flows.test.tsx. The rule is stated once, in
+  // chrome/AccountButton.tsx, and read here, in Header.tsx and in Today.tsx.
+  const isSidebar = useDesktop()
+
   return (
     <nav className="tab-bar" aria-label="Main">
+      {/* THE TOP-LEFT CORNER OF THE PAGE, which like the brand mark at the
+          foot belongs to the sidebar layout alone. First in the column so it
+          sits above the tabs rather than in them - it is not a tab, and
+          `role="tablist"` owns `.tab-bar__tabs` alone so it cannot become one
+          by accident. */}
+      {isSidebar && account !== undefined && onOpenAccount !== undefined && (
+        <div className="tab-bar__account">
+          <AccountButton
+            account={account}
+            onOpen={onOpenAccount}
+            className="tab-bar__account-button"
+          />
+        </div>
+      )}
       {readout !== null &&
         (onOpenMode === undefined ? (
           <div className="tab-bar__readout">

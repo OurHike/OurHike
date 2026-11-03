@@ -168,12 +168,47 @@ section already draws this line and this layer inherits it exactly:
   are Phase 3 acceptance runs on real devices plus field testing — a documented manual
   procedure, the same category as the full USGS fetch. **Appium, not Playwright, is the
   tool if those are ever automated**, and nothing here pretends otherwise.
-- **Status: not yet run.** A WebKit project is a four-line addition to `projects`, and it is
-  deliberately not added yet, because no environment this suite has been written in has
-  WebKit installed (`/opt/pw-browsers` holds Chromium alone), and a project whose first run
-  is in CI is a project whose first result is a red pull request. Whoever turns it on runs
-  it locally first, in an environment with `npx playwright install webkit`, and fixes what
-  the engine difference turns up in the same change. `@unvalidated` until then.
+- **Status: on, and it was run first (#1392).** `phone-webkit` is a project in
+  `playwright.config.ts`, running the same hermetic specs as `phone` at the same width.
+  The condition this section set — run it locally, fix what the engine turns up in the
+  same change, and only then let CI see it — was met rather than waived: **146 passed, 3
+  skipped, nothing failed, in 3.6 minutes** (2026-09-15, WebKit 26.6, in the agent
+  sandbox). There was nothing to fix, and that is the finding.
+
+  What had been missing was not the four lines, it was a WebKit that runs.
+  `npx playwright install webkit` downloads and then fails to launch on four missing
+  system libraries (`libenchant-2`, `libsecret-1`, `libGLESv2`, `libx264`);
+  `npx playwright install-deps webkit` supplies them. CI installs 51 of those 61 packages by
+  hand rather than with `--with-deps` — `xvfb` and nine font packages are left out, the
+  first because a headless run does not use it and the rest because the runner already
+  carries them for Chromium — because
+  `.github/tests/test_apt_update_is_not_fatal.py` refuses that flag for a reason that
+  still holds (#1361) — and doing it by hand is what lets it follow this repository's own
+  apt rule instead (#1366).
+
+  **No `desktop-webkit`, deliberately.** WebKit at phone width is the iOS shell; WebKit at
+  laptop width is a combination nothing this project ships runs, and it would cost a third
+  of the suite's time to assert it. The day a WebKit laptop browser is a target is the day
+  that project earns its place.
+
+  It runs the whole phone suite rather than a tagged subset, which is the one place this
+  departs from what the issue suggested. An engine difference is not knowable in advance
+  the way a layout fork is: a `@webkit` tag can only carry the differences somebody
+  already found, and those are exactly the ones that need no test.
+
+  **The hermetic half only, and that IS a finding.** Run against `client/e2e/data/`,
+  WebKit reaches 150 seconds still reporting *"No trail line"* on a camera where Chromium
+  has the line, the waypoints and a drawn closure tape within 30 — so every spec that taps
+  something on the trail fails there, while one tapping a mark placed at its own coordinate
+  passes. Measured 2026-09-15 in the agent sandbox, with a screenshot either side, and it
+  is not slowness: the 150-second frame is identical to the 30-second one. Nobody has
+  established whether that is WebKit or this sandbox's `scripts/data-proxy.mjs` under
+  WebKit, and it cannot be told apart from here — CI reaches the bucket directly and has
+  never run WebKit against it. `@unvalidated`, and
+  **[#1467 — WebKit draws no trail line where Chromium draws one, and nobody knows yet whether that is the engine or the sandbox](https://github.com/OurHike/OurHike/issues/1467)** is where it is written down.
+  Until it is understood the data half stays on Chromium, because this section's own rule
+  is that a project is turned on by somebody who has FIXED what the engine turned up, not
+  by somebody who found something they could not explain.
 
 ### Data freshness — live, cached, and absent
 
@@ -465,7 +500,7 @@ its chips landing pre-filtered; Cancel landing in Plan's room whatever door open
 kept (R3); the shape control's three values; undo; the gap-crossing acknowledgement; a
 route that cannot be routed saying so.
 
-**F5 step 3 · Details and Save** — the review card under the rail; the name field committing
+**F5 step 3 · Details** — the review card under the rail; the name field committing
 on blur rather than per keystroke; water and stop rows **absent rather than "none"** when
 there is nothing to list; "‹ Route" keeping the name and date; Save landing on the saved
 card; the saved card's doors — Walk this, Leave it with someone, Edit the route, Delete —
@@ -486,6 +521,19 @@ the note that says why.
 **F9 reporting** — the report window; a report queued offline and sent on reconnect with the
 authoring timestamp; "Your reports" showing waiting and sent with status; "Your photos and
 notes" saying what is not kept there.
+
+**There is no F10 and no F11, and nobody recorded why** (#1394). Saying that rather than
+inventing a reason, because a reason is what a reader would otherwise reconstruct and there
+is nothing to reconstruct it from: `git log -S F10` and `-S F11` over this file and
+`client/src/test/flowCoverage.ts` return **no commit at all**, so the two numbers were never
+used and then dropped — they were simply never assigned. The catalogue is consistent with
+the ledger either way, which is why nothing is broken and why nothing caught it.
+
+Left as it stands rather than renumbered, and that part *is* a decision. The numbers are
+load-bearing — `flowCoverage.ts`'s `step` strings quote them — so closing the gap means
+editing both files in one commit and re-reading every row to check it still describes the
+step it now claims, to buy a reader nothing this paragraph does not already give them. **F13
+does not mean thirteenth**, and that is the whole of what the gap costs.
 
 **F12 the map** — In view counting what is actually in view; the legend's fold and its
 switches; the two safety sheets on their taps and **the tap order between them**; a waypoint
@@ -544,9 +592,10 @@ check read either answer. A test nobody runs is a comment with a longer syntax.
 
 The job carries the same scope gate as the unit suite and the same deliberate absence of
 a job-level `if:`, so a change touching nothing under `client/` finishes it green rather
-than leaving a required check unreported. It installs Chromium alone — the engine axis
-above says why WebKit is not on yet — builds the real bundle rather than running the dev
-server, and keeps the HTML report, traces included, for a fortnight when it fails.
+than leaving a required check unreported. It installs Chromium and WebKit — both engines,
+since #1392, because one bundle ships in two WebViews and Chromium alone tested half of
+what a hiker runs — builds the real bundle rather than running the dev server, and keeps
+the HTML report, traces included, for a fortnight when it fails.
 
 ## Boundaries
 
@@ -571,6 +620,15 @@ server, and keeps the HTML report, traces included, for a fortnight when it fail
   IndexedDB there. The split is deliberate — `playwright.config.ts`'s `FLOW_DATA` comment
   carries what reading a network costs and the three things that bound it, and the two halves
   are two CI jobs so a bucket outage never reads as a broken client.
+
+  **Hermetic includes the backend-shaped build.** The `@backend` tests (#1643) run against a
+  second build with an API base and a Supabase project baked in, both pointing at the
+  build's own origin, and `e2e/support/backend.ts` answers every request under them with
+  `page.route` — so they still reach nothing external. It exists because Vite inlines those
+  two variables at build time: the outbox send, the email code step and a live organization's
+  console are only reachable in a build that set them. One measured trap is written into
+  that file: with `context.setOffline(true)` in force, a request still reaches `page.route`,
+  so the stub keeps its own offline flag (`setBackendSignal`).
 
 - **Vitest owns `src/`, Playwright owns `e2e/`.** `vite.config.ts` scopes vitest's include to
   `src/` — its default glob does not stop there and swept up `e2e/*.spec.ts`, running
@@ -620,10 +678,13 @@ headed, and there is no display in CI or in an agent sandbox.
 
 - **`sweepForBuilder` is the one exit the guard cannot see.** #1374's review found it: a live
   day-hike draft under step 1 survives an ordinary tab tap, but switching mode to Long and
-  tapping "Pick on the map" sweeps it with no bail sheet. `e2e/bailSheet.spec.ts` carries the
-  repro written out in full as a `test.skip`, blocked on **#1387 — Neither the Playwright
-  suite nor the screenshot recipes can put a live draft in the day-hike builder without a
-  reachable bucket**.
+  tapping "Pick on the map" sweeps it with no bail sheet. The defect is
+  **#1378 — Switching the mode under step 1 with a live day-hike draft, then picking on the
+  map, sweeps the draft without asking**; `e2e/bailSheet.spec.ts` carries the repro written
+  out in full as a `test.skip`, blocked on **#1387 — Neither the Playwright suite nor the
+  screenshot recipes can put a live draft in the day-hike builder without a reachable
+  bucket**. Both numbers, because they answer different questions: #1387 says why the test
+  cannot run, #1378 says what it is for (#1394).
 
   **Part of that blocker is gone and the skip stays, which is worth being exact about.** Since
   2026-09-11 `e2e/data/` reaches the builder with a real junction graph under it — proved:
@@ -796,16 +857,25 @@ headed, and there is no display in CI or in an agent sandbox.
   repository's test job — a bigger decision than the coverage it buys, and one for the
   maintainer rather than for a spec: **#1399 — The flow suite has no account, so the
   three screens behind one cannot be driven**.
+
+  **A third shape exists since #1643 — The org console's permission matrix skips ten
+  endpoints, and the position mark and outbox drain have no end-to-end test**, and it
+  needs neither a project nor a credential. `playwright.config.ts`'s `phone-backend`
+  project drives a second build of the same app with `VITE_API_BASE_URL` and
+  `VITE_SUPABASE_URL` pointed at paths on its own origin, where
+  `e2e/support/backend.ts` answers every request with `page.route`; `seedSession`
+  writes a session into supabase-js's own storage key, and the real client restores it.
+  It is what drives the outbox send, the email code and a live organization's console
+  today. The three screens above are still undriven — nobody has written those specs —
+  and whether this shape is the answer #1399 wants is still the maintainer's call.
   `e2e/more.spec.ts` already asserts the registry's gate is SHUT, which is the half
   of D4 that can be proved from outside.
 
-- **`screens/EmailSignIn.tsx` is not a gap at all — it is unreachable on purpose**,
-  and the ledger now says `unit-only` rather than `planned`. `ENABLED_PROVIDERS`
-  defaults to `google` alone because Supabase's built-in sender "is not a delivery
-  path this project can ship on" (`lib/supabase.ts`), and the screen is mounted only
-  when the sign-in prompt offers email. Every build this project deploys therefore
-  renders "Continue with Google" and nothing else, measured 2026-09-11. It returns
-  when a sender does.
+- **`screens/EmailSignIn.tsx` is covered, both steps**, by `e2e/identityRooms.spec.ts`'s
+  `@backend` test (#1643): an eight-digit code typed key by key, the token Supabase
+  receives, and a header that comes out signed in. (This bullet said the screen was
+  unreachable on purpose while `ENABLED_PROVIDERS` defaulted to Google alone; #1572
+  put email in the list, and the ledger had already moved to `planned`.)
 - **One screen branches on the user agent, and that is a third thing from either
   axis above.** `screens/InstallPrompt.tsx` is the only surface whose content is
   decided by which phone it is, because `detectInstallPlatform()` reads

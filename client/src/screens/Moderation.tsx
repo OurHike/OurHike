@@ -93,11 +93,15 @@ import {
   type VolunteerHoursQueueEntry,
 } from '../lib/api'
 import { observationLabel } from '../lib/fieldNotes'
+import { feetFromMetres, formatShortDistance, type UnitSystem } from '../lib/units'
 import { ACTIVITY_LABELS } from '../lib/volunteerHours'
 import './moderation.css'
 
 export interface ModerationProps {
   onClose: () => void
+  /** The moderator's unit system, for the radius a GPS-placed report carries
+   *  (lib/units.ts) - the one length this screen prints. */
+  units: UnitSystem
 }
 
 /** How long ago, in the coarsest unit that is still useful.
@@ -113,12 +117,92 @@ export function ageOf(iso: string, now: Date = new Date()): string {
   return `${Math.floor(minutes / (60 * 24))}d`
 }
 
-/** Where a report happened, in the words the form used - see ReportForm's
- *  `describeLocation` for why 0,0 is never a stand-in for "unknown". */
-function placeOf(report: QueuedReport): string {
+/** A fix's age as a moderator reads it beside the radius: "40 s", "12 min",
+ *  "3 h" - the coarsest unit that is still useful, like `ageOf`. */
+function fixAgeOf(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`
+  return `${Math.floor(seconds / 3600)} h`
+}
+
+/**
+ * How a report came by its coordinates (#1563), as a suffix to the place.
+ *
+ * THE PROVENANCE REACHES THE PERSON READING IT, which is the whole point of
+ * carrying it: a blowdown at 35.6123, -83.4987 is a different claim when the
+ * phone said ±16 ft a moment earlier than when it said ±800 ft forty minutes
+ * before, or when a thumb put it there on a map. Nothing for a row filed by
+ * an older client, which said nothing - an absent claim is not "GPS".
+ */
+function provenanceOf(report: QueuedReport, units: UnitSystem): string {
+  switch (report.location_source) {
+    case 'gps': {
+      const radius =
+        report.location_accuracy_m === null || report.location_accuracy_m === undefined
+          ? null
+          : `±${formatShortDistance(feetFromMetres(report.location_accuracy_m), units)}`
+      const age =
+        report.location_fix_age_s === null || report.location_fix_age_s === undefined
+          ? null
+          : `fix ${fixAgeOf(report.location_fix_age_s)} old`
+      const parts = [radius, age].filter((part): part is string => part !== null)
+      return parts.length === 0 ? ' · GPS' : ` · GPS ${parts.join(', ')}`
+    }
+    case 'map':
+      return ' · marked on the map'
+    // No `poi` arm: a waypoint-anchored row carries `poi_id`, and `placeOf`
+    // names the waypoint before this is asked (review of #1571 found the
+    // arm unreachable).
+    default:
+      return ''
+  }
+}
+
+/**
+ * Who put their name to a report and whether they may be asked more (#1563).
+ * Only a moderator's view carries these - the server withholds them from
+ * everyone else like `reporter_id` - and an absent name is exactly that:
+ * nothing is printed for it, never "anonymous", which would be a claim.
+ */
+function signerOf(report: QueuedReport): string {
+  const parts: string[] = []
+  if (report.signed_name !== null && report.signed_name !== undefined) {
+    // The kind only when the row states one. The router drops a kind
+    // without a name and not the reverse, so a name with no kind is a row
+    // the server can hold; calling it a trail name would be this screen
+    // claiming what the row does not (review of #1571).
+    const kind =
+      report.signed_name_kind === 'real'
+        ? ' (real name)'
+        : report.signed_name_kind === 'trail'
+          ? ' (trail name)'
+          : ''
+    parts.push(`signed ${report.signed_name}${kind}`)
+  }
+  if (report.contact_ok === true) parts.push('may be contacted')
+  return parts.map((part) => ` · ${part}`).join('')
+}
+
+/** Where a report happened, in the words the form used - see
+ *  lib/reportLocation.ts for why 0,0 is never a stand-in for "unknown". */
+function placeOf(report: QueuedReport, units: UnitSystem): string {
   if (report.poi_id !== null) return `at ${report.poi_id}`
-  if (report.lat === null || report.lon === null) return 'no location'
-  return `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}`
+  if (report.lat === null || report.lon === null) {
+    // THE HIKER'S OWN WORDS, when they are the only thing that can say where
+    // this was (#1439, D16). A report with no fix and no waypoint is exactly
+    // the one a moderator cannot place any other way, so dropping the words
+    // here would leave the queue saying "no location" about a report that
+    // named one. Quoted, because they are somebody's sentence and not this
+    // app's - and never turned into a pin: placing it is the moderator's act.
+    const words = report.place_words ?? null
+    return words === null || words.trim() === '' ? 'no location' : `“${words}”`
+  }
+  // And beside coordinates, when the hiker typed them anyway: a coarse fix
+  // and "at the ford below the gap" place a report better than either alone
+  // (lib/reportLocation.ts sends both since the review of #1571).
+  const words = report.place_words ?? null
+  const said = words === null || words.trim() === '' ? '' : ` — “${words}”`
+  return `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}${provenanceOf(report, units)}${said}`
 }
 
 /** Where a field note was written, in the same order of preference the
@@ -179,7 +263,24 @@ const TYPE_WORDS: Record<string, string> = {
  *  one request against a check that has to run every time anyway - which is
  *  why the TTL did not need lengthening, and app/core/photos.py records why
  *  lengthening it would have been the wrong trade. */
-function ReportPhoto({ report }: { report: QueuedReport }) {
+function ReportPhotos({ report }: { report: QueuedReport }) {
+  // HOW MANY THERE ARE, and the fallback is the rollout (#1439). A server
+  // running the previous release sends no `photo_count` at all, and a report
+  // with a `photo_url` has one photo - which is exactly what the migration's
+  // own backfill says about the same row. Nothing is inferred beyond that.
+  const count = report.photo_count ?? (report.photo_url !== null ? 1 : 0)
+  if (count === 0) return null
+
+  return (
+    <>
+      {Array.from({ length: count }, (_, at) => (
+        <ReportPhoto key={at + 1} report={report} index={at + 1} />
+      ))}
+    </>
+  )
+}
+
+function ReportPhoto({ report, index }: { report: QueuedReport; index: number }) {
   // Photos of people wait to be asked for; a blowdown does not.
   const sensitive = report.type === 'bad_hikers'
   const [asked, setAsked] = useState(!sensitive)
@@ -191,17 +292,16 @@ function ReportPhoto({ report }: { report: QueuedReport }) {
   // failure is reported rather than retried around forever.
   const [brokeOnce, setBrokeOnce] = useState(false)
 
-  // `photo_url` is checked here as well as at the early return below, because
-  // the early return comes after the hooks - so without it a report with no
-  // photo would still spend a request asking for one.
-  const has = report.photo_url !== null
+  // The caller only renders as many of these as the report claims, so there
+  // is always one to ask for by the time this mounts.
+  const has = true
 
   useEffect(() => {
     if (!has || !asked) return
     let live = true
     const controller = new AbortController()
 
-    fetchReportPhotoLink(report.id, controller.signal)
+    fetchReportPhotoLink(report.id, index, controller.signal)
       .then((link) => {
         if (!live) return
         setUrl(link.url)
@@ -217,7 +317,7 @@ function ReportPhoto({ report }: { report: QueuedReport }) {
       live = false
       controller.abort()
     }
-  }, [has, asked, request, report.id])
+  }, [has, asked, request, report.id, index])
 
   const askAgain = () => {
     setRefused(false)
@@ -270,7 +370,7 @@ function ReportPhoto({ report }: { report: QueuedReport }) {
       src={url}
       // Named rather than empty: a moderator on a screen reader is deciding
       // the same thing, and "" would say this image carries no information.
-      alt={`Attached to this ${(TYPE_WORDS[report.type] ?? report.type).toLowerCase()} report`}
+      alt={`Photo ${index} attached to this ${(TYPE_WORDS[report.type] ?? report.type).toLowerCase()} report`}
       onLoad={() => setBrokeOnce(false)}
       onError={() => {
         // First failure is almost always an expired link, because a queue is
@@ -351,7 +451,7 @@ function NoteQueuePhoto({
   )
 }
 
-export function Moderation({ onClose }: ModerationProps) {
+export function Moderation({ onClose, units }: ModerationProps) {
   const [queue, setQueue] = useState<ModerationQueue | null>(null)
   // Three states, not two. An empty queue and a queue that could not be read
   // draw the same screen and mean opposite things - and here the wrong one
@@ -456,11 +556,11 @@ export function Moderation({ onClose }: ModerationProps) {
       <p className="moderation__headline">
         <span className="moderation__type">{TYPE_WORDS[report.type] ?? report.type}</span>
         <span className="moderation__meta">
-          {`${report.reporter_type} · ${placeOf(report)} · ${ageOf(report.timestamp)}`}
+          {`${report.reporter_type} · ${placeOf(report, units)} · ${ageOf(report.timestamp)}${signerOf(report)}`}
         </span>
       </p>
       {report.note !== null && <p className="moderation__note">{report.note}</p>}
-      <ReportPhoto report={report} />
+      <ReportPhotos report={report} />
       <div className="moderation__actions">
         <button
           type="button"

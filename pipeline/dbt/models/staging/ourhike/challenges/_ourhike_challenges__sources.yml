@@ -1,0 +1,60 @@
+version: 2
+
+# OurHike's challenge scope file, in its own file beside _ourhike__sources.yml,
+# which declares OurHike's other reviewed files under the same source name:
+# dbt merges one source's tables across files (dbt 2.0.6, parsed 2026-10-02),
+# and each block's config applies to its own tables.
+sources:
+  - name: ourhike
+    description: >
+      OurHike's own data. This file holds reference/challenges/publishers.json,
+      landed by the extract's _shared/ourhike/challenge_publishers.py.
+    schema: raw
+    config:
+      # When the extract last read each table or confirmed it unchanged, from
+      # its run log, never `_loaded_at`: make_dbt_staging.py's
+      # LOADED_AT_QUERY and MONTHLY_FRESHNESS_DAYS say why, and
+      # tests/test_source_freshness.py holds every monthly source to them.
+      loaded_at_query: "{{ last_read_or_confirmed_at(this) }}"
+      meta:
+        cadence: monthly
+      freshness:
+        warn_after: {count: 35, period: day}
+        error_after: {count: 62, period: day}
+    tables:
+      - name: raw_ourhike__challenges_publishers
+        data_tests:
+          # Rows sharing base_ourhike__challenges_publishers's key must be exact copies.
+          - duplicates_are_exact:
+              arguments:
+                key_columns: ["'reference/challenges/publishers.json'", "_path"]
+          # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
+          - elementary.volume_anomalies:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_anomaly_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+          - elementary.schema_changes:
+              config:
+                severity: error
+                fail_calc: "{{ var('elementary_schema_change_level') }}"
+                warn_if: ">0"
+                error_if: ">1"
+                tags: [elementary_check]
+                enabled: "{{ env_var('OURHIKE_ELEMENTARY_CHECKS', 'false') == 'true' }}"
+        description: >
+          reference/challenges/publishers.json whole, as one row, verbatim:
+          which trails each organization may put a challenge on (#1780 — Let
+          a club publish a challenge — places on its own trails that hikers
+          opt into and tag at camp — starting with the ATC's A.T. Summer
+          Bucket List, design principle 5), one row per organization with its
+          reason and its web domain. One organization on 2026-10-02, the ATC.
+        columns:
+          - name: row_json
+            description: The file as written, `_README` aside, as JSON text.
+            data_tests: [not_null]
+          - name: _path
+            description: The file's path in the repository.

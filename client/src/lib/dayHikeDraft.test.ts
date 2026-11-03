@@ -34,6 +34,7 @@ import {
   removeTap,
   undoTap,
   walkEnds,
+  type DayHikeDraft,
 } from './dayHikeDraft'
 import { buildGraphIndex, type RouteLeg, type TrailGraph } from './trailGraph'
 
@@ -189,6 +190,37 @@ describe('tapping', () => {
     )
     expect(tapAt(index, EMPTY_DRAFT, OFF_TRAIL).refusal).toBe(OFF_NETWORK_REFUSAL)
     expect(tapAt(index, EMPTY_DRAFT, OTHER_ISLAND).refusal).toBeNull()
+  })
+})
+
+describe('the organizations counted beside the route order (#1433, #1115)', () => {
+  // Since #1433 a leg is one NAME and one blaze, which two stewards can carry
+  // end to end - so a merge can swallow an organization. `tallyBySource` has
+  // counted a leg's folded-in organizations since #1115; this copy did not,
+  // and the bar beside the route order would have printed one organization
+  // where two keep the walk open. That is the silently-dropped steward #1115
+  // exists to prevent, arriving by a second door.
+  const HANDED_OVER: TrailGraph = {
+    nodes: GRAPH.nodes,
+    edges: GRAPH.edges.map((edge, at) =>
+      at === 1 ? { ...edge, trail_id: 'nynjtc:7', source: 'nynjtc' } : edge,
+    ),
+  }
+
+  it('counts both stewards of a run that crossed between them, on one leg', () => {
+    const handed = buildGraphIndex(published(HANDED_OVER))
+    const draft = tapAt(handed, tapAt(handed, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+    const status = draftStatus(handed, draft)
+
+    expect(status.kind).toBe('routed')
+    if (status.kind !== 'routed') return
+    // One row, because a reader cannot tell the two halves apart.
+    expect(status.legs).toHaveLength(1)
+    // Two organizations, because both of them keep it walkable.
+    expect(status.legsBySource).toEqual([
+      { source: 'oprhp_trails', legs: 1 },
+      { source: 'nynjtc', legs: 1 },
+    ])
   })
 })
 
@@ -505,6 +537,76 @@ describe('several stretches, and the gap between them (#935, #983)', () => {
     // re-resolved and falls back to its cache for ever.
     expect(canStartStretch(twoStretches())).toBe(true)
     expect(canCloseLoop(twoStretches())).toBe(false)
+  })
+})
+
+describe('the taps, placed in the walk (#1433)', () => {
+  // `DraftStatus.turns` is what lets the route order show a tap BETWEEN the two
+  // rows it divides, which is the only thing making two rows of one trail
+  // legible now that `routeThrough` keeps a boundary at a point somebody
+  // placed. What is worth pinning is the arithmetic that turns a tapped pair
+  // back into the tap it ended at - trivial for a plain walk, and not for the
+  // two shapes that route points the hiker never tapped.
+  const routed = (draft: DayHikeDraft) => {
+    const status = draftStatus(index, draft)
+    if (status.kind !== 'routed') throw new Error('fixture should route')
+    return status
+  }
+  const three = () =>
+    tapAt(
+      index,
+      tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER),
+      UP_SEVEN_HILLS,
+    )
+
+  it('places one tap per point, each against the legs before it', () => {
+    const status = routed(three())
+
+    expect(status.turns.map((turn) => turn.ordinal)).toEqual([0, 1, 2])
+    expect(status.turns.map((turn) => turn.label)).toEqual([1, 2, 3])
+    // Non-decreasing, because a later tap cannot come before an earlier leg.
+    const placed = status.turns.map((turn) => turn.afterLegs)
+    expect(placed[0]).toBe(0)
+    expect(placed[1]).toBeLessThanOrEqual(placed[2])
+    expect(placed[placed.length - 1]).toBe(status.legs.length)
+  })
+
+  it('brings an out-and-back home through the taps it already passed', () => {
+    // `thereAndBack` routes p0..pn-1 then pn-2..p0, so the pairs past the
+    // turnaround end at taps the hiker placed on the way out. A tap passed
+    // twice lists twice - which is what an out-and-back IS - and the walk
+    // both starts and finishes at tap 1.
+    const status = routed(shapeDraft(three(), 'out-and-back'))
+
+    expect(status.turns.map((turn) => turn.label)).toEqual([1, 2, 3, 2, 1])
+  })
+
+  it('brings a loop back to the tap it started from', () => {
+    // `closeTheLoop` appends the first point, so the last pair ends where the
+    // walk began. Anything else would leave the closing leg unattributed to
+    // any point the hiker chose.
+    const status = routed(shapeDraft(three(), 'loop'))
+
+    expect(status.turns.map((turn) => turn.label)).toEqual([1, 2, 3, 1])
+  })
+
+  it('numbers across a gap, and flags the tap the gap starts after', () => {
+    // The labels have to match the marks App.tsx draws on the map, which run
+    // straight through a gap - restarting at 1 would say the second stretch is
+    // a second hike. And the tap a gap follows says so on its own row, because
+    // a hiker deleting it needs to know what else goes.
+    let draft = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+    draft = startStretch(draft)
+    draft = tapAt(index, tapAt(index, draft, UP_SEVEN_HILLS), SEVEN_HILLS_END)
+    const status = routed(draft)
+
+    expect(status.turns.map((turn) => turn.label)).toEqual([1, 2, 3, 4])
+    expect(status.turns.map((turn) => turn.endsStretch)).toEqual([
+      false,
+      true,
+      false,
+      false,
+    ])
   })
 })
 

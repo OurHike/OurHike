@@ -43,7 +43,14 @@ export interface NoteRollup {
   /** The most recent `observed_at` among the notes given - visible notes
    *  only, which is the caller's contract; hidden ones never reach a
    *  phone. Null when there are no notes, which staleness.ts reads as its
-   *  `never` tier. */
+   *  `never` tier.
+   *
+   *  The newest note's date WHATEVER THAT NOTE SAID - so a spring somebody
+   *  reported `dry` yesterday reads as freshly confirmed, and the ring
+   *  means somebody was here rather than somebody found it fine. That is
+   *  the maintainer's decision of 2026-09-21 (#1603) rather than an
+   *  oversight: feeding this only from the good end of each type's
+   *  vocabulary was drawn, offered and not taken. */
   lastConfirmedAt: Date | null
   headline: NoteHeadline | null
   /** Both sides of a live disagreement, most recent first - or null when

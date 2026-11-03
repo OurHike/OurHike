@@ -58,7 +58,9 @@ month does not need an optimisation.
 FAILING IS NOT THE SAME AS FINDING NOTHING - `fetch_atc_updates.py`'s rule,
 and it transfers unchanged. A run that cannot reach NYNJTC, or that reads a
 payload it does not recognise, leaves the previous cache in place and exits
-non-zero. The cache is written atomically at the end for that reason.
+non-zero. The cache is written atomically at the end for that reason - one
+`os.replace` (lib/atomic_write.py), never a truncating write under the real
+name that the workflow's `if: always()` save would then cache.
 """
 
 from __future__ import annotations
@@ -70,6 +72,7 @@ from pathlib import Path
 
 import requests
 
+from lib.atomic_write import write_text_atomically
 from lib.http_retry import request_with_retry
 from lib.nynjtc_alerts import (
     PLACE_TAXONOMIES,
@@ -165,6 +168,13 @@ def as_cache_entry(alert, now: datetime) -> dict:
     }
 
 
+def write_cache(path: Path, document: dict) -> None:
+    """The cache, replaced in one step or not at all - fetch_atc_updates.py's
+    `write_cache`, for the same save-`if: always()` reason."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_text_atomically(path, json.dumps(document, indent=2) + "\n")
+
+
 def main() -> int:
     now = datetime.now(timezone.utc)
     http = session()
@@ -205,17 +215,13 @@ def main() -> int:
         print("Leaving the previous cache in place - see this file's docstring.")
         return 1
 
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_text(
-        json.dumps(
-            {
-                "fetched_at": now.isoformat(),
-                "listed": len(alerts),
-                "alerts": {alert.slug: as_cache_entry(alert, now) for alert in alerts},
-            },
-            indent=2,
-        )
-        + "\n"
+    write_cache(
+        CACHE_PATH,
+        {
+            "fetched_at": now.isoformat(),
+            "listed": len(alerts),
+            "alerts": {alert.slug: as_cache_entry(alert, now) for alert in alerts},
+        },
     )
 
     placeable = [alert for alert in alerts if not alert_problems(alert)]

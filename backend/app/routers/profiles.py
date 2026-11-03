@@ -1,5 +1,6 @@
 """`/profiles` endpoints - who you are, everything we hold, and the way out."""
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,10 +8,17 @@ from sqlalchemy.orm import Session
 
 from app.core.account_deletion import delete_account
 from app.core.account_export import build_export
-from app.core.auth import get_current_user
+from app.core.analytics_accounts import LinkedUsageUnreachable
+from app.core.auth import get_current_github_login, get_current_user
+from app.core.logs import describe_failure
+from app.core.mail import ses_client
+from app.core.support import notify_stop
 from app.db.session import get_db
 from app.models.profile import Profile
+from app.models.support import SupportChoice
 from app.schemas.profile import DeletionReceipt, ProfileOut
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -75,16 +83,51 @@ def delete_my_account(
     204 was considered and refused for exactly that: an empty body is the
     honest answer only if there is nothing the hiker needs to know, and here
     there is.
+
+    503 WHEN THE USAGE IT LINKED CANNOT BE FOUND. Linked usage rows exist and
+    no secret is configured to recompute this account's key
+    (app/core/analytics_accounts.py): deleting the rest would hand the hiker
+    a receipt while their usage stayed linked. Nothing is changed, and the
+    answer is the same words as the 500 below, because the same thing is true.
     """
-    summary = delete_account(db, current_user)
+    try:
+        summary = delete_account(db, current_user)
+    except LinkedUsageUnreachable:
+        db.rollback()
+        # Names only, like the 500 below: no account id, no key.
+        logger.error("account deletion refused: linked usage rows exist and no analytics user-key secret is configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The account was not deleted. Nothing was changed.",
+        ) from None
     try:
         db.commit()
-    except Exception:
+    except Exception as failure:
         db.rollback()
+        # The cause - a constraint the deletion did not expect - used to reach
+        # no log at all (#1759). The response stays the bare 500 below; the
+        # request id in the line is what ties the hiker's report to it.
+        # Logged by its names only, never with exc_info: the exception's own
+        # text carries the values the statement was bound to, which here are
+        # this hiker's (app/core/logs.py's describe_failure says which).
+        logger.error("account deletion failed at commit; rolled back: %s", describe_failure(failure))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="The account was not deleted. Nothing was changed.",
         ) from None
+
+    # Support the deletion asked to stop (#1876): whoever cancels it is asked
+    # now, after the commit, in a transaction of its own - a mail refusal must
+    # not undo a deletion that already happened. A request that does not go
+    # stays in core/support.py's retry queue, which every webhook delivery
+    # works through.
+    if summary.support_stops_requested:
+        provider = ses_client()
+        for choice_id in summary.support_stops_requested:
+            choice = db.get(SupportChoice, choice_id)
+            if choice is not None:
+                notify_stop(db, choice, mail_provider=provider)
+        db.commit()
 
     return DeletionReceipt(
         trips_deleted=summary.trips_deleted,
@@ -96,5 +139,59 @@ def delete_my_account(
         assignments_released=summary.assignments_deleted,
         hours_deleted=summary.hours_deleted,
         app_failure_reports_unlinked=summary.app_failures_unlinked,
+        challenge_tags_deleted=summary.challenge_tags_deleted,
+        challenge_entries_deleted=summary.challenge_entries_deleted,
+        usage_events_deleted=summary.usage_events_deleted,
         kept=summary.contributions_kept,
     )
+
+
+@router.post("/me/github")
+def link_github_account(
+    current_user: Profile = Depends(get_current_user),
+    github_login: str | None = Depends(get_current_github_login),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Record which GitHub account this person signed in as.
+
+    **THE REQUEST BODY IS NOT READ, AND THAT IS THE WHOLE ENDPOINT.** The
+    login comes off the verified token, because an organization's three
+    codeowners approve its registry pull request on GitHub with these
+    accounts - so a caller who could name the account would be naming whose
+    approval counts on somebody else's organization. Same rule, and the same
+    reason, as the domain check at registration.
+
+    **409 RATHER THAN 403 WHEN THERE IS NOTHING TO READ.** A caller signed in
+    through another provider is entitled to be here; there is simply no
+    GitHub identity on their token. A 403 would tell them they lack
+    permission, which is not what happened and not what they can act on.
+
+    Linking the same account twice is not an error - the console calls this
+    whenever somebody signs in with GitHub, and the second call is the same
+    fact arriving again.
+    """
+    if github_login is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This sign-in did not come from GitHub, so there is no account to link. "
+                "Sign in with GitHub to approve your organization's registry."
+            ),
+        )
+
+    held_by = db.query(Profile).filter(Profile.github_login == github_login).one_or_none()
+    if held_by is not None and held_by.id != current_user.id:
+        # Refused rather than moved. Taking it from the first holder would
+        # let anybody who can sign in as that username unseat them, and a
+        # codeowner seat is exactly the thing worth unseating somebody from.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"The GitHub account {github_login} is already linked to another OurHike account. "
+                "If that is you, sign in to it instead."
+            ),
+        )
+
+    current_user.github_login = github_login
+    db.commit()
+    return {"github_login": github_login}

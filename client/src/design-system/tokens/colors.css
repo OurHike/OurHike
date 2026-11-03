@@ -12,6 +12,14 @@
 --sage-100:#e3ecda;
 --stone-900:#2b2620;
 --stone-700:#5a5346;
+/* `--fg-3`'s ink since #1670 - its three-word job below. Derived rather than
+   picked: the first 1% step along the line from stone-500 to stone-700 whose
+   contrast on the lightest theme's darkest surface (`--bg-sunken`, sage-100)
+   reaches WCAG AA's 4.5:1 - 4.53:1 there, where one step lighter is 4.42:1.
+   The first passing step, so the third text level stays as far from `--fg-2`
+   as a readable grey can be. stone-500 stays in the palette: it is still the
+   neutral blaze (lib/blaze.ts) and a map line, neither of them text. */
+--stone-600:#706859;
 --stone-500:#8a8271;
 --stone-300:#c3baa4;
 --stone-150:#e4ddca;
@@ -53,6 +61,12 @@
 --ink-600:#454033;
 --bone-100:#ece7db;
 --bone-300:#b9b2a2;
+/* stone-600's counterpart (#1670), derived the same way: the first 1% step
+   from bone-500 toward bone-300 that reaches 4.5:1 on the dark theme's worst
+   surface for text, the caution tint (`--surface-warning`, amber-900) -
+   4.53:1 there. bone-500 measured 3.54:1 on that tint and 3.59:1 on
+   `--surface-over-map`. */
+--bone-400:#9e9787;
 --bone-500:#8b8474;
 
 /* Two reds, one meaning. `--alert-red` is the serious-warning red the map
@@ -83,7 +97,11 @@ color-scheme:light;
 
 --fg-1:var(--stone-900);
 --fg-2:var(--stone-700);
---fg-3:var(--stone-500);
+/* The third text level: timestamps, eyebrows, "never synced", "ALWAYS SHOWN".
+   It was stone-500 until #1670 - 3.13 to 3.81:1 on every light surface, so
+   under AA on all of them. contrast.test.ts holds all three levels at 4.5:1
+   on every surface, in both themes. */
+--fg-3:var(--stone-600);
 /* Text over a dark surface - stays light in both themes, because the surface
    it names is dark in both. Distinct from `--fg-on-brand`, which flips: a
    filled brand button is dark green under the light theme and pale moss under
@@ -203,7 +221,10 @@ color-scheme:light;
  * on ink is a 1.9:1 button nobody can read, and `--blaze-orange-dark` as
  * `--danger` is worse - the whole point of the danger colour is that it
  * carries at a glance. Every value below was picked against `--bg-surface`
- * (#1c1a15) at 4.5:1 or better.
+ * (#1c1a15) at 4.5:1 or better - and one surface was not enough: `--fg-3`
+ * passed it at 4.68:1 as bone-500 and failed three other dark surfaces
+ * (#1670). contrast.test.ts now holds every text level against every
+ * surface token instead.
  */
 :root[data-theme='dark']{
 color-scheme:dark;
@@ -219,7 +240,7 @@ color-scheme:dark;
 
 --fg-1:var(--bone-100);
 --fg-2:var(--bone-300);
---fg-3:var(--bone-500);
+--fg-3:var(--bone-400);
 --fg-on-brand:var(--ink-950);
 
 --border-1:var(--ink-700);
@@ -240,7 +261,10 @@ color-scheme:dark;
 --surface-chrome-raised:var(--ink-800);
 --fg-chrome-1:var(--bone-100);
 --fg-chrome-2:var(--bone-300);
---fg-chrome-3:var(--bone-500);
+/* bone-400 rather than bone-500 for the same reason `--fg-3` moved (#1670):
+   bone-500 was 4.32:1 on `--surface-chrome-raised` (ink-800), the Today
+   screen's raised card. */
+--fg-chrome-3:var(--bone-400);
 --border-chrome:var(--ink-700);
 --accent-chrome:var(--moss-400);
 

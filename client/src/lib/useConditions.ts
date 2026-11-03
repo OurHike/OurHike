@@ -9,12 +9,14 @@
 //
 // features/CONDITIONS_DELIVERY.md is the design.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   API_CONFIGURED,
+  NotSignedInError,
   fetchClosures,
   fetchDisputes,
   fetchFieldNotes,
+  fetchMyReports,
   fetchReports,
   type ClosureSummary,
   type ReportSummary,
@@ -36,6 +38,8 @@ import {
   fetchPublishedReports,
   fetchPublishedWorkProjects,
   type OrgNotice,
+  type PublishedConditions,
+  type TrailClosure,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
@@ -46,17 +50,21 @@ import type { WorkProjectSummary } from './workProjects'
 /**
  * How often the published baselines are re-read while the app is open.
  *
- * One hour, deliberately equal to the pipeline's publish cadence
- * (.github/workflows/publish-conditions.yml) rather than a fraction of it.
- * Exported so a test can drive it and so the pairing is greppable from both
- * ends.
+ * One hour, equal to the cadence .github/workflows/publish-conditions.yml's
+ * cron DECLARES rather than a fraction of it. What GitHub's scheduler
+ * delivers is slower, and measured rather than assumed (#1316, 2026-09-25):
+ * 40 scheduled runs, 2026-09-18 16:42Z to 2026-09-25 08:10Z, all successful: median gap 4.0 h, mean 4.1 h, max 6.3 h. The maintainer accepted that cadence rather than
+ * chasing it (poll, 2026-09-25), so the hour stays: it bounds how long after
+ * a publish does land the phone sees it, and a re-read of bytes that have not
+ * changed costs one small fetch. Exported so a test can drive it and so the
+ * pairing is greppable from both ends.
  */
 export const CONDITIONS_REFRESH_MS = 60 * 60 * 1000
 
 /**
  * The shortest gap between two re-reads triggered by the app becoming visible.
  *
- * Five minutes. The hourly interval is paced against the publish cadence, but
+ * Five minutes. The hourly interval is paced against the declared cron, but
  * a return-to-foreground is not a clock tick - it is the one moment we know a
  * hiker is about to READ the thing, and the artifact may have been republished
  * several times while the screen was off. Refetching then is worth the bytes.
@@ -76,6 +84,13 @@ export interface Conditions {
    * status strip's sync age is what tells those apart (lib/syncAge.ts).
    */
   closures: readonly ClosureSummary[] | null
+  /**
+   * `reportState`'s list with the signed-in hiker's own reports merged in
+   * (`fetchMyReports`, #1916): each replaces the shared copy of the same id in
+   * place, and their other reports follow the shared list. Null whenever
+   * `reportState` holds no list, own reports or not, because a list here
+   * claims the public set was read.
+   */
   reports: readonly ReportSummary[] | null
   /**
    * Visible field notes - the map's working set, each place's most recent
@@ -131,6 +146,64 @@ export interface Conditions {
    */
   orgNotices: readonly OrgNotice[]
   /**
+   * Every club's notices, from conditions/notices.json (#1805)
+   * , or null when that file has not reached this phone.
+   *
+   * NULL IS THE ORDINARY STATE WHILE THE EXPORTERS PUBLISH: no exporter
+   * writes the file, only the dbt path does, so on such a bucket it 404s and
+   * the notices panel keeps reading `atcUpdates` and `orgNotices` exactly as
+   * before. An EMPTY list is a different claim - the file arrived and no
+   * club has a notice - and the two are kept apart for that reason.
+   *
+   * The map's A.T. bands and dots still come from `atcUpdates`: ATC's own
+   * file, unchanged, is what draws them.
+   */
+  clubNotices: readonly OrgNotice[] | null
+  /** When conditions/notices.json was baked, for the panel's "as of". */
+  clubNoticesGeneratedAt: Date | null
+  /**
+   * Whether the bucket has said it serves conditions/notices.json, though
+   * this phone may not have downloaded it: what keeps the
+   * notices panel the planned-hike one on a phone with nothing planned,
+   * which downloads nothing. False until a HEAD request answers 200, and
+   * never set back by a 404 or a dead spot, as a held list is never taken
+   * away. lib/publishedNotices.ts's `noticesListed` says why a HEAD and not
+   * the manifest.
+   */
+  clubNoticesListed: boolean
+  /**
+   * Whether a hike is planned and this phone holds no copy of
+   * conditions/notices.json, settled: the last planned-hike read ended with
+   * nothing, for a reason a connection can change (lib/publishedNotices.ts's
+   * `readPublishedNotices` lists them; never a 404). What
+   * chrome/noticesPanel.tsx says to the hiker, in option A of the
+   * maintainer's poll of 2026-10-09.
+   *
+   * FALSE UNTIL A READ SETTLES, so a phone whose first download is in flight
+   * keeps today's panel, with no wording of its own for that state. Once
+   * true it stays true while a retry is in flight, which is still the truth
+   * (the phone holds no copy yet), and the warning does not flicker off and
+   * on again. False whenever `clubNotices` holds a list.
+   */
+  clubNoticesMissing: boolean
+  /**
+   * The hunting areas, shooting sites and burned areas, from
+   * conditions/hazard_areas.json, read whatever is planned,
+   * or null when that file has not reached this phone. Like `clubNotices`,
+   * never set back to null by a 404 or a dead spot, and null is "no
+   * answer", never "no hazard area": chrome/noticesPanel.tsx then draws the
+   * areas from notices.json if this phone holds it.
+   */
+  hazardFile: PublishedConditions<OrgNotice> | null
+  /**
+   * Every club closure, from conditions/trail_closures.json (the
+   * maintainer's closure-map standard, poll of 2026-10-11), read whatever is planned, as
+   * `hazardFile` is, or null when that file has not reached this phone. Never
+   * set back to null by a 404 or a dead spot: null is "no answer", never "no
+   * closure", and the map then draws no club closure, as before the file.
+   */
+  closureFile: PublishedConditions<TrailClosure> | null
+  /**
    * This week's drought bands, and the week they describe (#720).
    *
    * Empty rather than null when there is nothing: unlike a closure, an
@@ -156,19 +229,40 @@ export interface Conditions {
   /** When something last actually reached the server. Null until it has. */
   lastSyncedAt: Date | null
   /** Stamp that clock. Exposed because the outbox flush is the other thing
-   *  that reaches the server, and one clock has to serve both. */
+   *  that reaches the server, and one clock has to serve both. Also re-reads
+   *  the hiker's own reports, and nothing else, so a report a flush has just
+   *  sent is on their map without waiting for the next hourly read. */
   markSynced(): void
 }
 
 /**
+ * The one empty list of the hiker's own reports. Every empty answer is stored
+ * as this constant, so a signed-out phone's `NotSignedInError` on each
+ * refresh, or a hiker with no reports, sets the state the hook already holds
+ * and React skips the update. A new `[]` each time would re-render App.tsx
+ * and re-place every warning on the map (its memos over `reports`) once more
+ * per refresh, for nothing.
+ */
+const NO_OWN_REPORTS: readonly ReportSummary[] = []
+
+/**
  * @param ready Whether the launch is past its first frame (#1302,
- *   lib/useAfterFirstFrame.ts). The eight published reads and the four live
+ *   lib/useAfterFirstFrame.ts). The nine published reads and the five live
  *   ones below wait for it; nothing they feed changes what the first frame
  *   is, and every line they fill renders "unknown" until they land anyway.
  *   Defaults to true so a screen or a test that mounts this hook alone
  *   behaves as before.
+ * @param hikePlanned Whether the hiker has any hike planned
+ *   (lib/dayHikes.ts's `anyHikePlanned`): conditions/notices.json, about
+ *   2 MB gzipped, is downloaded only while it is true, and the
+ *   moment it turns true, not at the next hourly read. Defaults to true for
+ *   the same reason `ready` does.
  */
-export function useConditions(online: boolean, ready = true): Conditions {
+export function useConditions(
+  online: boolean,
+  ready = true,
+  hikePlanned = true,
+): Conditions {
   // One state each rather than a list plus a separate "where did this come
   // from", because the two reads race and updating two states from a race is
   // how you get fresh closures labelled stale. lib/conditionState.ts owns the
@@ -188,6 +282,16 @@ export function useConditions(online: boolean, ready = true): Conditions {
     useState<ConditionState<DisputeSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
   const [orgNotices, setOrgNotices] = useState<readonly OrgNotice[]>([])
+  const [clubNotices, setClubNotices] = useState<PublishedConditions<OrgNotice> | null>(
+    null,
+  )
+  const [clubNoticesListed, setClubNoticesListed] = useState(false)
+  const [clubNoticesMissing, setClubNoticesMissing] = useState(false)
+  const [hazardFile, setHazardFile] = useState<PublishedConditions<OrgNotice> | null>(
+    null,
+  )
+  const [closureFile, setClosureFile] =
+    useState<PublishedConditions<TrailClosure> | null>(null)
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
@@ -201,8 +305,15 @@ export function useConditions(online: boolean, ready = true): Conditions {
   // strip said "never synced" on every device forever, which was true and
   // looked like a bug in the strip rather than a missing feature.
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null)
+  // The signed-in hiker's own reports (#1916), and a count `markSynced` moves
+  // to read them again; the effect that reads them says why.
+  const [ownReports, setOwnReports] = useState(NO_OWN_REPORTS)
+  const [ownReadCount, setOwnReadCount] = useState(0)
 
-  const markSynced = useCallback(() => setLastSyncedAt(new Date()), [])
+  const markSynced = useCallback(() => {
+    setLastSyncedAt(new Date())
+    setOwnReadCount((count) => count + 1)
+  }, [])
 
   // WHY THERE IS A CLOCK HERE AT ALL (#720).
   //
@@ -213,11 +324,14 @@ export function useConditions(online: boolean, ready = true): Conditions {
   // stopped being survivable when publishing moved to hourly: without this,
   // the whole cadence change would land in the bucket and reach nobody.
   //
-  // An hour, matching the publish cadence rather than beating it. A shorter
-  // interval would spend a hiker's battery and data re-reading bytes that
-  // cannot have changed; a longer one would make the hourly publish pointless
-  // for the phone it is for. The two numbers are a pair, and moving one
-  // without the other is the mistake this comment exists to prevent.
+  // An hour, matching the cron's declared cadence rather than beating it. A
+  // shorter interval would spend a hiker's battery and data re-reading bytes
+  // that cannot have changed; a longer one would add its own delay on top of
+  // the publish's. The two numbers are a pair, and moving one without the
+  // other is the mistake this comment exists to prevent. The pair is the
+  // DECLARED cadence: the bake actually lands about every four hours
+  // (measured, see CONDITIONS_REFRESH_MS), so a closure verified just after a
+  // run can take ~6 h to reach this clock, which the maintainer accepted.
   //
   // Every read this drives is cheap and cancellable, and each one leaves its
   // state exactly where it was on failure - so a wake-up in a dead spot costs
@@ -381,11 +495,78 @@ export function useConditions(online: boolean, ready = true): Conditions {
     }
   }, [online, refreshCount, ready])
 
-  // The map's own reads (#232), deliberately not gated on an account: browsing
-  // has never needed one, and the reads send a token only if there is one
-  // (lib/api.ts).
+  // Every club's notices in one file (#1805), in an effect of its own so
+  // that planning a hike reads it at once without re-reading the rest.
+  // DOWNLOADED ONLY WHILE A HIKE IS PLANNED: it is about 2 MB
+  // gzipped, and only the planned-hike panel and the areas drawn for it read
+  // it. With nothing planned, lib/publishedNotices.ts's readPublishedNotices
+  // reads the copy this phone kept, if any, and asks the bucket with a HEAD
+  // whether it serves the file at all, so the panel stays the planned-hike
+  // one. A null keeps whatever this phone already holds: a 404 on a bucket
+  // the exporters publish is the ordinary state, and a dead spot must not
+  // take a held list away. The reader comes in behind import(), for the
+  // launch budget (lib/publishedNotices.ts says why); a chunk that cannot
+  // load reads as no file, exactly as a 404 does.
   //
-  // Both settle independently. A closures read that succeeds while reports
+  // THE HAZARD AREAS RIDE THE SAME EFFECT, PLANNED OR NOT:
+  // conditions/hazard_areas.json is read on each run of this effect - at
+  // launch, on each refresh and visibility read, as notices.json was before it
+  // waited on a plan, and once more when planning changes - with the same rule
+  // that a null keeps what this phone holds. ON A PROMISE OF ITS OWN: at a
+  // weak-signal trailhead the areas waited behind a planned hike's download
+  // of notices.json (UA's was 11,811,546 bytes on 2026-10-09), or behind the
+  // HEAD with nothing planned.
+  //
+  // AND THE CLUB CLOSURES, THE SAME WAY (the maintainer's closure-map standard, 2026-10-11):
+  // conditions/trail_closures.json on a promise of its own, read whatever is
+  // planned, a null keeping what this phone holds.
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    const reader = import('./publishedNotices')
+    void reader
+      .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, { online }))
+      .then(
+        ({ published, listed, missing }) => {
+          if (cancelled) return
+          if (published !== null) setClubNotices(published)
+          if (listed) setClubNoticesListed(true)
+          // Every settled read answers it, and only a settled one: a read
+          // in flight leaves the last answer standing (see the field). If
+          // publishedNotices.ts's chunk cannot load, the rejection handler
+          // below sets nothing, so the panel keeps the last answer too.
+          setClubNoticesMissing(missing)
+        },
+        () => undefined,
+      )
+    void reader
+      .then(({ fetchPublishedHazardAreas }) => fetchPublishedHazardAreas({ online }))
+      .then(
+        (hazards) => {
+          if (!cancelled && hazards !== null) setHazardFile(hazards)
+        },
+        () => undefined,
+      )
+    void reader
+      .then(({ fetchPublishedTrailClosures }) => fetchPublishedTrailClosures({ online }))
+      .then(
+        (closures) => {
+          if (!cancelled && closures !== null) setClosureFile(closures)
+        },
+        () => undefined,
+      )
+    return () => {
+      cancelled = true
+    }
+  }, [online, refreshCount, ready, hikePlanned])
+
+  // The map's own reads (#232), deliberately not gated on an account: browsing
+  // has never needed one. `/closures`, `/reports` and `/disputes` send no
+  // token even when there is one (THE SHARED READS in lib/api.ts, #1916), and
+  // `/field-notes` sends one only if there is one (`readFetch`). The hiker's
+  // own reports, the one read that needs an account, are the next effect.
+  //
+  // Each settles independently. A closures read that succeeds while reports
   // fails should still warn about the closure - pairing them would mean one
   // failure silencing both, and closures are the half a hiker walks into.
   useEffect(() => {
@@ -446,9 +627,61 @@ export function useConditions(online: boolean, ready = true): Conditions {
     // backend said when the app opened.
   }, [online, refreshCount, ready])
 
+  // The hiker's own reports at any status (`fetchMyReports`, #1916), merged
+  // into `reports` below. An effect of its own, for two reasons. The public
+  // list above never waits on it: while `fetchReports` awaited both requests,
+  // a serious warning that had already arrived waited for this private read
+  // to answer, and was dropped if the phone went offline first. And
+  // `markSynced` runs this read again, alone, after an outbox flush sends
+  // something, so a report the hiker has just filed shows without waiting for
+  // the next hourly read.
+  //
+  // A failure keeps the last list: a 5xx or a dropped request says nothing
+  // about the hiker's reports, and emptying the list would tell "Your reports"
+  // they had gone. Only `NotSignedInError` empties it, because with nobody
+  // signed in there are no own reports to show. So a sign-out or a change of
+  // account reaches this list at its next read, not before, as it reached the
+  // signed-in `/reports` list before #1916.
+  //
+  // No `stamp()`: the sync age vouches for the public picture, and this read
+  // landing says nothing about that.
+  useEffect(() => {
+    if (!ready || !online || !API_CONFIGURED) return
+    let cancelled = false
+    void fetchMyReports().then(
+      (mine) => {
+        if (!cancelled) setOwnReports(mine.length > 0 ? mine : NO_OWN_REPORTS)
+      },
+      (error) => {
+        if (!cancelled && error instanceof NotSignedInError) setOwnReports(NO_OWN_REPORTS)
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [online, refreshCount, ready, ownReadCount])
+
+  // A Map keeps each id where it first appeared and the last value given for
+  // it, so the hiker's own copy of a report replaces the shared copy in place
+  // and their reports the shared list lacks follow it. A kept own list can be
+  // older than the shared list it is merged into, and its copy still wins:
+  // after a failed own read, the hiker's own report shows its previous status
+  // and severity until the next own read lands. Memoised because App.tsx's
+  // memos over `reports` re-place the map's warnings for every new array.
+  const sharedReports = itemsOf(reportState)
+  const reports = useMemo(
+    () =>
+      sharedReports && [
+        ...new Map(
+          [...sharedReports, ...ownReports].map((report) => [report.id, report]),
+        ).values(),
+      ],
+    [sharedReports, ownReports],
+  )
+
   return {
     closures: itemsOf(closureState),
-    reports: itemsOf(reportState),
+    reports,
     notes: itemsOf(noteState),
     disputes: itemsOf(disputeState),
     closureState,
@@ -457,6 +690,12 @@ export function useConditions(online: boolean, ready = true): Conditions {
     atcUpdates,
     atcReviewedAt,
     orgNotices,
+    clubNotices: clubNotices?.items ?? null,
+    clubNoticesGeneratedAt: clubNotices?.generatedAt ?? null,
+    clubNoticesListed,
+    clubNoticesMissing: clubNotices === null && clubNoticesMissing,
+    hazardFile,
+    closureFile,
     drought,
     droughtWeek,
     workProjects,

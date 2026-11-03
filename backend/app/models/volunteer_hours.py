@@ -72,7 +72,7 @@ class VolunteerHoursRecord(Base):
 
     # "my hours" is the hot query - the dashboard reads it on every open.
     user_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
-    club_id = Column(String, ForeignKey("clubs.id"), nullable=True)
+    club_id = Column(String, ForeignKey("clubs.id"), nullable=True, index=True)
 
     worked_on = Column(Date, nullable=False)
     hours = Column(Float, nullable=False)
@@ -95,6 +95,7 @@ class VolunteerHoursRecord(Base):
         Enum(HoursState, native_enum=False, length=20),
         nullable=False,
         default=HoursState.claimed,
+        index=True,
     )
 
     # Who stood behind it (or refused to), and when - the audit pair every

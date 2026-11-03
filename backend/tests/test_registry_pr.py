@@ -1,0 +1,261 @@
+"""Opening the pull request an organization's codeowners review.
+
+**WHY A SERVICE IDENTITY AND NOT AN ADMIN.** Opening a pull request needs
+write access to the repository, and an org admin has no GitHub account here
+- giving one the power to cause a push would make every org admin a
+committer to a public repository. Approving needs no write access at all,
+which is why the codeowners can do that with their own accounts and this
+cannot be theirs. The two halves were run together in `sign_off_registry`'s
+docstring and they are different questions.
+
+**THE GUARD WITH TEETH IS CONTAINMENT.** GitHub-side scoping of the token is
+somebody's console setting and not something this repository can assert. What
+it can assert is that this code never writes a path outside the organization's
+own directory - which is the bug that would matter, because a write outside it
+is a change to this repository that no organization's codeowners review and no
+test here would otherwise catch.
+
+**AND IT NEVER MERGES.** CLAUDE.md's rule, applied to the one piece of code in
+this repository that holds a token which could.
+"""
+
+import httpx
+import pytest
+
+from app.core.registry_pr import RegistryPrRefused, open_challenge_pr, open_registry_pr
+from app.models.club import OrgState
+from tests.factories import make_org, make_section
+
+
+class Recorder:
+    """Every request the opener made, and a canned GitHub to make them against."""
+
+    def __init__(self, *, existing_pulls=None):
+        self.calls: list[tuple[str, str, dict]] = []
+        self._existing = existing_pulls or []
+
+    def transport(self) -> httpx.MockTransport:
+        def handler(request: httpx.Request) -> httpx.Response:
+            import json
+
+            body = json.loads(request.content) if request.content else {}
+            self.calls.append((request.method, request.url.path, body))
+
+            if request.method == "GET" and request.url.path.endswith("/git/ref/heads/main"):
+                return httpx.Response(200, json={"object": {"sha": "basesha"}})
+            if request.method == "GET" and request.url.path.endswith("/pulls"):
+                return httpx.Response(200, json=self._existing)
+            if request.method == "POST" and request.url.path.endswith("/git/blobs"):
+                return httpx.Response(201, json={"sha": "blobsha"})
+            if request.method == "POST" and request.url.path.endswith("/git/trees"):
+                return httpx.Response(201, json={"sha": "treesha"})
+            if request.method == "POST" and request.url.path.endswith("/git/commits"):
+                return httpx.Response(201, json={"sha": "commitsha"})
+            if request.method == "POST" and request.url.path.endswith("/git/refs"):
+                return httpx.Response(201, json={"ref": "refs/heads/x"})
+            if request.method == "PATCH":
+                return httpx.Response(200, json={})
+            if request.method == "POST" and request.url.path.endswith("/pulls"):
+                return httpx.Response(201, json={"number": 42, "html_url": "https://github.com/OurHike/OurHike/pull/42"})
+            return httpx.Response(404, json={})
+
+        return httpx.MockTransport(handler)
+
+    def paths_written(self) -> list[str]:
+        for method, path, body in self.calls:
+            if method == "POST" and path.endswith("/git/trees"):
+                return [entry["path"] for entry in body.get("tree", [])]
+        return []
+
+
+@pytest.fixture
+def enabled(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "registry_pr_enabled", True, raising=False)
+    monkeypatch.setattr(settings, "registry_pr_token", "a-token", raising=False)
+    monkeypatch.setattr(settings, "registry_pr_repo", "OurHike/OurHike", raising=False)
+    return settings
+
+
+class TestTheSwitch:
+    def test_it_is_off_until_somebody_turns_it_on(self, client, db_session):
+        """A merge is not a decision to start opening pull requests on a
+        public repository, which is the same argument `mail_enabled` makes."""
+        club = make_org(db_session, state=OrgState.claimed)
+
+        with pytest.raises(RegistryPrRefused):
+            open_registry_pr(db_session, club, client=httpx.Client(transport=Recorder().transport()))
+
+    def test_a_held_registration_opens_nothing(self, client, db_session, enabled):
+        """`pending` means nobody at the organization has confirmed it exists
+        here. Publishing its registry would put our name behind a squat."""
+        club = make_org(db_session, state=OrgState.pending)
+        recorder = Recorder()
+
+        with pytest.raises(RegistryPrRefused):
+            open_registry_pr(db_session, club, client=httpx.Client(transport=recorder.transport()))
+
+        assert recorder.calls == []
+
+
+class TestWhatItWrites:
+    def test_every_path_is_inside_the_organizations_own_directory(self, client, db_session, enabled):
+        """The guard with teeth. A path outside it is a change to this
+        repository that no organization's codeowners review."""
+        club = make_org(db_session, state=OrgState.claimed)
+        make_section(db_session, club, name="Pine Meadow North")
+        recorder = Recorder()
+
+        open_registry_pr(db_session, club, client=httpx.Client(transport=recorder.transport()))
+
+        written = recorder.paths_written()
+        assert written
+        for path in written:
+            assert path.startswith("pipeline/reference/orgs/ramapo-trail-conference/")
+
+    def test_one_commit_rather_than_one_per_file(self, client, db_session, enabled):
+        """A registry arriving as eleven commits is eleven things to read
+        in a review that should be one."""
+        club = make_org(db_session, state=OrgState.claimed)
+        make_section(db_session, club, name="Pine Meadow North")
+        recorder = Recorder()
+
+        open_registry_pr(db_session, club, client=httpx.Client(transport=recorder.transport()))
+
+        commits = [call for call in recorder.calls if call[0] == "POST" and call[1].endswith("/git/commits")]
+        assert len(commits) == 1
+
+
+class TestWhatItNeverDoes:
+    def test_it_never_merges(self, client, db_session, enabled):
+        """CLAUDE.md's rule, on the one piece of code here holding a token
+        that could."""
+        club = make_org(db_session, state=OrgState.claimed)
+        make_section(db_session, club, name="Pine Meadow North")
+        recorder = Recorder()
+
+        open_registry_pr(db_session, club, client=httpx.Client(transport=recorder.transport()))
+
+        assert not any("/merge" in path for _, path, _ in recorder.calls)
+
+    def test_a_second_call_reuses_the_open_pull_request(self, client, db_session, enabled):
+        """An organization pressing sign off twice should not have two pull
+        requests open against its own registry, each half-reviewed."""
+        club = make_org(db_session, state=OrgState.claimed)
+        make_section(db_session, club, name="Pine Meadow North")
+        recorder = Recorder(
+            existing_pulls=[{"number": 7, "html_url": "https://example/7", "head": {"ref": "registry/ramapo-trail-conference"}}]
+        )
+
+        result = open_registry_pr(db_session, club, client=httpx.Client(transport=recorder.transport()))
+
+        assert result.number == 7
+        assert not any(call[0] == "POST" and call[1].endswith("/pulls") for call in recorder.calls)
+
+    def test_a_failure_is_a_refusal_rather_than_a_retry(self, client, db_session, enabled):
+        """The same posture as `core/assist.py`: a retry against a remote
+        that just failed is how one stuck request becomes ten."""
+        club = make_org(db_session, state=OrgState.claimed)
+        make_section(db_session, club, name="Pine Meadow North")
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            return httpx.Response(500, json={})
+
+        with pytest.raises(RegistryPrRefused):
+            open_registry_pr(db_session, club, client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+        assert len(calls) == 1
+
+
+class TestAChallenge:
+    """The second thing that goes up this way (#1780): one club challenge, as
+    one file under `pipeline/reference/challenges/<slug>/`, and nothing else."""
+
+    DEFINITION = {"id": "harriman-shelters", "org": "ramapo-trail-conference", "name": "Harriman shelters"}
+
+    def test_it_writes_exactly_one_file_inside_the_challenges_directory(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        opened = open_challenge_pr(
+            club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport())
+        )
+
+        assert recorder.paths_written() == ["pipeline/reference/challenges/ramapo-trail-conference/harriman-shelters.json"]
+        assert opened.number == 42
+
+    def test_it_records_the_proved_domain_in_the_file_and_the_body(self, client, db_session, enabled):
+        """The pipeline refuses a file saved by a domain publishers.json does
+        not name for its org, so the domain has to travel in the file."""
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        blob = next(body for method, path, body in recorder.calls if method == "POST" and path.endswith("/git/blobs"))
+        import base64
+
+        assert '"published_by_domain": "ramapotrails.org"' in base64.b64decode(blob["content"]).decode("utf-8")
+        pull = next(body for method, path, body in recorder.calls if method == "POST" and path.endswith("/pulls"))
+        assert "`ramapotrails.org`" in pull["body"]
+        assert "#1780" not in pull["body"]
+
+    def test_a_club_that_proved_a_publishers_domain_writes_under_that_publisher(self, client, db_session, enabled):
+        """The real ATC registered under any slug still publishes `atc-…`
+        into `atc/`, the directory the pipeline reads as the ATC's."""
+        club = make_org(db_session, slug="appalachian-trail-conservancy", domain="appalachiantrail.org", state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(
+            club,
+            "atc-summer-bucket-list-2027",
+            {"id": "atc-summer-bucket-list-2027", "org": "atc", "name": "A.T. Summer Bucket List"},
+            client=httpx.Client(transport=recorder.transport()),
+        )
+
+        assert recorder.paths_written() == ["pipeline/reference/challenges/atc/atc-summer-bucket-list-2027.json"]
+
+    def test_it_never_merges(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert not any(path.endswith("/merge") for _, path, _ in recorder.calls)
+
+    @pytest.mark.parametrize("challenge_id", ["../../.github/workflows/x", "a/b", "", "UPPER"])
+    def test_an_id_that_is_not_one_path_segment_opens_nothing(self, client, db_session, enabled, challenge_id):
+        """The opener refuses to build a path from anything it has not
+        checked itself, even though the route validated the id first."""
+        club = make_org(db_session, state=OrgState.claimed)
+        recorder = Recorder()
+
+        with pytest.raises(RegistryPrRefused):
+            open_challenge_pr(club, challenge_id, self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert recorder.calls == []
+
+    def test_a_held_registration_publishes_no_challenge(self, client, db_session, enabled):
+        club = make_org(db_session, state=OrgState.pending)
+        recorder = Recorder()
+
+        with pytest.raises(RegistryPrRefused):
+            open_challenge_pr(club, "harriman-shelters", self.DEFINITION, client=httpx.Client(transport=recorder.transport()))
+
+        assert recorder.calls == []
+
+
+def test_a_club_name_reaches_a_commit_and_a_pull_request_as_inert_text():
+    """ "Closes #1" in a merged commit message closes issue 1; "@x" pings x."""
+    from app.core.registry_pr import _plain
+
+    assert _plain("Closes #1 @maintainer [x](y)") == "Closes 1 maintainer xy"
+    assert _plain("@#") == "An organization"
+    # A URL loses what makes it one; a GH- reference is broken apart.
+    assert _plain("Fixes https://github.com/o/r/issues/1") == "Fixes httpsgithub.comorissues1"
+    assert _plain("Fixes GH-2") == "Fixes GH 2"
+    assert len(_plain("x" * 100_000)) == 120
+    assert _plain("Ramapo Trail Conference") == "Ramapo Trail Conference"

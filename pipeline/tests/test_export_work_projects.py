@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 import export_work_projects
 from lib.work_projects import file_problems, is_reviewed, published_rows, row_problems
 
@@ -53,13 +55,45 @@ def test_a_backwards_date_range_is_refused():
     assert any("before starts_on" in p for p in row_problems(_row(ends_on="2026-09-11")))
 
 
-def test_in_app_signup_is_refused_until_its_backend_exists():
-    """Phase B is read-only (#760): a row claiming in_app would render a
-    button that files nothing. #762 widens SIGNUP_MODES when the endpoint
-    lands."""
-    problems = row_problems(_row(signup_mode="in_app"))
+def test_in_app_signup_is_accepted_now_that_its_backend_exists():
+    """#762's endpoint landed 2026-09-17, so the guard that refused this comes
+    off. It was there because a row claiming `in_app` before
+    `POST /workdays/{id}/signups` existed would have rendered a button that
+    files nothing - see lib/work_projects.py's SIGNUP_MODES for why that
+    reasoning is kept rather than deleted."""
+    assert row_problems(_row(signup_mode="in_app")) == []
 
-    assert any("#762" in problem for problem in problems)
+
+def test_a_signup_mode_this_build_does_not_know_is_still_refused():
+    """Widening the tuple must not turn the check into a rubber stamp."""
+    problems = row_problems(_row(signup_mode="just_turn_up"))
+
+    assert any("signup_mode" in problem for problem in problems)
+
+
+@pytest.mark.parametrize(
+    "contact",
+    [
+        "javascript:alert(1)",
+        "data:text/html,<p>join</p>",
+        "intent://join/#Intent;scheme=zxing;end",
+        "http://example.org/volunteer",
+        "volunteer@example.org",
+        "",
+    ],
+)
+def test_a_contact_that_is_not_an_address_a_number_or_a_page_is_refused(contact):
+    # The message has promised "a mailto: or tel: or https: string" since
+    # #760; until #1578 the check behind it accepted any string, and the
+    # client rendered whatever arrived as a link a hiker taps.
+    problems = row_problems(_row(signup_contact=contact))
+
+    assert any("mailto: or tel: or https:" in problem for problem in problems), problems
+
+
+@pytest.mark.parametrize("contact", ["mailto:volunteer@example.org", "tel:+12125551234", "https://example.org/volunteer"])
+def test_the_three_promised_contact_schemes_are_accepted(contact):
+    assert row_problems(_row(signup_contact=contact)) == []
 
 
 def test_a_contact_row_needs_its_contact():

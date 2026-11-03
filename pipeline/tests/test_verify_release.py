@@ -643,14 +643,12 @@ class TestVectorContent:
 
         assert {r["check"]: r["state"] for r in check_vector(BASE, ["poi_shelter.geojson"])}[15] == FAILED
 
-    def test_an_empty_type_fails_its_minimum_but_crossing_may_be_empty(self, requests_mock):
+    def test_an_empty_type_fails_its_minimum(self, requests_mock):
         """export_poi.py's own exception, kept in step: every POI type must be
-        non-empty except `crossing`, which legitimately is for the real AT."""
-        requests_mock.get(f"{BASE}/poi_crossing.geojson", json=self._collection([]))
+        non-empty except the ones ALLOWED_EMPTY_POI_TYPES names. `crossing`
+        was the example here until #1674 withdrew it; test_trailhead_may_be_
+        empty_too below is the allowed case now."""
         requests_mock.get(f"{BASE}/poi_water.geojson", json=self._collection([]))
-
-        states = [r for r in check_vector(BASE, ["poi_crossing.geojson"]) if r["check"] == 14]
-        assert states[0]["state"] == OK
 
         states = [r for r in check_vector(BASE, ["poi_water.geojson"]) if r["check"] == 14]
         assert states[0]["state"] == FAILED
@@ -675,21 +673,45 @@ class TestVectorContent:
         maintainer's 2026-08-25 "don't limit data from orgs based on
         geography" decision applied to a source that actually leaves the
         corridor. A point in Arizona from that source is not a projection
-        bug; the same point from an unlisted source still is."""
+        bug; the same point from an unlisted source in a corridor-scoped
+        file still is."""
         requests_mock.get(
-            f"{BASE}/nearby_trails.geojson",
-            json=self._collection([self._point(-110.98, 34.34, source="usfs_trails")]),
+            f"{BASE}/trails.geojson",
+            json=self._collection([self._point(-110.98, 34.34, source="usfs_trails", blaze_color="#fff")]),
         )
         requests_mock.get(
-            f"{BASE}/nearby_poi.geojson",
+            f"{BASE}/poi_shelter.geojson",
             json=self._collection([self._point(-110.98, 34.34, source="some_other_org")]),
         )
 
-        exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_trails.geojson"])}
-        not_exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}
+        exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["trails.geojson"])}
+        not_exempt = {r["check"]: r["state"] for r in check_vector(BASE, ["poi_shelter.geojson"])}
 
         assert exempt[15] == OK
         assert not_exempt[15] == FAILED
+
+    def test_any_organizations_nearby_feature_may_leave_the_corridor(self, requests_mock):
+        """#1873: nearby_poi and nearby_trails carry every organization,
+        nationwide, so an Arizona point from an unlisted source is intended."""
+        requests_mock.get(f"{BASE}/nearby_poi.geojson", json=self._collection([self._point(-110.98, 34.34, source="x")]))
+
+        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}[15] == OK
+
+    def test_a_nearby_feature_on_null_island_or_in_metres_is_still_caught(self, requests_mock):
+        requests_mock.get(f"{BASE}/nearby_poi.geojson", json=self._collection([self._point(0.2, -0.3)]))
+        requests_mock.get(f"{BASE}/nearby_trails.geojson", json=self._collection([self._point(1_500_000.0, 2_000_000.0)]))
+
+        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}[15] == FAILED
+        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_trails.geojson"])}[15] == FAILED
+
+    def test_a_versioned_trailhead_file_may_be_empty_like_its_v1_twin(self, requests_mock):
+        """#1873: `v2/poi_trailhead.geojson` read as type `v2/poi_trailhead`, which
+        ALLOWED_EMPTY_POI_TYPES does not name, so the empty-by-design file failed."""
+        requests_mock.get(f"{BASE}/v2/poi_trailhead.geojson", json=self._collection([]))
+
+        states = [r for r in check_vector(BASE, ["v2/poi_trailhead.geojson"]) if r["check"] == 14]
+
+        assert states[0]["state"] == OK
 
     def test_a_trail_without_a_blaze_colour_is_caught(self, requests_mock):
         requests_mock.get(f"{BASE}/trails.geojson", json=self._collection([self._point()]))
@@ -793,6 +815,34 @@ class TestAnArtifactAPhoneCannotHold:
 
         failed = [r["key"] for r in reports if r["state"] == FAILED]
         assert failed == ["trail_graph_geometry_cell_n44w073.json"]
+        summary = [r for r in reports if r["key"] == "whole-fetched artifacts"][0]
+        assert "2 within" in summary["detail"]
+
+    def test_a_hike_detail_is_weighed_without_being_declared(self):
+        """#1473 named these per hike rather than declaring one key each, so
+        without a pattern all 201 would SKIP with "the current client fetches
+        no such key" - which is the opposite of true: lib/useHikeDetail.ts
+        fetches one whole every time somebody opens a walk, and --strict
+        counts a skip as a failure.
+
+        Weighed rather than waved through, because the budget is not the only
+        ceiling: a detail is kept in the conditions cache, whose
+        MAX_CACHED_BYTES DELETES an oversize artifact rather than trimming it.
+        """
+        reports = check_launch_budget(
+            self._manifest(
+                **{
+                    "suggested_hikes_detail_50.json": 7_412,
+                    "suggested_hikes_detail_1234.json": self.BUDGET + 1,
+                    "suggested_hikes.json": 176_269,
+                }
+            ),
+            budget=self.BUDGET,
+            client_keys=frozenset({"suggested_hikes.json"}),
+        )
+
+        assert not [r for r in reports if r["state"] == SKIPPED], "a detail every phone fetches is not a skip"
+        assert [r["key"] for r in reports if r["state"] == FAILED] == ["suggested_hikes_detail_1234.json"]
         summary = [r for r in reports if r["key"] == "whole-fetched artifacts"][0]
         assert "2 within" in summary["detail"]
 
@@ -998,6 +1048,30 @@ class TestNothingLostSinceTheLastRelease:
         now = _release_manifest("2026-08-13", {"trails.geojson": "a", "club_sections.json": "c"})
 
         assert check_nothing_lost("2026-08-12", before, now)["state"] == OK
+
+    def test_a_withdrawn_poi_type_leaving_is_reported_not_failed(self):
+        """#1674 withdrew crossings on purpose. A build that asks for
+        poi_crossing.* pins a release that still holds it, so the 404 this
+        check guards against cannot reach anybody - and the check says which
+        artifacts left and why, rather than going quiet about them."""
+        before = _release_manifest("2026-09-24", {"trails.geojson": "a", "poi_crossing.geojson": "c", "poi_crossing.fgb": "d"})
+        now = _release_manifest("2026-09-26", {"trails.geojson": "a"})
+
+        report = check_nothing_lost("2026-09-24", before, now)
+
+        assert report["state"] == OK
+        assert "poi_crossing.geojson" in report["detail"]
+        assert "withdrawn" in report["detail"]
+
+    def test_a_withdrawal_does_not_excuse_an_ordinary_loss_beside_it(self):
+        before = _release_manifest("2026-09-24", {"poi_crossing.geojson": "c", "poi_water.geojson": "b"})
+        now = _release_manifest("2026-09-26", {})
+
+        report = check_nothing_lost("2026-09-24", before, now)
+
+        assert report["state"] == FAILED
+        assert "poi_water.geojson" in report["detail"]
+        assert "poi_crossing" not in report["detail"]
 
 
 class TestTheReleaseBeforeThisOne:
@@ -1291,6 +1365,80 @@ class TestCellCoverage:
 
         assert report["state"] == "failed"
         assert "context archive" in report["detail"]
+
+    def test_a_cell_covering_less_than_its_square_passes(self, requests_mock):
+        """The New York City shape (#1458): a cell cut from a corridor-clipped
+        source holds a band across one corner, and saying so is the point of
+        the key. Less than the square is ordinary and must not fail."""
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        cells[1]["covered"] = [-74.0, 40.714, -73.125, 41.0]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "ok"
+
+    def test_a_cell_claiming_ground_outside_its_square_fails(self, requests_mock):
+        """The phone narrows its coverage claim onto `covered` (#1458), which
+        is only safe while `covered` sits inside the square the cell owns. A
+        claim past that edge is the seam margin turned into a promise - the
+        app telling a hiker it has ground that belongs to a cell they never
+        downloaded."""
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        cells[1]["covered"] = [-74.5, 40.0, -73.0, 41.0]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "failed"
+        assert "outside their own square" in report["detail"]
+
+    def test_an_empty_covered_box_is_named_as_empty_not_as_overreaching(self, requests_mock):
+        """#1561. n38w082 as release 2026-09-16-4 published it: south above
+        north by 0.004 deg. It encloses no ground, so it under-claims - the
+        opposite fault to reaching past the square - and the check used to
+        print the over-claim's sentence for it."""
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        west, south, east, _ = cells[1]["bounds"]
+        cells[1]["covered"] = [west + 0.79, south, east, south - 0.003837]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "failed"
+        assert "no area" in report["detail"]
+        assert cells[1]["name"] in report["detail"]
+        assert "outside their own square" not in report["detail"]
+
+    def test_an_empty_box_and_an_overreaching_one_are_both_reported(self, requests_mock):
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        cells[0]["covered"] = [cells[0]["bounds"][0] - 0.5, *cells[0]["bounds"][1:]]
+        cells[1]["covered"] = [cells[1]["bounds"][2], cells[1]["bounds"][1], cells[1]["bounds"][2], cells[1]["bounds"][3]]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert "1 cell(s) carry a covered box with no area" in report["detail"]
+        assert "1 cell(s) claim coverage outside their own square" in report["detail"]
+
+    def test_an_index_with_no_covered_key_still_passes(self, requests_mock):
+        """Every index cut before #1458 carries none, and they are the ones
+        already on hikers' phones."""
+        from verify_release import check_cell_coverage
+
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(self._published()))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "ok"
 
     def test_a_ragged_cell_fails(self, requests_mock):
         """A cell that is not a whole square means the grid was anchored to a
@@ -1623,3 +1771,53 @@ def test_the_cell_families_check_20_walks_are_the_ones_publish_cuts():
     import publish
 
     assert set(verify_release.CELL_FAMILIES) == set(publish.ALL_CELL_FAMILIES)
+
+
+class TestAnArtifactAPhoneCannotParse:
+    """Check 13 reads the artifact the way a phone reads it (lib/strict_json.py).
+
+    `response.json()` would have read `NaN` back as a float and gone on to
+    count features in a document every WebView rejects on its first byte of
+    the token. The class name in the report is the whole diagnosis."""
+
+    NAN_COLLECTION = '{"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [NaN, 39.0]}, "properties": {"blaze_color": "#ffffff"}}]}'
+
+    def test_a_bare_nan_fails_the_parse_check_by_name(self, requests_mock):
+        requests_mock.get(f"{BASE}/trails.geojson", text=self.NAN_COLLECTION)
+
+        reports = {r["check"]: r for r in check_vector(BASE, ["trails.geojson"])}
+
+        assert reports[13]["state"] == FAILED
+        assert "NonFiniteNumber" in reports[13]["detail"]
+
+    def test_the_stdlib_would_have_let_it_through(self):
+        """The premise, pinned: without the strict reader this document parses."""
+        assert json.loads(self.NAN_COLLECTION)["features"][0]["geometry"]["coordinates"][0] != 0
+
+
+class TestReleaseFolderMode:
+    """#1873: since promotion `latest.json` lists only conditions files, so the
+    battery has to be pointed at the release folder phones actually read."""
+
+    def test_the_pointer_names_the_environments_v1_release(self, requests_mock):
+        requests_mock.get(f"{BASE}/channels.json", json={"production": {"v1": "2026-10-17-2", "v2": "2026-10-20-1"}})
+
+        assert verify_release.fetch_pointed_release(BASE, "production", "v1") == "2026-10-17-2"
+
+    def test_a_missing_or_foreign_pointer_names_nothing(self, requests_mock):
+        requests_mock.get(f"{BASE}/channels.json", json={"ua": {"v1": "2026-10-18-2"}})
+        assert verify_release.fetch_pointed_release(BASE, "production", "v1") is None
+
+        requests_mock.get(f"{BASE}/channels.json", status_code=404)
+        assert verify_release.fetch_pointed_release(BASE, "production", "v1") is None
+
+    def test_check_all_reads_the_folders_manifest_not_latest_json(self, requests_mock):
+        """Latest.json is never requested; the folder's manifest is, and an
+        unreadable one fails check 1 rather than reading the conditions bake."""
+        folder = requests_mock.get(f"{BASE}/releases/2026-10-17-2/manifest.json", status_code=404)
+
+        reports = verify_release.check_all(BASE, hash_artifacts=False, release="2026-10-17-2")
+
+        assert folder.called
+        assert [r["state"] for r in reports if r["check"] == 1] == [FAILED]
+        assert all(request.path != "/latest.json" for request in requests_mock.request_history)

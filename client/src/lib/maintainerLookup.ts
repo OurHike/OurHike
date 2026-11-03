@@ -34,6 +34,8 @@
 // thank you - and losing the preview costs nothing now that the server does
 // the resolution for real.
 
+import { apiUrl } from './api'
+
 export interface MaintainerAssignment {
   id: string
   maintainer_id: string
@@ -55,10 +57,10 @@ export async function lookupMaintainers(
   // section reassigned in July belongs to June's maintainer even when it
   // syncs in August.
   const asOf = authoredAt.toISOString().slice(0, 10)
-  const url = `/maintainer-assignments?mile=${mile}&as_of=${asOf}`
+  const path = `/maintainer-assignments?mile=${mile}&as_of=${asOf}`
 
   try {
-    const response = await fetch(url)
+    const response = await fetch(apiUrl(path))
     if (!response.ok) return []
     return (await response.json()) as MaintainerAssignment[]
   } catch {

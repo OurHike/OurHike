@@ -134,6 +134,60 @@ test.describe('the laptop layout', { tag: '@desktop' }, () => {
     await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
   })
 
+  test('states: while the map screen’s code is still coming, Today and the sidebar stay, in the column they keep', async ({
+    page,
+  }) => {
+    // THE TWO LAUNCH DEFECTS #1560 MEASURED, held here because both are
+    // things only a browser with the real stylesheet and the real chunk can
+    // show. The journal drew at the full width of the pane before the map
+    // arrived (App.css's `.app__screen > :first-child { flex: 1 }` beat the
+    // column rule on specificity) and then snapped to its 404px column; and
+    // the whole page - sidebar included - went blank between the archive
+    // store answering and MapScreen's chunk landing, because the tab bar
+    // lives inside that deferred screen. Measured 2026-09-17 on a cold cache:
+    // 1,519 px then 405 px; sidebar gone at 897 ms, back at 2,044 ms.
+    //
+    // The chunk is held at the network until the assertions about the
+    // pre-map frame are made, then let through, so the state under test is
+    // stable rather than a race against a fast cache. The pattern matches
+    // the dev server's module URL and the built chunk's, since this suite
+    // runs against either (playwright.config.ts's COMMAND).
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route(
+      /\/(src\/chrome\/MapScreen\.tsx|assets\/MapScreen-[^/]+\.js)(\?.*)?$/,
+      async (route) => {
+        await held
+        await route.continue()
+      },
+    )
+    await seedPreferences(page)
+    await page.goto('/')
+
+    const sidebar = page.getByRole('tab', { name: 'Today', selected: true })
+    await expect(sidebar).toBeVisible()
+    const column = page.locator('.app__screen > .map-screen__journal')
+    await expect(column).toBeVisible()
+    await expect(column.getByText('Nothing planned today')).toBeVisible()
+    const before = await column.boundingBox()
+    // 25.25rem at the browser's 16px - the column the settled screen uses,
+    // and not the 1,519px the pane is wide.
+    expect(before?.width).toBeGreaterThan(380)
+    expect(before?.width).toBeLessThan(430)
+    expect(await page.locator('.map-screen').count()).toBe(0)
+    await expect(page.getByRole('region', { name: 'Trail map' })).toHaveCount(0)
+
+    release()
+
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+    await expect(sidebar).toBeVisible()
+    const after = await page.locator('.map-screen .map-screen__journal').boundingBox()
+    expect(Math.abs((after?.width ?? 0) - (before?.width ?? 0))).toBeLessThan(2)
+    await expect(page.locator('.app__screen > .map-screen__journal')).toHaveCount(0)
+  })
+
   test('states: the mode block is a named radio group in the shell, not a chip in the tab row', async ({
     page,
   }) => {

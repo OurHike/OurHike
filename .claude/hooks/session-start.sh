@@ -130,6 +130,16 @@ echo "[session-start] seeding the duckdb spatial extension"
 # so a seeding that silently landed in the wrong path fails here.
 "${PY}" pipeline/seed_spatial_extension.py
 
+echo "[session-start] generating the dbt models"
+# Decision 91 (pipeline/ELT.md, 2026-10-06): the two dbt generators' output is
+# written at build time, never committed. Without it the pipeline suite's
+# conftest refuses to start and `dbt parse` fails, so a session that runs
+# pytest directly, rather than through scripts/test.sh (which generates by
+# itself), would meet that refusal first. The generators read sources.json and
+# the club folders through extract/_contract.py, which imports dlt, so they run
+# under the same interpreter as the pipeline deps above.
+(cd pipeline && "${PY}" generate_dbt.py)
+
 echo "[session-start] client deps"
 # `npm ci`, NOT `npm install`, and the difference is the whole of #1354.
 #
@@ -192,5 +202,16 @@ if [ "${gate_failed}" -ne 0 ]; then
   exit 1
 fi
 echo "[session-start] ready: ${PY} can run all three Python suites"
+
+# WebKit, said rather than gated (#1537). The image ships Chromium alone, so the
+# flow suite's phone-webkit project cannot launch here - and a session that did
+# not know spent five minutes reading 147 red launch errors as a regression.
+# Never fatal: every other suite, and every other flow project, runs without it.
+# scripts/test.sh skips that one project out loud; CI's flow job runs it.
+if (cd client && node -e "process.exit(require('fs').existsSync(require('@playwright/test').webkit.executablePath()) ? 0 : 1)") >/dev/null 2>&1; then
+  echo "  ok    flow suite WebKit (phone-webkit)"
+else
+  echo "  gap   flow suite WebKit: not in this image - scripts/test.sh skips phone-webkit and says so; CI runs it"
+fi
 
 echo "[session-start] ready"

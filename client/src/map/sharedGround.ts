@@ -48,6 +48,31 @@
  * exclusion excludes nothing, and the map draws exactly what it drew
  * before. That is what lets the client half ship ahead of the data half.
  *
+ * WHAT THE MASK DOES NOT COVER, and the zoom it stops covering it at. The
+ * casing is centred on the DONOR's geometry, because that is the chord both
+ * halves are cut from - but the partner's own full-length line is not cut,
+ * and lib/concurrency.py pairs lines lying up to SHARED_GROUND_TOLERANCE_M
+ * = 10 m apart. The cased stretch is the heavier tier plus 2 x
+ * CASING_OVERHANG, about 6.5 px, so it reaches ~3.25 px either side of the
+ * chord. At 41 degrees N (156543.03 * cos(lat) / 2^z, computed 2026-09-14)
+ * the worst-case 10 m separation is 1.4 px at z14, 2.8 px at z15, 5.5 px at
+ * z16 and 11.1 px at z17 - so from about z16 a pair digitised at the far end
+ * of the tolerance draws its partner's own line clear of the mask, and a
+ * hiker at navigation zoom sees the two-tone stripe with a third line beside
+ * it. The typical case is much better: NEARBY_TRAILS.md section 5 measured
+ * two digitisations of one route agreeing at 1.8 m and 3.3 m median, which
+ * is 3.7 px at z17 and under the reach everywhere below it.
+ *
+ * Left rather than fixed, and the alternatives are worth naming: clipping
+ * the partner's line over the stretch means cutting geometry eleven scripts
+ * read as topology (the reason nothing is cut today), and widening the mask
+ * by the tolerance in screen units means a casing that grows with zoom until
+ * it is wider than the trail it edges. Neither is obviously better than a
+ * stated zoom band. @unvalidated outdoors: what would settle it is whether
+ * the third line is legible enough at z16-z17 to read as a second trail
+ * rather than as the casing's own edge, which nobody has looked at on a
+ * phone in daylight.
+ *
  * `line-offset` and `line-width` are data-driven paint properties in the
  * style spec this build carries (checked against
  * @maplibre/maplibre-gl-style-spec's v8.json, 2026-09-10), so a per-feature

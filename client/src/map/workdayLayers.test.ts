@@ -11,6 +11,7 @@ import {
   buildWorkdaySource,
   workdayFeatureCollection,
   workdayIdAt,
+  WORKDAY_DATE_PROPERTY,
   WORKDAY_ID_PROPERTY,
   WORKDAY_LAYER_ID,
   WORKDAY_SOURCE_ID,
@@ -83,15 +84,53 @@ describe('workdayFeatureCollection', () => {
     ])
   })
 
-  it('carries the project id where a tap can read it, and nothing else', () => {
-    // Not the title, not the club, not the dates. What a workday SAYS is the
-    // sheet's job; a title in a GeoJSON source is one `text-field` away from
-    // being drawn on the map without the "check before travelling" line that
-    // is the only thing making an expiring invitation honest.
+  it('carries the project id and the day, and nothing that invites', () => {
+    // THE RULE THIS USED TO STATE was "the id and nothing else", on the
+    // grounds that "a title in a GeoJSON source is one `text-field` away from
+    // being drawn on the map without the 'check before travelling' line that
+    // is the only thing making an expiring invitation honest". That objection
+    // is still right about the TITLE and the CLUB, and they are still absent.
+    //
+    // The date is the one field #1440 weighed against it and kept (frame
+    // 14i): the one thing a hiker needs before travelling is which day, and a
+    // bare mark makes them tap every pin to find out. What keeps it honest is
+    // the gate in front of it rather than the words beside it - past
+    // OPPORTUNITIES_STALE_MS the shell passes an empty set and this layer
+    // draws nothing at all, so a labelled pin is always from a feed under two
+    // days old, and the tap still opens the sheet that says to check.
     const properties = workdayFeatureCollection(WORKDAYS).features[0].properties
 
-    expect(properties).toEqual({ [WORKDAY_ID_PROPERTY]: 'wp-1' })
-    expect(Object.keys(properties)).toEqual([WORKDAY_ID_PROPERTY])
+    expect(properties).toEqual({
+      [WORKDAY_ID_PROPERTY]: 'wp-1',
+      [WORKDAY_DATE_PROPERTY]: '',
+    })
+    expect(Object.keys(properties).sort()).toEqual(
+      [WORKDAY_ID_PROPERTY, WORKDAY_DATE_PROPERTY].sort(),
+    )
+  })
+
+  it('draws the day beside the pin, and lets it go before the pin does', () => {
+    // `text-optional`: where the label does not fit, the PIN still draws. A
+    // workday whose date did not fit is still a workday, and dropping the
+    // pair would be the label deciding what the map shows.
+    // Narrowed to the symbol layout, because `LayerSpecification` is a union
+    // over every layer type and only the symbol arm has text properties. The
+    // cast is the assertion's own subject saying which arm it is looking at.
+    const layout = buildWorkdayLayer().layout as Record<string, unknown>
+
+    expect(layout['text-field']).toEqual(['get', WORKDAY_DATE_PROPERTY])
+    expect(layout['text-optional']).toBe(true)
+    // Below the mark, never across it: the glyph is what says "trail work",
+    // and shape is the primary channel (map/poiIcons.ts).
+    expect(layout['text-anchor']).toBe('top')
+  })
+
+  it('draws no label at all for a workday with no date to print', () => {
+    const [feature] = workdayFeatureCollection([
+      { id: 'wp-9', lat: 41.3, lon: -74 },
+    ]).features
+
+    expect(feature.properties[WORKDAY_DATE_PROPERTY]).toBe('')
   })
 
   it('is empty for no workdays rather than absent', () => {

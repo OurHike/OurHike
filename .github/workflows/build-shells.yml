@@ -110,6 +110,18 @@ jobs:
         working-directory: client
         run: npm run build
 
+      # The shell's version, from client/package.json (#1397): versionName /
+      # MARKETING_VERSION is the web app's semver, versionCode /
+      # CURRENT_PROJECT_VERSION is major*1,000,000 + minor*10,000 +
+      # patch*100 + rebuild. The committed files already carry it and
+      # src/test/shellVersion.test.ts fails when they drift, so this is a
+      # no-op on a healthy branch - it is here so a build CI makes can never
+      # say a version other than the one it wraps, whatever was committed.
+      - name: Stamp the Android shell with package.json's version
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client
+        run: node scripts/shell-version.mjs --write
+
       - name: Sync the Android project
         if: steps.scope.outputs.run == 'true'
         working-directory: client
@@ -125,7 +137,7 @@ jobs:
       # Fourteen days rather than the default ninety. This is a build to walk
       # with while a branch is live, not an archive - and a stale APK is worse
       # than none, because it looks like a current one in the Actions UI.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.scope.outputs.run == 'true'
         with:
           name: ourhike-debug-apk
@@ -166,6 +178,18 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         working-directory: client
         run: npm run build
+
+      # The shell's version, from client/package.json (#1397): versionName /
+      # MARKETING_VERSION is the web app's semver, versionCode /
+      # CURRENT_PROJECT_VERSION is major*1,000,000 + minor*10,000 +
+      # patch*100 + rebuild. The committed files already carry it and
+      # src/test/shellVersion.test.ts fails when they drift, so this is a
+      # no-op on a healthy branch - it is here so a build CI makes can never
+      # say a version other than the one it wraps, whatever was committed.
+      - name: Stamp the iOS shell with package.json's version
+        if: steps.scope.outputs.run == 'true'
+        working-directory: client
+        run: node scripts/shell-version.mjs --write
 
       - name: Sync the iOS project
         if: steps.scope.outputs.run == 'true'

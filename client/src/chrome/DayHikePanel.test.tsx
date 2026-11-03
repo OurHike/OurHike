@@ -70,6 +70,13 @@ const ROUTED: DraftStatus = {
   climb: { gainFt: 1180, lossFt: 940 },
   gapMiles: 0,
   gaps: [],
+  // Two taps, one pair, and that pair produced both legs - the name changes
+  // under the hiker at a junction they did not tap. So the taps bracket the
+  // walk rather than dividing it, which is the ordinary shape.
+  turns: [
+    { afterLegs: 0, ordinal: 0, label: 1, endsStretch: false },
+    { afterLegs: 2, ordinal: 1, label: 2, endsStretch: false },
+  ],
 }
 
 const SHELTER: DayHikeStop = {
@@ -277,6 +284,19 @@ describe('the route order', () => {
     expect(screen.getByText(/water 3 ft/)).toBeInTheDocument()
   })
 
+  it('marks a steward’s estimate of the water distance with a tilde (#1728)', () => {
+    // lib/waterProvenance.ts, the same mark the card prints for the same
+    // published column: a row printing a bare "water 350 ft" over an
+    // estimate would be the confident answer the card just stopped giving.
+    panel({
+      stops: [
+        { ...SHELTER, waterDistanceFt: 350, waterDistanceSource: 'OSA_Field_Estimate' },
+      ],
+    })
+
+    expect(screen.getByText(/water ~350 ft/)).toBeInTheDocument()
+  })
+
   it('says how far off the walk a stop is without pricing the detour', () => {
     panel({ stops: [{ ...FAR_SHELTER, capacity: 6 }] })
 
@@ -328,6 +348,73 @@ describe('the taps', () => {
 
     // Label 2 is ordinal 1 - `removeTap` indexes draftPoints.
     expect(props.onRemoveTurn).toHaveBeenCalledWith(1)
+  })
+
+  it('stands between two rows naming one trail, which is what makes them read', () => {
+    // THE CASE THE WHOLE ROW EXISTS FOR. Since 2026-09-15 a walk can carry two
+    // consecutive rows of one trail under one blaze, and the ONLY thing
+    // distinguishing them is the point the hiker placed. Listed apart - as
+    // these were, under "Your taps" - the two rows read as the duplicates
+    // #1433 was about.
+    panel({
+      status: {
+        ...ROUTED,
+        legs: [leg('Pine Meadow Trail', 1.4), leg('Pine Meadow Trail', 2.2)],
+        turns: [
+          { afterLegs: 0, ordinal: 0, label: 1, endsStretch: false },
+          { afterLegs: 1, ordinal: 1, label: 2, endsStretch: false },
+          { afterLegs: 2, ordinal: 2, label: 3, endsStretch: false },
+        ],
+      },
+    })
+    const kinds = [...document.querySelectorAll('.day-hike-panel__list > li')].map(
+      (row) =>
+        row.className.includes('--turn')
+          ? 'turn'
+          : row.className.includes('--leg')
+            ? 'leg'
+            : 'other',
+    )
+
+    expect(kinds).toEqual(['turn', 'leg', 'turn', 'leg', 'turn'])
+  })
+
+  it('prints the mile the tap sits at, which it could not before', () => {
+    panel({
+      status: {
+        ...ROUTED,
+        legs: [leg('Pine Meadow Trail', 1.4), leg('Pine Meadow Trail', 2.2)],
+        turns: [
+          { afterLegs: 0, ordinal: 0, label: 1, endsStretch: false },
+          { afterLegs: 1, ordinal: 1, label: 2, endsStretch: false },
+          { afterLegs: 2, ordinal: 2, label: 3, endsStretch: false },
+        ],
+      },
+    })
+
+    // The end of leg one and the end of the walk - read off the rows rather
+    // than re-routed, which is the arithmetic the old merge made impossible.
+    expect(screen.getByText('mile 1.4')).toBeInTheDocument()
+    expect(screen.getByText('mile 3.6')).toBeInTheDocument()
+  })
+
+  it('still offers a delete on the one tap of a walk that has not routed', () => {
+    // `started` has no legs to place a tap against, so it carries no
+    // `DraftStatus.turns` - and a hiker who placed exactly one point still has
+    // to be able to take it back.
+    const props = panel({ status: { kind: 'started' }, walking: null })
+
+    expect(screen.getByRole('button', { name: /Remove tap 1/ })).toBeInTheDocument()
+    expect(props.onRemoveTurn).not.toHaveBeenCalled()
+  })
+
+  it('offers a delete on every tap of a walk the network cannot join', () => {
+    // The state where removing a tap IS the remedy. A hiker told the walk does
+    // not route, with no control to change it, is stuck.
+    panel({ status: { kind: 'unroutable' }, walking: null })
+
+    expect(screen.getByRole('button', { name: /Remove tap 1/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Remove tap 2/ })).toBeInTheDocument()
   })
 })
 

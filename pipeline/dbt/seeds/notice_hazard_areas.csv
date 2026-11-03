@@ -1,0 +1,10 @@
+source_key,hazard,category_value,why
+oprhp_hunting_areas,hunting,Hunting area,"Description is the layer's own free text, read as words (rule 6's b): in the live read of 2026-10-15 it holds 'hunting area' on all 134 rows the layer's Hunting type marks 1 'Hunting', in 24 wordings ('Big game deer hunting area.', 'Waterfowl hunting area.'), and on none of the 88 it marks 2 'No Hunting': 87 'Restricted Area/Safety Zone', where hunting is restricted, and 1 'No Hunting', held back. A wording that drops the phrase holds its area back, a miss rather than a safety zone drawn as hunting"
+iata_lands_hunting_regs,hunting,Open for public hunting,"The label Hunting_Reg's coded-value domain gives the code the layer stages, 'Open' (notice_category_labels; rule 6's a). Its four codes in the live read of 2026-10-15: Closed 'No hunting' 42, Open 16, Permit 'Open for deer hunting by permit only' 1, Private 'Private hunting by agreement' 6"
+iata_lands_hunting_regs,hunting,Open for deer hunting by permit only,As Open for public hunting: hunters may be on the parcel
+iata_lands_hunting_regs,hunting,Private hunting by agreement,As Open for public hunting: hunters may be on the parcel
+usace_garrison_hunting_restrictions,hunting,Open to Hunting / Trapping by Special Permit Only,"Restriction's own value, read in the notice inventory's saved distinct values (2026-10-03, five of five)"
+usace_garrison_hunting_restrictions,hunting,Open to Bow Hunting Only / Trapping by Special Permit Only,As Open to Hunting: bow hunters may be on the area
+usace_garrison_hunting_restrictions,hunting,Closed to Center-fire Rifles Only / Trapping by Special Permit Only,As Open to Hunting: only centre-fire rifles are barred
+blm_shooting_points,shooting,,"Every row: the layer is BLM's qualified recreational shooting sites (93 points on 2026-10-03, the row's notes)"
+usfs_baer_assessments,burned_area,,"Every row: each polygon is a burned area under Burned Area Emergency Response assessment (the row's notes: ignitions 2024-03-22 to 2026-08-26)"

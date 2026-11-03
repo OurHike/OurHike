@@ -18,7 +18,17 @@
 // inclusive direction that question already leans.
 import Base from '../layouts/Base.astro'
 import Contours from '../components/Contours.astro'
-import { ORGS, orgCountLine } from '../lib/heroOrgs.mjs'
+import { orgCountLine, rotationOrgs } from '../lib/heroOrgs.mjs'
+import { readRegistry, registeredOrgs, shipping } from '../lib/orgRoster.mjs'
+
+// THE ROSTER (#1877): every registered organization, read from
+// pipeline/sources.json when the site is built. The headline counts those
+// with data that ships; the link under it, and /organizations/, all of them.
+const ROSTER = registeredOrgs(readRegistry())
+
+// Base.astro's `docs`, for the data pages' line under "What works today":
+// a home page is never a /data/ page, so it is PUBLIC_DOCS_ORIGIN or nothing.
+const docs = import.meta.env.PUBLIC_DOCS_ORIGIN ?? ''
 
 // The title and the description are the H1's other half and were left behind
 // when #1059 fixed the H1 itself: the rotation below stopped implying an
@@ -34,27 +44,66 @@ import { ORGS, orgCountLine } from '../lib/heroOrgs.mjs'
 // also still true: features/NEARBY_TRAILS.md keeps the centerline as the
 // chosen trail, one at a time, and the mile axis is the A.T.'s. "Nearby
 // trails" rather than a count or a region because it is the honest shape of
-// what shipped and the feature's own name. Not a region: four of the five
-// stewards are New York organizations, but NYNJTC's Highlands Trail extract
-// is registered as "(NY and NJ sections)" in pipeline/sources.json, so "New
-// York's trails" would be the wrong claim by twelve section features.
+// what shipped and the feature's own name. Not a region: when this was
+// written four of the five stewards were New York organizations, and the
+// roster now spans the country (#1877), so no region was ever the right
+// claim.
 const title = 'OurHike — The Appalachian Trail and nearby trails, offline'
-const description =
-  "A free, open-source offline map inspired by the Appalachian Trail and drawn from five organizations' own published trail data: topo, water, shelters and elevation, working with no bars and no data plan."
+// The count is the shipping roster's, so it moves with the registry; it was
+// "five" typed in until #1877.
+const description = `A free, open-source offline map inspired by the Appalachian Trail and drawn from ${shipping(ROSTER).length} organizations' own published trail data: topo, water, shelters and elevation, working with no bars and no data plan.`
 
-// The organization roster and its copy live in lib/heroOrgs.mjs, imported
-// rather than inlined here, so heroOrgs.test.mjs can hold the rotation to
-// "every organization's lines show up" without needing to render this page.
-const ORG_COUNT_LINE = orgCountLine(ORGS)
+// The rotation's hand-written copy lives in lib/heroOrgs.mjs and the roster
+// in lib/orgRoster.mjs, imported rather than inlined here, so their tests can
+// hold the count line and the rotation without needing to render this page.
+// rotationOrgs() keeps only the lines whose organization has data that ships.
+const ORG_COUNT_LINE = orgCountLine(ROSTER)
+const ROTATION = rotationOrgs(ROSTER)
 ---
 
 <Base title={title} description={description}>
+  {
+    /* IMPACT SITE VERIFICATION (#1707), for REI's affiliate program, which
+       runs through impact.com. The maintainer registered ourhike.org with
+       Impact on 2026-09-29.
+
+       v1.3.3 shipped two lines: Impact's "text content" line inside a
+       `hidden` <p>, and this meta tag written with double quotes. Impact did
+       not verify the site against that page (maintainer, 2026-09-29, after
+       confirming Impact holds https://ourhike.org). Which line Impact read,
+       and why it refused, is not known.
+
+       So v1.3.4 carries only the meta tag, byte for byte as the maintainer
+       supplied it, single quotes included (maintainer's ask, 2026-09-29). Astro rewrites attribute quotes to double, so the tag is
+       emitted as raw HTML through set:html. @unvalidated that the quote
+       style matters to Impact's checker: the two forms are the same element
+       to any HTML parser, and only a checker that string-matches the
+       snippet would tell them apart. That is the reason for writing it
+       exactly rather than trusting it to be equivalent.
+
+       Safe to delete once Impact shows the site as verified? Not known.
+       Impact may re-check, so leave it in place unless Impact says
+       otherwise. */
+  }
+  <Fragment
+    slot="head"
+    set:html={"<meta name='impact-site-verification' value='ef20c667-05ef-4435-af33-c57e73b5f39c'>"}
+  />
   <header class="hero">
     <Contours />
     <div class="wrap">
       <div class="hero__inner">
         <span class="eyebrow"><span class="blaze"></span>HIKE YOUR OWN HIKE</span>
         <h1><span id="hero-rotator">{ORG_COUNT_LINE}</span></h1>
+        {
+          /* THE WAY TO THE WHOLE ROSTER (#1877). The list sat on this page
+             for one build and the maintainer rejected it on sight - 4,195 px
+             of names on a phone, pushing the offline promise five screens
+             down - and chose a page of its own, an A-Z index, by poll on
+             2026-10-23. Outside the rotator, so it stays put while the
+             headline above it changes. */
+        }
+        <a class="hero__roster" href="/organizations/">See all {ROSTER.length} organizations</a>
         <p class="hero__tagline">
           Download it once over wifi. After that the map works with no bars and
           no data plan — the way the trail actually is. Free, open source, and
@@ -107,14 +156,13 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
           <span class="stat__figure">280</span>
           <span class="stat__label">shelters, from ATC's own inventory</span>
         </div>
-        <!-- Added rather than replacing one of the three above, which are all
-             true and all about the A.T. Three A.T. figures with nothing beside
-             them read as an A.T.-only product even though not one of them says
-             so - measured 2026-08-25 on a live fetch, pipeline/README.md. -->
-        <div class="stat">
-          <span class="stat__figure">21,805</span>
-          <span class="stat__label">trail lines, from five organizations</span>
-        </div>
+        <!-- A fourth stat, "21,805 trail lines, from five organizations",
+             stood here from 2026-08-25 so three A.T. figures did not read as
+             an A.T.-only product. #1877 took it out by the maintainer's
+             choice (poll, 2026-10-23): it was measured for the first five
+             organizations, the headline above now counts the registry, and nobody has
+             counted the lines again. The headline's count and the link under
+             it now do the job the stat was added for. -->
       </div>
       <p class="prose" style="color: var(--fg-chrome-3); font-size: 13.5px; margin-top: 14px">
         Where the data comes from matters, so the app never flattens it: ATC
@@ -152,6 +200,19 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
           <li>App-store versions for iOS and Android — in progress</li>
         </ul>
       </div>
+      {
+        /* THE WAY IN TO THE DATA PAGES (#1805 — dlt → dbt re-platform
+           as one go/no-go change: the maintainer chose "All three as drawn",
+           2026-10-15). Before it the footer was the only link, at 4,622 px of
+           a 4,915 px page on a 390 px phone (q24_frames.html, measured
+           2026-10-15). `docs` as the footer has it: docs.ourhike.org once
+           pages.yml finds that host serving the data pages, else this host. */
+      }
+      <p class="works-data">
+        Where the trail data comes from, how it is built, and how its checks went
+        on the last build: <a href={`${docs}/data/how/`}>How the data is built →</a>
+        · <a href={`${docs}/data/quality/`}>Data quality →</a>
+      </p>
     </div>
   </section>
 
@@ -197,11 +258,41 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
             >Ways to help →</a
           >
         </div>
+        {
+          /* THE FOURTH CARD (features/ORG_ONBOARDING.md, #116 Phase 6). Same
+             shape as the three above, addressed to somebody who arrived as a
+             hiker and happens to run a trail crew. It is the one place on a
+             consumer homepage where that sentence lands.
+
+             The wording is load-bearing and was argued rather than picked:
+
+             - A QUESTION, because the reader is a hiker right up until the
+               moment they realise it is about them. A heading like "For
+               organisations" filters itself out before it is read.
+             - "instead of from us guessing" names the thing that actually
+               annoys a trails chair about every other hiking app.
+             - NO GIS, NO REGISTRY, NO PULL REQUESTS. All true, all on the next
+               page. A homepage card that mentions any of them is a card a
+               volunteer secretary bounces off. */
+        }
+        <div class="card">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 17.5 8 8l4 6.5L15 10l6 7.5z"></path>
+            <path d="M3 20.5h18"></path>
+          </svg>
+          <h3>Do you maintain these trails?</h3>
+          <p>
+            If your club or agency keeps a trail on this map, the data can come
+            from you instead of from us guessing. Publish your own sections,
+            keep your own hikers, and we will draw them.
+          </p>
+          <a class="card__link" href="/for-orgs/">Add your trail data →</a>
+        </div>
       </div>
     </div>
   </section>
 
-  <script define:vars={{ orgs: ORGS, countLine: ORG_COUNT_LINE }} is:inline>
+  <script define:vars={{ orgs: ROTATION, countLine: ORG_COUNT_LINE }} is:inline>
     // Rotates the H1 through the count line and one line per organization,
     // every few seconds, ordered by a rough client-side location estimate.
     //
@@ -234,7 +325,7 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
       }
 
       // Flat-earth approximation of squared distance - fine at this scale,
-      // where the only question is "which of five nearby points is
+      // where the only question is "which of these points is roughly
       // closest", not an actual distance, and never displayed.
       function roughDistance(lat1, lon1, lat2, lon2) {
         var dLat = lat1 - lat2
@@ -318,5 +409,24 @@ const ORG_COUNT_LINE = orgCountLine(ORGS)
 
   .card svg {
     stroke: var(--brand-primary);
+  }
+
+  /* 44px tall, the site's phone target (client/e2e/sitePages.spec.ts), with
+     the extra height taken back out of the hero's gap so the link sits as
+     close under the headline as a line of text would. */
+  .hero__roster {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin: -10px 0;
+    font-weight: 600;
+    font-size: 17px;
+    color: var(--brand-primary);
+    text-underline-offset: 4px;
+  }
+
+  .hero__roster:hover {
+    color: var(--brand-primary-hover);
   }
 </style>

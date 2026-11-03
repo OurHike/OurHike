@@ -1,0 +1,197 @@
+# Podcasts picked for a hike
+
+[#1683 — Offer podcast episodes picked for the hike, with a one-tap Spotify save and an in-app player](https://github.com/OurHike/OurHike/issues/1683).
+
+A hiker looking at a hike sees a short list of podcast episodes somebody picked for it,
+can play one on the screen, and can save one to their own Spotify library in one tap. A
+hiker who opens a place's card on the map sees, last, the episodes tagged to that place.
+
+## What was decided, and against what
+
+The maintainer, by poll on 2026-09-26, each question put with a drawn mock and, after the
+first build, a photograph of the running app:
+
+| question | chosen | offered and not taken |
+|---|---|---|
+| the button | Spotify's embedded player **and** a one-tap save | a plain "Open in Spotify" link (recommended at the time) |
+| where | last on the hike detail screen, and under "Today on your hike" on a long hike | either one alone |
+| which episodes | a hand-picked list | searching Spotify by where the hiker is |
+| when the player loads | on a tap | as soon as the card shows |
+| the phone apps | a link to the episode in Spotify, nothing else | the same card as the web |
+| where the list lives | live, at the bucket root, so a new episode needs no app release | in the app code; in the pinned trail data |
+| the buttons | icons beside each title | 44px pills, then 32px pills |
+| the Spotify buttons | the maintainer asked for Spotify's icon on them; drawn as the icon beside a word ("Save", "Saved", "Listen on Spotify"), the shape Spotify's design guidelines allow | the icon inside our + circle, which the guidelines forbid (no combining the mark with another symbol); the icon alone in a white circle, which reads as "open Spotify" rather than "save" |
+| other apps ([#1690](https://github.com/OurHike/OurHike/issues/1690)) | the hiker picks their podcast app once - Spotify, Apple Podcasts, Pocket Casts, Overcast or YouTube Music - and each episode opens in it | one pod.link link that asks which app; playing the podcast's own audio inside OurHike |
+| before a pick | a plain Listen, and the first tap (or ↓) asks | assuming Spotify until changed |
+| an episode with no link for the hiker's app | still shown, with Spotify's button and "Not linked for <app> yet." | hidden |
+| ▶ | Spotify's player for everyone, whatever app they picked | only for hikers who picked Spotify |
+| download | a ↓ circle like ▶ that opens the episode in the hiker's app, one tap from that app's own download | keeping the audio in OurHike for no-signal play; saving an .mp3 to the phone |
+| which apps the picker offers (poll, 2026-09-29) | Spotify, and each other app only once every episode on the list carries its link, so an app joins or leaves with the list and no app release | Spotify and Apple Podcasts only, in the code; all five, with every episode required to carry five links |
+| a place's episodes ([#1718](https://github.com/OurHike/OurHike/issues/1718), poll, 2026-09-26/29, frame P1) | "Listen here", last on the place's card, under the facts that keep a hiker safe and under "About this place" | listing tagged episodes on Today by the day's places (frame P2) |
+| who tags an episode to a place (2026-09-29) | trail admins, on the Podcast desk: Claude proposes the places an episode names and shows the words it matched, a person decides | individual hikers |
+| how far apart one episode's places are (2026-09-29) | at least 500 trail miles | any number of nearby places |
+| an episode with no place it spends time on (2026-09-29) | a place it mentions in passing, only where that place has no other episode | no place |
+| which trails (2026-09-29) | every trail, the trail named first and then the places on it; a major theme or segment only | the A.T. alone, where the list started |
+| an episode set in a park but at no named place (poll, 2026-09-29) | one spot per park, the same for every episode set there | leaving it untagged |
+| a crime story (poll, 2026-09-29) | tagged where it happened | left off the map |
+| a show that keeps publishing (poll, 2026-09-29) | a weekly run proposes its new episodes on the desk | classifying by hand when somebody remembers |
+
+"Should be the last thing you see" is the maintainer's own line about the hike detail
+placement. The alternatives are written down so the next reader knows they were considered,
+not so they get re-argued.
+
+## What it cannot do, and why
+
+**The one-tap save works for five Spotify accounts at most.** Since 2026-03-09 an app in
+Spotify's Development Mode serves up to five users its owner adds by hand, and the owner must
+have Premium; Spotify grants more ("extended quota") only to a registered organization with at
+least 250,000 monthly users (Spotify's quota-modes page, read 2026-09-26). Every other account
+gets a 403 from the save, and the card sends that hiker to the episode in Spotify to tap +
+there. Nothing in this repository can change that.
+
+**Nothing can tell which podcast app a phone uses, so OurHike asks.** iPhone has no default
+podcast app setting (Apple's list of changeable defaults names none, read 2026-09-26),
+Android's old default, Google Podcasts, is shut down, and browsers hide which apps are
+installed on purpose. The pick is kept on the phone (`lib/podcastApp.ts`), never in the
+account, and More → Settings changes it.
+
+**No podcast app lets another app start a download,** Spotify included: its API can save an
+episode but has no download call, and the others offer no API at all. So ↓ opens the episode
+in the hiker's app, and the line under the list says so.
+
+**One-tap Save is Spotify's alone,** for the same reason: no other app lets another add an
+episode to a listener's library.
+
+**The picker offers only the apps every episode opens in.** The maintainer's line, answering
+whether the picker should list five apps when the list only links Spotify: "If we only support
+spotify, then we shouldnt have the other apps listed, right?" So `appsEveryEpisodeOpensIn`
+(`lib/podcasts.ts`) offers Spotify, which every row has, and another app only while every episode
+on the whole published list carries that app's link; the card's picker and the Settings row both
+read it. An empty list offers Spotify alone. A hiker whose pick later drops out (an episode
+without that app's link was added) still sees their pick, ticked, and the card still opens each
+episode in it where it can, saying "Not linked for <app> yet." on the rest. Adding the missing
+links brings the app back with no app release.
+
+**The phone apps get a link.** A sign-in redirect does not return into the Capacitor shells
+today ([AUTHENTICATION.md](AUTHENTICATION.md)), and the Android shell's `useLegacyBridge`
+(`client/capacitor.config.ts`) exposes the native bridge, background location included, to
+any frame the WebView holds. Spotify's player is a third-party frame, so it stays out.
+
+**Nothing reaches Spotify before a tap**, and what a tap sends is in
+[IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)'s table.
+
+## Setting it up
+
+The card works with no setup: it shows the player and an "Open in Spotify" link. The Save
+button needs a Spotify app:
+
+1. Create an app at developer.spotify.com, choosing the Web API. The account that owns it must
+   have Spotify Premium.
+2. Add one redirect URI per origin the app is served from, exactly:
+   `https://ourhike.org/app/spotify-callback.html` for production, and UA's origin followed
+   by `/spotify-callback.html`. A pull request preview's origin is not registered, so Save
+   on a preview stops at Spotify's own "invalid redirect URI" page.
+3. Add each Spotify account that may save (up to five) on the app's User Management page.
+4. Put the app's client id in the repository **variable** `SPOTIFY_CLIENT_ID`. It is public
+   by design (PKCE, no secret), and `.github/expected-settings.yml` declares it.
+
+## Tagging an episode to the places it talks about
+
+[#1718 — Tag podcast episodes to the places they talk about, and show them last on each place's card](https://github.com/OurHike/OurHike/issues/1718).
+
+A row's `pois` are published POI ids and its `places` their names, in the same order.
+`pipeline/lib/podcasts.py` checks both against `pipeline/reference/poi_identity.json`:
+a POI never published or since retired, or a name that is not the ledger's, costs the
+row. The phone shows the episode under "Listen here", last on the card of each of those
+exact POIs — not on the rest of its site, because the tag is somebody's call about that
+one point.
+
+Tags are made on the Podcast desk, a private claude.ai page. Claude reads each episode's
+notes and transcript, proposes the ATC places it names with the words it matched, and a
+person ticks each one. The desk holds `export_poi.py`'s miles and refuses two places on
+one episode under 500 miles apart. The reference file holds no miles, so the gate cannot
+check that rule, and a hand edit keeps it on its honour; `lib/podcasts.py` says why a
+straight line cannot stand in for trail miles.
+
+The first list is 48 of the 51 episodes of The Green Tunnel (R2 Studios, George Mason
+University), 62 places, proposed by Claude Code and pushed by the maintainer on
+2026-09-29. The reference file's README says what each kind of `note` means.
+
+### National Park After Dark, and a show's own map
+
+The second show publishes a map of its episodes (npad.bounds.earth, drawn from a public
+sheet), and the map pins each episode to a park, not to where the story happened. So the
+map picks the candidates and the notes pick the places: an episode is an A.T. candidate
+when its pin is within 15 miles of the trail or its notes name a park the trail crosses;
+a place the notes name is matched to its ATC POI; a park with no named place gets its one
+spot (Newfound Gap for the Smokies, Skyland for Shenandoah, Pinkham Notch for the White
+Mountains, and so on, listed in the reference file's rows). 21 of its 469 episodes are on
+the list by that rule, 2026-09-29.
+
+A weekly routine on claude.ai reads the show's feed each Tuesday and proposes new
+episodes on the desk by the same rules. It runs without the Spotify connector (a routine
+cannot be given one from a session), so a new episode reaches the desk without its
+Spotify link.
+
+### Every trail, not just the A.T.
+
+The maintainer, 2026-09-29: "don't limit to the AT … it is a good idea to identify the
+trail first. keep doing that. but don't limit to it." The desk now names each place's
+trail and holds places off the A.T. with a name, where it is and, when one is known, a
+point. That point is the show's map pin where OpenStreetMap's point for the same park is
+within 60 miles of it (`@unvalidated`: a large park's width, not a measured slip), and
+OpenStreetMap's otherwise; a place OpenStreetMap cannot find keeps no point and says so.
+Places on one episode are kept 500 miles apart by straight line, which never lets
+through two places a trail puts closer.
+
+None of those places reaches the app yet, and the data is not what stops it. OurHike
+publishes thousands of named places off the A.T. Measured 2026-09-29 against production
+release `cf8ff270`:
+
+- 17,234 named waypoints in `nearby_poi.geojson`, among them 9,066 USFS recreation sites
+  nationwide and New York's DEC, OPRHP and NYC layers;
+- 257 parks and 163 long trails in `places.json`.
+
+Every `nearby_poi` id already opens a place card. What stops a tag is
+`lib/podcasts.py`: it accepts only ids in `reference/poi_identity.json`, which is the
+A.T.'s ledger, and nothing like it exists for the other waypoints.
+
+Of the desk's 254 National Park After Dark places that have a point, only 4 match a
+published place by name within 25 miles. The show is mostly national parks, and nothing
+OurHike publishes covers NPS ground.
+
+[#1721 — A podcast episode can be tagged only to an A.T. POI, because lib/podcasts.py checks ids against the A.T.'s ledger alone](https://github.com/OurHike/OurHike/issues/1721)
+asks what the gate should accept, and where such an episode would show.
+
+[PODCAST_PLACES.md](PODCAST_PLACES.md) is the plan for matching every show's place names against
+everything OurHike publishes: for each new show, on each weekly run, and again after each data release.
+
+## Adding an episode
+
+1. Add a row to `pipeline/reference/podcast_episodes.json` - its README says what each field
+   is. For each other app it is in, copy that app's own share link into `links`
+   (`apple_podcasts`, `pocket_casts`, `overcast`, `youtube_music`); there is no shared
+   episode-link format across podcast apps. An app is offered to hikers only while every
+   episode on the list carries its link, so one row without an app's link takes that app out
+   of every hiker's picker. Then open a pull request.
+   `pipeline/tests/test_export_podcasts.py` fails on a row the exporter would drop.
+2. After the merge, dispatch `publish-podcasts.yml` with `publish: true` and
+   `data_environment: ua`, check it on UA, then again with `production`.
+
+`scripts/pipelines.sh` does not know this path yet ([#1685 — scripts/pipelines.sh reads an edit to the podcast list as staling all six publishes, and never names the one that publishes it](https://github.com/OurHike/OurHike/issues/1685)): it reports every publishing workflow as
+stale for an edit to the list, because `pipeline/reference/` is one of its shared roots, and
+it never names `publish-podcasts.yml`, which does not run `publish.py`. The only workflow an
+edit to the list stales is `publish-podcasts.yml`.
+
+## Where the code is
+
+| part | file |
+|---|---|
+| the reviewed list | `pipeline/reference/podcast_episodes.json` |
+| the gate and the upload | `pipeline/lib/podcasts.py`, `pipeline/export_podcasts.py`, `.github/workflows/publish-podcasts.yml` |
+| the phone's copy and the matching | `client/src/lib/podcasts.ts`, `client/src/lib/usePodcastEpisodes.ts` |
+| Spotify | `client/src/lib/spotify.ts`, `client/spotify-callback.html`, `client/src/spotifyCallback/` |
+| the card | `client/src/chrome/PodcastCard.tsx`, on `screens/HikeDetail.tsx` and `screens/Today.tsx` |
+| the hiker's app | `client/src/lib/podcastApp.ts`, `client/src/chrome/PodcastAppPicker.tsx`, `PodcastAppIcon.tsx`, and the Podcast app row in `screens/Settings.tsx` |
+| a place's episodes | `episodesForPoi` in `client/src/lib/podcasts.ts`, rendered by `App.tsx` into `chrome/PoiCard.tsx`'s `listenHere` |
+| the pictures | `client/preview-shots/hike-detail-podcasts.mjs`, `podcast-app-picker.mjs`, `today-long-hike-podcasts.mjs`, `waypoint-listen-here.mjs` |

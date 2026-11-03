@@ -24,8 +24,10 @@ concurrency group that looks like queueing and is not.
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import stat
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -437,24 +439,95 @@ class TestTheDeployWorkflows:
         group = self._workflow("pr-preview.yml")["concurrency"]["group"]
         assert "github.event.number" in group
 
-    def test_a_preview_is_built_for_the_root_of_its_own_hostname(self):
+    def test_a_preview_is_built_for_the_same_path_production_serves_the_app_at(self):
         """A base path that disagrees with the serving path is a blank screen.
 
-        A Cloudflare preview is served from `https://pr-<n>.<project>.pages.dev`
-        with the app at its root, so the old `/OurHike/pr-preview/pr-<n>/` base
-        would be wrong in a way that builds and deploys perfectly well.
+        A preview uploads the site and the app together now, laid out as
+        pages.yml lays them out - site at `/`, app at `/app/` - so the base is
+        production's, and for the stronger reason as well as the obvious one.
+        The obvious one is that a bundle built for `/` and served under `/app/`
+        asks for assets nothing answers. The stronger one is
+        client/src/lib/orgRoute.ts: it reads its basename from
+        `import.meta.env.BASE_URL` because a router taking it from anywhere
+        else "breaks deep links in exactly one environment - the one nobody
+        tests", and a preview built for `/` made this that environment.
         """
-        build = next(step for step in self._steps(self._workflow("pr-preview.yml")) if step.get("name") == "Build the app")
-        assert build["env"]["VITE_BASE_PATH"] == "/"
+
+        def base_path(workflow: str) -> str:
+            build = next(step for step in self._steps(self._workflow(workflow)) if step.get("name") == "Build the app")
+            return build["env"]["VITE_BASE_PATH"]
+
+        assert base_path("pr-preview.yml") == "/app/"
+        assert base_path("pr-preview.yml") == base_path("pages.yml"), (
+            "a preview that disagrees with production is the environment nobody tests"
+        )
+
+    def test_a_preview_uploads_the_site_and_the_app_together(self):
+        """The half of the layout that a base path alone cannot buy.
+
+        `wrangler pages deploy client/dist` uploads the app and nothing else,
+        so `/for-orgs/` and the three pages under it were unreachable in a
+        preview - and did not 404, because Cloudflare Pages answers an
+        unmatched path with the root index.html. Measured on pr-1547,
+        2026-09-17: `/for-orgs/` answered 200 with the app's index.html.
+        """
+        steps = self._steps(self._workflow("pr-preview.yml"))
+        names = [step.get("name") for step in steps]
+        assert "Build the site" in names, "the marketing site has to be built before it can be uploaded"
+        assemble = next(step for step in steps if step.get("name") == "Assemble the preview")
+        # The same two copies pages.yml makes, in the same direction.
+        assert "cp -r site/dist/. _site/" in assemble["run"]
+        assert "cp -r client/dist/. _site/app/" in assemble["run"]
+        deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        assert "pages deploy _site" in deploy["with"]["command"]
+        assert "pages deploy client/dist" not in deploy["with"]["command"]
+        assert names.index("Assemble the preview") < names.index("Publish the preview")
+        # The camera writes into client/dist, so a copy taken before it would
+        # upload an app with no pictures and a comment linking at them.
+        assert names.index("Photograph the build") < names.index("Assemble the preview")
+
+    def test_a_preview_can_still_open_a_console_address(self):
+        """The one line that keeps the org surface reviewable at all.
+
+        With the site at the root, a path Pages holds no file for falls back to
+        the SITE's landing page - so `/app/org/<slug>/setup` and `/app/my/tread`
+        would serve marketing copy. Those addresses are the only way the console
+        is reached (client/src/lib/orgRoute.ts: a welcome email, an org's
+        members area, a bookmark), so a preview without this fallback is a
+        preview of a console nobody can review.
+
+        `_redirects` is read by Cloudflare Pages and ignored by GitHub Pages, so
+        this changes nothing about how a hiker is served. Production answers
+        those URLs with a 404 today - measured against the live site
+        2026-09-17, and written up in features/ORG_ONBOARDING.md's Known gaps.
+        """
+        steps = self._steps(self._workflow("pr-preview.yml"))
+        assemble = next(step for step in steps if step.get("name") == "Assemble the preview")
+        assert "_site/_redirects" in assemble["run"], "a preview needs the app's deep links to resolve"
+        assert "/app/index.html  200" in assemble["run"]
+        # The one that actually fires. Pages resolves a not-found path against
+        # its own fallback before reading `_redirects` - measured on run
+        # 8d649163, where the rule was uploaded and did nothing - and a
+        # `404.html` is what displaces that fallback.
+        assert "cp _site/app/index.html _site/404.html" in assemble["run"]
+        # And production keeps its own answer, whatever that turns out to be.
+        assert "_redirects" not in (WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8")
 
     def test_the_advertised_preview_url_is_the_one_deployed_to(self):
         """Both come from the same step, so they cannot drift apart.
 
         A comment linking somewhere the upload did not go is a reviewer looking
         at someone else's change, or at a 404, and believing either.
+
+        The comment names `steps.links` rather than the deploy directly: with
+        the site at `/` and the app at `/app/` there are several links to
+        build, and the trailing slash has to come off the base once rather
+        than once per link. So this follows the seam - the links step reads
+        the deploy, and every link in the comment reads the links step.
         """
         steps = self._steps(self._workflow("pr-preview.yml"))
         deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        links = next(step for step in steps if step.get("name") == "Work out where to link")
         comment = next(
             step
             for step in steps
@@ -466,7 +539,29 @@ class TestTheDeployWorkflows:
         # only one of them is evidence rather than inference - and a comment
         # linking somewhere the upload did not go is a reviewer looking at a
         # 404, or at someone else's change, and believing it.
-        assert "steps.deploy.outputs.pages-deployment-alias-url" in comment["with"]["message"]
+        assert "steps.deploy.outputs.pages-deployment-alias-url" in links["env"]["BASE"]
+        assert "steps.preview.outputs.url" in links["env"]["BASE"]
+        # Off once, in the step every link is built from: the two candidates
+        # disagree about a trailing slash and `https://host//app/` is a 404.
+        assert 'BASE="${BASE%/}"' in links["run"]
+        assert "steps.links.outputs.app" in comment["with"]["message"]
+
+    def test_the_comment_offers_the_marketing_site_as_well_as_the_app(self):
+        """The reviewer-facing half of uploading both.
+
+        A preview that holds `/for-orgs/` and never says so is a preview
+        nobody opens it in: the pull request comment is the only place the
+        URL ever appears.
+        """
+        steps = self._steps(self._workflow("pr-preview.yml"))
+        links = next(step for step in steps if step.get("name") == "Work out where to link")
+        comment = next(
+            step
+            for step in steps
+            if "sticky-pull-request-comment" in step.get("uses", "") and step.get("if", "").strip().endswith("!= 'closed'")
+        )
+        assert "for-orgs" in links["run"]
+        assert "steps.links.outputs.orgs" in comment["with"]["message"]
 
 
 class TestTheCustomDomainAndTheBuildAgree:
@@ -518,6 +613,12 @@ class TestTheCustomDomainAndTheBuildAgree:
         assert raw.strip().splitlines() == [self._host()], "CNAME must hold one line"
         assert "://" not in self._host()
         assert "/" not in self._host()
+
+    def test_the_dbt_link_checks_refuse_links_to_the_cnames_host(self):
+        """pipeline/dbt/macros/link_into_the_app.sql refuses a closure link back into the app by its
+        host, read from dbt_project.yml's `app_host` var, which has to be site/CNAME's or it refuses nothing."""
+        variables = yaml.safe_load((REPO_ROOT / "pipeline" / "dbt" / "dbt_project.yml").read_text(encoding="utf-8"))["vars"]
+        assert variables["app_host"] == self._host()
 
     def test_the_app_is_built_for_a_subpath_of_the_custom_domain_root(self):
         """The apex serves the landing page; the app lives under it.
@@ -724,3 +825,734 @@ class TestDraftingWithoutDeploying:
         env = self._draft_step()["env"]
         assert env["REF_NAME"] == "${{ github.ref_name }}"
         assert env["DEFAULT_BRANCH"] == "${{ github.event.repository.default_branch }}"
+
+    def test_a_refused_release_post_prints_githubs_reason_instead_of_a_bare_exit(self):
+        """#1717. `curl -f` turned a 403 into an exit code and discarded the
+        body, so the cause of the 2026-09-29 refusals was never seen. The step
+        reads the status itself, as release-notes.yml does for its own POST."""
+        run = self._draft_step()["run"]
+        post = run.split("response=", 1)[1].split("-d @payload.json", 1)[0]
+        assert "curl -sS -w" in post
+        assert "-fsS" not in post
+        assert "%{http_code}" in post
+        assert "::error::Drafting" in run
+        assert ".message" in run
+
+
+class TestTheDataDocs:
+    """The dbt docs at `/data/` (pipeline/ELT.md, "Docs and charts at https://ourhike.org/data/").
+
+    Stage 7 of **#1793 — Rebuild the data platform as dlt → dbt: seven
+    contracted marts, a monthly refresh, published docs, and lighter phone
+    downloads**. Every preview serves the page beside the app, and so does
+    production until docs.ourhike.org serves it (`TestTheDocsHost` below), each copy built by `.github/actions/dbt-docs-site`
+    and checked by `pipeline/check_docs_site.py` as copied; UA carries them too
+    since #1887. The first three tests are the three assertions ELT.md names;
+    the fourth is its "the docs step needs no secret".
+    """
+
+    ACTION = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
+    CHECKER = REPO_ROOT / "pipeline" / "check_docs_site.py"
+    SITE_BUILDS = [("pages.yml", "Assemble the site"), ("pr-preview.yml", "Assemble the preview"), ("ua.yml", "Assemble UA")]
+
+    @staticmethod
+    def _steps(workflow: str) -> list[dict]:
+        parsed = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+        return [step for job in parsed["jobs"].values() for step in job["steps"]]
+
+    @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+    def test_both_site_builds_assemble_the_docs_at_data_index_html(self, workflow, assemble):
+        """Built before the assembly, copied into `_site/data/` by it, and checked there.
+
+        The check is on the copy because the copy is what ships, and it is the
+        only thing between a preview and its trap: `_site/404.html` is the app
+        shell, so a missing `_site/data/index.html` would be answered with the
+        app rather than with a failure.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))["jobs"]
+        (builder,) = [
+            job for job in jobs.values() if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        (assembler,) = [job for job in jobs.values() if any(s.get("name") == assemble for s in job["steps"])]
+        build = next(step for step in builder["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        step = next(step for step in assembler["steps"] if step.get("name") == assemble)
+        if builder is assembler:
+            names = [s.get("name") for s in builder["steps"]]
+            assert names.index(build["name"]) < names.index(assemble)
+            assert step["env"]["DOCS_DIR"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+        else:
+            # Built in a job of its own (pages.yml) and handed over as an
+            # artifact, downloaded before the assembly to the path it copies from.
+            upload = next(s for s in builder["steps"] if str(s.get("uses", "")).startswith("actions/upload-artifact@"))
+            assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+            names = [s.get("name") for s in assembler["steps"]]
+            download = next(
+                s
+                for s in assembler["steps"]
+                if str(s.get("uses", "")).startswith("actions/download-artifact@") and s["with"]["name"] == upload["with"]["name"]
+            )
+            assert names.index(download["name"]) < names.index(assemble)
+            assert step["env"]["DOCS_DIR"] == download["with"]["path"]
+        assert 'cp -r "$DOCS_DIR"/. _site/data/' in step["run"]
+        assert "python pipeline/check_docs_site.py _site/data" in step["run"]
+        # And the checker is what refuses a site with no index.html.
+        assert 'site / "index.html"' in self.CHECKER.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize(("workflow", "assemble"), SITE_BUILDS)
+    def test_nothing_lands_under_the_apps_data_path(self, workflow, assemble):
+        """`/app/` is the app's base path and its PWA scope, so docs there would be the installed app's.
+
+        Everything copied under `_site/app/` is the app's own build, and
+        client/public, which Vite copies into that build, holds no `data/`.
+        """
+        steps = self._steps(workflow)
+        run = next(step for step in steps if step.get("name") == assemble)["run"]
+        copies = [line.split() for line in run.splitlines() if line.strip().startswith("cp ")]
+        into_app = [words for words in copies if words[-1].startswith("_site/app")]
+        assert into_app and all(words[-2] == "client/dist/." for words in into_app), into_app
+        docs = [words for words in copies if '"$DOCS_DIR"/.' in words]
+        assert [words[-1] for words in docs] == ["_site/data/"]
+        assert "_site/app/data" not in yaml.safe_dump(steps)
+        assert not (REPO_ROOT / "client" / "public" / "data").exists()
+
+    def test_ua_is_laid_out_like_production(self):
+        """The site at `/`, the app at `/app/`, as pages.yml and every preview serve them (#1887).
+
+        Until #1887 UA uploaded `client/dist` alone, built for `/`: the one
+        environment between a pull request and a tag that could not show a
+        change to ourhike.org, and the one serving the app at a path
+        production does not. The maintainer chose this layout by poll,
+        2026-10-24.
+        """
+        steps = self._steps("ua.yml")
+        names = [step.get("name") for step in steps]
+        base = next(step for step in steps if step.get("name") == "Build the app")["env"]["VITE_BASE_PATH"]
+        production = next(step for step in self._steps("pages.yml") if step.get("name") == "Build the app")
+        assert base == production["env"]["VITE_BASE_PATH"] == "/app/"
+        assert "Build the site" in names
+        run = next(step for step in steps if step.get("name") == "Assemble UA")["run"]
+        assert "cp -r site/dist/. _site/" in run
+        assert "cp -r client/dist/. _site/app/" in run
+        # Cloudflare Pages, like a preview: the console's deep links resolve.
+        assert "/app/index.html  200" in run
+        assert "cp _site/app/index.html _site/404.html" in run
+        deploy = next(step for step in steps if "wrangler-action" in step.get("uses", ""))
+        assert "pages deploy _site" in deploy["with"]["command"]
+        assert "pages deploy client/dist" not in deploy["with"]["command"]
+        assert names.index("Assemble UA") < names.index("Publish UA")
+
+    def test_ua_keeps_a_door_where_its_root_app_registered_a_worker(self):
+        """Only UA ever served the app at its root, so only UA ships this `/sw.js`.
+
+        The root app registered `/sw.js` with scope `/`. With the site at the
+        root that script would 404, a registration whose update fails is kept,
+        and it would go on serving the old app at `/` and `/app/`. The file UA
+        serves there replaces that worker with a door: an old app address goes
+        to the same address under `/app/` until the new app is installed, and
+        to `/app/` when offline after that, so an old install's icon still
+        opens the map. It reloads no window, never unregisters (the old icon
+        has nothing else to open it offline), drops only the root scope's
+        precache, and never touches IndexedDB. Measured in Chromium against
+        real builds, online and offline (#1887's pull request).
+        """
+        run = next(step for step in self._steps("ua.yml") if step.get("name") == "Assemble UA")["run"]
+        assert "cp .github/scripts/retire_root_service_worker.js _site/sw.js" in run
+        worker = (REPO_ROOT / ".github" / "scripts" / "retire_root_service_worker.js").read_text(encoding="utf-8")
+        code = "\n".join(line for line in worker.splitlines() if not line.strip().startswith("//"))
+        assert "self.skipWaiting()" in code, "it must take over from the old worker on the update"
+        assert "Response.redirect(underApp(url)" in code
+        assert "const ROOT_PRECACHE = `-${scope}`" in code and "name.endsWith(ROOT_PRECACHE)" in code
+        assert "unregister(" not in code, "the old icon has nothing else to open it offline"
+        assert ".navigate(" not in code, "no window is reloaded under anyone (#311)"
+        assert "indexedDB" not in code
+        assert "register(" not in code
+        for workflow in ("pages.yml", "pr-preview.yml"):
+            assert "retire_root_service_worker" not in (WORKFLOW_DIR / workflow).read_text(encoding="utf-8")
+
+    def test_ua_builds_its_docs_in_a_job_holding_no_secret_and_only_where_it_can_deploy(self):
+        """The preview's split, for UA (#1887): the docs job only reads, holds no
+        secret, and hands the directory over; and it runs only where a Pages
+        project is set, so an unconfigured UA still skips rather than failing a merge."""
+        jobs = yaml.safe_load((WORKFLOW_DIR / "ua.yml").read_text(encoding="utf-8"))["jobs"]
+        docs = jobs["docs"]
+        assert docs.get("permissions") == {"contents": "read"}
+        assert "secrets." not in yaml.safe_dump(docs)
+        assert "vars." not in yaml.safe_dump(docs["steps"]), "nothing reaches dbt but the code"
+        assert docs["if"] == "vars.CLOUDFLARE_PAGES_PROJECT != ''"
+        checkout = next(s for s in docs["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert checkout.get("with", {}).get("persist-credentials") is False
+        ua = jobs["ua"]
+        assert ua["needs"] == "docs"
+        assert ua["if"] == "${{ !cancelled() && needs.docs.result != 'failure' }}"
+        assert not any(step.get("uses") == "./.github/actions/dbt-docs-site" for step in ua["steps"])
+
+    def test_the_docs_build_reads_no_secret_and_passes_no_vars(self):
+        """`dbt_rt.invocations` publishes `args` and `vars_override` with the page.
+
+        So the build holds no secret to leak, and nothing reaches dbt through
+        `--vars`; check_docs_site.py refuses a page that records one anyway.
+        """
+        action = (self.ACTION / "action.yml").read_text(encoding="utf-8")
+        assert "secrets." not in action
+        for workflow, _ in self.SITE_BUILDS:
+            build = next(step for step in self._steps(workflow) if step.get("uses") == "./.github/actions/dbt-docs-site")
+            assert "secrets." not in yaml.safe_dump(build)
+        script = (self.ACTION / "build.sh").read_text(encoding="utf-8")
+        commands = [line for line in script.splitlines() if not line.strip().startswith("#")]
+        assert not [line for line in commands if "--vars" in line]
+        assert "DBT_ENGINE_SEND_ANONYMOUS_USAGE_STATS=false" in script
+
+    def test_the_deploy_job_leaves_no_write_token_on_disk_for_the_docs_build(self):
+        """pages.yml's build job holds `contents: write` and replaces gh-pages,
+        and runs two npm installs; it once ran the docs build too, which installs dbt, runs `dbt deps` and
+        downloads a native driver, none of them hash-pinned. A checkout that
+        persists its token leaves that token in .git/config for every one of
+        them to read.
+
+        The publish needs no persisted token: it pushes from a fresh `git init`
+        through a remote URL carrying the token it is handed, so the checkout
+        can keep none.
+        """
+        parsed = yaml.safe_load((WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8"))
+        steps = parsed["jobs"]["build"]["steps"]
+        checkouts = [step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")]
+        assert checkouts, "the build job checks the repository out"
+        assert all(step.get("with", {}).get("persist-credentials") is False for step in checkouts)
+        publish = next(step for step in steps if step.get("uses") == "./.github/actions/publish-to-pages")
+        assert publish["with"]["token"] == "${{ secrets.GITHUB_TOKEN }}"
+        assert "x-access-token:${{ inputs.token }}@" in (ACTION_DIR / "action.yml").read_text(encoding="utf-8")
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert 'git init -q "$WORK"' in script
+        assert 'git -C "$WORK" remote add origin "$REMOTE_URL"' in script
+
+    def test_the_docs_build_runs_in_a_job_whose_token_can_only_read(self):
+        """A token kept out of .git/config is still in the job's secrets, which
+        every step's process can reach, and the docs build installs dbt, fetches dbt's packages by tag and a native
+        driver, none of them hash-pinned. So /data/ is built in a job of its own whose token can read and not push,
+        and the job that pushes gh-pages only downloads what that job built, installing and running nothing of dbt's.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8"))["jobs"]
+        builders = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert len(builders) == 1, builders
+        docs = jobs[builders[0]]
+        build = next(step for step in docs["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        upload = next(step for step in docs["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact@"))
+        assert docs.get("permissions") == {"contents": "read"}
+        assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+
+        (deploy_id,) = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(step.get("uses") == "./.github/actions/publish-to-pages" for step in job["steps"])
+        ]
+        deploy = jobs[deploy_id]
+        needs = deploy.get("needs") or []
+        assert builders[0] in ([needs] if isinstance(needs, str) else needs)
+        assert not any("dbt" in str(step.get("uses", "")) for step in deploy["steps"])
+        assert "requirements-dbt" not in yaml.safe_dump(deploy["steps"]) and "dbt deps" not in yaml.safe_dump(deploy["steps"])
+        download = next(
+            step
+            for step in deploy["steps"]
+            if str(step.get("uses", "")).startswith("actions/download-artifact@")
+            and step["with"]["name"] == upload["with"]["name"]
+        )
+        assemble = next(step for step in deploy["steps"] if step.get("name") == "Assemble the site")
+        assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
+
+    def test_the_preview_builds_the_docs_in_a_job_holding_no_secret_and_no_write(self):
+        """The same split for pr-preview.yml, whose deploying job holds CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, the
+        Supabase values and `pull-requests: write`: the docs are built in a job of its own that can only read and is
+        handed no secret, and the preview job downloads the directory and runs nothing of dbt's or npm's for it.
+        """
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8"))["jobs"]
+        builders = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert len(builders) == 1, builders
+        docs = jobs[builders[0]]
+        assert docs.get("permissions") == {"contents": "read"}
+        assert "secrets." not in yaml.safe_dump(docs) and "vars." not in yaml.safe_dump(docs)
+        checkout = next(s for s in docs["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert checkout.get("with", {}).get("persist-credentials") is False
+        build = next(step for step in docs["steps"] if step.get("uses") == "./.github/actions/dbt-docs-site")
+        upload = next(step for step in docs["steps"] if str(step.get("uses", "")).startswith("actions/upload-artifact@"))
+        assert upload["with"]["path"] == "${{ steps.%s.outputs.dir }}" % build["id"]
+
+        preview = jobs["preview"]
+        needs = preview.get("needs") or []
+        assert builders[0] in ([needs] if isinstance(needs, str) else needs)
+        assert not any(step.get("uses") == "./.github/actions/dbt-docs-site" for step in preview["steps"])
+        download = next(
+            step
+            for step in preview["steps"]
+            if str(step.get("uses", "")).startswith("actions/download-artifact@")
+            and step["with"]["name"] == upload["with"]["name"]
+        )
+        assemble = next(step for step in preview["steps"] if step.get("name") == "Assemble the preview")
+        assert assemble["env"]["DOCS_DIR"] == download["with"]["path"]
+
+    def test_the_preview_still_runs_its_teardown_when_a_pull_request_closes(self):
+        """A closed pull request builds no docs, and the preview job, which needs the docs job, must still remove the
+        previews and post its closing comment rather than be skipped behind the skipped build."""
+        jobs = yaml.safe_load((WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8"))["jobs"]
+        (docs_id,) = [
+            job_id
+            for job_id, job in jobs.items()
+            if any(s.get("uses") == "./.github/actions/dbt-docs-site" for s in job["steps"])
+        ]
+        assert jobs[docs_id]["if"] == "github.event.action != 'closed'"
+        condition = jobs["preview"]["if"]
+        assert "!cancelled()" in condition
+        assert f"needs.{docs_id}.result == 'success'" in condition
+        assert "github.event.action == 'closed'" in condition
+
+
+class TestTheDataDocsLoadNoCodeFromAnotherOrigin:
+    """The data docs load no code from another origin.
+
+    The /data/ page runs on the app's origin, where a signed-in hiker's
+    session is kept, so DuckDB-WASM is served from our own site at
+    /data/duckdb/ (.github/actions/dbt-docs-site/duckdb-wasm/loader.js says
+    how, and what was measured) and both copies that ship are checked with
+    check_docs_site.py --served, which refuses code from another origin.
+    """
+
+    DOCS = REPO_ROOT / ".github" / "actions" / "dbt-docs-site"
+    DUCKDB = DOCS / "duckdb-wasm"
+    # Each pair of dbt and @duckdb/duckdb-wasm whose /data/ page has been
+    # loaded in a browser with nothing leaving the local server (2.0.6 and
+    # 1.32.0: Chromium, 2026-10-06, the eh and mvp bundles both). dbt's page
+    # builds DuckDB's URLs in jsDelivr's layout and calls selectBundle,
+    # AsyncDuckDB, ConsoleLogger and LogLevel, which loader.js serves; a new
+    # dbt may change either, or name a newer DuckDB-WASM.
+    CHECKED = {("2.0.6", "1.32.0")}
+
+    @pytest.mark.parametrize(("workflow", "assemble"), TestTheDataDocs.SITE_BUILDS)
+    def test_both_site_builds_check_the_docs_as_the_copy_they_serve(self, workflow, assemble):
+        steps = TestTheDataDocs._steps(workflow)
+        run = next(step for step in steps if step.get("name") == assemble)["run"]
+        assert "python pipeline/check_docs_site.py _site/data --served" in run
+
+    def test_the_docs_build_points_duckdb_wasm_at_the_copy_it_stages_under_data(self):
+        script = (self.DOCS / "build.sh").read_text(encoding="utf-8")
+        (generate,) = [line for line in script.splitlines() if line.strip().startswith("dbt docs generate")]
+        base = re.search(r'--duckdb-cdn-base "([^"]+)"', generate)
+        assert base is not None, generate
+        # stage.mjs writes loader.js as duckdb.js, in the directory build.sh copies to $out/duckdb: /data/duckdb/.
+        assert base.group(1) == "/data/duckdb/duckdb.js?"
+        assert 'cp -r "$duckdb_dir" "$out/duckdb"' in script
+        assert "join(out, 'duckdb.js')" in (self.DUCKDB / "stage.mjs").read_text(encoding="utf-8")
+
+    def test_the_pinned_duckdb_wasm_is_one_this_dbt_s_page_was_loaded_with(self):
+        requirements = (REPO_ROOT / "pipeline" / "requirements-dbt.txt").read_text(encoding="utf-8")
+        # The pin line ends in ` \` since the file is hash-pinned: its hashes follow on their own lines.
+        dbt = re.search(r"^dbt==([^\s\\;]+)", requirements, re.MULTILINE).group(1)
+        manifest = json.loads((self.DUCKDB / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((self.DUCKDB / "package-lock.json").read_text(encoding="utf-8"))
+        pinned = manifest["dependencies"]["@duckdb/duckdb-wasm"]
+        assert lock["packages"]["node_modules/@duckdb/duckdb-wasm"]["version"] == pinned
+        assert lock["packages"]["node_modules/@duckdb/duckdb-wasm"]["integrity"].startswith("sha512-")
+        assert (dbt, pinned) in self.CHECKED, (
+            f"dbt {dbt} with @duckdb/duckdb-wasm {pinned} has not been loaded in a browser: open /data/ with "
+            "nothing but the local server reachable, then add the pair"
+        )
+
+    def test_the_loader_keeps_duckdb_s_extensions_on_our_own_site(self):
+        """DuckDB loads parquet from extensions.duckdb.org unless told otherwise (measured 2026-10-06, 18 requests)."""
+        loader = (self.DUCKDB / "loader.js").read_text(encoding="utf-8")
+        assert "SET custom_extension_repository = '${repository}'" in loader
+        assert "new URL('extensions', here)" in loader
+        assert "SET lock_configuration = true" in loader
+        pins = (self.DUCKDB / "extensions.sha256").read_text(encoding="utf-8").splitlines()
+        pin = re.compile(r"[0-9a-f]{64}  v\d+\.\d+\.\d+/wasm_(eh|mvp)/\w+\.duckdb_extension\.wasm")
+        assert pins and all(pin.fullmatch(line) for line in pins), pins
+
+
+class TestTheDocsHost:
+    """pages.yml also deploys /data/ to docs.ourhike.org.
+
+    Three promises, each held below. The docs deploy never breaks the app's:
+    it is a job nothing waits for, after the job that publishes gh-pages.
+    It is never quietly green when it fails: no step may continue past an
+    error, and `.github/scripts/docs_host.py` (its own tests are
+    test_docs_host.py) says what is missing. And ourhike.org never sends a
+    visitor to a host with nothing on it: the site's links and /data/'s
+    contents follow one answer, asked before the site is built, and the tail
+    of "Assemble the site" is run here for both answers.
+
+    Measured rather than asserted: run against the PR head's pages.yml from
+    before this change (5c078277, 2026-10-10), eleven of these twelve fail.
+    The twelfth, that previews and UA stay off the docs host, passes against
+    both and is here to stay that way.
+    """
+
+    ORIGINS = REPO_ROOT / ".github" / "expected-origins.yml"
+    PROBE = "Ask whether docs.ourhike.org serves the data docs"
+    BUILD = "5c0782771234567890abcdef1234567890abcdef"
+
+    @staticmethod
+    def _parsed(workflow: str = "pages.yml") -> dict:
+        return yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+
+    @classmethod
+    def _steps(cls, job: str, workflow: str = "pages.yml") -> list[dict]:
+        return cls._parsed(workflow)["jobs"][job]["steps"]
+
+    @classmethod
+    def _step(cls, job: str, name: str, workflow: str = "pages.yml") -> dict:
+        return next(step for step in cls._steps(job, workflow) if step.get("name") == name)
+
+    @staticmethod
+    def _needs(job: dict) -> list[str]:
+        needs = job.get("needs") or []
+        return [needs] if isinstance(needs, str) else list(needs)
+
+    def test_the_project_and_its_host_are_named_once_for_the_whole_workflow(self):
+        parsed = self._parsed()
+        assert parsed["env"] == {"DOCS_PAGES_PROJECT": "ourhike-docs", "DOCS_ORIGIN": "https://docs.ourhike.org"}
+
+        # What acts, not what labels or explains it: a step's name, or a comment in its script, may say where it deploys.
+        def acting_part(step: dict) -> dict:
+            part = {key: step[key] for key in ("with", "env") if key in step}
+            if "run" in step:
+                part["run"] = [line for line in step["run"].splitlines() if not line.strip().startswith("#")]
+            return part
+
+        acting = yaml.safe_dump([acting_part(step) for job in parsed["jobs"].values() for step in job["steps"]])
+        assert "ourhike-docs" not in acting and "docs.ourhike.org" not in acting, "every step reads the two from env"
+        for other in WORKFLOW_DIR.glob("*.yml"):
+            if other.name != "pages.yml":
+                assert "ourhike-docs" not in yaml.safe_dump(yaml.safe_load(other.read_text(encoding="utf-8"))), other.name
+
+    def test_the_docs_origin_is_declared_for_the_buckets_cors_and_for_no_sign_in(self):
+        """The quality page reads the bucket from the visitor's browser; the docs sign nobody in."""
+        origin = self._parsed()["env"]["DOCS_ORIGIN"]
+        (entry,) = [o for o in yaml.safe_load(self.ORIGINS.read_text(encoding="utf-8"))["origins"] if o["pattern"] == origin]
+        assert entry["probe"] == origin
+        assert entry.get("cors", True) is True
+        assert entry["supabase"] == []
+        assert entry.get("hiker_facing") is False
+
+    def test_the_docs_deploy_is_a_job_nothing_waits_for(self):
+        """So a docs failure cannot hold the app back: gh-pages is published by `build`, which it needs."""
+        jobs = self._parsed()["jobs"]
+        assert self._needs(jobs["docs-host"]) == ["build"]
+        assert not [name for name, job in jobs.items() if "docs-host" in self._needs(job)]
+        (publisher,) = [
+            name for name, job in jobs.items() if any(s.get("uses") == "./.github/actions/publish-to-pages" for s in job["steps"])
+        ]
+        assert publisher == "build"
+
+    def test_a_failed_docs_deploy_is_a_red_job_and_never_a_green_skip(self):
+        job = self._parsed()["jobs"]["docs-host"]
+        assert "continue-on-error" not in job
+        assert not [step.get("name") for step in job["steps"] if "continue-on-error" in step]
+        assert not [step.get("name") for step in job["steps"] if "|| true" in step.get("run", "") or step.get("if")]
+        # Skipped for a draft, which deploys nothing (RELEASING.md §12), and only then.
+        assert job["if"] == "${{ !inputs.draft_only }}"
+
+    def test_the_job_holding_the_token_installs_and_builds_nothing(self):
+        """The same token previews use, so the same rule as every job holding one."""
+        job = self._parsed()["jobs"]["docs-host"]
+        assert job["permissions"] == {"contents": "read"}
+        steps = job["steps"]
+        assert [s["uses"].split("@")[0] for s in steps if "uses" in s] == [
+            "actions/checkout",
+            "actions/download-artifact",
+            "cloudflare/wrangler-action",
+        ]
+        assert next(s for s in steps if "checkout" in s.get("uses", ""))["with"]["persist-credentials"] is False
+        runs = [s["run"] for s in steps if "run" in s]
+        assert runs and all(run.startswith("python3 .github/scripts/docs_host.py ") for run in runs)
+        holding = [s.get("id") or s["uses"].split("@")[0] for s in steps if "secrets." in yaml.safe_dump(s)]
+        assert holding == ["target", "cloudflare/wrangler-action"]
+
+    def test_it_uploads_through_the_pinned_action_and_the_token_the_previews_use(self):
+        def wranglers(workflow: str) -> list[dict]:
+            jobs = self._parsed(workflow)["jobs"].values()
+            return [s for job in jobs for s in job["steps"] if "wrangler-action" in s.get("uses", "")]
+
+        (deploy,) = wranglers("pages.yml")
+        assert {s["uses"] for s in [deploy, *wranglers("pr-preview.yml"), *wranglers("ua.yml")]} == {deploy["uses"]}
+        assert deploy["with"]["apiToken"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
+        assert deploy["with"]["accountId"] == "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+        command = " ".join(deploy["with"]["command"].split())
+        assert command.startswith("pages deploy ${{ runner.temp }}/docs-host ")
+        assert " --project-name=${{ env.DOCS_PAGES_PROJECT }} " in command
+        # The project's production branch, read from Cloudflare, so the upload is what the domain serves.
+        assert " --branch=${{ steps.target.outputs.branch }} " in command
+
+    def test_it_uploads_what_the_build_job_assembled_and_checks_it_first(self):
+        assemble = self._step("build", "Assemble the site")
+        upload = next(s for s in self._steps("build") if s.get("with", {}).get("name") == "docs-host")
+        assert upload["with"]["path"] == assemble["env"]["DOCS_HOST_DIR"] == "${{ runner.temp }}/docs-host"
+        assert upload["if"] == "${{ !inputs.draft_only }}"
+        # The app is the deploy: a failed hand-off is the docs job's red download, not a red app deploy.
+        assert upload["continue-on-error"] is True
+        build_names = [s.get("name") for s in self._steps("build")]
+        assert build_names.index("Assemble the site") < build_names.index(upload["name"])
+
+        steps = self._steps("docs-host")
+        download = next(s for s in steps if "download-artifact" in s.get("uses", ""))
+        assert download["with"] == {"name": "docs-host", "path": upload["with"]["path"]}
+        order = [s.get("id") or s.get("name") for s in steps]
+        check = next(s for s in steps if " check " in s.get("run", ""))
+        assert check["run"] == 'python3 .github/scripts/docs_host.py check "$RUNNER_TEMP/docs-host"'
+        wait = next(s for s in steps if " confirm " in s.get("run", ""))
+        upload_step = next(s for s in steps if "wrangler-action" in s.get("uses", ""))
+        assert order.index(check["name"]) < order.index("target") < order.index(upload_step["name"]) < order.index(wait["name"])
+        assert wait["env"]["DOMAIN"] == "${{ steps.target.outputs.domain }}"
+
+    def test_the_site_and_data_follow_one_answer_asked_before_the_site_is_built(self):
+        probe = self._step("build", self.PROBE)
+        assert probe["id"] == "docs_host"
+        assert probe["run"] == 'python3 .github/scripts/docs_host.py live "$DOCS_ORIGIN"'
+        answer = "${{ steps.docs_host.outputs.origin }}"
+        assert self._step("build", "Build the site")["env"]["PUBLIC_DOCS_ORIGIN"] == answer
+        assert self._step("build", "Assemble the site")["env"]["DOCS_LIVE_ORIGIN"] == answer
+        assert self._parsed()["jobs"]["build"]["outputs"]["docs_origin"] == answer
+        names = [s.get("name") for s in self._steps("build")]
+        assert names.index(self.PROBE) < names.index("Build the site") < names.index("Assemble the site")
+        wait = next(s for s in self._steps("docs-host") if " confirm " in s.get("run", ""))
+        assert wait["env"]["SITE_SENDS"] == "${{ needs.build.outputs.docs_origin }}"
+
+    def test_a_preview_keeps_its_links_and_its_docs_on_its_own_host(self):
+        """Previews serve /data/ under their own hostname (pr-preview.yml), so their footer must not send a reviewer to production's docs."""
+        assert "PUBLIC_DOCS_ORIGIN" not in yaml.safe_dump(self._parsed("pr-preview.yml")["jobs"])
+        assert "docs_host.py" not in (WORKFLOW_DIR / "pr-preview.yml").read_text(encoding="utf-8")
+        assert "docs_host.py" not in (WORKFLOW_DIR / "ua.yml").read_text(encoding="utf-8")
+
+    # --- the tail of "Assemble the site", run ---------------------------------
+
+    def _assemble_tail(self, tmp_path: Path, live_origin: str, *, docs_host_exists: bool = False):
+        """From the docs host's bundle to the end of the step, after the assembly above it has made `_site`."""
+        lines = self._step("build", "Assemble the site")["run"].splitlines()
+        start = next(
+            i for i, line in enumerate(lines) if line.strip().startswith("if python3 .github/scripts/docs_host.py bundle")
+        )
+        files = {
+            "_site/index.html": "home",
+            "_site/favicon.svg": "<svg/>",
+            "_site/_astro/site.css": "body{}",
+            "_site/data/index.html": "the docs",
+            "_site/data/assets/index.js": "docs()",
+            "_site/data/quality/index.html": "the quality page",
+        }
+        for relative, text in files.items():
+            (tmp_path / relative).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / relative).write_text(text, encoding="utf-8")
+        (tmp_path / ".github").mkdir()
+        (tmp_path / ".github" / "scripts").symlink_to(REPO_ROOT / ".github" / "scripts")
+        if docs_host_exists:
+            (tmp_path / "docs-host").mkdir()
+        return subprocess.run(
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", "\n".join(lines[start:])],
+            cwd=tmp_path,
+            env={
+                **os.environ,
+                "DOCS_LIVE_ORIGIN": live_origin,
+                "DOCS_HOST_DIR": str(tmp_path / "docs-host"),
+                "GITHUB_SHA": self.BUILD,
+            },
+            capture_output=True,
+            text=True,
+        )
+
+    def test_until_the_docs_host_serves_them_ourhike_org_keeps_the_docs(self, tmp_path: Path):
+        done = self._assemble_tail(tmp_path, "")
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert (tmp_path / "_site" / "data" / "index.html").read_text() == "the docs"
+        assert (tmp_path / "_site" / "data" / "assets" / "index.js").is_file()
+        assert (tmp_path / "docs-host" / "data" / "quality" / "index.html").read_text() == "the quality page"
+        assert self.BUILD in (tmp_path / "docs-host" / "index.html").read_text()
+
+    def test_once_it_does_ourhike_org_data_sends_visitors_to_the_same_page_there(self, tmp_path: Path):
+        done = self._assemble_tail(tmp_path, "https://docs.ourhike.org")
+        assert done.returncode == 0, done.stdout + done.stderr
+        old = tmp_path / "_site" / "data"
+        assert sorted(p.relative_to(old).as_posix() for p in old.rglob("*") if p.is_file()) == [
+            "index.html",
+            "quality/index.html",
+        ]
+        assert 'url=https://docs.ourhike.org/data/"' in (old / "index.html").read_text()
+        assert 'url=https://docs.ourhike.org/data/quality/"' in (old / "quality" / "index.html").read_text()
+        assert (tmp_path / "docs-host" / "data" / "index.html").read_text() == "the docs"
+        assert (tmp_path / "_site" / "index.html").read_text() == "home", "only /data/ changes"
+
+    def test_a_docs_host_that_cannot_be_assembled_leaves_ourhike_org_as_it_was(self, tmp_path: Path):
+        done = self._assemble_tail(tmp_path, "https://docs.ourhike.org", docs_host_exists=True)
+        assert done.returncode == 0, done.stdout + done.stderr
+        assert "::warning::The docs host's files could not be assembled" in done.stdout
+        assert (tmp_path / "_site" / "data" / "index.html").read_text() == "the docs"
+
+
+class TestTheUploadedPointer:
+    """Both deploy guards check the channels.json uploaded at their base, the only copy there is.
+
+    Since the maintainer's decision of 2026-10-16 no file in the repository
+    names the release a phone reads: pipeline/channels.py moves each
+    environment's channels.json in the bucket, and a phone of this build takes
+    the release it names on its first launch when it can read it
+    (lib/dataRelease.ts). So the deploy holds that release to what it holds the
+    compiled floor to: its manifest resolves at this base and fits a launch. A
+    404 passes with a notice, because phones then read the floor. The step's
+    own script runs here against a stub `curl` serving a fake bucket, because
+    the refusal is in the shell.
+    """
+
+    STEP = "Confirm the uploaded pointer's release exists"
+    BASE = "https://data.example.org"
+    WORKFLOWS = ["pages.yml", "ua.yml"]
+    RELEASE = "2026-10-10-2"
+    # The base each environment's build is given (lib/dataRelease.ts's
+    # environmentOf): production is the bucket root, UA is its prefix.
+    PREFIXES = {"production": "", "ua": "/environments/ua"}
+
+    @classmethod
+    def _script(cls, workflow: str) -> str:
+        parsed = yaml.safe_load((WORKFLOW_DIR / workflow).read_text(encoding="utf-8"))
+        steps = [step for job in parsed["jobs"].values() for step in job["steps"]]
+        return next(step for step in steps if step.get("name") == cls.STEP)["run"]
+
+    @staticmethod
+    def _stub_curl(directory: Path) -> None:
+        """A `curl` answering from `$STUB_BUCKET`: 200 with the file's bytes,
+        404 for a missing one, or the code in a `<file>.status` beside it.
+        Honours `-o`, `-w '%{http_code}'` and `-f` as the real one does."""
+        script = r"""#!/usr/bin/env bash
+out=""; fmt=""; fail=false; url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    -w) fmt="$2"; shift 2 ;;
+    --retry|--max-time) shift 2 ;;
+    -f*) fail=true; shift ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+path="$STUB_BUCKET/${url#"$STUB_BASE"/}"
+if [ -f "$path.status" ]; then code=$(cat "$path.status"); elif [ -f "$path" ]; then code=200; else code=404; fi
+if [ "$code" = 200 ] && [ -n "$out" ]; then cp "$path" "$out"; fi
+if [ -n "$fmt" ]; then printf '%s' "$code"; fi
+if [ "$code" != 200 ] && $fail; then echo "curl: (22) The requested URL returned error: $code" >&2; exit 22; fi
+exit 0
+"""
+        path = directory / "curl"
+        path.write_text(script, encoding="utf-8")
+        path.chmod(path.stat().st_mode | stat.S_IEXEC)
+
+    def _run(
+        self,
+        tmp_path: Path,
+        workflow: str,
+        environment: str,
+        uploaded: dict | str | None,
+        *,
+        status: int | None = None,
+        published: str | None = RELEASE,
+        manifest: dict | None = None,
+    ):
+        """The step against `environment`'s base, where `published`'s manifest (None: no release) is in the tree
+        and `uploaded` (None for no copy) is the channels.json at its root."""
+        prefix = self.PREFIXES[environment]
+        root = tmp_path / "bucket" / prefix.strip("/")
+        root.mkdir(parents=True)
+        if published is not None:
+            path = root / "releases" / published / "manifest.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(manifest or {"artifacts": {}}), encoding="utf-8")
+        if uploaded is not None:
+            (root / "channels.json").write_text(uploaded if isinstance(uploaded, str) else json.dumps(uploaded), encoding="utf-8")
+        if status is not None:
+            (root / "channels.json.status").write_text(str(status), encoding="utf-8")
+        stubs = tmp_path / "stubs"
+        stubs.mkdir()
+        self._stub_curl(stubs)
+        runner_temp = tmp_path / "runner-temp"
+        runner_temp.mkdir()
+        return subprocess.run(
+            # How Actions runs a `run:` block under bash.
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", self._script(workflow)],
+            cwd=REPO_ROOT / "client",
+            env={
+                **os.environ,
+                "PATH": f"{stubs}{os.pathsep}{os.environ['PATH']}",
+                "DATA_URL": f"{self.BASE}{prefix}",
+                "RUNNER_TEMP": str(runner_temp),
+                "STUB_BUCKET": str(tmp_path / "bucket"),
+                "STUB_BASE": self.BASE,
+            },
+            capture_output=True,
+            text=True,
+        )
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    @pytest.mark.parametrize("environment", ["production", "ua"])
+    def test_a_pointer_naming_a_release_this_base_holds_passes(self, tmp_path, workflow, environment):
+        completed = self._run(tmp_path, workflow, environment, {environment: {"v1": self.RELEASE}})
+
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert f"points {environment}'s v1 at {self.RELEASE}, which resolves" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    @pytest.mark.parametrize("environment", ["production", "ua"])
+    def test_a_pointer_naming_a_release_this_base_lacks_fails(self, tmp_path, workflow, environment):
+        """A phone would refuse it and stay where it is; the deploy says so first."""
+        completed = self._run(tmp_path, workflow, environment, {environment: {"v1": "2026-01-01"}})
+
+        assert completed.returncode != 0
+        assert "::error::" in completed.stdout and "does not resolve" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_a_pointer_naming_a_release_over_the_launch_budget_fails(self, tmp_path, workflow):
+        """The pointed-at release is weighed as the floor is: check 22 (check_launch_budget.py)."""
+        manifest = {"artifacts": {"network_overview.geojson": {"sha256": "0" * 64, "size_bytes": 10**9}}}
+
+        completed = self._run(tmp_path, workflow, "ua", {"ua": {"v1": self.RELEASE}}, manifest=manifest)
+
+        assert completed.returncode != 0
+        assert "network_overview.geojson" in completed.stdout + completed.stderr
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    @pytest.mark.parametrize(
+        "uploaded",
+        [{"production": {"v1": "2026-10-10-2"}}, {"ua": {"v2": "2026-10-10-2"}}, {"ua": {"v1": "latest"}}, "not json"],
+    )
+    def test_a_pointer_with_no_readable_entry_for_this_environment_fails_without_repeating_it(self, tmp_path, workflow, uploaded):
+        completed = self._run(tmp_path, workflow, "ua", uploaded)
+
+        assert completed.returncode != 0
+        assert "names no v1 release id for ua" in completed.stdout
+        assert "latest" not in completed.stdout, "remote text never reaches a workflow command"
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_no_uploaded_pointer_passes_with_a_notice(self, tmp_path, workflow):
+        """A 404: phones then read the compiled DATA_RELEASE, checked one step earlier."""
+        completed = self._run(tmp_path, workflow, "production", None, published=None)
+
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "::notice::" in completed.stdout
+        assert "DATA_RELEASE" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_an_unreadable_pointer_fails(self, tmp_path, workflow):
+        """Neither a pointer nor a 404, so nothing says which release phones follow."""
+        completed = self._run(tmp_path, workflow, "production", {"production": {"v1": self.RELEASE}}, status=503)
+
+        assert completed.returncode != 0
+        assert "answered 503" in completed.stdout
+
+    @pytest.mark.parametrize("workflow", WORKFLOWS)
+    def test_it_reads_no_file_in_the_repository_for_the_release(self, workflow):
+        """The bucket copy is the only copy: a guard reading a committed file would check a release no phone reads."""
+        script = self._script(workflow)
+
+        assert "../channels.json" not in script
+        assert "check_pin_matches_channels" not in (WORKFLOW_DIR / workflow).read_text(encoding="utf-8")

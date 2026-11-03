@@ -5,6 +5,10 @@ personal_reference/
 # so anything personal belongs in settings.local.json, the file Claude Code
 # reserves for exactly that.
 .claude/settings.local.json
+# Isolated git worktrees that Claude Code agents create while they work.
+# Each holds a full checkout of this repository, so committing one would
+# nest a copy of the tree inside itself.
+.claude/worktrees/
 
 # Coverage data, when pytest is run from the repo root rather than backend/
 # (backend/.gitignore only covers the backend/ subtree).
@@ -28,3 +32,7 @@ node_modules/
 # file was the only one outside them.
 __pycache__/
 *.py[cod]
+
+# dlt credentials never live in the repository (pipeline/.dlt/config.toml says why the
+# rest of that folder is committed). A local secrets file is ignored so it cannot be.
+pipeline/.dlt/secrets.toml

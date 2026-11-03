@@ -419,7 +419,10 @@ describe('MapSettings', () => {
       for (const box of group.getAllByRole('checkbox')) expect(box).toBeChecked()
     })
 
-    it('defaults to shelter, campsite, water and privy - not every category (#865)', () => {
+    it('defaults to every category checked, so nothing starts hidden (#1585)', () => {
+      // It defaulted to the curated four of #865, which left this panel
+      // opening with five boxes unticked that no hiker had unticked. The
+      // maintainer, 2026-09-18: "never hide anything!!!!!!!"
       renderMap()
 
       const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
@@ -428,11 +431,20 @@ describe('MapSettings', () => {
           group.getByRole('checkbox', { name: new RegExp(shown, 'i') }),
         ).toBeChecked()
       }
-      for (const hidden of ['resupply', 'crossing', 'viewpoint', 'parking']) {
+      for (const alsoShown of ['resupply', 'viewpoint', 'parking', 'trailhead']) {
         expect(
-          group.getByRole('checkbox', { name: new RegExp(hidden, 'i') }),
-        ).not.toBeChecked()
+          group.getByRole('checkbox', { name: new RegExp(alsoShown, 'i') }),
+        ).toBeChecked()
       }
+    })
+
+    it('offers no Crossing checkbox, because the crossing type was removed (#1674)', () => {
+      // The maintainer, 2026-09-26: "Crossings are cluttering the map.
+      // Remove the crossing from the legend and do not show on the map."
+      renderMap()
+
+      const group = within(screen.getByRole('group', { name: /waypoints shown/i }))
+      expect(group.queryByRole('checkbox', { name: /crossing/i })).toBeNull()
     })
 
     it('writes the preference when a category is turned off', async () => {
@@ -475,6 +487,45 @@ describe('MapSettings', () => {
       expect(group.getByRole('checkbox', { name: /privy/i })).not.toBeChecked()
       expect(group.getByRole('checkbox', { name: /water/i })).toBeChecked()
     })
+  })
+})
+
+describe('the podcast app row (#1690)', () => {
+  function optionNames() {
+    return screen.getAllByRole('option').map((option) => option.textContent)
+  }
+
+  it('offers “Ask me” only until an app is picked, and keeps the pick on this phone', async () => {
+    localStorage.removeItem('ourhike:podcast-app')
+    render(<DisplaySettings {...PROPS} podcastApps={['spotify', 'overcast']} />)
+
+    const select = screen.getByRole('combobox', { name: 'Podcast app' })
+    expect((select as HTMLSelectElement).value).toBe('')
+    await userEvent.selectOptions(select, 'Overcast')
+
+    expect(localStorage.getItem('ourhike:podcast-app')).toBe('overcast')
+    expect(screen.queryByRole('option', { name: 'Ask me' })).toBeNull()
+    localStorage.removeItem('ourhike:podcast-app')
+  })
+
+  it('offers only the apps every episode opens in, and Spotify alone with no list to read (frame Q1)', () => {
+    localStorage.removeItem('ourhike:podcast-app')
+    render(<DisplaySettings {...PROPS} podcastApps={['spotify', 'apple_podcasts']} />)
+    expect(optionNames()).toEqual(['Ask me', 'Spotify', 'Apple Podcasts'])
+    cleanup()
+
+    render(<DisplaySettings {...PROPS} />)
+    expect(optionNames()).toEqual(['Ask me', 'Spotify'])
+  })
+
+  it('keeps showing a pick that has since dropped out, selected, rather than a different app', () => {
+    localStorage.setItem('ourhike:podcast-app', 'overcast')
+    render(<DisplaySettings {...PROPS} podcastApps={['spotify']} />)
+
+    const select = screen.getByRole('combobox', { name: 'Podcast app' })
+    expect((select as HTMLSelectElement).value).toBe('overcast')
+    expect(optionNames()).toEqual(['Spotify', 'Overcast'])
+    localStorage.removeItem('ourhike:podcast-app')
   })
 })
 
@@ -599,6 +650,79 @@ describe('SafetyPrivacySettings', () => {
       expect(PROPS.onChange).toHaveBeenCalledWith({
         location_permission_requested: false,
       })
+    })
+
+    it('no longer promises the fix is sent nowhere, now that usage statistics carry it sealed', () => {
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      expect(screen.queryByText(/sent nowhere unless you file a report/i)).toBeNull()
+      expect(screen.getByText(/sealed inside usage statistics/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('usage statistics (#1902)', () => {
+    // The two switches the maintainer placed here on 2026-10-27 (poll 3,
+    // frame A), under the location switch the first one depends on.
+
+    it('shares usage statistics by default, the split consent the maintainer chose', () => {
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      expect(
+        screen.getByRole('checkbox', { name: /share usage statistics/i }),
+      ).toBeChecked()
+    })
+
+    it('says the position goes sealed, which part stays readable, and that it is kept six months, before the hiker decides', () => {
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      expect(
+        screen.getByText(
+          /sealed as it arrives; only the rough area it falls in, a grid square about the size of a town, stays readable\. kept six months/i,
+        ),
+      ).toBeInTheDocument()
+    })
+
+    it('turns sharing off with one tap', async () => {
+      const user = userEvent.setup()
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      await user.click(screen.getByRole('checkbox', { name: /share usage statistics/i }))
+
+      expect(PROPS.onChange).toHaveBeenCalledWith({ measurement_enabled: false })
+    })
+
+    it('reads an unanswered link question as not linked', () => {
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      expect(
+        screen.getByRole('checkbox', { name: /link them to my account/i }),
+      ).not.toBeChecked()
+    })
+
+    it('cannot link anything while sharing itself is off', () => {
+      render(
+        <SafetyPrivacySettings
+          {...PROPS}
+          preferences={{
+            ...DEFAULT_PREFERENCES,
+            measurement_enabled: false,
+            measurement_linked: true,
+          }}
+        />,
+      )
+
+      const link = screen.getByRole('checkbox', { name: /link them to my account/i })
+      expect(link).toBeDisabled()
+      expect(link).not.toBeChecked()
+    })
+
+    it('links the account when the hiker ticks it', async () => {
+      const user = userEvent.setup()
+      render(<SafetyPrivacySettings {...PROPS} />)
+
+      await user.click(screen.getByRole('checkbox', { name: /link them to my account/i }))
+
+      expect(PROPS.onChange).toHaveBeenCalledWith({ measurement_linked: true })
     })
   })
 })

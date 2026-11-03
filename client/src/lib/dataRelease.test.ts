@@ -16,6 +16,7 @@ import {
   RELEASE_MANIFEST_PATH,
   isReleaseScoped,
   releasePath,
+  releaseSortsBefore,
 } from './dataRelease'
 
 const BASE = 'https://cdn.example.org'
@@ -75,6 +76,32 @@ describe('the pin itself', () => {
   })
 })
 
+// lib/releases.next_release_id's order, which lib/dataRefresh.ts reads to
+// keep a rollback from being called newer.
+describe('releaseSortsBefore, the order release ids are minted in', () => {
+  it.each([
+    ['2026-09-23-4', '2026-09-24'],
+    ['2026-09-24', '2026-09-24-2'],
+    ['2026-09-24-2', '2026-09-24-10'],
+    ['2025-12-31-9', '2026-01-01'],
+  ])('puts %s before %s, and not the other way round', (earlier, later) => {
+    expect(releaseSortsBefore(earlier, later)).toBe(true)
+    expect(releaseSortsBefore(later, earlier)).toBe(false)
+  })
+
+  it('puts no id before itself', () => {
+    expect(releaseSortsBefore('2026-09-24-2', '2026-09-24-2')).toBe(false)
+  })
+
+  it.each(['', 'latest', '../2026-09-24', '2026-09-24-', '2026-09-24\n'])(
+    'knows nothing older than or before %j, which is not an id',
+    (other) => {
+      expect(releaseSortsBefore(other, '2026-09-24')).toBe(false)
+      expect(releaseSortsBefore('2026-09-24', other)).toBe(false)
+    },
+  )
+})
+
 describe('the URLs config.ts builds from it', () => {
   it('puts a release artifact under the pinned folder', async () => {
     const { dataUrl } = await loadConfigWithBase(BASE)
@@ -97,5 +124,26 @@ describe('the URLs config.ts builds from it', () => {
     const { releaseManifestUrl } = await loadConfigWithBase(BASE)
     expect(releaseManifestUrl()).toBe(`${BASE}/releases/${DATA_RELEASE}/manifest.json`)
     expect(releaseManifestUrl()).not.toContain('latest.json')
+  })
+})
+
+describe('the archive prefix (#1574)', () => {
+  it('leaves archive/nynjtc_map_sheets.json at the root, beside conditions/', () => {
+    // A one-off snapshot a person writes by dispatching a workflow, never a
+    // release build - pipeline/lib/r2_keys.py declares the prefix and says
+    // why it is not versioned.
+    expect(isReleaseScoped('archive/nynjtc_map_sheets.json')).toBe(false)
+    expect(releasePath('archive/nynjtc_map_sheets.json')).toBe(
+      'archive/nynjtc_map_sheets.json',
+    )
+  })
+})
+
+describe('the podcasts prefix (#1683)', () => {
+  it('leaves podcasts/episodes.json at the root, outside the pinned release', () => {
+    // The maintainer chose a live list: inside the pinned folder a new
+    // episode would reach nobody until DATA_RELEASE moved.
+    expect(isReleaseScoped('podcasts/episodes.json')).toBe(false)
+    expect(releasePath('podcasts/episodes.json')).toBe('podcasts/episodes.json')
   })
 })

@@ -26,7 +26,8 @@ side is findable from the other:
     entered_nodes       enteredNodes
     route_climb         routeClimb (pro-rated partial edges, direction swap)
     route_lines         routeLines / routeGeometry / cutPolyline
-    same_trail          sameTrail (trail_id AND name)
+    same_trail          sameTrail (the name and the blaze, #1433)
+    add_concurrents     addConcurrents (the credit a merge folds away)
 
 WHAT IS DELIBERATELY NOT TWINNED, said so the difference is known rather
 than discovered: `holdDesignation`, the client's swap of an edge for its
@@ -96,15 +97,40 @@ class Leg:
     blaze_color: str | None
     trail_id: str | None
     miles: float
+    #: Other organizations whose ground this leg covers - trailGraph.ts's
+    #: RouteLeg.concurrent_sources, twinned because #1433 gave that field a
+    #: second way in. A leg is one name and one blaze now, which two stewards
+    #: can carry end to end, so a merge recording nothing would credit
+    #: whichever organization the walk happened to enter on for ground two
+    #: maintain. Omitted from the artifact - not [] - when there is nothing to
+    #: say, so a record predating the field round-trips unchanged.
+    concurrent_sources: list[str] | None = None
 
     def to_dict(self) -> dict:
-        return {
+        record = {
             "name": self.name,
             "source": self.source,
             "blaze_color": self.blaze_color,
             "trail_id": self.trail_id,
             "miles": self.miles,
         }
+        if self.concurrent_sources:
+            record["concurrent_sources"] = list(self.concurrent_sources)
+        return record
+
+
+def add_concurrents(leg: Leg, sources) -> None:
+    """Fold organizations into a leg's credit, never its own and never twice.
+
+    trailGraph.ts's `addConcurrents`, same rule and same reason (#1115).
+    """
+    for source in sources:
+        if source is None or source == leg.source:
+            continue
+        if leg.concurrent_sources is None:
+            leg.concurrent_sources = []
+        if source not in leg.concurrent_sources:
+            leg.concurrent_sources.append(source)
 
 
 @dataclass
@@ -174,9 +200,82 @@ def metres_to_miles(metres: float) -> float:
     return metres / METRES_PER_MILE
 
 
-def same_trail(a, b) -> bool:
-    """trailGraph.ts's sameTrail: BOTH the id and the name."""
-    return a.get("trail_id") == b.get("trail_id") and a.get("name") == b.get("name")
+def _trail_name(name) -> str:
+    """A name as a reader sees it: absent, blank and padded are one thing."""
+    return (name or "").strip()
+
+
+def same_trail(name_a, blaze_a, name_b, blaze_b) -> bool:
+    """trailGraph.ts's sameTrail: the name and the blaze, and nothing else.
+
+    The maintainer's rule (#1433): a route lists no two consecutive rows where
+    neither the trail name nor the blaze changed. `trail_id` is not a trail's
+    id - export_trails.build_trail_records writes f"{key}:{feature_id}", one
+    per source FEATURE - so grouping on it ended a leg wherever a publisher's
+    line ended and printed one trail as several identical rows.
+
+    Twinned deliberately rather than left behind: export_suggested_hikes.py
+    publishes `measured.legs` from this module, and a suggested hike listing
+    "Pine Meadow Trail" three times beside a phone that shows it once would be
+    the two halves of pipeline/README.md's promise disagreeing about one walk.
+
+    FOUR VALUES RATHER THAN TWO DICTS, which is the signature earning its keep.
+    This read `a.get("blaze_color")` when #1433 changed the rule, and both call
+    sites below were still handing it dicts built for the old one -
+    `{"trail_id": ..., "name": ...}` - so every comparison would have come back
+    False against a real blaze and every edge would have become its own leg:
+    the defect this function exists to remove, republished with no error and no
+    failing test. A missing argument is a TypeError at the call now.
+    """
+    return _trail_name(name_a) == _trail_name(name_b) and blaze_a == blaze_b
+
+
+#: The cell size the `keep_near` pre-filter bins on, in degrees. 0.05 deg is
+#: about 5.5 km of latitude, so a 15 km radius reaches three cells and the
+#: rectangle each point marks stays small.
+_KEEP_CELL_DEG = 0.05
+
+
+def _edges_within(nodes: list, edges: list, points: list[tuple[float, float]], radius_m: float) -> set[int]:
+    """Every edge with a node within `radius_m` of any of `points`.
+
+    Two passes, and the second is the one that decides: the first bins the
+    points into cells and keeps only edges whose node lands in a marked one,
+    the second measures those candidates exactly. So the answer is identical
+    to testing every edge against every point - which is what this replaced -
+    and the cells only decide what is worth measuring.
+
+    The pre-filter earns its place at this build's scale. The naive form is
+    O(edges x points): 631,915 edges against the 385 trailheads the Hike
+    Finder export publishes is 486 million great-circle calls, which had not
+    finished after ten minutes when route_hikefinder.py first ran (measured
+    2026-09-15). It was fine for the 22 rows that came before it, which is why
+    it was written that way and why this is a fix rather than a rewrite.
+    """
+    marked: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    for lon, lat in points:
+        # A degree of longitude shortens towards the poles, so the rectangle a
+        # point marks is computed at ITS OWN latitude rather than from one
+        # global constant - too narrow a box would silently drop edges.
+        lat_cells = int(math.ceil((radius_m / 111_320) / _KEEP_CELL_DEG))
+        lon_metres_per_degree = max(1_000.0, 111_320 * math.cos(math.radians(lat)))
+        lon_cells = int(math.ceil((radius_m / lon_metres_per_degree) / _KEEP_CELL_DEG))
+        cx, cy = int(math.floor(lon / _KEEP_CELL_DEG)), int(math.floor(lat / _KEEP_CELL_DEG))
+        for dx in range(-lon_cells - 1, lon_cells + 2):
+            for dy in range(-lat_cells - 1, lat_cells + 2):
+                marked.setdefault((cx + dx, cy + dy), []).append((lon, lat))
+
+    keep: set[int] = set()
+    for index, edge in enumerate(edges):
+        for node in (nodes[edge["from"]], nodes[edge["to"]]):
+            cell = (int(math.floor(node[0] / _KEEP_CELL_DEG)), int(math.floor(node[1] / _KEEP_CELL_DEG)))
+            nearby = marked.get(cell)
+            if not nearby:
+                continue
+            if any(metres_between((node[0], node[1]), point) <= radius_m for point in nearby):
+                keep.add(index)
+                break
+    return keep
 
 
 def load_graph(
@@ -209,12 +308,7 @@ def load_graph(
 
     keep: set[int] | None = None
     if keep_near is not None:
-        keep = set()
-        for index, edge in enumerate(edges):
-            for node in (nodes[edge["from"]], nodes[edge["to"]]):
-                if any(metres_between(tuple(node), point) <= keep_radius_m for point in keep_near):
-                    keep.add(index)
-                    break
+        keep = _edges_within(nodes, edges, keep_near, keep_radius_m)
 
     if geometry_path is not None and Path(geometry_path).exists():
         geometry = json.loads(Path(geometry_path).read_text(encoding="utf-8"))
@@ -438,8 +532,9 @@ def _legs_from_walk(graph: Graph, edge_indices: list[int], walked: list[float]) 
     legs: list[Leg] = []
     for at, edge_index in enumerate(edge_indices):
         edge = graph.edges[edge_index]
-        if legs and same_trail({"trail_id": legs[-1].trail_id, "name": legs[-1].name}, edge):
+        if legs and same_trail(legs[-1].name, legs[-1].blaze_color, edge.get("name"), edge.get("blaze_color")):
             legs[-1].miles += metres_to_miles(walked[at])
+            add_concurrents(legs[-1], [edge.get("source")])
             continue
         legs.append(
             Leg(
@@ -498,7 +593,15 @@ def route_between(graph: Graph, start: GraphPoint, end: GraphPoint) -> Route | N
 def route_through(graph: Graph, points: list[GraphPoint]) -> Route | None:
     """trailGraph.ts's routeThrough: every point in order, or None if ANY
     leg cannot be routed - a partial route with a hole in it is a hiker told
-    something false about the missing leg."""
+    something false about the missing leg.
+
+    A TAP IS A LEG BOUNDARY AND THE SQUASH STOPS AT IT. `_legs_from_walk`
+    merges the published lines inside one pair (#1433 - a trail drawn as five
+    geometry segments is one leg); this does not carry that merge across the
+    join between two pairs, because the lines are the publisher's accident of
+    digitisation and the points are the caller's own structure. Twinned from
+    routeThrough, whose header carries the reasoning.
+    """
     if len(points) < 2:
         return None
     sections: list[Section] = []
@@ -520,12 +623,11 @@ def route_through(graph: Graph, points: list[GraphPoint]) -> Route | None:
             if edge_indices and edge_indices[-1] == edge_index:
                 continue
             edge_indices.append(edge_index)
+        # Appended, never merged across the join - see the docstring. The
+        # shared edge was deduplicated above for DRAWING only; each section
+        # already priced its own walked span of it, so the total is unchanged
+        # by listing the two spans as the two legs they are.
         for leg in section.legs:
-            if legs and same_trail(
-                {"trail_id": legs[-1].trail_id, "name": legs[-1].name}, {"trail_id": leg.trail_id, "name": leg.name}
-            ):
-                legs[-1].miles += leg.miles
-                continue
             legs.append(Leg(**leg.to_dict()))
     climb: tuple[float, float] | None = (0.0, 0.0)
     for part in climbs:

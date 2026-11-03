@@ -20,6 +20,7 @@ from lib.poi_sites import (
     ROLE_ANCHOR,
     ROLE_MEMBER,
     base_name,
+    group_place_sites,
     group_sites,
     normalise_name,
     site_properties,
@@ -367,3 +368,126 @@ class TestTheAbsoluteCeiling:
 
         assert len(site.members) == 1
         assert NAME_MATCH_RADIUS_M * 10 < MAX_SITE_RADIUS_M * 1.1
+
+
+class TestGroupPlaceSites:
+    """The second grouping (#1536): ground where nobody named the parts.
+
+    ATC's rule above is name-led with proximity as the sanity check. This one
+    swaps the weights, because a New York City park name says "same property"
+    and not "same place" - Central Park's 137 fountains all carry one.
+    """
+
+    @staticmethod
+    def _fountain(index, *, metres_north=0.0, name="Prospect Park", poi_type="water"):
+        return {
+            "id": f"nyc:{name}:{index}",
+            "poi_type": poi_type,
+            "name": name,
+            "lat": 40.66 + metres_north / 111_320.0,
+            "lon": -73.97,
+        }
+
+    def test_two_fountains_at_one_playground_become_one_mark(self):
+        sites = group_place_sites([self._fountain(0), self._fountain(1, metres_north=30)])
+
+        assert len(sites) == 1
+        assert sites[0].size() == 2
+
+    def test_a_fountain_across_the_park_keeps_its_own_pin(self):
+        """Proximity carries the argument here, so a shared name alone is not
+        enough - which is the whole difference from the ATC rule above."""
+        sites = group_place_sites([self._fountain(0), self._fountain(1, metres_north=400)])
+
+        assert sites == []
+
+    def test_two_fountains_that_close_in_different_parks_stay_apart(self):
+        """And the name is still a gate, so geometry alone is not enough
+        either. Two fountains 30 m apart across a park boundary are two places
+        - the same refusal PROXIMITY_RADIUS_M makes for two overlooks."""
+        sites = group_place_sites(
+            [
+                self._fountain(0, name="Prospect Park"),
+                self._fountain(1, metres_north=30, name="Parade Ground"),
+            ]
+        )
+
+        assert sites == []
+
+    def test_a_line_of_fountains_folds_as_one_site_not_a_chain_of_pairs(self):
+        """The Coney Island boardwalk case. No two ends are within the radius
+        of each other, but every step is - single-link is what makes that one
+        mark instead of five overlapping ones."""
+        line = [self._fountain(i, metres_north=i * 60) for i in range(6)]
+
+        sites = group_place_sites(line)
+
+        assert len(sites) == 1
+        assert sites[0].size() == 6
+
+    def test_the_pin_is_drawn_on_a_real_fountain_and_never_on_a_centroid(self):
+        """THE SAFETY RULE OF THIS FUNCTION. A hiker walks to the pin. The
+        centroid of three fountains in a row is the middle one's position only
+        by luck; of an L-shaped group it is a point on the grass. The anchor is
+        always a member, so arriving at the pin means arriving at water."""
+        cluster = [self._fountain(i, metres_north=i * 40) for i in range(3)]
+
+        [site] = group_place_sites(cluster)
+
+        assert site.anchor in cluster
+        assert site.site_id == site.anchor["id"]
+        # And it is the most central one, so the walk to any other member is as
+        # short as a real anchor allows.
+        assert site.anchor["id"] == cluster[1]["id"]
+
+    def test_the_same_fountains_give_the_same_site_id_on_every_run(self):
+        """A report or a field note points at a site id. Ties break on the id
+        rather than on input order, so a re-fetch that reorders the rows does
+        not silently repoint every note in a park."""
+        cluster = [self._fountain(i) for i in range(4)]
+
+        first = group_place_sites(cluster)
+        second = group_place_sites(list(reversed(cluster)))
+
+        assert [s.site_id for s in first] == [s.site_id for s in second]
+
+    def test_an_unnamed_waypoint_is_never_folded(self):
+        """No name is no gate, and geometry alone is what the module refuses
+        everywhere else."""
+        anonymous = [self._fountain(i, metres_north=i * 10) for i in range(3)]
+        for record in anonymous:
+            record["name"] = None
+
+        assert group_place_sites(anonymous) == []
+
+    def test_it_never_folds_a_type_it_was_not_asked_for(self):
+        """Shelters and campsites are the first grouping's, and a shelter that
+        shares a park name with another shelter is not one place with parts."""
+        shelters = [self._fountain(i, metres_north=i * 20, poi_type="shelter") for i in range(3)]
+
+        assert group_place_sites(shelters) == []
+
+    def test_a_fountain_and_a_restroom_at_one_spot_are_not_folded_together(self):
+        """Single-type by construction: the fold is within (name, type), so a
+        restroom never disappears onto a fountain's pin. Losing a privy to a
+        water pin is the deletion POI_SITES.md exists to stop, not an instance
+        of it."""
+        sites = group_place_sites(
+            [
+                self._fountain(0, poi_type="water"),
+                self._fountain(1, metres_north=5, poi_type="privy"),
+            ]
+        )
+
+        assert sites == []
+
+    def test_every_folded_waypoint_gets_published_site_properties(self):
+        cluster = [self._fountain(i, metres_north=i * 30) for i in range(4)]
+
+        sites = group_place_sites(cluster)
+        published = site_properties(sites)
+
+        assert len(published) == 4
+        roles = sorted(p["site_role"] for p in published.values())
+        assert roles == ["anchor", "member", "member", "member"]
+        assert {p["site_name"] for p in published.values()} == {"Prospect Park"}

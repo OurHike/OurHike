@@ -32,7 +32,8 @@ so; `is_release_artifact` is that sentence made mechanical.
 
 from __future__ import annotations
 
-from datetime import date
+import re
+from datetime import date, datetime, timezone
 from typing import Iterable
 
 # The index and the release folders. Both spelled here rather than built at
@@ -68,6 +69,20 @@ STATUS_RELEASED = "released"
 # docstring - this is a rule about mutability, not about size or importance.
 CONDITIONS_PREFIX = "conditions/"
 
+# THE PIN BEHIND AN ENVIRONMENT'S DATA (pipeline/ELT.md). A
+# top-level `raw_run` in `latest.json`, and so in every release folder's
+# manifest staged from it: the extract run whose pin, `steps/raw_inputs/
+# <raw_run>/` in the private raw store, the newest build from a pin that
+# published to this environment read. publish.py writes it from
+# OURHIKE_RAW_RUN, which only build-reference.yml's UA publish sets, and every
+# other publish carries it forward unchanged, so an environment no build from
+# a pin has published to has none. prune_raw_store.py reads it to keep that
+# pin and its stored warehouse. An extract run's id, as extract/_run.py
+# stamps it ("%Y%m%dT%H%M%S.%fZ") and build-reference.yml's first step holds
+# its input to.
+RAW_RUN_FIELD = "raw_run"
+RAW_RUN_PATTERN = re.compile(r"\A[0-9]{8}T[0-9]{6}\.[0-9]{6}Z\Z")
+
 
 def is_release_artifact(name: str) -> bool:
     """Whether an artifact belongs in a release folder.
@@ -99,10 +114,16 @@ def next_release_id(taken: Iterable[str], today: date | None = None) -> str:
     would be two spellings of "the first one today", and the layout cannot
     rename either afterwards.
 
+    The default is today on the UTC calendar, not date.today(): the machine's
+    local date differs from UTC near midnight, and a release cut from a laptop
+    then gets the previous day's id (#1769, the same skew #659 fixed in
+    lib/freshness_state.py's utc_today, which is not imported here because it
+    pulls in requests and the release gate runs without it).
+
     `today` is injected rather than read here so a test can assert the
     same-day case without waiting a day for it.
     """
-    stamp = (today or date.today()).isoformat()
+    stamp = (today or datetime.now(timezone.utc).date()).isoformat()
     used = set(taken)
     if stamp not in used:
         return stamp

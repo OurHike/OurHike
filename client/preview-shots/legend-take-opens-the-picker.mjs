@@ -66,7 +66,7 @@ export default async function drive(page) {
   await page.getByRole('heading', { name: 'Trails in view' }).waitFor()
 
   // The row's own button, which reads `take` while nothing is taken.
-  await page.getByRole('button', { name: /Appalachian National Scenic Trail/ }).click()
+  await page.getByRole('button', { name: /Appalachian Trail/ }).click()
 
   await page.getByRole('dialog', { name: 'Which long hike?' }).waitFor()
 }

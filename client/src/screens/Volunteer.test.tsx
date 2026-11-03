@@ -25,10 +25,6 @@ function renderTab(overrides: Partial<Parameters<typeof Volunteer>[0]> = {}) {
     passedToday: PASSED,
     onOpenPlace: vi.fn(),
     units: 'imperial' as const,
-    opportunities: [] as const,
-    opportunitiesAsOf: NOW,
-    gpsMile: null,
-    now: NOW,
     ...overrides,
   }
   render(<Volunteer {...props} />)
@@ -101,54 +97,18 @@ describe('Volunteer', () => {
     )
   })
 
-  const WORKDAY = {
-    id: 'sample:one',
-    club_name: 'NY-NJ Trail Conference',
-    title: 'Bear Mountain steps',
-    description: 'Gloves provided.',
-    lat: 41.31,
-    lon: -73.99,
-    mile: 1407.6,
-    starts_on: '2026-08-24',
-    ends_on: '2026-08-24',
-    status: 'upcoming' as const,
-    capacity: 12,
-    signup_mode: 'contact' as const,
-    signup_contact: 'mailto:volunteer@example.org',
-  }
+  it('no longer holds the workday list, which is Today\u2019s now (#1440, D22)', () => {
+    // THE SPLIT THIS PAGE EXISTS FOR, pinned so the section cannot drift
+    // back. Today answers "what is happening" - the crews out now, the
+    // switch, the window and the views. This page answers "what have I done,
+    // and what can I hand back", which is why it still opens on the smallest
+    // possible act rather than on a calendar.
+    renderTab()
 
-  it('lists an upcoming workday with the club’s own signup channel', () => {
-    renderTab({ opportunities: [WORKDAY], gpsMile: 1400.0 })
-
-    expect(screen.getByText('Bear Mountain steps')).toBeTruthy()
-    expect(screen.getByText(/NY-NJ Trail Conference/)).toBeTruthy()
-    expect(screen.getByText(/7\.6 trail mi away/)).toBeTruthy()
-    // An introduction, not an enrolment: the link is the club's channel, and
-    // no green tick of the app's invention appears anywhere.
-    const link = screen.getByRole('link', { name: /ask the crew/i })
-    expect(link.getAttribute('href')).toBe('mailto:volunteer@example.org')
-  })
-
-  it('replaces the whole list once the artifact is older than the ceiling', () => {
-    // A hedged invitation still reads as an invitation (#760): past 48 hours
-    // the rows go away entirely and the age is said out loud.
-    const twoAndAHalfDaysAgo = new Date(NOW.getTime() - 60 * 60 * 60 * 1000)
-    renderTab({ opportunities: [WORKDAY], opportunitiesAsOf: twoAndAHalfDaysAgo })
-
-    expect(screen.queryByText('Bear Mountain steps')).toBeNull()
-    expect(screen.getByText(/out of date/i)).toBeTruthy()
-  })
-
-  it('says it could not check, which is not the same as no workdays', () => {
-    renderTab({ opportunities: null, opportunitiesAsOf: null })
-
-    expect(screen.getByText(/needs signal/i)).toBeTruthy()
-    expect(screen.queryByText(/No workdays are posted/i)).toBeNull()
-  })
-
-  it('says plainly when nothing is posted, without inventing urgency', () => {
-    renderTab({ opportunities: [] })
-
-    expect(screen.getByText(/No workdays are posted here yet/)).toBeTruthy()
+    expect(screen.queryByText('Workdays in the next two weeks')).toBeNull()
+    expect(screen.queryByText(/No workdays are posted here yet/)).toBeNull()
+    expect(screen.queryByRole('link', { name: /ask the crew/i })).toBeNull()
+    // And the half it keeps is still here.
+    expect(screen.getByText(/Ask me about conditions as I pass things/)).toBeTruthy()
   })
 })

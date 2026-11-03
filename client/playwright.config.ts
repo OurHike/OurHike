@@ -7,6 +7,7 @@
 import { defineConfig } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { BACKEND_BUILD_ENV, BACKEND_ORIGIN, BACKEND_PORT } from './e2e/support/backend'
 
 /**
  * Lifted from client/scripts/screenshot.mjs's launchChromium(): the agent
@@ -88,10 +89,14 @@ const COMMAND = process.env.CI
  * Three things hold that down, and they are why this is a separate mode
  * rather than more tests in `e2e/`:
  *
- * 1. IT READS THE PINNED RELEASE, never `latest`. `lib/dataRelease.ts`'s
- *    DATA_RELEASE is a committed constant and a release folder is immutable
- *    once written, so the bytes under a run cannot change without a commit
- *    somebody reviewed. This is the whole of why the flakiness is bounded.
+ * 1. IT READS ONE NAMED RELEASE, never `latest`: the one UA's channels.json
+ *    names, which every first run takes, or `lib/dataRelease.ts`'s
+ *    DATA_RELEASE when no entry resolves (e2e/support/dataPreflight.ts works
+ *    out which, once). A release folder is immutable once written, so the
+ *    bytes under a run change only when UA's pointer moves - after a monthly
+ *    build that passed every check (build-reference.yml), or a person's
+ *    rollback - never in the middle of one. That is the whole of why the
+ *    flakiness is bounded.
  * 2. IT IS ITS OWN CI JOB. A bucket outage reds `flow-data` and leaves the
  *    hermetic tests in `flow` green, so the two failures never look alike.
  *    That half was 97 tests when this was written and is 155 across the two
@@ -111,6 +116,19 @@ const COMMAND = process.env.CI
 const DATA_MODE = process.env.FLOW_DATA === '1'
 
 /**
+ * Leave `phone-webkit` out, because the machine has no WebKit build (#1537).
+ *
+ * Set only by scripts/test.sh, and only after it has looked for Playwright's
+ * WebKit executable, not found it, and printed a line saying the project is
+ * being skipped. An agent sandbox ships Chromium alone, so without this every
+ * `phone-webkit` spec fails at launch (147 of 147 on 2026-09-17), while the
+ * change under test is fine. Never detected here: CI's `flow` job does not set
+ * it, so a runner that lost WebKit still fails loudly rather than passing a
+ * suite a browser short.
+ */
+const SKIP_WEBKIT = process.env.FLOW_SKIP_WEBKIT === '1'
+
+/**
  * A server the caller already started, which the browser is pointed at
  * instead of one this config builds.
  *
@@ -124,6 +142,37 @@ const DATA_MODE = process.env.FLOW_DATA === '1'
  * this config starts no server of its own.
  */
 const BYO_ORIGIN = process.env.FLOW_DATA_ORIGIN ?? ''
+
+/**
+ * THE BACKEND-SHAPED BUILD, for the `@backend` tests (#1643).
+ *
+ * The hermetic build sets no `VITE_API_BASE_URL` and no `VITE_SUPABASE_URL`,
+ * so in it the outbox never sends, sign-in never reaches its code step, and
+ * the org console only has the demo organization. Those are real states and
+ * the rest of this suite keeps testing them. The paths that only exist once a
+ * backend is configured need a build that configured one - Vite inlines both
+ * variables at build time - so this is the same app built a second time with
+ * both pointing at its own origin, where `e2e/support/backend.ts` answers
+ * them with `page.route`. No backend runs; nothing leaves the browser.
+ *
+ * ALWAYS BUILT AND PREVIEWED, never the dev server, even locally. Two
+ * `vite` dev servers in one directory share `node_modules/.vite`'s dependency
+ * cache, and the second one re-optimising under the first is a failure that
+ * would read as a flaky test. A plain `vite build` - no `tsc -b`, no
+ * `check:build`, both of which the hermetic build already runs over the same
+ * source - took 5 seconds measured 2026-09-23 in the agent sandbox.
+ *
+ * CHROMIUM ONLY, at phone width. What these tests drive is the app's own
+ * network and storage logic, which `phone-webkit` already exercises in the
+ * hermetic build through every screen that does not need a backend; a
+ * WebKit leg here is worth adding when one of these paths turns out to fork
+ * by engine, and nothing has shown that yet.
+ */
+const BACKEND_MODE_AVAILABLE = !DATA_MODE && BYO_ORIGIN === ''
+const BACKEND_COMMAND = [
+  `npx vite build --outDir dist-e2e-backend --emptyOutDir`,
+  `npx vite preview --outDir dist-e2e-backend --port ${BACKEND_PORT} --strictPort`,
+].join(' && ')
 
 export default defineConfig({
   // The hermetic half by default; `e2e/data/` only in FLOW_DATA mode, and
@@ -183,7 +232,7 @@ export default defineConfig({
   projects: [
     {
       name: 'phone',
-      grepInvert: /@desktop/,
+      grepInvert: /@desktop|@backend/,
       use: {
         viewport: { width: PHONE.width, height: PHONE.height },
         isMobile: PHONE.isMobile,
@@ -194,6 +243,7 @@ export default defineConfig({
     {
       name: 'desktop',
       grep: /@desktop/,
+      grepInvert: /@backend/,
       use: {
         viewport: { width: DESKTOP.width, height: DESKTOP.height },
         isMobile: DESKTOP.isMobile,
@@ -201,19 +251,118 @@ export default defineConfig({
         deviceScaleFactor: DESKTOP.deviceScaleFactor,
       },
     },
+    /**
+     * WEBKIT AT PHONE WIDTH, WHICH IS THE WHOLE OF THE iOS QUESTION (#1392).
+     *
+     * One bundle, two WebViews: the Android shell is Chromium and the iOS
+     * shell is WebKit, so for a Capacitor app this project is not "another
+     * browser" but the other half of what ships. TESTING.md's strategy item 3
+     * has promised "real Chromium and WebKit" since before any of this
+     * existed.
+     *
+     * PHONE WIDTH ONLY, deliberately. `desktop` exists because
+     * `lib/useDesktop.ts`'s breakpoint is a behaviour fork this app has to
+     * get right; there is no iOS device in the desktop layout, so a
+     * `desktop-webkit` would assert a combination nothing ships and pay a
+     * third of the suite's time for it. If a WebKit laptop browser ever
+     * becomes a target, that is the reason to add it and it is not this one.
+     *
+     * IT RUNS THE SAME SPECS AS `phone` RATHER THAN A TAGGED SUBSET, and that
+     * is a choice against this issue's own suggestion of scoping by tag. The
+     * argument is that an engine difference is not knowable in advance the
+     * way a layout fork is: a `@webkit` tag can only carry the differences
+     * somebody already found, which is precisely the set that needs no test.
+     * Measured on the run that introduced this project (2026-09-15, WebKit
+     * 26.6): the whole hermetic phone suite under WebKit is 146 passed, 3
+     * skipped, NOTHING FAILED, in 3.6 minutes. The engine difference turned
+     * up nothing to fix, which is a result rather than a formality - it is
+     * what this issue asked somebody to find out before CI did.
+     *
+     * THE LAUNCH OPTIONS ABOVE ARE CHROMIUM'S AND MUST NOT REACH IT.
+     * `chromiumExecutable()` points at the sandbox's Chromium and
+     * `--no-sandbox` is a Chromium flag, so both are cleared here rather than
+     * inherited - a WebKit told to exec a Chromium binary fails at launch
+     * with an error that names neither.
+     */
+    // THE HERMETIC HALF ONLY, and this is a finding rather than a preference.
+    // Run against `e2e/data/` in this sandbox, WebKit reaches 150 seconds still
+    // reporting "No trail line" on a camera where Chromium has the line, the
+    // waypoints and the closure tape within 30 - so every spec that taps
+    // something drawn on the trail fails, while one that taps a mark placed at
+    // its own coordinate passes. Measured 2026-09-15, with screenshots either
+    // side. Nobody has established whether that is WebKit, or this sandbox's
+    // data proxy under WebKit, and #1392 is explicit that a project is turned
+    // on by somebody who has fixed what the engine turned up - not by somebody
+    // who found something they could not explain. So the data half stays on
+    // Chromium until that is understood, and the gap is filed as #1467 rather
+    // than silently shipped.
+    // The `@backend` tests, against the backend-shaped build (see
+    // BACKEND_COMMAND above). Service workers blocked, so that every request
+    // the page makes reaches `page.route` rather than a precache.
+    ...(BACKEND_MODE_AVAILABLE
+      ? [
+          {
+            name: 'phone-backend',
+            grep: /@backend/,
+            use: {
+              baseURL: BACKEND_ORIGIN,
+              serviceWorkers: 'block' as const,
+              viewport: { width: PHONE.width, height: PHONE.height },
+              isMobile: PHONE.isMobile,
+              hasTouch: PHONE.hasTouch,
+              deviceScaleFactor: PHONE.deviceScaleFactor,
+            },
+          },
+        ]
+      : []),
+    ...(DATA_MODE || SKIP_WEBKIT
+      ? []
+      : [
+          {
+            name: 'phone-webkit',
+            grepInvert: /@desktop|@backend/,
+            use: {
+              browserName: 'webkit' as const,
+              launchOptions: {},
+              viewport: { width: PHONE.width, height: PHONE.height },
+              isMobile: PHONE.isMobile,
+              hasTouch: PHONE.hasTouch,
+              deviceScaleFactor: PHONE.deviceScaleFactor,
+            },
+          },
+        ]),
   ],
   // None where the caller brought their own (the sandbox's proxy above);
   // otherwise the same build-and-serve as the hermetic half, carrying
   // VITE_DATA_BASE_URL through so the bundle knows which bucket to read.
+  //
+  // Plus, for the hermetic half, the backend-shaped build above on a port of
+  // its own.
   webServer:
     BYO_ORIGIN !== ''
       ? undefined
-      : {
-          command: COMMAND,
-          url: `http://localhost:${PORT}/`,
-          reuseExistingServer: !process.env.CI,
-          // The data build fetches 1,943 artifacts' worth of manifest before
-          // it draws anything, so it wants longer than a hermetic boot does.
-          timeout: DATA_MODE ? 180_000 : 60_000,
-        },
+      : [
+          {
+            command: COMMAND,
+            url: `http://localhost:${PORT}/`,
+            reuseExistingServer: !process.env.CI,
+            // The data build fetches 1,943 artifacts' worth of manifest before
+            // it draws anything, so it wants longer than a hermetic boot does.
+            timeout: DATA_MODE ? 180_000 : 60_000,
+          },
+          ...(BACKEND_MODE_AVAILABLE
+            ? [
+                {
+                  command: BACKEND_COMMAND,
+                  url: `${BACKEND_ORIGIN}/`,
+                  reuseExistingServer: !process.env.CI,
+                  timeout: 120_000,
+                  env: {
+                    ...(process.env as Record<string, string>),
+                    ...BACKEND_BUILD_ENV,
+                  },
+                },
+              ]
+            : []),
+        ],
 })

@@ -62,7 +62,8 @@ def test_a_short_page_does_not_end_the_fetch(registered, requests_mock):
 
     written = json.loads(registered.read_text())
     assert len(written["features"]) == 3025
-    assert requests_mock.call_count == 4  # three short pages, then the empty one that ends it
+    pages_asked = [r for r in requests_mock.request_history if "returncountonly" not in r.qs]
+    assert len(pages_asked) == 4  # three short pages, then the empty one that ends it
 
 
 def test_it_asks_for_geometry_only_at_reduced_precision(registered, requests_mock):
@@ -89,6 +90,26 @@ def test_it_asks_for_geometry_only_at_reduced_precision(registered, requests_moc
     assert asked["resultrecordcount"] == ["2000"]
     assert asked["f"] == ["geojson"]
     assert asked["outsr"] == ["4326"]
+
+
+def test_it_reads_only_the_rows_the_registry_row_filters_to(registered, monkeypatch, requests_mock):
+    """The drought clip buffers this line into a corridor, so a feature the
+    registry row filters out (#1920 - ATC's 'New Hampshire' state outline)
+    would widen the corridor if this read it."""
+    sources = fetch_centerline.SOURCES_PATH
+    entry = json.loads(sources.read_text())["sources"][0]
+    sources.write_text(json.dumps({"sources": [{**entry, "where": "Status = 'Official A.T. Route'"}]}))
+    requests_mock.get(
+        QUERY_URL,
+        [
+            {"json": {"type": "FeatureCollection", "features": features(0, 10)}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    assert fetch_centerline.main() == 0
+
+    assert all(r.qs["where"] == ["status = 'official a.t. route'"] for r in requests_mock.request_history)
 
 
 def test_an_empty_layer_is_refused_rather_than_written(registered, requests_mock):

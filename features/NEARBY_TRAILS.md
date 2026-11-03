@@ -121,6 +121,26 @@ on exactly the trails a hiker might be thinking of taking. Two things recover it
 is dimmed, never removed (the maintainer's rule: _"the color of the trail blazes should be
 the color on the map"_), and the tap sheet below shows the blaze at full strength.
 
+_(Amended 2026-09-17, [#1575](https://github.com/OurHike/OurHike/issues/1575): the hue is off the map's lines by default now — every trail is one red until the hiker switches "Blaze colors" on in the legend, the maintainer's request of that day: "Showing the blaze color can be distracting and feel like I'm living in a rainbow". Ghosting is unchanged, because it is an opacity fact: under the one red it is opacity and width that separate the chosen system from the rest, exactly as under red light. The tap sheet and the legend's "Trails in view" rows show the blaze at full strength whichever way the switch is set.)_
+- **Every badged trail takes the A.T.'s prominence below the seam (2026-09-18,
+  [#1586](https://github.com/OurHike/OurHike/issues/1586))** — a casing under the corridor-view
+  sketch's through-routes, the A.T.'s own far weight, and a seam handoff at the line's own
+  tier (WIREFRAMES.md §3's amendment of that date has the rule and what "long-distance"
+  means to the map: _"those named with pills showing"_). Ghosting is untouched: the Long
+  Path outside the chosen system is a cased, ghosted line, which is exactly what the untaken
+  A.T. is at the opening camera — the parity the maintainer asked for.
+- **Under the default the context trails are a thinner dashed line and the badged trails a
+  plain solid one, both in the same red (2026-09-18, [#1588](https://github.com/OurHike/OurHike/issues/1588);
+  amended 2026-09-20, [#1597](https://github.com/OurHike/OurHike/issues/1597))** — the
+  maintainer's pick from mock-ups, WIREFRAMES.md §3's amendment of those dates. #1588 drew
+  a context trail at 45% of the red over the sheet's paper; the maintainer read that as pink
+  on a Hudson Highlands frame and asked for the A.T.'s own red, so the hue channel now says
+  nothing about which trail a line is and the width and the dash say all of it. Ghosting is
+  still the third channel and still opacity, and it now composes with nothing else in that
+  channel — a taken trail still ghosts everything outside its system, dashed lines included.
+  The casings, this section's "hairline casing", draw with the hues on and under red light
+  and are hidden under the default.
+
 ## 2. Tapping a nearby trail — a sheet that informs and does not switch
 
 Tapping any line already opens a sheet naming the blaze and its source (WIREFRAMES.md §3;
@@ -134,6 +154,31 @@ mark in that registry is a third-party trademark whose permission is recorded on
 row in `pipeline/sources.json`'s `org_marks`. Switching trails stays in
 the picker ([#558 — Let a hiker take the stretch they are walking, without picking it off a
 list](https://github.com/OurHike/OurHike/issues/558) is that flow's home).
+
+**And since [#1476 — Tapping a trail says how far it goes and never how much it climbs,
+though every edge's gain is already measured and cut into the cell the tap just
+loaded](https://github.com/OurHike/OurHike/issues/1476), how much it climbs.** The sheet
+had always said how far a trail goes and never how much it rises, on every trail including
+the A.T., and nineteen flat miles and nineteen miles over five Harriman knobs are not the
+same walk. The figure was already published — `export_network_elevation.py` measures
+`[gain_ft, loss_ft]` along every edge of the junction graph and `cut_trail_graph.py` files
+it into the same cells — and had exactly one reader, `lib/dayHikeCard.ts`, for a *resolved
+day hike*. A hiker who never opened the builder had never seen it.
+
+`lib/lineClimb.ts` is the sum, and it is written in feet over edges rather than over a
+concatenated profile, which is what keeps [#559](https://github.com/OurHike/OurHike/issues/559)'s
+phantom ~36,800 ft out of it: `ENDPOINT_SNAP_M` lets two edges meeting at one node sit
+metres apart on the ground, and the step between them is never a term here because there is
+nothing to sum across. Three absences are told apart rather than flattened into "unknown",
+because two of them are things a hiker can act on and one is not — a **hole in the DEM**
+(no total, and say how much of the trail it is), a line running **past the cells this phone
+holds** (no total, and point at the download), and **no figures on this phone at all** (say
+nothing, because a permanent "climb unknown" on every line is the caveat-on-every-line that
+buries the two a hiker's safety turns on). The figure that does print carries the estimate
+sentence `DayHikeCard` gives it: the maintainer's decision of 2026-08-25 was to ship it
+*and* frame it, and the two measurements either side of it — a dead band reading +18.8%
+against a maintaining club on rolling ground, and junction-chopping understating a
+continuous profile by a median 6.9% — have never been netted against each other.
 
 Why, argued: making a nearby trail the chosen one swaps the mile frame, the elevation
 ribbon, the Naismith numbers and the amenity POI set **at once** — the whole context a hiker
@@ -161,9 +206,10 @@ keeps this outside the argument above rather than a reversal of it.
 ## 3. Closed trails — the closure vocabulary, reused
 
 OPRHP marks trails `Closed` long-term (125 statewide) — distinct from the live
-temporary-closures layer. They ship, drawn with **the closure treatment**: the red
-barrier tape, the map's one permitted non-solid trail-line treatment (WIREFRAMES.md §3's
-stated exception, §7's spec). One vocabulary for "do not walk this", which is the argument that
+temporary-closures layer. They ship, drawn with **the closure treatment**: the trail
+crossed out (since 2026-09-26, [#1677](https://github.com/OurHike/OurHike/issues/1677); red
+barrier tape before that), the map's one permitted non-solid trail-line treatment
+(WIREFRAMES.md §3's stated exception, §7's spec). One vocabulary for "do not walk this", which is the argument that
 won: a hiker learns one mark.
 
 **Built 2026-08-24 ([#964](https://github.com/OurHike/OurHike/issues/964)), and it turned out to be two feeds rather than one.** OPRHP's long-term `Closed` status ships on the line as this section describes. Their _temporary_ closures do not work that way at all: they are polygons over ground, with the reason as prose and no dates, and two of the four do not touch the A.T. — so they are derived onto the trail lines by intersection, split at the boundary, and carry `closure_kind: "area"` against the status feed's `"long_term"`. That property exists because this paragraph asks the sheet to say different things about the two, and `trail_status` cannot tell them apart. **The sheet's half landed with [#1142 — The tapped-line sheet reads a temporary closure in the long-term voice](https://github.com/OurHike/OurHike/issues/1142)**: an area-derived record's sentence is now the closing organization's — "Temporarily closed by …" with their reason verbatim and no date, since the layer publishes none — attributed through `closure_source` (shipped since the same change) and the published stewards table, never through the trail line's own org.
@@ -174,11 +220,21 @@ closure's says its reason and reporting date as today (ClosureSheet). `Proposed`
 blank/Unknown (24) segments do not ship at all — a proposed trail is not ground, and an
 unknown status drawn as walkable is a guess (omit rather than guess).
 
+**A trailhead is crossed out when every trail in reach is** (2026-09-28,
+[#1695 — Draw a trailhead whose trails are all closed with a ✕](https://github.com/OurHike/OurHike/issues/1695)).
+`export_nearby_poi.mark_closed_trailheads` reads this section's `trail_status` back off
+`nearby_trails.geojson`. It flags a trailhead `trails_closed_within_m` when every line within
+`TRAILHEAD_TRAIL_RADIUS_M` (100 m) is closed and there is at least one. The A.T.'s raw
+lines count as open, and both kinds of closure count the same. WIREFRAMES.md §7 has the
+pin, the maintainer's choice and the caveat. The radius table lives on the constant.
+
 ## 4. Blazes beyond seven — the palette grows, under governance
 
 The maintainer's decision, verbatim: _"we will need to bring in more colors for the blazes.
 Long [Path] is indeed aqua. Some way to stop sprawl is needed, but the color of the trail
 blazes should be the color on the map."_
+
+_(Superseded in part 2026-09-17, [#1575](https://github.com/OurHike/OurHike/issues/1575): the colour is on the map while the legend's "Blaze colors" switch is on, and the map ships with it off — one red line for every trail. The palette, its governance and the mapping table below are untouched; what changed is whether the map's lines wear the hue by default. §1's amendment has the rest.)_
 
 The need is measured: OPRHP's statewide layer carries **Aqua (166), Pink (171), Light Blue
 (115), Teal (80), Brown (116), Black (50), Lime (35)** beyond the client's seven paints —
@@ -383,6 +439,61 @@ already makes about which registry trail a line is, and firing for those two sou
 alone, so a park's folded haze stays unnamed and off the list. **Both halves stand**: the
 fallback is what a hiker sees today, and the republish is what makes the data say it
 itself.
+
+**And "one trail" became a run of shared tread rather than a spelling
+(2026-09-30, [#1776](https://github.com/OurHike/OurHike/issues/1776)).**
+
+_Every mileage below is a figure inside `network_overview.geojson`, which is the OTHER
+organizations' sketch. **ATC's `centerline` is not in it** — the Appalachian Trail a hiker
+sees is `trails.geojson`'s, from `export_trails.py`, drawn at every zoom and untouched by
+any of this. What `usfs_trails` publishes under the name `APPALACHIAN TRAIL` is USFS's own
+copies of the segments crossing national forest land, 164 rows and 458 miles, lying under
+the real line — the same duplication §7 already describes as "other organizations' copies
+of the A.T.". A number here that looks like a trail's length is not one._
+
+`_named_lengths`
+summed every row carrying one name inside one organization, which was right for the eleven
+regional stewards it was written against and wrong for a national one: `usfs_trails` is one
+organization covering the country, where a trail name is neither unique nor ever was.
+Measured against release `2026-09-16-4`'s own published artifact, **146 of its names cleared
+`NAMED_TRAIL_THRESHOLD_MILES` and 75 of those were spread over more than 5° of longitude**,
+which no single trail is. `GREEN MOUNTAIN` was 27 unrelated trails in 27 national forests,
+summed to 82 miles and drawn across **50.5° — the width of the country** — with the casing
+and the badge the Long Path was given. **126 of the shipped sketch's 142 through routes were
+USFS's**, so most of what the opening camera drew at a long-distance trail's prominence was
+not a long-distance trail.
+
+`_through_routes` replaces it. Rows are chained where they share tread, within one trail
+identity, and each **chain** is measured against the threshold — so the question "is this one
+trail?" is answered by geometry rather than by a string. It needs no ceiling on how far a
+name may spread: after it, 47 through routes remain and the only four spanning more than 5°
+are the North Country, Appalachian, Continental Divide and Pacific Crest trails, which really
+do. `CHAIN_TOLERANCE_M` is twice `OVERVIEW_SIMPLIFY_TOLERANCE_M` because Douglas-Peucker may
+move a point that far and two rows that met can now sit at twice it; swept from 17 m to
+4,264 m the answer moves between 79 and 87 qualifying chains and never once produces a
+country-spanning one, so it is not a number anybody has to defend.
+
+**The identity is `(source, trail)`, and both halves are load-bearing.** Dropping the source
+was tried and chained two stewards' 30-mile "Ridge Trail"s into one 60-mile through route —
+#1307's own restraint, spent. Dropping the *name* and chaining a whole source by geometry was
+also tried: the Appalachian Trail came out at 514 miles having absorbed `GLENWOOD HORSE` and
+`ALLEGHENY TRAIL`, because in a trail network everything touches eventually. The name says
+which trail; the tread says whether it is one.
+
+`reference/trail_name_aliases.json` is the other half and now feeds the pipeline rather than
+only the client's badge: USFS publishes the Pacific Crest Trail under 81 spellings, and
+folding them into one identity before chaining is what lets the trail qualify as itself. **The
+largest continuous run of it — 424 miles through the Oregon and Washington Cascades — carried
+no spelling that table already listed**, which is why the check that extended it could not
+require one as a seed.
+
+**What it costs, and it is not nothing:** a section its publisher draws disconnected from the
+rest of its trail falls into the unnamed haze. On the same measurement that is 464 of the
+2,139 miles carried by the eight names #1776 lists as real — **all of it other
+organizations' duplicate segments, none of it a trail's own centerline**, and USFS's A.T.
+copies lose none of it. It is still drawn, at haze weight — not cased, not badged, and not
+labelled, and in exactly the same place. Recovering it is
+[#1783](https://github.com/OurHike/OurHike/issues/1783)'s, not this change's.
 **And the badge stops at the waypoint seam (2026-09-14).** The maintainer, reading the
 built map: _"when a user zooms in close enough to see a POI, the trail pills (AT & LP)
 should hide."_ `buildTrailBadgeLayer` now carries `maxzoom: POI_PIN_MIN_ZOOM` — the seam
@@ -450,6 +561,16 @@ byte range as the camera asks, a few kilobytes a tile, whatever the archive weig
 the hiking sheet has always been read. What that costs, stated: **a tile lives in the
 browser's HTTP cache and nowhere else, so with no signal the map above the seam draws no
 nearby trails.** The corridor-view sketch below the seam is still cached and still draws.
+
+**That band widened with #1775, and it is the one cost of that change worth stating.** The
+sketch used to draw to `CORRIDOR_MAX_ZOOM` (9); it now stops at `NETWORK_SKETCH_MAX_ZOOM`
+(5), and z5–z9 is drawn from the same archive the zooms above it are. So a phone with no
+signal and no held cell loses the other organizations' trails from **z5** up rather than
+from z9 up — four zooms of ground that used to come out of a file it had already
+downloaded. What it buys is that the file in question stopped being 12,238,110 bytes on
+every launch, and stopped growing with every organization the registry gains; the stretch
+download (`NEARBY_TRAILS_CELLS_KEY`) is what answers the offline case in both bands, and
+answers it the same way it always did.
 That is the state this section described before #1082 and the state #1254's budget had
 already left every phone in; it is honest rather than good, and it is the paragraph above
 as written: a **named** download of the network, cut to #552's unit, is now #1257's second
@@ -590,6 +711,65 @@ its scale (3,370 unnamed `nhd_crossing` rows in the ledger) and is about a diffe
 question. **That count is the real follow-up**, and it is worth being explicit that the
 zero above does not stand in for it: this layer contributing no water is a fact about
 OPRHP's inventory, not a fact about how much water Harriman has.
+
+### The ring got a second exception, and this one is about ground rather than type
+
+**A city park is not a corridor, and the ring asks a corridor's question**
+([#1493](https://github.com/OurHike/OurHike/issues/1493)). "How far is this from a published
+line" is the right test along 2,190 miles of trail and the wrong one inside a park, where the
+park *is* the destination and the path through it is incidental.
+
+Measured 2026-09-15 against the UA release the day [#1474](https://github.com/OurHike/OurHike/issues/1474)
+published, with the 500 ft ring rebuilt in EPSG:5070 from the 698 published lines around
+Central Park — the reconstruction reproduces the published clip exactly, so these are the real
+gate rather than an estimate of it:
+
+| Central Park                 | source | published |
+| ---------------------------- | -----: | --------: |
+| NYC Parks drinking fountains |    180 |    **31** |
+| NYC public restrooms         |     41 |     **8** |
+
+**182 of 221 — 82% — and Central Park is the favourable case**, because NYC Parks actually
+mapped its paths. The losses fall on the Great Lawn, the Reservoir's outer edge, and
+playgrounds set back from a drive.
+
+**So a POI source may name a boundary layer** in `boundary_source`, and a point inside one of
+that layer's polygons is kept however far it sits from a line. This is the structure #1311
+already built — `keep_within_corridor` asks *"inside the polygon OR within `NETWORK_BUFFER_FEET`
+of a line"* — given a second kind of polygon rather than a new concept. NYC Parks Properties
+(`enfh-gkve`, 2,059 boundaries) is the first, and it carries `gispropnum`, the same property
+number the fountains already do.
+
+**It is an `OR`, never a replacement**: 34 fountains ship today from *outside* every boundary,
+near a line and off a property, and a rule that only asked the boundary question would drop
+them.
+
+| what the boundary admits  |   raw | ships today | inside a boundary |
+| ------------------------- | ----: | ----------: | ----------------: |
+| fountains                 | 3,195 |         982 |  **3,114 (97.5%)** |
+| restrooms                 |   975 |         249 |    **717 (73.5%)** |
+
+**Those two figures do different work, and saying so is the point.** For restrooms the boundary
+genuinely discriminates — it drops 258 libraries, privately owned public spaces and transit
+entries. For fountains it is close to a blanket exemption, because NYC Parks' fountains are in
+NYC parks. Calling that anything other than what it is would be dressing it up.
+
+**What this costs on screen, recorded rather than resolved.** Measured with
+`spike_oprhp_poi_density.py`'s own method over the published artifact, filtered to
+`DEFAULT_SHOWN_TYPES`:
+
+| worst z12 screen, default visibility | pins | where                        |
+| ------------------------------------ | ---: | ---------------------------- |
+| before the NYC POI layers            |   55 | −78.845, 42.003 (Allegany)   |
+| as #1474 published                   |  233 | −74.024, 40.649 (Brooklyn)   |
+| under this rule                      |  656 | −74.009, 40.649 (Brooklyn)   |
+
+The 233-pin window holds 190 fountains and 43 restrooms and nothing else. **The maintainer's
+call of 2026-09-15, with these numbers in front of them, is that this is normal for New York
+City** — §10's ~16-pin target and [#1105](https://github.com/OurHike/OurHike/issues/1105)'s
+"fifty is too many" were both derived for hiking zooms in wilderness, not for a borough with a
+fountain every few blocks. Density travels separately, and POI_SITES.md's co-location
+clustering is the mechanism that would actually answer it.
 
 ## 11. Water on every trail on screen, and what it is measured against
 

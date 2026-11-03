@@ -290,7 +290,7 @@ The storyboard's on-trail frames sidestep it. `D10` names no junction at all —
 > Straight on is **Pine Meadow Trail**, blue blaze — not your route
 > Behind you is **Pine Meadow Trail**, blue blaze — the way you came
 
-Every one of those is an edge attribute the published graph already carries, and the mid-segment first leg stops being a problem because **the start of a walk is not a turn** — it never appears in the list. What a hiker checks against the blaze in front of them is the trail's own name and colour, not a junction's name, which is the one thing they cannot see from where they are standing. `client/src/lib/dayHikeTurns.ts` builds the list on that rule; a turn is exactly a leg boundary, tested against the same `sameTrail` predicate the leg list uses, so the two cannot disagree about where Pine Meadow becomes Seven Hills.
+Every one of those is an edge attribute the published graph already carries, and the mid-segment first leg stops being a problem because **the start of a walk is not a turn** — it never appears in the list. What a hiker checks against the blaze in front of them is the trail's own name and colour, not a junction's name, which is the one thing they cannot see from where they are standing. `client/src/lib/dayHikeTurns.ts` builds the list on that rule; a turn is exactly a leg boundary, tested against the same `sameTrail` predicate the leg list uses, so the two cannot disagree about where Pine Meadow becomes Seven Hills. **Amended 2026-09-15 ([#1433 — The route order lists one trail as several identical rows, because a leg ends where the publisher's line ends rather than where the trail does](https://github.com/OurHike/OurHike/issues/1433)):** the two lists no longer share a predicate, and the measurement is why. The leg list now groups on what a hiker reads — the name and the blaze — so that the route order carries no two rows a reader cannot tell apart. Following that here would have gone silent at **192,675 joins that sit at a node with a third arm on it** (measured on the published graph, 2026-09-15): a fork where both ways read "Pine Meadow Trail, blue" is exactly the fork a hiker cannot resolve by looking. So the turn list keeps the artifact's own question — `samePublishedLine`, the old `sameTrail` — and answers the noise complaint with a gate instead: **a node with no other arm is not a junction**, and a card there is printed only when the name or the blaze changes under the hiker. That drops the 30,290 places a publisher's line merely ended mid-trail and keeps every card at a place somebody could go wrong. A turn can now fall inside a leg, which is the honest shape of a fork between two lines of one trail. **Amended again the same day, on the maintainer's refinement:** the leg list's squash stops at a point the hiker placed. A seam between two published lines is the publisher's accident of digitisation and goes; a tap is the hiker's own structure, added one point at a time, and a walk that squashed it away would have deleted what they were building. So the rule is two-sided — squash the lines *inside* a tapped pair, keep the join *between* two of them — and the relationship with the turn list is now broken in both directions: a turn can fall inside a leg (a fork between two lines of one trail), and a leg boundary need not be a turn at all (a tap mid-trail, where nobody is choosing anything and no card is printed). `routeThrough` carries the rule and `WalkStep.pair` is what lets the follow header count the same legs the card lists.
 
 This unblocks the list without settling the naming question it was blocked on. A junction-relative *list* — the whole walk, read at the kitchen table — still wants the named-feature answer above for its first row.
 
@@ -334,7 +334,7 @@ Measured against the artifact that ships — both files as data.ourhike.org serv
 | refused as off-network | **11.3%** | 0.0% |
 | placed on a *different trail* than the one tapped | **19.7%** | 5.9% |
 
-The trail leaves the 150 ft tolerance of its own chord somewhere along **21% of edges** (8,297 of 39,709), p90 worst-case deviation 462 ft. The 5.9% floor is an upper bound rather than a finding: "different trail" compares `trail_id` and `name`, so two stewards publishing the same ground as separate lines counts against it, and what remains is the corridor ambiguity the tolerance already names — #771's 48% of A.T. points within 150 m of a different marked trail.
+The trail leaves the 150 ft tolerance of its own chord somewhere along **21% of edges** (8,297 of 39,709), p90 worst-case deviation 462 ft. The 5.9% floor is an upper bound rather than a finding: "different trail" compares `trail_id` and `name`, so two stewards publishing the same ground as separate lines counts against it, and what remains is the corridor ambiguity the tolerance already names — #771's 48% of A.T. points within 150 m of a different marked trail. (That comparison is what `sameTrail` was on 2026-08-27. [#1433 — The route order lists one trail as several identical rows, because a leg ends where the publisher's line ends rather than where the trail does](https://github.com/OurHike/OurHike/issues/1433) has since changed it to the name and the blaze, so a re-run would land below 5.9% by counting one trail's several published lines as one trail. The figure above is not restated on the new predicate — nobody has re-run it.)
 
 So `nearestPointOnGraph` now considers only edges that carry vertices, and a phone that cannot answer a tap says **that** rather than saying the tap was off the network — two situations, two sentences. This is the rule `lib/dayHikeFollow.ts` and `routeGeometry` already applied to following and drawing; the snap was the last place a chord was still accepted.
 
@@ -452,11 +452,11 @@ The junction graph was fetched over the network on every launch and written nowh
 
 So taking everything costs about **2% on top of a corridor package that is already ~314 MB of tiles**. The issue's reasoning — "a hiker on the A.T. who never builds a day hike should probably not pay 17 MB for geometry" — was priced against the wrong number: they pay 4.7 MB once, on a download they have already agreed to. What 25 MB actually costs is IndexedDB, which is a different argument.
 
-**The store is `{bytes, sha256, manifest version, fetchedAt}`, verified on write.** A phone offline cannot reach `latest.json`, so it cannot re-derive what the bytes it holds should hash to — it has to trust a hash recorded at write time, which is safe because nothing is written that did not match the manifest when it was fetched. The template is `lib/nearbyTrailData.ts`, which already stores a 7.3 MB artifact against its published hash. It is **not** `lib/conditionsCache.ts`, which #1050's own comment names: that module stores `{document, storedAt}` — no bytes, no hash, no version — and its `MAX_CACHED_BYTES = 2 MB` would silently delete a 7.5 MB graph on every write.
+**The store is `{bytes, sha256, manifest version, fetchedAt}`, verified on write.** A phone offline cannot reach `latest.json`, so it cannot re-derive what the bytes it holds should hash to — it has to trust a hash recorded at write time, which is safe because nothing is written that did not match the manifest when it was fetched. The template is `lib/nearbyTrailData.ts`, which already stores a 7.3 MB artifact against its published hash. It is **not** `lib/conditionsCache.ts`, which #1050's own comment names: that module stores `{document, storedAt}` — no bytes, no hash, no version — and its `MAX_CACHED_BYTES`, 2 MB until 2026-10-09, would have silently deleted a 7.5 MB graph on every write.
 
-**Two things the store does that nothing else in the client did.** It records the **manifest version**, which is what lets a phone tell *the graph I hold* from *the graph my saved hike was priced against* — the same hazard `lib/dayHikes.ts` refuses to persist an `edgeIndex` over, one level up. It is recorded rather than acted on: what it enables is a card that can say its cached figures came from a different release, and that is a change to what a screen **says**, which wants its own before-and-after. And it **checks for room before writing**, which nothing in this codebase did for a vector artifact. A quota error is caught either way, so this is not about correctness — it is about not letting a browser under pressure evict a hiker's 314 MB downloaded map to make room for a routing graph.
+**Two things the store does that nothing else in the client did.** It records the **manifest version**, which is what lets a phone tell *the graph I hold* from *the graph my saved hike was priced against* — the same hazard `lib/dayHikes.ts` refuses to persist an `edgeIndex` over, one level up. It was recorded and not acted on until **#1828 — A phone merges trail-graph cells from two releases by node number, and a new release renumbers them**, which reads it to keep every merged graph to one release ("One release per graph" below). What it also enables, a card that can say its cached figures came from a different release, is still a change to what a screen **says**, which wants its own before-and-after. And it **checks for room before writing**, which nothing in this codebase did for a vector artifact. A quota error is caught either way, so this is not about correctness — it is about not letting a browser under pressure evict a hiker's 314 MB downloaded map to make room for a routing graph.
 
-The edge-count check is not skipped for stored bytes, and it matters **more** offline than online: a phone can hold a graph from one release and a geometry file from the next, edge 40 drawn from edge 41's vertices is a route on the wrong trail, and offline there is no fresh copy coming to correct it.
+The edge-count check is not skipped for stored bytes, and it matters **more** offline than online: a phone can hold a graph from one release and a geometry file from the next, edge 40 drawn from edge 41's vertices is a route on the wrong trail, and offline there is no fresh copy coming to correct it. Since #1828 a stored half is also held to the release of the graph it lines up with, because two releases can give a cell the same number of edges in a different order and the count passes them.
 
 ## The graph a phone keeps is the cells it planned in (#1257 stage 3, 2026-09-08)
 
@@ -487,6 +487,103 @@ carry is merged once — which is what lets a `GraphPoint.edgeIndex` in a draft 
 landing mid-build. Measured on the production graph, 2026-09-08: 466,966 edges become 530,190
 placements across 502 cells, 13.5% seam duplication.
 
+**One release per graph** (#1828, the maintainer's choice by poll, 2026-10-08). A cell names
+its nodes and edges by their number in the whole graph it was cut from, and
+`build_trail_graph.py` numbers afresh on every build, so node 4,102 of one release can be a
+different junction from node 4,102 of the next. Merged by number, a cell from one release and a
+cell from the next invent a junction where the numbers collide and drop a trail whose edge id
+the other release already used. So every merged graph is built from one release, the manifest
+`version` its cells were verified against, and `mergeGraphShard` refuses a cell from any other:
+
+- **With signal, the manifest's release, when any of it arrives.** A stored copy stands in for
+  a failed fetch as the manifest's release when its hash is the one the manifest publishes for
+  that cell now. But one bar of signal reads the manifest and fails the multi-MB cells, so a run
+  in which no cell's fetch got through builds what a phone with no signal would build, and a
+  graph already built from another release takes stored copies of its own release (#1828
+  review). A release whose manifest cannot be read is read the same way, whether it does not
+  answer 2xx or answers 2xx with something that is not a manifest, such as a captive portal's
+  sign-in page: measured 2026-10-09, data.ourhike.org answered 404 for the release this build
+  pins - its manifest, its cell index and both Harriman cells asked - and a stored copy of the
+  release being built now stands in. Any other stored copy is refetched, never merged.
+- **Without signal, the newest release that holds every cell being built from** (#1837, below),
+  counting the older copy kept beside a refreshed cell, and ranked by when each copy was
+  fetched. Where no release holds them all, the newest release stored among those cells, which
+  was the whole rule before #1837 (`releaseToBuildFromStore` in `lib/trailGraphStore.ts`). Read
+  across those cells rather than the whole store, so one cell fetched at home after an update
+  cannot make a whole stretch stored before it unusable at the trailhead. A stored cell of
+  another release is treated as not stored.
+- **Once a session has merged a cell, that release until the app restarts.** A live draft holds
+  edge positions in the merged graph, so a cell fetched mid-session from another release is
+  left out rather than joined, and the next launch builds from the manifest's release.
+
+**A cell a later release publishes byte-identical is a copy of both releases.** Measured
+2026-10-09 against UA's manifests: releases 2026-10-03, 2026-10-03-2 and 2026-10-08 carry three
+different versions and publish all 779 routing halves and all 779 geometry halves byte-identical.
+So a stored copy whose hash a later manifest names is recorded as that release's copy too
+(`alsoPublishedIn` in `lib/trailGraphStore.ts`) and is not rewritten under it. Rewritten, it left
+the release it was stored under, and a stored hike whose other cells were from that release was
+refused offline. A geometry, elevation or profile half lines up with any release in which its
+cell's stored routing half is the same bytes, because the halves are index-aligned per cell. The
+routing half is refetched whenever its cell is wanted; the other halves are refetched only while
+a day hike is open.
+
+**A cell a later release changed keeps its older copy until nothing stored is of that release
+any more** (#1837 — After a data release changes one piece of a saved hike, the phone strands the
+rest of the hike offline until every piece is refreshed; the maintainer's choice by poll,
+2026-10-09: *"Keep the older copy until every piece of the hike is refreshed, and offline route
+from the newest release that holds every piece"*). A hike stored from release 9, one of whose
+cells was refetched at home from a release 10 that renumbered it, used to hold no release with
+both cells: the refetch wrote over the release-9 copy, and at the trailhead the newest release
+stored among the hike's cells held one of them. Measured in
+`lib/trailGraphReleases.realIdb.test.ts`: one cell, so no route across the seam. Now:
+
+- **Kept.** `writeStoredGraph` keeps the copy it replaces, under
+  `ourhike:trail-graph-cell:<half>:<name>:older`, when that copy is another release's bytes and
+  some stored cell's current routing half is still a copy of that release. Every half is kept
+  this way, so a day hike open at home, which refetches the geometry and elevation too, leaves
+  the older release's halves to line up with the older routing half.
+- **Dropped.** Every write forgets each older copy whose release no stored cell's current routing
+  half is a copy of any more. The store has no notion of which cells make up a hike, and this
+  adds none, so the rule errs both ways: one release-9 cell of any other hike keeps every
+  release-9 copy until it is refreshed too, and a hike whose cells were refreshed under two
+  different later releases, one cell under each, loses the release they last shared and builds
+  as before #1837.
+- **One older copy per half, at most.** A cell refreshed under two later releases keeps the
+  earlier copy a stored cell is still current at, the newer if both are. Each further copy would
+  cost up to one more multiple of the graph bytes the phone holds.
+- **Never at a current copy's expense.** A write with no room forgets every older copy before it
+  declines, and keeps none on that write.
+- **Only the cells of the session's first run choose.** Once a cell has merged, every later cell
+  is asked for its release (the third bullet above). When a refreshed cell under the fix or the
+  camera merges alone, before the hike's other cells are wanted, it merges from the newer release,
+  and a hike cell held only from the older one is left out as before. Reasoned from `App.tsx`'s
+  `graphWanted`, not measured on a phone.
+
+**What it costs: one more copy of each refreshed half, about the size of the current one.** A
+renumbering changes the ids, not how many there are (Reasoned, not measured: UA's last three
+releases publish every cell half they share byte-identical — all 3,116 of `2026-10-08`'s in
+`2026-10-03-2` — so no renumbered pair is published to compare). Measured 2026-10-09 against
+UA's release `2026-10-08` manifest, `size_bytes` of its 779 cells:
+
+| one refreshed cell keeps, decoded bytes | median cell | 90th percentile | largest | Harriman `n41w075` | `n41w074` |
+|---|---|---|---|---|---|
+| routing half (the cell browsed) | 27,443 | 1,652,897 | 29,993,542 (`n37w108`) | 15,316,435 | 936,230 |
+| + geometry and elevation (a day hike open) | 172,466 | 3,667,306 | 48,530,699 (`n39w106`) | 22,542,751 | 4,500,150 |
+| all four halves (a chart open too) | 207,346 | 4,062,243 | 52,258,577 (`n39w106`) | 23,985,345 | 4,773,092 |
+
+The worst case is every half the phone holds kept twice — double the graph bytes it keeps — when
+every stored cell has been refreshed but one, and that one's release keeps every older copy. No
+copy is kept over `LAUNCH_ARTIFACT_BUDGET_BYTES` (32 MiB), older or current, and every write still
+needs its own size plus `GRAPH_STORE_HEADROOM_BYTES` (50 MiB) free. The Downloads window's row for
+day hikes sums every record under the prefix, older copies included, so the figure a hiker sees
+is still what the phone holds.
+
+A hiker sees a cell left out the way they see any cell not on the phone: a tap there gets
+*"hasn't got this area's trail lines yet… Try again in a moment"*, and the console says which
+release the cell was from. Every release folder `pipeline/publish.py` stages carries a fresh
+version, so two releases always read as two; a folder staged by `pipeline/stage_release.py`
+carries none, and two of those would read as one (no workflow runs it yet).
+
 **The door answers from the index, not from a load.** *"A day hike"* on the Plan door used to
 open when the whole graph's parse finished; it opens now on `trail_graph_cells.json` — 166,721
 bytes on the same data — being present and non-empty, and the sentences for its absence are the
@@ -496,11 +593,13 @@ right sentence, and the same collapse that paragraph already records: it cannot 
 still arriving from one the bucket refused for good. The console says which; the door does not.
 
 **What a phone keeps is the cells it loaded, four halves each** (`lib/trailGraphStore.ts`):
-graph, geometry, elevation, profile, under `ourhike:trail-graph-cell:<half>:<name>`, stored
-verified exactly as the whole files were. A cell loaded once with signal routes at the trailhead
-without it — the promise of the section above, kept at the cell's grain. The four whole-file
-records earlier releases wrote are deleted at every launch; nothing reads them, and a phone
-that fetched 2026-09-07's graph before the budget existed is still holding 78.6 MB of it.
+graph, geometry, elevation, profile, under `ourhike:trail-graph-cell:<half>:<name>` — and,
+beside a half a later release changed, its older copy under the same key with `:older` on the
+end (#1837, above) — stored verified exactly as the whole files were. A cell loaded once with
+signal routes at the trailhead without it — the promise of the section above, kept at the cell's
+grain. The four whole-file records earlier releases wrote are deleted at every launch; nothing
+reads them, and a phone that fetched 2026-09-07's graph before the budget existed is still
+holding 78.6 MB of it.
 
 | | wire-free measure (decoded bytes, 2026-09-08) |
 |---|---|
@@ -580,7 +679,7 @@ Sync across devices is [AUTHENTICATION.md](AUTHENTICATION.md)'s to give, and it 
 
 **Update 2026-08-18:** two of this document's gaps are now filled, both from a maintainer walkthrough of the shipped planner.
 
-**A rest rhythm** (#798). The generator planned walking days and nothing else, so a hiker who takes a zero every Sunday had to add seven by hand to a fifty-day plan and lost them on the next re-lay. A plan now carries `rhythm: { everyDays, kind }` and `lib/restRhythm.ts` inserts the rests — a **zero** where you stand, or a **nearo** to the first place to sleep inside `NEARO_MAX_MI` (`@unvalidated`), falling back to a zero and saying so when nothing is inside the window. It does not re-plan the remainder: a rest lands at a boundary the generator already chose, and the day after a nearo is shorter by whatever the nearo walked, which is true and which the timeline prints. It has no opinion — nothing suggests a rhythm, warns about its absence, or counts the rests taken.
+**A rest rhythm** (#798). The generator planned walking days and nothing else, so a hiker who takes a zero every Sunday had to add seven by hand to a fifty-day plan and lost them on the next re-lay. A plan now carries `rhythm: { everyDays, kind }` and `lib/restRhythm.ts` inserts the rests — a **zero** where you stand, or a **nearo** to the furthest place to sleep inside `NEARO_MAX_MI` (`@unvalidated`) and short of the next day's stop (the maintainer's choice by poll, 2026-09-25, #1053), falling back to a zero and saying so when nothing is inside the window. It does not re-plan the remainder: a rest lands at a boundary the generator already chose, and the day after a nearo is shorter by whatever the nearo walked, which is true and which the timeline prints. It has no opinion — nothing suggests a rhythm, warns about its absence, or counts the rests taken.
 
 **The food carry is now visible** (#799). `foodCarries()` derives one carry per section, so the food block and the timeline read the same `planSections()` and cannot disagree. Two things it says that nothing said before: **a plan with no resupply anywhere** used to never print the word food, which reads as "no food needed" rather than "all nine days are on your back"; and a carry at or past `LONG_CARRY_DAYS` (`@unvalidated`) gets one line saying that is the heaviest the pack gets — a note, never a warning, because a long carry is a fact about a stretch of trail with no towns on it.
 

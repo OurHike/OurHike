@@ -8,7 +8,7 @@ import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { readCamera } from './lib/cameraMemory'
 import { fetchClosures, fetchReports } from './lib/api'
-import { GeolocateControl } from './test/mocks/maplibre-gl'
+import { LocateControl } from './map/mapChrome'
 
 // The on-trail safety battery. Every test here is one of the ways losing the
 // map - or trusting a silent map - could hurt someone on a ridge, written as
@@ -44,6 +44,7 @@ vi.mock('./lib/api', () => ({
   sendReport: vi.fn(async () => undefined),
   permanentFailureReason: vi.fn(() => null),
   fetchReports: vi.fn(async () => []),
+  fetchMyReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
   // Disputes ride the same read as the notes they are computed from (#876).
@@ -316,7 +317,11 @@ describe('the map without its sensors', () => {
     // The gate the control used to bypass entirely. Attached regardless, it
     // prompted for browser permission behind the preference's back and fed its
     // fix to MapLibre's blue dot only - so the canvas drew a position the
-    // header knew nothing about, on a second high-accuracy watch.
+    // header knew nothing about, on a second high-accuracy watch. The dot and
+    // the watch are gone since #1581 (the control is map/mapChrome.ts's own
+    // LocateControl, and the mark draws from the shell's watch); the gate
+    // stays, because a button that centres on a fix the hiker said not to
+    // take is a door with nothing behind it.
     hikerOnTrail({ location_permission_requested: false })
     render(<App />)
     await openMapTab()
@@ -330,7 +335,7 @@ describe('the map without its sensors', () => {
 
     await waitFor(() => {
       expect(
-        map.controls.filter(({ control }) => control instanceof GeolocateControl),
+        map.controls.filter(({ control }) => control instanceof LocateControl),
       ).toHaveLength(0)
     })
   })
@@ -351,7 +356,7 @@ describe('the map without its sensors', () => {
 
     await waitFor(() => {
       expect(
-        map.controls.filter(({ control }) => control instanceof GeolocateControl),
+        map.controls.filter(({ control }) => control instanceof LocateControl),
       ).toHaveLength(1)
     })
   })
@@ -464,10 +469,11 @@ describe('a background switch under the hiker', () => {
     expect(reopened.options.bounds).toBeUndefined()
   })
 
-  it('opens a fresh session on the whole corridor, not on last week’s view', async () => {
+  it('opens a fresh session on the whole country, not on last week’s view', async () => {
     // The reason it is session storage. Restoring a durable camera would show
     // someone starting in Maine the Georgia view they left on Tuesday, and
-    // the opening view is a deliberate decision (App.tsx's CORRIDOR_BOUNDS).
+    // the opening view is a deliberate decision (App.tsx's
+    // UNITED_STATES_BOUNDS, the A.T. corridor until 2026-09-30).
     window.sessionStorage.clear()
     hikerOnTrail()
     render(<App />)

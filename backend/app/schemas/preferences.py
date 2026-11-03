@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.time import UtcDatetime
 from app.models.report import ReporterType
+from app.schemas.common import FiniteFloat
 
 
 class Theme(str, Enum):
@@ -193,8 +194,11 @@ class DefaultPlace(BaseModel):
     state: str | None = None
     category: str | None = None
     within: str | None = None
-    # west, south, east, north - the index's own order.
-    bbox: tuple[float, float, float, float] | None = None
+    # west, south, east, north - the index's own order. `FiniteFloat` for
+    # #658's reason: `lon`/`lat` above refuse NaN through their bounds, and a
+    # bare float here would let one into the box the map fits its fallback
+    # view to. Same JSON schema as `float`, so the baselines do not move.
+    bbox: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat] | None = None
 
 
 class PreferencesIn(BaseModel):
@@ -205,6 +209,12 @@ class PreferencesIn(BaseModel):
 
     # Identity
     trail_name: str | None = None
+    # The hiker's real name, given only if they choose to sign a report with
+    # it (#1563; client/src/lib/reporterSignature.ts). None until they do, and
+    # nothing reads it here: it travels in this blob so a second phone offers
+    # the same choice, and reaches a report only as `signed_name` when the
+    # hiker picks it for that report.
+    real_name: str | None = None
     # None until the hiker says, and deliberately not defaulted to a type
     # (#233). Every report used to be filed as `thru` from a hardcoded literal
     # in the client, and `reporter_type` is the one attribution that survives
@@ -236,6 +246,15 @@ class PreferencesIn(BaseModel):
     # not just by type - a hiker who never touched the switch syncs the same
     # thing whichever side answers first.
     drought_layer_shown: bool = False
+    # Whether the map's trail lines are drawn in their blaze colours, or every
+    # one in the same red (OurHike/OurHike#1575). Defaulted False like
+    # drought_layer_shown above and for the same two reasons: False is the
+    # client's own default (lib/userPreferences.ts's DEFAULT_PREFERENCES - the
+    # maintainer's "a red line, like the nynjtc has on their maps"), so a hiker
+    # who never touched the legend's switch syncs the same answer whichever
+    # side answers first; and every row written before this key existed reads
+    # back as that default rather than as a ValidationError.
+    blaze_colors_shown: bool = False
     # Mirrors client/src/lib/userPreferences.ts's DEFAULT_PREFERENCES exactly:
     # the curated subset a maintainer decision (#865) chose over every
     # category, resolving the open question IDENTITY_AND_PRIVACY.md used to
@@ -288,6 +307,15 @@ class PreferencesIn(BaseModel):
     # hide it. Nothing behind this switch leaves the device; it decides a
     # DISPLAY, and every record it summarises survives it being off.
     impact_panel_shown: bool = True
+
+    # Usage measurement (#1902, features/EVENTING.md §0). "Share usage
+    # statistics" defaults ON - the maintainer's split consent (poll
+    # 2026-10-27) - and "Link them to my account" is None until the hiker has
+    # been asked, which reads as no. Both default here for the reason the keys
+    # above do: blobs synced before these existed must read back as the
+    # defaults rather than as a ValidationError.
+    measurement_enabled: bool = True
+    measurement_linked: bool | None = None
 
     # Onboarding progress
     onboarding_completed: bool = False

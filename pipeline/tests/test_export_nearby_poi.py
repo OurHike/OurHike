@@ -42,6 +42,7 @@ import pytest
 import export_nearby_poi
 from lib import corridor
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES
+from lib.poi_sites import group_place_sites, site_properties
 
 DEC_BIG = {
     "key": "dec_backcountry_features",
@@ -150,14 +151,28 @@ def test_a_proposed_asset_is_not_a_feature():
     assert kept_types(DEC_BIG, features) == ["privy"]
 
 
-def test_a_ford_is_a_hazard_and_does_not_draw_as_a_crossing():
+def test_a_ford_is_a_hazard_and_does_not_draw():
     """DEC's 36 unbridged crossings, kept off the map until HIKER_SAFETY.md has them."""
     features = [
         feature(ASSET="FORD", PUBLICUSE="Y", OBJECTID=1),
         feature(ASSET="FORD ", PUBLICUSE="Y", OBJECTID=2),  # the trailing-space twin
-        feature(ASSET="BRIDGE", PUBLICUSE="Y", OBJECTID=3),
     ]
-    assert kept_types(DEC_BIG, features) == ["crossing"]
+    assert kept_types(DEC_BIG, features) == []
+
+
+def test_no_bridge_ships_since_the_crossing_type_was_withdrawn():
+    """#1674: every value that shipped as `crossing` - DEC's four and OPRHP's
+    Trail Bridge - now drops, and the run names the withdrawal as the reason
+    rather than calling them unknown values."""
+    dec = [
+        feature(ASSET=asset, PUBLICUSE="Y", OBJECTID=index)
+        for index, asset in enumerate(["BRIDGE", "FOOT BRIDGE", "BOARDWALK", "HARDENED CROSSING"])
+    ]
+    assert kept_types(DEC_BIG, dec) == []
+    assert kept_types(OPRHP, [feature(Sub_Asset="Trail Bridge", ParksApp="Y", OBJECTID=9)]) == []
+
+    _, stats = export_nearby_poi.build_records(DEC_BIG, dec[:1])
+    assert any("#1674" in label for label in stats["dropped"]), stats["dropped"]
 
 
 def test_culverts_are_not_crossings():
@@ -175,9 +190,8 @@ def test_oprhp_stairs_and_road_bridges_are_not_crossings():
     features = [
         feature(Sub_Asset="Stairs", ParksApp="Y", OBJECTID=1),
         feature(Sub_Asset="Vehicle Bridge", ParksApp="Y", OBJECTID=2),
-        feature(Sub_Asset="Trail Bridge", ParksApp="Y", OBJECTID=3),
     ]
-    assert kept_types(OPRHP, features) == ["crossing"]
+    assert kept_types(OPRHP, features) == []
 
 
 def test_the_allowlist_matches_whole_values_not_prefixes():
@@ -257,6 +271,95 @@ def test_oprhp_parks_app_keeps_the_row_and_lowers_its_confidence():
     assert stats["low_confidence"] == 1
 
 
+NYC_FOUNTAINS = {
+    "key": "nyc_drinking_fountains",
+    "provider": "NYC Parks",
+    "poi_type": "water",
+    "confidence_floor": "low",
+    "id_field": "objectid",
+    "name_field": "name",
+    "facility_field": "propname",
+    "asset_field": "fountainty",
+}
+
+
+def test_a_layer_with_a_confidence_floor_ships_every_row_low():
+    """The 3,195 fountains (#1461). `featuresta` reads Active on all 3,849 of
+    NYC Parks' rows, so the layer cannot support a confident claim about any
+    one of them - and this is the only thing standing between that and a pin
+    saying there is working water here.
+
+    Asserted through build_records rather than on confidence_for directly: the
+    floor being computed is not the property that matters, the floor reaching
+    the exported record is, and #1459 was exactly a value that was set and
+    then dropped before anybody could see it."""
+    features = [feature(objectid=1, fountainty="A"), feature(objectid=2, fountainty="B")]
+
+    records, stats = export_nearby_poi.build_records(NYC_FOUNTAINS, features)
+
+    assert [r["confidence"] for r in records] == [CONFIDENCE_LOW, CONFIDENCE_LOW]
+    assert stats["low_confidence"] == 2, "the stat must count the floor, or the run reports more confidence than it shipped"
+
+
+@pytest.mark.parametrize("floor", ["Low", "LOW", "lower", "high", True, ""])
+def test_a_floor_this_does_not_recognise_is_refused(floor):
+    """The failure this whole key is one careless edit away from.
+
+    `confidence_floor` is read in one place by string equality and sources.json
+    has no schema behind it - lib/source_registry.py says discovery carries
+    unknown fields straight through. So every value here would once have
+    compared False and shipped the layer at CONFIDENCE_HIGH with CI green,
+    asserting working water at 3,195 points from a source that says nothing
+    about any of them. `high` is in the list deliberately: a floor that raises
+    confidence is the one reading that must never quietly work."""
+    source = {**NYC_FOUNTAINS, "confidence_floor": floor}
+
+    with pytest.raises(ValueError, match="confidence_floor"):
+        export_nearby_poi.build_records(source, [feature(objectid=1, fountainty="A")])
+
+
+def test_the_low_confidence_line_names_the_floor_not_a_field_the_source_lacks():
+    """The line that killed the UA publish after #1474.
+
+    It read source['public_field'] unconditionally - fine while a per-row flag
+    was the only way to be low, a KeyError the moment confidence_floor shipped
+    a layer that is low without one. 17 minutes in, with all 3,195 fountains
+    and 975 restrooms already exported correctly. The export was right; the
+    sentence describing it was not.
+
+    Asserted on the REASON and not just on not-raising, because the crash was
+    the smaller half: "ParksApp says not in the org's own app" is a claim
+    about New York's fountains that no NYC column makes, and printing it
+    would have been a quieter kind of wrong."""
+    reason = export_nearby_poi.low_confidence_reason(NYC_FOUNTAINS)
+
+    assert "confidence_floor" in reason
+    assert "ParksApp" not in reason and "public" not in reason
+
+
+def test_the_low_confidence_line_still_names_the_flag_where_that_is_the_reason():
+    """OPRHP's 1,193 lean-tos and the rest: a per-ROW flag from an org that
+    does distinguish, which is a different sentence and has to stay one."""
+    assert export_nearby_poi.low_confidence_reason(OPRHP) == "ParksApp says not in the org's own app"
+
+
+def test_the_low_confidence_line_never_raises_on_a_source_it_cannot_explain():
+    """A progress line is not worth a pipeline. The floor's real guarantee is
+    in confidence_for, which DOES raise; this one only has to not be the
+    reason a 17-minute publish is lost."""
+    unexplained = {"key": "whatever", "provider": "X", "id_field": "objectid"}
+
+    assert "not recorded" in export_nearby_poi.low_confidence_reason(unexplained)
+
+
+def test_a_layer_with_no_floor_is_untouched():
+    """The floor only ever lowers, and a source that declares none keeps the
+    per-row answer it had - otherwise adding the key would have changed every
+    other layer in the registry."""
+    assert export_nearby_poi.confidence_for(USFS, CONFIDENCE_HIGH) == CONFIDENCE_HIGH
+    assert export_nearby_poi.confidence_for(USFS, CONFIDENCE_LOW) == CONFIDENCE_LOW
+
+
 def test_the_filter_applies_to_dec_per_type_services_too():
     """They are already DEC's public slice - the filter is there for the day one isn't.
 
@@ -300,9 +403,9 @@ def test_dec_null_sentinels_never_reach_a_name():
 def test_a_description_is_composed_from_the_orgs_own_two_columns():
     """OPRHP names 18% of its rows; without this the other 82% carry nothing at all."""
     records, _ = export_nearby_poi.build_records(
-        OPRHP, [feature(Sub_Asset="Trail Bridge", Facility="Beaver Island State Park", ParksApp="Y", OBJECTID=1)]
+        OPRHP, [feature(Sub_Asset="Lean-to", Facility="Beaver Island State Park", ParksApp="Y", OBJECTID=1)]
     )
-    assert records[0]["description"] == "Trail Bridge in Beaver Island State Park."
+    assert records[0]["description"] == "Lean-to in Beaver Island State Park."
     assert records[0]["name"] is None
 
 
@@ -330,9 +433,9 @@ def test_a_surveyors_note_never_reaches_the_description():
     """
     records, _ = export_nearby_poi.build_records(
         DEC_BIG,
-        [feature(ASSET="BRIDGE", FACILITY="Hunts Pond State Forest", DESCRIP='18" X 24 Metal', PUBLICUSE="Y", OBJECTID=1)],
+        [feature(ASSET="PIT PRIVY", FACILITY="Hunts Pond State Forest", DESCRIP='18" X 24 Metal', PUBLICUSE="Y", OBJECTID=1)],
     )
-    assert records[0]["description"] == "Bridge in Hunts Pond State Forest."
+    assert records[0]["description"] == "Pit Privy in Hunts Pond State Forest."
 
 
 def test_a_point_with_no_coordinates_is_dropped_rather_than_published_at_null_island():
@@ -638,6 +741,95 @@ class TestTheRingAroundThePublishedTrails:
         assert kept == records
         assert ring["ran"] is False
 
+    @staticmethod
+    def _boundary(tmp_path, rings, name="nyc_park_polygons"):
+        path = tmp_path / f"{name}.geojson"
+        path.write_text(
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": {"type": "Polygon", "coordinates": [ring]},
+                            "properties": {"signname": "Fixture Park", "gispropnum": "M010"},
+                        }
+                        for ring in rings
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_a_waypoint_inside_its_park_survives_however_far_the_nearest_path_is(self, tmp_path):
+        """The case the ring gets wrong in a city (#1493): in a park the PARK is
+        the destination and the path through it is incidental.
+
+        MEASURED on the real layers 2026-09-15 - the 500 ft ring admits 982 of
+        3,195 NYC fountains, and in Central Park alone 182 of 221 points do not
+        ship, the losses falling on the Great Lawn and the Reservoir's outer
+        edge."""
+        # ~3,650 ft from the line, which the ring cannot reach, but inside the square.
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        park = self._boundary(tmp_path, [[[-74.02, 43.99], [-73.98, 43.99], [-73.98, 44.03], [-74.02, 44.03], [-74.02, 43.99]]])
+        far_but_in_the_park = self._poi("water", -74.01, 44.0005, source="nyc_drinking_fountains")
+
+        without, _ = export_nearby_poi.clip_to_network([far_but_in_the_park], network)
+        with_park, ring = export_nearby_poi.clip_to_network([far_but_in_the_park], network, {"nyc_drinking_fountains": park})
+
+        assert without == [], "the ring alone must still drop it, or this test proves nothing"
+        assert [r["id"] for r in with_park] == [far_but_in_the_park["id"]]
+        assert ring["boundary_kept"] == {"nyc_park_polygons": 1}
+
+    def test_a_waypoint_in_neither_the_park_nor_the_ring_is_still_dropped(self, tmp_path):
+        """The boundary must not become a blanket exemption. A fountain on a
+        street corner with no park around it and no path near it is exactly what
+        the clip is for, and 81 of the 3,195 real fountains are outside every
+        NYC Parks boundary."""
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        park = self._boundary(tmp_path, [[[-74.02, 43.99], [-73.98, 43.99], [-73.98, 44.03], [-74.02, 44.03], [-74.02, 43.99]]])
+        nowhere = self._poi("water", -73.5, 43.5, source="nyc_drinking_fountains")
+
+        kept, _ring = export_nearby_poi.clip_to_network([nowhere], network, {"nyc_drinking_fountains": park})
+
+        assert kept == []
+
+    def test_a_source_that_declares_no_boundary_is_unaffected_by_one(self, tmp_path):
+        """The opt-in is per source. OPRHP's waypoints must not start surviving
+        because New York City registered park boundaries."""
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        park = self._boundary(tmp_path, [[[-74.02, 43.99], [-73.98, 43.99], [-73.98, 44.03], [-74.02, 44.03], [-74.02, 43.99]]])
+        oprhp = self._poi("campsite", -74.01, 44.0005)
+
+        kept, _ring = export_nearby_poi.clip_to_network([oprhp], network, {"nyc_drinking_fountains": park})
+
+        assert kept == []
+
+    def test_a_boundary_layer_that_never_fetched_costs_coverage_and_cannot_invent_it(self, tmp_path):
+        """A `boundary_source` naming a layer nobody fetched leaves the ring
+        alone deciding - the clip this file had before #1493 - rather than
+        raising or admitting everything. A typo must cost pins, never invent
+        them."""
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        far = self._poi("water", -74.01, 44.0005, source="nyc_drinking_fountains")
+
+        kept, ring = export_nearby_poi.clip_to_network(
+            [far], network, {"nyc_drinking_fountains": tmp_path / "never_fetched.geojson"}
+        )
+
+        assert kept == []
+        assert ring["boundary_kept"] == {}
+
+    def test_boundary_paths_are_read_from_the_registry(self):
+        """The wiring, so a registry entry and the clip cannot drift: both NYC
+        POI layers name the boundary layer, and nothing else does."""
+        registry = json.loads((export_nearby_poi.ROOT / "sources.json").read_text(encoding="utf-8"))
+        paths = export_nearby_poi.boundary_paths_for(export_nearby_poi.poi_sources(registry))
+
+        assert set(paths) == {"nyc_drinking_fountains", "nyc_public_restrooms"}
+        assert {p.name for p in paths.values()} == {"nyc_park_polygons.geojson"}
+
     def test_the_manifest_says_what_the_ring_did(self, tmp_path, monkeypatch):
         """Each `sources` entry counts what its layer contributed BEFORE the
         clip, so without this block the manifest's per-source figures and its
@@ -752,3 +944,243 @@ def test_a_held_back_source_never_enters_the_manifests_sources(tmp_path, monkeyp
     )
     assert set(manifest["sources"]) == {"dec_lean_tos"}
     assert manifest["held_back_sources"]["nynjtc_long_path_guide"]["reaches_hikers"] is False
+
+
+class TestTheFoldOnSharedPlaceNames:
+    """#1536's option 2, as the exporter wires it.
+
+    `group_place_sites` itself is covered in tests/test_poi_sites.py. What is
+    asserted here is the wiring: that the properties reach the artifact, and
+    that the fold runs on the records that SURVIVE the ring rather than on the
+    ones that went into it.
+    """
+
+    @staticmethod
+    def _fountains(count, *, metres_apart=30.0, name="Prospect Park"):
+        return [
+            {
+                "id": f"nyc_drinking_fountains:{i}",
+                "poi_type": "water",
+                "name": name,
+                "lat": 40.66 + (i * metres_apart) / 111_320.0,
+                "lon": -73.97,
+            }
+            for i in range(count)
+        ]
+
+    def test_the_artifact_carries_the_three_site_properties(self):
+        """`records_to_geojson` writes every non-null key, so this is really
+        asserting that the exporter put them on the records at all - the client
+        reads `site_id`, `site_role` and `site_name` by those exact names
+        (lib/trailData.ts) and a typo here is a silent no-op."""
+        records = self._fountains(3)
+        for record in records:
+            record.update(site_properties(group_place_sites(records)).get(record["id"], {}))
+
+        published = export_nearby_poi.records_to_geojson(records)["features"]
+        roles = sorted(f["properties"]["site_role"] for f in published)
+        assert roles == ["anchor", "member", "member"]
+        for feature in published:
+            assert feature["properties"]["site_name"] == "Prospect Park"
+            assert feature["properties"]["site_id"].startswith("nyc_drinking_fountains:")
+
+    def test_a_waypoint_in_no_site_carries_none_of_them(self):
+        """Additive, as POI_SITES.md §3 requires: a lone fountain is a lone
+        fountain, and writing site properties onto it would tell the client to
+        render a composition of one."""
+        alone = self._fountains(1)
+        for record in alone:
+            record.update(site_properties(group_place_sites(alone)).get(record["id"], {}))
+
+        [feature] = export_nearby_poi.records_to_geojson(alone)["features"]
+        assert "site_id" not in feature["properties"]
+        assert "site_role" not in feature["properties"]
+
+    def test_folding_after_the_ring_never_anchors_a_site_on_a_dropped_waypoint(self):
+        """THE ORDERING THIS TEST EXISTS FOR. The ring runs first and removes
+        waypoints; if the fold ran before it, a site could be anchored on a
+        fountain the ring then took out - and the members riding that pin would
+        reach the client pointing at a `site_id` no feature carries, so
+        composeSites draws each of them separately and the fold silently does
+        nothing.
+
+        Modelled here by folding the survivors, which is the order main() uses:
+        the anchor is always one of them.
+        """
+        everything = self._fountains(4)
+        survivors = everything[1:]
+
+        sites = group_place_sites(survivors)
+
+        assert len(sites) == 1
+        assert sites[0].anchor in survivors
+        assert all(member in survivors for member in sites[0].members)
+
+
+class TestTrailheadsWhoseTrailsAreAllClosed:
+    """#1695: the maintainer's "If a trailhead has all trails closed with an x,
+    show an x as the trailhead icon too". Nothing says which trails a
+    trailhead serves, so "its trails" is every line within
+    TRAILHEAD_TRAIL_RADIUS_M - and every state the step cannot read marks
+    nothing, because a cross on an open trailhead is the worse mistake."""
+
+    # Offsets in LONGITUDE, at 44 N where a degree of longitude is about
+    # 80,100 m: 0.0005 deg is about 40 m, inside the 100 m radius, and 0.0015
+    # deg about 120 m, outside it by about 20 m.
+    NEAR = 0.0005
+    FAR = 0.0015
+
+    @staticmethod
+    def _lines(tmp_path, name, lines, statuses=None):
+        path = tmp_path / name
+        path.write_text(
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": {"type": "LineString", "coordinates": line},
+                            "properties": {"source": "oprhp_trails"}
+                            if statuses is None
+                            else {"source": "oprhp_trails", "trail_status": status},
+                        }
+                        for line, status in zip(lines, statuses or [None] * len(lines), strict=True)
+                    ],
+                }
+            )
+        )
+        return path
+
+    def _at(self, tmp_path, lines=()):
+        """The A.T.'s raw centerline and side trails, empty unless given."""
+        return (
+            self._lines(tmp_path, "centerline.geojson", list(lines)),
+            self._lines(tmp_path, "side_trails.geojson", []),
+        )
+
+    @staticmethod
+    def _trailhead(lon, lat, poi_type="trailhead"):
+        return {"id": f"oprhp_facilities:{poi_type}:{lon}:{lat}", "poi_type": poi_type, "lon": lon, "lat": lat}
+
+    def _mark(self, tmp_path, records, network_lines, statuses, at_lines=()):
+        network = self._lines(tmp_path, "nearby_trails.geojson", network_lines, statuses)
+        return export_nearby_poi.mark_closed_trailheads(records, network, self._at(tmp_path, at_lines))
+
+    def test_a_trailhead_whose_only_trail_is_closed_is_marked(self, tmp_path):
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+
+        stats = self._mark(tmp_path, [trailhead], [[[-74.0, 43.99], [-74.0, 44.01]]], ["closed"])
+
+        assert trailhead[export_nearby_poi.TRAILS_CLOSED_PROPERTY] == export_nearby_poi.TRAILHEAD_TRAIL_RADIUS_M
+        assert stats["ran"] is True
+        assert stats["marked"] == 1
+        assert stats["marked_ids"] == [trailhead["id"]]
+
+    def test_one_open_trail_within_reach_keeps_the_ordinary_pin(self, tmp_path):
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+
+        self._mark(
+            tmp_path,
+            [trailhead],
+            [[[-74.0, 43.99], [-74.0, 44.01]], [[-73.99, 44.0], [-74.0 + 2 * self.NEAR, 44.0]]],
+            ["closed", "open"],
+        )
+
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
+
+    def test_a_nearby_line_with_no_status_keeps_the_ordinary_pin(self, tmp_path):
+        """An unknown status is not evidence of a closure, so it counts
+        against the cross the way an open line does."""
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+
+        self._mark(
+            tmp_path,
+            [trailhead],
+            [[[-74.0, 43.99], [-74.0, 44.01]], [[-73.99, 44.0], [-74.0 + 2 * self.NEAR, 44.0]]],
+            ["closed", None],
+        )
+
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
+
+    def test_the_status_is_read_whatever_case_the_steward_writes(self, tmp_path):
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+
+        self._mark(tmp_path, [trailhead], [[[-74.0, 43.99], [-74.0, 44.01]]], ["CLOSED"])
+
+        assert trailhead[export_nearby_poi.TRAILS_CLOSED_PROPERTY] == export_nearby_poi.TRAILHEAD_TRAIL_RADIUS_M
+
+    def test_a_closed_trail_beyond_the_radius_is_not_one_of_its_trails(self, tmp_path):
+        """No line within the radius is "no trail here", which is not "every
+        trail here is closed"."""
+        trailhead = self._trailhead(-74.0 + self.FAR, 44.0)
+
+        stats = self._mark(tmp_path, [trailhead], [[[-74.0, 43.99], [-74.0, 44.01]]], ["closed"])
+
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
+        assert stats["marked"] == 0
+
+    def test_the_open_at_beside_it_counts_as_one_of_its_trails(self, tmp_path):
+        """The A.T. is not in nearby_trails.geojson. Without its lines, a
+        trailhead between the open A.T. and a closed side path would read as
+        closed."""
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+
+        self._mark(
+            tmp_path,
+            [trailhead],
+            [[[-74.0, 43.99], [-74.0, 44.01]]],
+            ["closed"],
+            at_lines=[[[-74.0 + 2 * self.NEAR, 43.99], [-74.0 + 2 * self.NEAR, 44.01]]],
+        )
+
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
+
+    def test_only_trailheads_are_ever_marked(self, tmp_path):
+        parking = self._trailhead(-74.0 + self.NEAR, 44.0, poi_type="parking")
+
+        self._mark(tmp_path, [parking], [[[-74.0, 43.99], [-74.0, 44.01]]], ["closed"])
+
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in parking
+
+    def test_a_missing_at_file_marks_nothing_rather_than_guess(self, tmp_path):
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+        network = self._lines(tmp_path, "nearby_trails.geojson", [[[-74.0, 43.99], [-74.0, 44.01]]], ["closed"])
+
+        stats = export_nearby_poi.mark_closed_trailheads(
+            [trailhead], network, (tmp_path / "centerline.geojson", tmp_path / "side_trails.geojson")
+        )
+
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
+        assert stats["ran"] is False
+        assert "centerline.geojson" in stats["reason"]
+
+    def test_a_network_with_no_status_column_marks_nothing(self, tmp_path):
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+
+        stats = self._mark(tmp_path, [trailhead], [[[-74.0, 43.99], [-74.0, 44.01]]], None)
+
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
+        assert stats["ran"] is False
+        assert "trail_status" in stats["reason"]
+
+    def test_a_missing_network_marks_nothing(self, tmp_path):
+        trailhead = self._trailhead(-74.0 + self.NEAR, 44.0)
+
+        stats = export_nearby_poi.mark_closed_trailheads([trailhead], tmp_path / "absent.geojson", self._at(tmp_path))
+
+        assert stats["ran"] is False
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in trailhead
+
+    def test_the_artifact_carries_the_radius_only_where_the_trailhead_is_marked(self, tmp_path):
+        closed = self._trailhead(-74.0 + self.NEAR, 44.0)
+        open_ = self._trailhead(-74.0 + self.FAR, 44.0)
+        self._mark(tmp_path, [closed, open_], [[[-74.0, 43.99], [-74.0, 44.01]]], ["closed"])
+
+        features = export_nearby_poi.records_to_geojson([closed, open_])["features"]
+
+        assert features[0]["properties"][export_nearby_poi.TRAILS_CLOSED_PROPERTY] == export_nearby_poi.TRAILHEAD_TRAIL_RADIUS_M
+        assert export_nearby_poi.TRAILS_CLOSED_PROPERTY not in features[1]["properties"]
+
+    def test_the_radius_is_the_one_the_maintainer_chose(self):
+        assert export_nearby_poi.TRAILHEAD_TRAIL_RADIUS_M == 100

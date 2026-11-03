@@ -1,7 +1,8 @@
--- Mohonk Preserve's trails and carriage roads, attributes only - same scope
--- line as stg_nynjtc__long_path, and no id column for the same reason (no
--- `id_field` recorded, and OGC_FID is GDAL's row number rather than
--- Mohonk's identity).
+-- Mohonk Preserve's trails and carriage roads, keyed on GlobalID, with their
+-- geometry. `globalid` and `geom` are carried for
+-- int_trail_lines__network_unioned, which publishes these lines. `globalid`
+-- is also what lib/feature_id.py builds the published `id` from, so it is
+-- staged as itself and not only inside the key.
 --
 -- 304 polyline segments, measured live 2026-08-25 via returnCountOnly. The
 -- measured field list is Name/General_Classification/Classification/Use_/
@@ -9,8 +10,8 @@
 --
 -- `blaze` HERE IS A GENUINE CODED FIELD, unlike the Long Path's plain string
 -- and unlike the Highlands Trail's absent one - three organizations, three
--- different answers to the same question, which is the variety Phase D was
--- meant to surface. Still no accepted_values test: the values actually
+-- different answers to the same question, which is the variety a second
+-- organization surfaces. Still no accepted_values test: the values actually
 -- present on the fetched 304 rows (not the domain's declared possibilities)
 -- are N/A 124, Blue 61, Red 49, Other 33, Yellow 30, plus 7 rows with no
 -- Blaze value at all. The literal string 'N/A' on 41% of rows is exactly the
@@ -23,18 +24,40 @@
 -- staged because they differ - 298 of 304 rows read Owner 'Mohonk Preserve'
 -- and 6 read 'NYS OPRHP/PIPC' with Manager still Mohonk.
 with source as (
-    select * from {{ source('mohonk', 'raw_mohonk__mohonk_trails') }}
+    -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
+    -- hint); cast here, as staging models do.
+    select
+        * exclude (geometry),
+        st_geomfromgeojson(cast(geometry as varchar)) as geom
+    from {{ source('mohonk', 'raw_mohonk__mohonk_trails') }}
+),
+
+renamed as (
+    select
+        {{ dbt_utils.generate_surrogate_key([
+            "'mohonk_trails'",
+            'globalid',
+        ]) }} as trail_segment_key,
+        globalid,
+        -- The layer's object id (sources.json's `object_id_field`), which
+        -- ArcGIS writes as each feature's GeoJSON `id`: the id
+        -- lib/feature_id.py publishes a line under where it has no GlobalID
+        -- (int_trail_lines__network_judged's `published_id`).
+        objectid,
+        name,
+        general_classification,
+        classification,
+        use as permitted_use,
+        blaze,
+        mileage,
+        surface,
+        owner,
+        manager,
+        _loaded_at as loaded_at,
+        geom
+    from source
 )
 
-select
-    name,
-    general_classification,
-    classification,
-    use_ as permitted_use,
-    blaze,
-    mileage,
-    surface,
-    owner,
-    manager,
-    _loaded_at as loaded_at
-from source
+{{ dbt_utils.deduplicate(
+    relation='renamed', partition_by='trail_segment_key', order_by='trail_segment_key'
+) }}

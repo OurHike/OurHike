@@ -15,19 +15,33 @@ from pathlib import Path
 
 from lib.source_registry import (
     ARCGIS_FEATURE_LAYER,
+    CLUB_ARCGIS_LAYER,
     EXTERNAL_ARCGIS_LAYER,
+    GIS_FILE,
+    JSON_FEATURES,
     KNOWN_KINDS,
+    OGC_FEATURES,
+    PAGE_POINTS,
+    PDF_POINTS,
+    PODCAST_FEED,
     POI_SOURCE_KEYS,
     PUBLISHED_HIKES,
     PUBLISHED_NOTICES,
+    SOCRATA_GEOJSON_LAYER,
     UNREGISTERED_POI_SOURCES,
     arcgis_sources,
     external_arcgis_sources,
+    external_sources,
     find_source,
     is_arcgis_feature_layer,
+    is_external_arcgis_layer,
+    is_external_source,
+    is_socrata_layer,
     load_registry,
     poi_source_entry,
     poi_source_steward,
+    read_by_an_exporter,
+    socrata_sources,
     source_kind,
 )
 
@@ -74,6 +88,49 @@ def test_an_external_layer_is_kept_out_of_the_atc_loop_and_found_by_its_own():
     assert not is_arcgis_feature_layer({"key": "oprhp_trails", "kind": EXTERNAL_ARCGIS_LAYER})
     assert [entry["key"] for entry in arcgis_sources(registry)] == ["centerline"]
     assert [entry["key"] for entry in external_arcgis_sources(registry)] == ["oprhp_trails"]
+
+
+def test_a_socrata_layer_is_external_without_being_arcgis():
+    """The property #1432 rides on, and the one an ArcGIS-shaped question gets
+    wrong. New York City's layers are somebody else's trail lines outside the
+    A.T. build - external in every sense export_trails.py and load_raw.py care
+    about - while being no kind of ArcGIS layer at all. Both halves are
+    asserted because getting either wrong is a silent bug rather than a loud
+    one: reading them as A.T. sources clips them into the corridor artifact,
+    and reading them as not-external drops them out of the exports that should
+    carry them."""
+    registry = {
+        "sources": [
+            {"key": "centerline"},
+            {"key": "oprhp_trails", "kind": EXTERNAL_ARCGIS_LAYER},
+            {"key": "nyc_parks_trails", "kind": SOCRATA_GEOJSON_LAYER},
+        ]
+    }
+    nyc = {"key": "nyc_parks_trails", "kind": SOCRATA_GEOJSON_LAYER}
+
+    assert not is_arcgis_feature_layer(nyc)
+    assert not is_external_arcgis_layer(nyc)
+    assert is_socrata_layer(nyc)
+    assert is_external_source(nyc)
+
+    assert [entry["key"] for entry in arcgis_sources(registry)] == ["centerline"]
+    assert [entry["key"] for entry in external_arcgis_sources(registry)] == ["oprhp_trails"]
+    assert [entry["key"] for entry in socrata_sources(registry)] == ["nyc_parks_trails"]
+    # In registry order, and both transports, because this is the list every
+    # caller that means "somebody else's layer" should be asking.
+    assert [entry["key"] for entry in external_sources(registry)] == [
+        "oprhp_trails",
+        "nyc_parks_trails",
+    ]
+
+
+def test_an_arcgis_external_layer_is_still_external():
+    """The regression guard on the widening: adding a second external kind
+    must not have narrowed what the first one answers."""
+    oprhp = {"key": "oprhp_trails", "kind": EXTERNAL_ARCGIS_LAYER}
+
+    assert is_external_source(oprhp)
+    assert not is_socrata_layer(oprhp)
 
 
 def test_find_source_answers_none_rather_than_raising():
@@ -279,7 +336,6 @@ def _minted_poi_sources() -> set[str]:
         export_poi.CSI_WATER_SOURCE,
         export_poi.OPENTRAIL_SOURCE,
         export_poi.OSM_WATER_SOURCE,
-        export_poi.NHD_CROSSING_SOURCE,
         export_poi.NHD_STREAM_SOURCE,
         *(source for _, _, source, _ in export_poi.DIRECT_SOURCES),
     }
@@ -326,21 +382,198 @@ def test_an_unregistered_poi_source_resolves_to_nobody_rather_than_to_a_guess():
     assert poi_source_entry(registry, "nhd_crossing") is None
 
 
-def test_the_real_registry_registers_nynjtc_favorite_hikes_as_published_hikes_and_shipping():
-    """#1290's registration, checked as data: the twenty public write-ups,
-    their own kind (fetch_all.py must skip it; export_suggested_hikes.py is
-    what reads it), a steward whose name joins the licence block
-    (nynjtc_hikes_licence, matched by author - export_sources.py's rule),
-    and reaches_hikers True on the maintainer's relay of NYNJTC's
-    permission. No `freshness` block, deliberately: the REST route serves no
-    validator and the fetcher compares modified_gmt itself."""
+def test_the_real_registry_registers_the_hike_finder_export_as_published_hikes_and_shipping():
+    """#1427's registration, checked as data: NYNJTC's full hike list, its own
+    kind (fetch_all.py must skip it; fetch_hikefinder.py is what reads it), a
+    steward whose name joins the licence block (nynjtc_hikes_licence, matched
+    by author - export_sources.py's rule), and reaches_hikers True on the
+    maintainer's relay of NYNJTC's permission. No `freshness` block,
+    deliberately: the export serves no validator and no feed, so the fetcher
+    compares each page's own Last Updated against its previous cache."""
     registry = load_registry(REAL_REGISTRY)
-    entry = find_source(registry, "nynjtc_favorite_hikes")
+    entry = find_source(registry, "nynjtc_hike_finder")
 
-    assert entry is not None, "sources.json no longer registers nynjtc_favorite_hikes (#1290)"
+    assert entry is not None, "sources.json no longer registers nynjtc_hike_finder (#1427)"
     assert entry["kind"] == PUBLISHED_HIKES
     assert entry["steward"] == registry["nynjtc_hikes_licence"]["author"]
     assert entry["reaches_hikers"] is True
     assert entry["licence_basis"] == "maintainer_authorisation"
     assert "freshness" not in entry
     assert registry["nynjtc_hikes_licence"]["attribution_required"] is True
+
+
+def test_the_scraped_favorite_hikes_source_is_gone_and_its_licence_block_is_not():
+    """#1427 closed the road, not the permission. `nynjtc_favorite_hikes` read
+    nynjtc.org's WordPress API and reached 20 hikes of 59; the maintainer
+    asked for the scrape to stop and supplied the full list as an export.
+
+    The LICENCE BLOCK outlives the source entry that first needed it, because
+    `nynjtc_hike_finder` ships the same organization's same prose on the same
+    permission and points at it by name. Deleting the block with the entry
+    would have left the new source citing nothing."""
+    registry = load_registry(REAL_REGISTRY)
+
+    assert find_source(registry, "nynjtc_favorite_hikes") is None
+    assert "nynjtc_hikes_licence" in registry
+    assert find_source(registry, "nynjtc_hike_finder")["licence"].count("nynjtc_hikes_licence") >= 1
+
+
+def test_the_real_registry_registers_new_york_citys_two_walking_path_layers():
+    """#1432's registration, checked as data: the city's own trails, on their
+    own kind, shipping on terms the City states by statute rather than on an
+    authorisation. Both carry the blaze marker `network_line_sources()` keys
+    off, because an entry that does not is fetched and then silently exported
+    by nothing at all."""
+    registry = load_registry(REAL_REGISTRY)
+
+    for key in ("nyc_parks_trails", "nyc_dot_greenways"):
+        entry = find_source(registry, key)
+        assert entry is not None, f"sources.json no longer registers {key} (#1432)"
+        assert entry["kind"] == SOCRATA_GEOJSON_LAYER
+        assert entry["domain"] == "data.cityofnewyork.us"
+        assert entry["dataset_id"], "a Socrata entry without a dataset id cannot be fetched"
+        # The marker export_nearby_trails.py selects trail-line sources on.
+        assert "blaze_field" in entry or "blaze_default" in entry
+        assert entry["reaches_hikers"] is True
+        # Statutory, not a maintainer authorisation - the distinction
+        # nyc_licence exists to record. See licence_basis_comment.
+        assert entry["licence_basis"] == "stated_by_org"
+
+    # One block, two agencies: the licence is not theirs to set, so it is
+    # recorded once. NYC DOT's entry cannot be matched to it by `author`
+    # against `steward` the way export_sources.py matches every other one,
+    # which is why that entry names the block in its own licence prose.
+    assert registry["nyc_licence"]["author"] == find_source(registry, "nyc_parks_trails")["steward"]
+    assert "nyc_licence" in find_source(registry, "nyc_dot_greenways")["licence"]
+
+
+def test_the_greenway_layer_never_ships_an_on_street_bike_lane():
+    """THE SAFETY PROPERTY, pinned rather than left to a reviewer's eye.
+
+    nyc_dot_greenways reads NYC DOT's entire 29,695-row bicycle network, of
+    which the great majority is painted lanes in traffic. Three clauses cut it
+    to the 3,039 rows that are current, greenway-designated and OFF-STREET,
+    and the last of those is the one a hiker's safety turns on: a walker who
+    follows a drawn line onto Queens Boulevard has been put in front of
+    something dangerous by this app, which is one of CLAUDE.md's four ways.
+
+    Asserted on the registry rather than on fetched data on purpose. The
+    filter's whole value is that it runs AT THE PORTAL, so the excluded rows
+    never arrive - there is no local artifact in which their absence could be
+    checked, and the registry string is the only place the guarantee lives.
+
+    ASSERTED AS THE WHOLE STRING, not as three substrings, and that is the
+    point rather than pedantry. Three `in` checks pass on
+    `status='Current' OR grnwy='Greenway' OR onoffst='OFF'` - a predicate that
+    ships 24,461 of the 29,695 rows, every painted bike lane that happens to
+    be current - while reading as though all three clauses were enforced. A
+    safety property pinned by a test that its own negation satisfies is not
+    pinned.
+    """
+    entry = find_source(load_registry(REAL_REGISTRY), "nyc_dot_greenways")
+
+    assert entry["where"] == "status='Current' AND grnwy='Greenway' AND onoffst='OFF'"
+
+
+# --- club_arcgis_layer: read by pipeline/extract/ alone -------
+
+# A club layer shaped the way the registry registers one: an ArcGIS
+# URL, a type field, and `reaches_hikers` true, so that no reader skips it on
+# that flag alone. Appended to the real registry, so the test bites before any
+# real row of the kind exists and keeps biting on every row added later.
+CLUB_LAYER_PROBE = {
+    "key": "club_layer_probe",
+    "kind": CLUB_ARCGIS_LAYER,
+    "title": "A club's point layer (probe)",
+    "provider": "Probe",
+    "url": "https://services.arcgis.com/probe/arcgis/rest/services/Points/FeatureServer/0",
+    "id_field": "GlobalID",
+    "name_field": "Name",
+    "type_field": "Type",
+    "reaches_hikers": True,
+}
+
+
+def test_no_legacy_reader_selects_a_club_arcgis_layer_row(tmp_path, monkeypatch):
+    """The property that keeps the legacy publish off the club hosts the registry lists.
+
+    publish-vector-data.yml runs fetch_external_layers.py, which fetches every
+    row external_sources() returns whatever its reaches_hikers says, and fails
+    the whole publish on one failed or empty layer. A club layer selected by
+    any reader below would put the A.T.'s water and shelters at the mercy of
+    a club's server, and a row export_nearby_poi.poi_sources() selected would
+    ship that club's points outside dbt's publication gate. The kind keeps the
+    kind-based readers away. poi_sources() and export_trails.py select on
+    `poi_type` and `blaze_field` instead, so a club row carrying either fails
+    here too.
+    """
+    import export_nearby_poi
+    import export_nearby_trails
+    import export_trails
+    import fetch_all
+    import fetch_external_layers
+    import load_raw
+
+    registry = load_registry(REAL_REGISTRY)
+    registry["sources"] = [*registry["sources"], CLUB_LAYER_PROBE]
+    path = tmp_path / "sources.json"
+    path.write_text(json.dumps(registry))
+    monkeypatch.setattr(load_raw, "SOURCES_PATH", path)
+    # Club GIS files, geographic APIs and the points on club pages and PDFs are registered for the extract alone, as
+    # club ArcGIS layers are, so no legacy reader may select those rows either.
+    extract_only = {CLUB_ARCGIS_LAYER, GIS_FILE, OGC_FEATURES, JSON_FEATURES, PAGE_POINTS, PDF_POINTS}
+    club_keys = {entry["key"] for entry in registry["sources"] if source_kind(entry) in extract_only}
+
+    selected = {
+        "fetch_all.arcgis_sources": {e["key"] for e in fetch_all.arcgis_sources(registry)},
+        "fetch_external_layers.external_sources": {e["key"] for e in fetch_external_layers.external_sources(registry)},
+        "load_raw.registered_layers": {key for _, key, _ in load_raw.registered_layers()},
+        "export_nearby_poi.poi_sources": {e["key"] for e in export_nearby_poi.poi_sources(registry)},
+        "export_trails.load_line_sources": {e["key"] for e in export_trails.load_line_sources(path)},
+        "export_nearby_trails.network_line_sources": {e["key"] for e in export_nearby_trails.network_line_sources(registry)},
+        "export_nearby_trails.closure_area_sources": {e["key"] for e in export_nearby_trails.closure_area_sources(registry)},
+    }
+
+    assert all(selected.values()), f"a reader selected nothing from the real registry, so this proves nothing: {selected}"
+    leaked = {reader: sorted(keys & club_keys) for reader, keys in selected.items() if keys & club_keys}
+    assert not leaked, (
+        "legacy readers select extract-only rows (club_arcgis_layer, gis_file, ogc_features, json_features, page_points, "
+        f"pdf_points), which only pipeline/extract/ may read: {leaked}"
+    )
+
+
+def test_the_exporters_path_counts_every_row_a_legacy_reader_selects_and_no_extract_only_row():
+    """On the exporters' path, export_sources.py names a steward
+    only for rows today's exporters read, so production's sources screen names only stewards whose data production's
+    files carry until the cutover. read_by_an_exporter() is that rule, and the readers above are what it describes:
+    every row one of them selects, and each page-read exporter's own SOURCE_KEY, must count, or a steward whose data
+    production ships drops off its screen; and no row of a kind only pipeline/extract/ reads may count, or the screen
+    names a steward before its data ships."""
+    import export_nearby_poi
+    import export_nearby_trails
+    import export_sources
+    import export_trails
+    import fetch_all
+    import fetch_external_layers
+
+    registry = load_registry(REAL_REGISTRY)
+    selected = (
+        {e["key"] for e in fetch_all.arcgis_sources(registry)}
+        | {e["key"] for e in fetch_external_layers.external_sources(registry)}
+        | {e["key"] for e in export_nearby_poi.poi_sources(registry)}
+        | {e["key"] for e in export_trails.load_line_sources(REAL_REGISTRY)}
+        | {e["key"] for e in export_nearby_trails.network_line_sources(registry)}
+        | {e["key"] for e in export_nearby_trails.closure_area_sources(registry)}
+        | set(export_sources.EXPORTER_SOURCE_KEYS)
+    )
+    counted = {e["key"] for e in registry["sources"] if read_by_an_exporter(e, export_sources.EXPORTER_SOURCE_KEYS)}
+    extract_only = {CLUB_ARCGIS_LAYER, GIS_FILE, OGC_FEATURES, JSON_FEATURES, PAGE_POINTS, PDF_POINTS, PODCAST_FEED}
+
+    assert not selected - counted, (
+        f"rows a legacy reader selects that the exporters' path leaves out: {sorted(selected - counted)}"
+    )
+    assert all(find_source(registry, key) for key in export_sources.EXPORTER_SOURCE_KEYS), "an exporter's key is unregistered"
+    leaked = sorted(e["key"] for e in registry["sources"] if e["key"] in counted and source_kind(e) in extract_only)
+    assert not leaked, f"extract-only rows counted on the exporters' path: {leaked}"
+    notices = [e for e in registry["sources"] if source_kind(e) in {PUBLISHED_NOTICES, PUBLISHED_HIKES} and e["key"] in counted]
+    assert {e["key"] for e in notices} <= set(export_sources.EXPORTER_SOURCE_KEYS), "a club's notice or hike list counted"

@@ -174,6 +174,22 @@ describe('the two facts a stop is chosen on (#1198)', () => {
     expect('waterDistanceFt' in stops[0]).toBe(false)
   })
 
+  it('carries where ATC got the water distance, so the row can mark an estimate (#1728)', () => {
+    const withFacts = poi('east', 'shelter', -74.081, 41.2502)
+    const stops = orderStops(course(), new Set(['east']), [
+      { ...withFacts, waterDistanceFt: 250, waterDistanceSource: 'OSA_Field_Estimate' },
+    ])
+
+    expect(stops[0].waterDistanceSource).toBe('OSA_Field_Estimate')
+
+    // Absent where the download had none, like the figure itself - and the
+    // row then prints the figure in the voice it always has.
+    const bare = orderStops(course(), new Set(['east']), [
+      { ...withFacts, waterDistanceFt: 250 },
+    ])
+    expect('waterDistanceSource' in bare[0]).toBe(false)
+  })
+
   it('keeps a published zero, because zero feet to water is a real claim', () => {
     // The flooring is the DISPLAY's job (lib/units.ts's MIN_STATED_FEET), not
     // this module's - a stop that quietly rewrote the published number would

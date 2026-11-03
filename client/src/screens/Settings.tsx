@@ -38,6 +38,14 @@ import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisi
 import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
 import { UnitPicker } from './UnitPicker'
+import {
+  NO_PODCAST_EPISODES,
+  PODCAST_APP_NAMES,
+  appsEveryEpisodeOpensIn,
+  podcastAppsToList,
+  type PodcastApp,
+} from '../lib/podcasts'
+import { usePodcastApp, writePodcastApp } from '../lib/podcastApp'
 import './settings.css'
 
 /** The full prop bag every group below draws from - kept as one interface,
@@ -77,6 +85,9 @@ export interface SettingsProps {
    * should do.
    */
   onChangeBackground?: (next: BackgroundSource) => void
+  /** The podcast apps the Podcast app row offers - DisplaySettingsProps says
+   *  what they are and what absent means. */
+  podcastApps?: readonly PodcastApp[]
   /**
    * What has reached the hiker's account, and whether this device is still
    * sending (#894).
@@ -815,9 +826,18 @@ export function MapSettings({
 export interface DisplaySettingsProps {
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
+  /** The podcast apps on offer - lib/podcasts.ts's appsEveryEpisodeOpensIn
+   *  over the published list, the same set the podcast cards' picker offers.
+   *  Absent (a Settings with no list to read), Spotify alone: the one app
+   *  every episode is known to open in. */
+  podcastApps?: readonly PodcastApp[]
 }
 
-export function DisplaySettings({ preferences, onChange }: DisplaySettingsProps) {
+export function DisplaySettings({
+  preferences,
+  onChange,
+  podcastApps = appsEveryEpisodeOpensIn(NO_PODCAST_EPISODES),
+}: DisplaySettingsProps) {
   return (
     <section className="settings__group">
       <h2 className="settings__heading">Display</h2>
@@ -832,7 +852,44 @@ export function DisplaySettings({ preferences, onChange }: DisplaySettingsProps)
         value={preferences.unit_system}
         onChange={(unit_system) => onChange({ unit_system })}
       />
+
+      <PodcastAppRow apps={podcastApps} />
     </section>
+  )
+}
+
+/**
+ * Which podcast app the podcast cards open episodes in (#1690, the
+ * maintainer's frame 4). Kept on this phone like the mode and the default
+ * place, never a UserPreferences key (lib/podcastApp.ts says why). "Ask me"
+ * is offered only while nothing is picked, the reporter row's rule: an app
+ * that keeps offering to un-say an answer invites it. The apps are the ones
+ * every episode opens in, plus the hiker's own pick if it has since dropped
+ * out - lib/podcasts.ts's podcastAppsToList, the card picker's rule.
+ */
+function PodcastAppRow({ apps }: { apps: readonly PodcastApp[] }) {
+  const app = usePodcastApp()
+  return (
+    <label className="settings__row">
+      <span className="settings__label">Podcast app</span>
+      <select
+        className="settings__value"
+        name="podcast_app"
+        value={app ?? ''}
+        onChange={(event) =>
+          writePodcastApp(
+            event.target.value === '' ? null : (event.target.value as PodcastApp),
+          )
+        }
+      >
+        {app === null && <option value="">Ask me</option>}
+        {podcastAppsToList(apps, app).map((option) => (
+          <option key={option} value={option}>
+            {PODCAST_APP_NAMES[option]}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 
@@ -885,9 +942,61 @@ export function SafetyPrivacySettings({
         />
       </label>
       <p className="settings__note">
-        Draws where you are on the map and reads your mile. The fix is used on the device
-        and sent nowhere unless you file a report. Off, the map still works everywhere; it
-        just cannot say where you are on it.
+        Draws where you are on the map and reads your mile. The fix leaves this phone only
+        with a report you file, or sealed inside usage statistics while those are on
+        (below). Off, the map still works everywhere; it just cannot say where you are on
+        it.
+      </p>
+
+      {/* USAGE STATISTICS (#1902, features/EVENTING.md §0), placed here
+          rather than on a page of their own - the maintainer's choice of
+          2026-10-27 (poll 3, frame A) - because the first one depends on the
+          location switch just above it, and the note above now says so.
+
+          The wording is frame A's, approved as drawn. Both notes carry a
+          promise the backend keeps: "sealed as it arrives" is
+          app/core/analytics_seal.py's write-only sealing and "only the
+          rough area ... stays readable" its `area_lat`/`area_lon`, a 0.1-degree
+          square, 8 to 11 km across in this country - said without a number,
+          since a number here would need lib/units.ts to honour miles
+          (corrected after #1903's review: the square was in the clear while
+          the note said nothing could be read; the corrected wording was
+          approved in the maintainer's poll of 2026-10-27), "kept six months" is
+          app/core/analytics_rollup.py, and the running total going with a
+          no or a deletion is routers/preferences.py and
+          core/account_deletion.py. */}
+      <label className="settings__row">
+        <span className="settings__label">Share usage statistics</span>
+        <input
+          type="checkbox"
+          name="measurement_enabled"
+          checked={preferences.measurement_enabled}
+          onChange={(event) => onChange({ measurement_enabled: event.target.checked })}
+        />
+      </label>
+      <p className="settings__note">
+        Counts when you open OurHike, sign in, make or finish a hike plan, view the map,
+        how long a visit lasts, and choosing to give $0. With location on, your phone's
+        position goes with each count but the $0 one, sealed as it arrives; only the rough
+        area it falls in, a grid square about the size of a town, stays readable. Kept six
+        months. Off stops all of it.
+      </p>
+      <label className="settings__row">
+        <span className="settings__label">Link them to my account</span>
+        <input
+          type="checkbox"
+          name="measurement_linked"
+          checked={
+            preferences.measurement_enabled && preferences.measurement_linked === true
+          }
+          disabled={!preferences.measurement_enabled}
+          onChange={(event) => onChange({ measurement_linked: event.target.checked })}
+        />
+      </label>
+      <p className="settings__note">
+        Adds a code made from your account, so we can see whether hikers come back and
+        finish what they plan. No name or email in it. Keeps a running total for your
+        account; turning this off, or deleting your account, deletes it.
       </p>
 
       <label className="settings__row settings__row--later">
@@ -912,7 +1021,7 @@ export function SafetyPrivacySettings({
           What is promised now is what this screen can actually keep: nothing
           about the alert layers is a setting, nothing about them is saved, and
           the map opens with them on. That is a stronger claim than it sounds -
-          it is the whole reason chrome/alertLayerPanel.ts holds the flag in a
+          it is the whole reason #1047's own flag was held in a
           `useState` rather than in the object this screen edits. */}
       <p className="settings__locked" role="note">
         Closures and serious warnings are not a setting. The legend can take them off the

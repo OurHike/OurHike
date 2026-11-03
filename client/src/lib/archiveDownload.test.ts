@@ -38,6 +38,7 @@ import { Sha256, sha256Hex, type Sha256State } from './sha256'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  keys: vi.fn(),
   getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),

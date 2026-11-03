@@ -114,7 +114,7 @@ async function shown(queue: Partial<api.ModerationQueue> = {}) {
     closures: [],
     ...queue,
   })
-  render(<Moderation onClose={vi.fn()} />)
+  render(<Moderation units="imperial" onClose={vi.fn()} />)
   await screen.findByRole('heading', { level: 1 })
   await waitFor(() => expect(screen.queryByText(/reading the queue/i)).toBeNull())
 }
@@ -168,7 +168,7 @@ describe('the moderation queue', () => {
 
   it('says a queue it could not read is not a queue of nothing', async () => {
     mocked.fetchModerationQueue.mockRejectedValue(new Error('no signal'))
-    render(<Moderation onClose={vi.fn()} />)
+    render(<Moderation units="imperial" onClose={vi.fn()} />)
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/not a list of nothing waiting/i)
@@ -180,7 +180,7 @@ describe('the moderation queue', () => {
     const user = userEvent.setup()
     mocked.fetchModerationQueue.mockRejectedValueOnce(new Error('no signal'))
     mocked.fetchModerationQueue.mockResolvedValue({ reports: [aReport()], closures: [] })
-    render(<Moderation onClose={vi.fn()} />)
+    render(<Moderation units="imperial" onClose={vi.fn()} />)
     await screen.findByRole('alert')
 
     await user.click(screen.getByRole('button', { name: /try again/i }))
@@ -331,8 +331,121 @@ describe('the photo the decision turns on', () => {
     expect(photo).toHaveAttribute('src', 'https://photos.example/signed')
     expect(mocked.fetchReportPhotoLink).toHaveBeenCalledWith(
       'report-1',
+      1,
       expect.anything(),
     )
+  })
+
+  it('shows every photo of a set, each asked for on its own (#1439)', async () => {
+    // A blowdown is three trunks. A queue that showed the first one would be
+    // a moderator deciding on a third of the evidence - and a link is good
+    // for minutes, so they are minted per photo rather than once per report.
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY, photo_count: 3 })] })
+
+    expect(await screen.findAllByRole('img')).toHaveLength(3)
+    expect(mocked.fetchReportPhotoLink.mock.calls.map((call) => call[1])).toEqual([
+      1, 2, 3,
+    ])
+  })
+
+  it('reads one photo off a server that predates the count', async () => {
+    // A rollout runs both releases at once, and the old one sends no
+    // `photo_count`. A row with a `photo_url` has exactly one object - the
+    // same thing the migration's backfill says about the same row - and
+    // nothing beyond that is inferred.
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY })] })
+
+    expect(await screen.findAllByRole('img')).toHaveLength(1)
+  })
+
+  it('shows the hiker\u2019s own words where nothing else can say where (#1439)', async () => {
+    // The one report a moderator cannot place any other way: no fix, no
+    // waypoint, and a sentence. Dropping it would leave the queue saying "no
+    // location" about a report that named one - and placing it is the
+    // moderator's act, which is exactly why the words arrive unresolved.
+    await shown({
+      reports: [
+        aReport({
+          lat: null,
+          lon: null,
+          place_words: 'The brook crossing north of Fitzgerald Falls',
+        }),
+      ],
+    })
+
+    expect(
+      await screen.findByText(/The brook crossing north of Fitzgerald Falls/),
+    ).toBeInTheDocument()
+  })
+
+  it('prints the hiker\u2019s words beside the coordinates when they typed them anyway (#1563)', async () => {
+    // A ±800 m fix and "the ford below the gap" place a report better than
+    // either alone, which is why lib/reportLocation.ts sends both since the
+    // review of #1571. A queue that dropped the sentence for having
+    // coordinates would be back to a coarse pin with nothing to place it.
+    await shown({
+      reports: [
+        aReport({
+          location_source: 'gps',
+          location_accuracy_m: 800,
+          location_fix_age_s: 2400,
+          place_words: 'the ford below the gap',
+        }),
+      ],
+    })
+
+    expect(
+      await screen.findByText(
+        /35\.6000, -83\.5000 · GPS ±2,625 ft, fix 40 min old — “the ford below the gap”/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('names a waypoint-anchored row by its waypoint and adds nothing about how (#1563)', async () => {
+    // `placeOf` answers with the waypoint before the provenance is asked,
+    // so a `poi` source has nothing left to say: the review of #1571 found
+    // the arm that used to print "a named place" unreachable, and it is
+    // gone rather than kept as a claim nothing could make.
+    await shown({
+      reports: [aReport({ poi_id: 'atc_shelters:12', location_source: 'poi' })],
+    })
+
+    expect(await screen.findByText(/at atc_shelters:12/)).toBeInTheDocument()
+    expect(screen.queryByText(/named place/)).toBeNull()
+  })
+
+  it('says how a GPS-placed report was placed - the radius and the age of the fix (#1563)', async () => {
+    // The provenance reaches the person reading it: a ±800 m fix forty
+    // minutes old is a different claim from a surveyed waypoint, and the
+    // radius is printed in the moderator's own units.
+    await shown({
+      reports: [
+        aReport({
+          location_source: 'gps',
+          location_accuracy_m: 800,
+          location_fix_age_s: 2400,
+        }),
+      ],
+    })
+
+    expect(await screen.findByText(/GPS ±2,625 ft, fix 40 min old/)).toBeInTheDocument()
+  })
+
+  it('says when a report was placed by hand on the map, and nothing for a row that said nothing', async () => {
+    await shown({ reports: [aReport({ location_source: 'map' })] })
+    expect(await screen.findByText(/marked on the map/)).toBeInTheDocument()
+    cleanup()
+
+    // An older client stated no source - an absent claim is not "GPS".
+    await shown({ reports: [aReport({ location_source: null })] })
+    expect(await screen.findByText(/35\.6000, -83\.5000/)).toBeInTheDocument()
+    expect(screen.queryByText(/GPS/)).toBeNull()
+  })
+
+  it('still says "no location" when there are no words either', async () => {
+    await shown({ reports: [aReport({ lat: null, lon: null })] })
+
+    expect(await screen.findByText(/no location/)).toBeInTheDocument()
   })
 
   it('draws nothing at all about photos for a report that has none', async () => {
@@ -488,7 +601,13 @@ describe('a photo of a person', () => {
       'src',
       'https://photos.example/signed',
     )
-    expect(mocked.fetchReportPhotoLink).toHaveBeenCalledWith('bad-1', expect.anything())
+    // The index came in with the photo SET (#1439): a moderator deciding on a
+    // blowdown with three trunks sees all three, each asked for on its own.
+    expect(mocked.fetchReportPhotoLink).toHaveBeenCalledWith(
+      'bad-1',
+      1,
+      expect.anything(),
+    )
   })
 
   it('says a photo is there while it is still waiting to be asked for', async () => {

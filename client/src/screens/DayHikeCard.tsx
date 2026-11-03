@@ -71,15 +71,15 @@ import { WATER_SAID_OFF_FEET, type RouteWater } from '../lib/dayHikeWater'
 import { blazeLabel, blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
 import { HIKER_MODE_LABELS } from '../lib/hikerMode'
-import { dayLongDateLabel } from '../lib/planDisplay'
+import { dayLongDateLabel, legLabel } from '../lib/planDisplay'
 import { paceEstimate, type PaceProfile } from '../lib/pace'
 import {
   formatDistance,
   formatElevation,
   formatShortDistance,
-  MIN_STATED_FEET,
   type UnitSystem,
 } from '../lib/units'
+import { formatWaterDistance } from '../lib/waterProvenance'
 import { PoiRow } from '../chrome/PoiRow'
 import { StepRail } from '../chrome/StepRail'
 import { SheetGripLoader } from '../chrome/SheetGripLoader'
@@ -521,9 +521,13 @@ export function DayHikeCard({
                       meta={[
                         `${formatDistance(alongMi, units)} in`,
                         stop.capacity !== undefined ? `sleeps ${stop.capacity}` : null,
+                        // Floored and marked in lib/waterProvenance.ts, the
+                        // one home the card and the builder's rows read too:
+                        // "water ~250 ft" for a steward's estimate (#1728).
                         stop.waterDistanceFt !== undefined
-                          ? `water ${formatShortDistance(
-                              Math.max(MIN_STATED_FEET, stop.waterDistanceFt),
+                          ? `water ${formatWaterDistance(
+                              stop.waterDistanceFt,
+                              stop.waterDistanceSource,
                               units,
                             )}`
                           : null,
@@ -585,9 +589,7 @@ export function DayHikeCard({
                 >
                   <span className="visually-hidden">{blazeLabel(leg.blaze_color)}</span>
                 </span>
-                <span className="day-hike-card__row-name">
-                  {leg.name ?? 'Unnamed trail'}
-                </span>
+                <span className="day-hike-card__row-name">{legLabel(leg.name)}</span>
                 <span className="day-hike-card__row-figures">
                   {formatDistance(leg.miles, units)}
                 </span>
@@ -615,7 +617,7 @@ export function DayHikeCard({
                     at {formatDistance(bailOut.miles, units)}
                   </span>
                   <span className="day-hike-card__row-name">
-                    {bailOut.name ?? 'Unnamed trail'}
+                    {legLabel(bailOut.name)}
                     {bailOut.blaze_color !== null && ` (${bailOut.blaze_color})`}
                   </span>
                 </div>

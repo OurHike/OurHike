@@ -232,14 +232,18 @@ describe('composeSites under the legend’s filters', () => {
     }
   })
 
-  it('promotes by POI_PRIORITY, so water outranks campsite outranks privy', () => {
-    // The same safety ordering that decides collisions, asked the same question:
-    // of these, which does a hiker most need to see.
+  it('promotes by POI_PRIORITY, so campsite outranks water outranks privy', () => {
+    // The same ordering that decides collisions, asked the same question: of
+    // these, which does a hiker most need to see. Water led it until the
+    // maintainer's order of 2026-09-26 (#1676) put shelters and campsites
+    // first; a promoted campsite still carries the water as a badge, which a
+    // promoted water pin could not carry back (only anchor types have badged
+    // artwork).
     const site = [SHELTER, PRIVY, CAMPSITE, WATER]
 
-    expect(carriers(site, { hiddenTypes: new Set(['shelter']) })).toEqual([WATER.id])
-    expect(carriers(site, { hiddenTypes: new Set(['shelter', 'water']) })).toEqual([
-      CAMPSITE.id,
+    expect(carriers(site, { hiddenTypes: new Set(['shelter']) })).toEqual([CAMPSITE.id])
+    expect(carriers(site, { hiddenTypes: new Set(['shelter', 'campsite']) })).toEqual([
+      WATER.id,
     ])
     expect(
       carriers(site, { hiddenTypes: new Set(['shelter', 'water', 'campsite']) }),
@@ -625,5 +629,91 @@ describe('SITE_MEMBER_TYPES', () => {
     const combinations = 2 ** SITE_MEMBER_TYPES.length - 1
 
     expect(combinations).toBe(7)
+  })
+})
+
+describe('a badge says what else is there, not how many (#1536)', () => {
+  it('draws no badge on a pin whose members are all its own type', () => {
+    // Twelve fountains in one park fold onto one water pin. A water glyph
+    // badged onto a water pin would read "water, and also water"; the plain
+    // pin says water is here, which is the whole of what the source supports.
+    const fountains = Array.from({ length: 12 }, (_, i) => ({
+      id: `fountain-${i}`,
+      type: 'water',
+      lat: 40.66 + i * 0.0002,
+      lon: -73.97,
+      confidence: 'low' as const,
+      siteId: 'park-site',
+      siteRole: i === 0 ? 'anchor' : 'member',
+    }))
+
+    const { drawn, membersFor } = composeSites(fountains)
+
+    expect(drawn.map((p) => p.id)).toEqual(['fountain-0'])
+    expect(membersFor.get('fountain-0')).toBeUndefined()
+  })
+
+  it('still badges a member of a different type on the same pin', () => {
+    // The rule is same-type, not same-site: a park whose fold also carries a
+    // restroom has something else to say, and says it.
+    const { membersFor } = composeSites([
+      {
+        id: 'fountain',
+        type: 'water',
+        lat: 40.66,
+        lon: -73.97,
+        confidence: 'low',
+        siteId: 's',
+        siteRole: 'anchor',
+      },
+      {
+        id: 'twin',
+        type: 'water',
+        lat: 40.6602,
+        lon: -73.97,
+        confidence: 'low',
+        siteId: 's',
+        siteRole: 'member',
+      },
+      {
+        id: 'restroom',
+        type: 'privy',
+        lat: 40.6603,
+        lon: -73.97,
+        confidence: 'high',
+        siteId: 's',
+        siteRole: 'member',
+      },
+    ])
+
+    expect(membersFor.get('fountain')).toEqual(['privy'])
+  })
+
+  it('keeps badging a shelter that has water, which is what the strip was built for', () => {
+    // The #524 case, asserted here so the same-type rule above cannot be
+    // widened into it by accident: the anchor is a shelter, so a water member
+    // IS something else and stays on the badge.
+    const { membersFor } = composeSites([
+      {
+        id: 'shelter',
+        type: 'shelter',
+        lat: 39,
+        lon: -77,
+        confidence: 'high',
+        siteId: 's',
+        siteRole: 'anchor',
+      },
+      {
+        id: 'spring',
+        type: 'water',
+        lat: 39.0004,
+        lon: -77,
+        confidence: 'high',
+        siteId: 's',
+        siteRole: 'member',
+      },
+    ])
+
+    expect(membersFor.get('shelter')).toEqual(['water'])
   })
 })

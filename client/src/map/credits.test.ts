@@ -3,6 +3,9 @@ import {
   DEC_CREDIT,
   mapCredits,
   MOHONK_CREDIT,
+  NEARBY_TRAILS_ATTRIBUTION,
+  NYC_DOT_CREDIT,
+  NYC_PARKS_CREDIT,
   NYNJTC_CREDIT,
   OPENFREEMAP_CREDIT,
   OPRHP_CREDIT,
@@ -117,16 +120,22 @@ describe('mapCredits', () => {
   it('credits the trail stewards only when their trails are drawn', () => {
     // OPRHP's attribution is a CONDITION of using their data - "any maps...
     // created using OPRHP data must include proper credit" - so its absence
-    // when their lines ARE drawn is a breach, not an untidy corner. NYNJTC's,
-    // Mohonk Preserve's and NYS DEC's are not conditions (all three ship on
-    // the maintainer's authorisation, not stated terms), but the same "say
-    // what is drawn" rule applies to a courtesy as much as to a licence.
+    // when their lines ARE drawn is a breach, not an untidy corner. The two
+    // New York City ones are conditions too, and by statute rather than by an
+    // owner's terms (#1432): Local Law 11 of 2012 opens the city's data, and
+    // the City's own standards reserve the right to require a republisher to
+    // identify the source. NYNJTC's, Mohonk Preserve's and NYS DEC's are not
+    // conditions (all three ship on the maintainer's authorisation, not
+    // stated terms), but the same "say what is drawn" rule applies to a
+    // courtesy as much as to a licence.
     const drawn = mapCredits({ background: 'usgs_topo_offline', hasNearbyTrails: true })
 
     expect(drawn).toContain(OPRHP_CREDIT)
     expect(drawn).toContain(NYNJTC_CREDIT)
     expect(drawn).toContain(MOHONK_CREDIT)
     expect(drawn).toContain(DEC_CREDIT)
+    expect(drawn).toContain(NYC_PARKS_CREDIT)
+    expect(drawn).toContain(NYC_DOT_CREDIT)
   })
 
   it('names none of the stewards on a phone that has none of their trails', () => {
@@ -140,6 +149,21 @@ describe('mapCredits', () => {
     expect(absent).not.toContain(NYNJTC_CREDIT)
     expect(absent).not.toContain(MOHONK_CREDIT)
     expect(absent).not.toContain(DEC_CREDIT)
+    expect(absent).not.toContain(NYC_PARKS_CREDIT)
+    expect(absent).not.toContain(NYC_DOT_CREDIT)
+  })
+
+  it('declares the same stewards on the map source as the corner names', () => {
+    // The two used to be independent strings that had to agree, and style.ts
+    // said so itself: the match "is a licence condition rather than tidiness".
+    // #1432 made it one constant, and this is what stops it drifting back -
+    // every steward in the source's attribution is a steward the corner names
+    // when those lines are drawn, and the other way round.
+    const corner = mapCredits({ background: 'usgs_topo_offline', hasNearbyTrails: true })
+    const declared = NEARBY_TRAILS_ATTRIBUTION.split(' · ')
+    const stewardsOnly = corner.filter((credit) => credit !== OSM_CREDIT)
+
+    expect(declared).toEqual(stewardsOnly)
   })
 
   it('says everything the style declares, once a phone is holding all of it', () => {

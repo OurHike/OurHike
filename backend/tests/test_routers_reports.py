@@ -347,18 +347,28 @@ def test_invasive_species_can_be_verified_unlike_a_thanks(client, db_session):
     assert response.json()["status"] == ReportStatus.verified.value
 
 
-def test_invasive_species_still_carries_a_photo_and_an_authored_time(client):
-    """The user-facing ask was description + photos + location + when."""
+def test_invasive_species_still_carries_an_authored_time(client):
+    """The user-facing ask was description + photos + location + when.
+
+    THE PHOTO HALF OF THAT ASK MOVED, and this test moved with it rather than
+    being deleted. It used to send `photo_url` in the create payload and read
+    it back, which proved only that the server stored a string the client
+    chose - and #1439's review took that field out, because a caller could
+    name an object nobody had uploaded and leave `photo_count` contradicting
+    it. Photos are attached through `PUT /reports/{id}/photos/{n}` now, and
+    that they work for any type is tests/test_report_photo_set.py's.
+
+    What is left here is the half this file is the right home for: a report
+    written two days ago keeps the time it was WRITTEN.
+    """
     authored = datetime.now(timezone.utc) - timedelta(days=2)
-    payload = dict(
-        _INVASIVE,
-        photo_url="https://example.org/knotweed.jpg",
-        authored_at=authored.isoformat(),
-    )
+    payload = dict(_INVASIVE, authored_at=authored.isoformat())
 
     body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
-    assert body["photo_url"] == "https://example.org/knotweed.jpg"
+    assert body["type"] == "invasive_species"
+    # And the field a client may no longer set is not set by having been sent.
+    assert body["photo_url"] is None
     stored = datetime.fromisoformat(body["timestamp"])
     assert abs((stored - authored).total_seconds()) < 5
 
@@ -464,6 +474,41 @@ def test_a_signed_in_stranger_sees_no_more_than_an_anonymous_one(client, db_sess
 
     assert ids == [verified.id]
     assert submitted.id not in ids
+
+
+# --- GET /reports/mine (#1916) -----------------------------------------------
+#
+# #1916 - A signed-in hiker's app sends its token on the three edge-cached
+# reads, so they either skip the cache or hide the hiker's own queued report.
+# The app now reads `GET /reports` with no token, so the one thing a token
+# bought there - a reporter's own report while it waits - comes from here.
+
+
+def test_reports_mine_is_the_callers_own_reports_at_any_status_and_nobody_elses(client, db_session):
+    reporter, submitted, verified = _verified_and_submitted_reports(db_session)
+    _someone_else, others_waiting, others_verified = _verified_and_submitted_reports(db_session)
+
+    response = client.get("/reports/mine", headers=auth_headers(reporter.id))
+
+    assert response.status_code == 200, response.text
+    assert [r["id"] for r in response.json()] == sorted([submitted.id, verified.id])
+    assert {others_waiting.id, others_verified.id}.isdisjoint(r["id"] for r in response.json())
+
+
+def test_reports_mine_tells_every_cache_not_to_keep_it(client, db_session):
+    """One person's list. A shared cache keeping it would hand one reporter's
+    waiting reports to the next caller."""
+    reporter, _submitted, _verified = _verified_and_submitted_reports(db_session)
+
+    response = client.get("/reports/mine", headers=auth_headers(reporter.id))
+
+    assert response.headers["cache-control"] == "private, no-store, max-age=0"
+
+
+def test_reports_mine_without_a_token_is_refused_rather_than_answered_empty(client):
+    """An empty list would say "you have no reports" to somebody the server
+    never identified."""
+    assert client.get("/reports/mine").status_code == 401
 
 
 # --- Idempotency (#243) --------------------------------------------------
@@ -784,7 +829,9 @@ def test_the_receipt_time_is_withheld_as_well(client, db_session):
 
 def test_a_reporter_reading_their_own_report_still_gets_everything(client, db_session):
     """The nuance the fix had to preserve. "Waiting" needs something to
-    appear on, and their own report is theirs to see in full."""
+    appear on, and their own report is theirs to see in full - all but the
+    account a thanks was credited to, which only a moderator reads
+    (test_the_filer_is_not_told_whose_account_a_thanks_was_credited_to)."""
     reporter_id = str(uuid.uuid4())
     db_session.add(Profile(id=reporter_id, role=Role.hiker))
     db_session.commit()
@@ -862,14 +909,52 @@ def _report_emitting_routes():
             else:
                 yield route
 
+    def with_local_helpers(endpoint) -> str:
+        """The handler's source, plus that of any module-local function it calls.
+
+        ONE LEVEL, DELIBERATELY. #1439 split the photo upload's checks into a
+        shared `_store_report_photo` so the indexed endpoint and the original
+        could not drift, and the handlers went from calling `for_viewer`
+        themselves to delegating - which read to this guard as two new leaks.
+        The guard was right to notice and wrong about what it saw, so it
+        follows the call now rather than the handlers being written back into
+        two copies to satisfy it.
+
+        Not transitively, because a guard that chases an arbitrary call graph
+        starts finding `for_viewer` down paths the handler cannot actually
+        reach, and a guard that passes for the wrong reason is worse than one
+        that fails for the right one. One level is what the refactor above
+        needs; a second would be a decision to take when something needs it.
+        """
+        source = inspect.getsource(endpoint)
+        module = inspect.getmodule(endpoint)
+        if module is None:
+            return source
+        for name, helper in vars(module).items():
+            if not inspect.isfunction(helper) or helper is endpoint:
+                continue
+            if inspect.getmodule(helper) is not module:
+                continue
+            if f"{name}(" in source:
+                source += "\n" + inspect.getsource(helper)
+        return source
+
     for route in walk(app.routes):
         endpoint = getattr(route, "endpoint", None)
         if endpoint is None:
             continue
         source = inspect.getsource(endpoint)
+        deep = with_local_helpers(endpoint)
         declared = str(getattr(route, "response_model", "") or "")
-        if "ReportOut" in declared or "ReportOut" in source:
-            yield route, source
+        if "ReportOut" in declared or "ReportOut" in deep:
+            # Two sources, because the two guards below want different
+            # scopes. Whether the response goes through `for_viewer` is a
+            # question about everything the handler reaches; whether a BARE
+            # ORM ROW is returned on the wire is a question about the handler
+            # alone - a helper returning a `Report` for the handler to work
+            # with is exactly what `_report_this_caller_may_upload_to` is
+            # for, and is not a leak.
+            yield route, source, deep
 
 
 def test_every_route_that_can_emit_a_report_goes_through_for_viewer():
@@ -893,8 +978,8 @@ def test_every_route_that_can_emit_a_report_goes_through_for_viewer():
     """
     offenders = [
         f"{sorted(route.methods)} {route.path} -> {route.endpoint.__name__}"
-        for route, source in _report_emitting_routes()
-        if "for_viewer" not in source
+        for route, _, deep in _report_emitting_routes()
+        if "for_viewer" not in deep
     ]
 
     assert offenders == [], (
@@ -908,7 +993,7 @@ def test_that_guard_is_actually_looking_at_something():
     """Guards the guard. A walk that failed to reach the routers - which is
     exactly what `app.routes` alone does here - would make the test above
     pass vacuously and for ever."""
-    found = {route.path for route, _ in _report_emitting_routes()}
+    found = {route.path for route, _, _ in _report_emitting_routes()}
 
     assert "/reports" in found
     assert "/reports/{report_id}" in found
@@ -1101,7 +1186,7 @@ def test_no_emitting_handler_returns_a_bare_orm_row(client):
     import re
 
     offenders = []
-    for route, source in _report_emitting_routes():
+    for route, source, _ in _report_emitting_routes():
         for line in source.splitlines():
             if re.match(r"\s*return [a-z_][a-z0-9_]*\s*(#.*)?$", line):
                 offenders.append(f"{route.path} -> {line.strip()}")
@@ -1110,3 +1195,290 @@ def test_no_emitting_handler_returns_a_bare_orm_row(client):
         "These return statements hand back a bare object - if it is an ORM "
         "row, reporter_id ships to whoever called (#252):\n  " + "\n  ".join(offenders)
     )
+
+
+# --- Where the coordinates came from, and how far to trust them (#1563) ------
+#
+# `lat`/`lon` alone cannot say whether they are a waypoint's surveyed position,
+# a GPS fix under canopy, or a thumb on a map at a planning zoom. The client
+# now says which, and for a fix says the platform's radius and how old the fix
+# was when the report took it. All three are client claims stored as sent - the
+# same posture as `mile` - so what the server owes is: keep them, never invent
+# them, and refuse the one shape that can only be a bug.
+
+
+def test_create_report_stores_where_the_coordinates_came_from(client):
+    user_id = str(uuid.uuid4())
+    payload = dict(
+        _VALID_PAYLOAD,
+        location_source="gps",
+        location_accuracy_m=12.5,
+        location_fix_age_s=40,
+    )
+
+    body = client.post("/reports", json=payload, headers=auth_headers(user_id)).json()
+
+    assert body["location_source"] == "gps"
+    assert body["location_accuracy_m"] == 12.5
+    assert body["location_fix_age_s"] == 40
+
+
+def test_a_report_that_states_no_provenance_is_null_rather_than_zero(client):
+    """An older client, or a report anchored to a waypoint, states no radius.
+
+    Zero would be a claim of a perfect fix no phone has ever made, and an age
+    of zero would say the fix arrived as the tap landed - both are answers,
+    and neither is the truth about a row that said nothing.
+    """
+    user_id = str(uuid.uuid4())
+
+    body = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(user_id)).json()
+
+    assert body["location_source"] is None
+    assert body["location_accuracy_m"] is None
+    assert body["location_fix_age_s"] is None
+
+
+def test_a_waypoint_anchored_report_carries_its_source_and_no_radius(client):
+    """`poi` says the coordinates are the waypoint's; there was no fix to
+    state a radius for, so the two fix fields stay null beside it."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, poi_id="atc_shelters:12", location_source="poi")
+
+    body = client.post("/reports", json=payload, headers=auth_headers(user_id)).json()
+
+    assert body["location_source"] == "poi"
+    assert body["location_accuracy_m"] is None
+    assert body["location_fix_age_s"] is None
+
+
+@pytest.mark.parametrize(
+    "field, bad",
+    [
+        ("location_accuracy_m", -1),
+        ("location_accuracy_m", -0.5),
+        ("location_fix_age_s", -1),
+    ],
+)
+def test_a_negative_radius_or_age_is_refused(client, field, bad):
+    """Below zero is neither a radius nor an age - the client floors both at
+    zero, so a negative can only be a bug, and it is better found at the wire
+    than stored under every honest row."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, location_source="gps", **{field: bad})
+
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
+
+    assert response.status_code == 422
+    assert field in response.text
+
+
+def test_a_source_the_server_does_not_know_is_refused(client):
+    """Like an unknown `type`: the vocabulary is the enum, and growing it is a
+    server release before the client release that sends the new word."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, location_source="carrier_pigeon")
+
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
+
+    assert response.status_code == 422
+    assert "location_source" in response.text
+
+
+def test_a_radius_that_is_not_a_number_is_refused():
+    """NaN would make every comparison false and serialize as null in a field
+    that was sent - schemas/common.FiniteFloat closes that at the type."""
+    with pytest.raises(ValidationError):
+        ReportCreate(type="blowdown", reporter_type="thru", location_accuracy_m=float("nan"))
+
+
+def test_the_provenance_travels_back_out_on_the_public_list(client, db_session):
+    """A pin on every phone is where the difference between a surveyed
+    waypoint and a ±800 m fix is owed, so the fields are public alongside the
+    coordinates they qualify."""
+    reporter = make_profile(db_session, Role.hiker)
+    db_session.add(
+        Report(
+            reporter_id=reporter.id,
+            type=ReportType.blowdown,
+            lat=35.6,
+            lon=-83.5,
+            location_source="gps",
+            location_accuracy_m=800.0,
+            location_fix_age_s=2400,
+            reporter_type=ReporterType.thru,
+            status=ReportStatus.verified,
+            visibility=Visibility.public,
+        )
+    )
+    db_session.commit()
+
+    [listed] = client.get("/reports").json()
+
+    assert listed["location_source"] == "gps"
+    assert listed["location_accuracy_m"] == 800.0
+    assert listed["location_fix_age_s"] == 2400
+
+
+def test_a_resent_report_keeps_the_provenance_it_was_filed_with(client):
+    """The idempotent resend returns the stored row, and the stored row is the
+    one whose fix was described - a retry with no fields must not blank it."""
+    user_id = str(uuid.uuid4())
+    report_id = str(uuid.uuid4())
+    first = dict(
+        _VALID_PAYLOAD,
+        id=report_id,
+        location_source="gps",
+        location_accuracy_m=9.0,
+        location_fix_age_s=3,
+    )
+    client.post("/reports", json=first, headers=auth_headers(user_id))
+
+    resent = client.post("/reports", json=dict(_VALID_PAYLOAD, id=report_id), headers=auth_headers(user_id))
+
+    assert resent.status_code == 200
+    assert resent.json()["location_source"] == "gps"
+    assert resent.json()["location_accuracy_m"] == 9.0
+    assert resent.json()["location_fix_age_s"] == 3
+
+
+# --- Who signed it, in which name, and whether they may be contacted (#1563) --
+#
+# The maintainer's additions of 2026-09-17: a hiker chooses, per report, to
+# sign with their trail name or their real name, and ticks (or does not) "You
+# can contact me for more information". Both are about the person rather than
+# the trail, so they follow `reporter_id`'s rule - stored for the moderator
+# and the reporter, withheld from everyone else - and they leave with the
+# account (tests/test_account_deletion.py).
+
+
+def test_create_report_stores_the_name_it_was_signed_with_and_which_name_it_is(client):
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name="Jane Doe", signed_name_kind="real", contact_ok=True)
+
+    body = client.post("/reports", json=payload, headers=auth_headers(user_id)).json()
+
+    assert body["signed_name"] == "Jane Doe"
+    assert body["signed_name_kind"] == "real"
+    assert body["contact_ok"] is True
+
+
+def test_a_report_that_says_nothing_about_its_signer_is_unsigned_and_not_contactable(client):
+    """No name, no kind, and `contact_ok` false: an unticked box is not a yes."""
+    user_id = str(uuid.uuid4())
+
+    body = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(user_id)).json()
+
+    assert body["signed_name"] is None
+    assert body["signed_name_kind"] is None
+    assert body["contact_ok"] is False
+
+
+@pytest.mark.parametrize("name", [None, "", "   "])
+def test_a_kind_without_a_name_is_dropped_rather_than_stored(client, name):
+    """`signed_name_kind` says which name `signed_name` is. With no name it is
+    a claim about nothing, and whitespace is not a name."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name=name, signed_name_kind="trail")
+
+    body = client.post("/reports", json=payload, headers=auth_headers(user_id)).json()
+
+    assert body["signed_name"] is None
+    assert body["signed_name_kind"] is None
+
+
+def test_a_signed_name_over_the_cap_is_refused(client, db_session):
+    """`SIGNED_NAME_MAX_CHARS` is 200, and 201 characters is a 422 naming the
+    field - not a truncation, which would store a name the hiker never
+    signed. Nothing is written."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name="x" * 201, signed_name_kind="trail")
+
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
+
+    assert response.status_code == 422
+    assert "signed_name" in response.text
+    assert db_session.query(Report).count() == 0
+
+
+def test_a_signed_name_at_the_cap_is_accepted(client):
+    """The other side of the boundary, so the test above cannot pass on a cap
+    that has quietly moved below 200."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name="x" * 200, signed_name_kind="trail")
+
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
+
+    assert response.status_code == 201
+    assert response.json()["signed_name"] == "x" * 200
+
+
+def test_a_name_kind_the_server_does_not_know_is_refused(client):
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name="Jane Doe", signed_name_kind="nickname")
+
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
+
+    assert response.status_code == 422
+    assert "signed_name_kind" in response.text
+
+
+def test_the_public_list_never_carries_a_name_or_the_consent(client, db_session):
+    """A name beside a trail position and a time is the linkability
+    IDENTITY_AND_PRIVACY.md exists to prevent; the anonymous attribution stays
+    `reporter_type` alone. The consent is about the person too."""
+    reporter = make_profile(db_session, Role.hiker)
+    db_session.add(
+        Report(
+            reporter_id=reporter.id,
+            type=ReportType.blowdown,
+            lat=35.6,
+            lon=-83.5,
+            signed_name="Jane Doe",
+            signed_name_kind="real",
+            contact_ok=True,
+            reporter_type=ReporterType.thru,
+            status=ReportStatus.verified,
+            visibility=Visibility.public,
+        )
+    )
+    db_session.commit()
+
+    [listed] = client.get("/reports").json()
+    assert listed["signed_name"] is None
+    assert listed["signed_name_kind"] is None
+    assert listed["contact_ok"] is None
+
+    # A stranger with a token is still a stranger.
+    stranger = make_profile(db_session, Role.hiker)
+    [listed] = client.get("/reports", headers=auth_headers(stranger.id)).json()
+    assert listed["signed_name"] is None
+    assert listed["contact_ok"] is None
+
+
+def test_a_moderator_sees_the_name_and_the_consent(client, db_session):
+    """The whole point of carrying them: the club that follows up knows what
+    to call the hiker and whether they said it may."""
+    reporter = make_profile(db_session, Role.hiker)
+    moderator = make_profile(db_session, Role.club_admin)
+    db_session.add(
+        Report(
+            reporter_id=reporter.id,
+            type=ReportType.blowdown,
+            lat=35.6,
+            lon=-83.5,
+            signed_name="Switchback",
+            signed_name_kind="trail",
+            contact_ok=True,
+            reporter_type=ReporterType.thru,
+            status=ReportStatus.submitted,
+            visibility=Visibility.public,
+        )
+    )
+    db_session.commit()
+
+    [queued] = client.get("/moderation/queue", headers=auth_headers(moderator.id)).json()["reports"]
+
+    assert queued["signed_name"] == "Switchback"
+    assert queued["signed_name_kind"] == "trail"
+    assert queued["contact_ok"] is True

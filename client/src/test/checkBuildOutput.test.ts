@@ -296,6 +296,36 @@ describe('check-build-output.mjs', () => {
     expect(output).toContain('assets/index-x.js')
   })
 
+  // #1591: the same shape one size down - a module the shell should never
+  // parse before its first frame, named by a string only it carries.
+  it.each([
+    ['the map style module', 'Corridor-view centerline'],
+    ['the live sheet', 'hillshade-exaggeration'],
+    ['the pmtiles library', 'Wrong magic number for PMTiles archive'],
+    // features/LAUNCH_BUDGET.md §4.4's four layer builders, reached for an id
+    // until 2026-10-05 and now behind leaves of their own.
+    ['the waypoint layer builder (map/poiLayers.ts)', 'ring_lift'],
+    [
+      'the corridor layer builder (map/corridorLayers.ts)',
+      'corridor-unattributed-casing',
+    ],
+    ['the day-hike layer builder (map/dayHikeLayers.ts)', 'day-hike-mile-tick-labels'],
+    ['the route layer builder (map/routeLayers.ts)', 'route_point_role'],
+  ])('fails when %s is in the module script the document loads', (what, marker) => {
+    passingDist()
+    writeFileSync(
+      join(dist, 'assets', 'index-x.js'),
+      `new Worker('assets/${WORKER}'); const label = ${JSON.stringify(marker)}`,
+    )
+
+    const { code, output } = runCheck()
+
+    expect(code).not.toBe(0)
+    expect(output).toContain(`${what}`)
+    expect(output).toContain('is in a chunk the document loads before any import()')
+    expect(output).toContain('assets/index-x.js')
+  })
+
   it('follows a static import out of the entry and fails on MapLibre there', () => {
     passingDist()
     writeFileSync(

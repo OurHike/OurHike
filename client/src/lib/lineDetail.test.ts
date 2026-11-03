@@ -11,6 +11,8 @@ import { CHOSEN_SYSTEM_SOURCES as MAP_CHOSEN_SYSTEM_SOURCES } from '../map/nearb
 import { TRAILS } from './trails'
 import type { SpurRecord } from './spurDestination'
 import type { StoredPoi } from './trailData'
+import type { LineClimb } from './lineClimb'
+import { STANDARD_PACE } from './pace'
 
 // What the line-detail sheet says (#134), decided as strings so the
 // decisions are testable without a canvas. The fixture spur is the one
@@ -220,6 +222,24 @@ const SOURCES: TrailSourceTable = {
   },
 }
 
+describe('a club’s own line', () => {
+  it('marks a club line so the sheet can say it is drawn and not routed', () => {
+    expect(buildLineDetail({ ...NEARBY_LINE, lineKind: 'club' }, {}, []).isClubLine).toBe(
+      true,
+    )
+  })
+
+  it('marks no network line, and no line of a release that predates the mark', () => {
+    expect(buildLineDetail(NEARBY_LINE, {}, []).isClubLine).toBe(false)
+    expect(buildLineDetail({ ...NEARBY_LINE, lineKind: null }, {}, []).isClubLine).toBe(
+      false,
+    )
+    expect(
+      buildLineDetail({ ...NEARBY_LINE, lineKind: 'network' }, {}, []).isClubLine,
+    ).toBe(false)
+  })
+})
+
 describe('a nearby trail’s sheet', () => {
   it('names its length and its park on one line', () => {
     const detail = buildLineDetail(NEARBY_LINE, {}, [], 'imperial', 'Appalachian Trail')
@@ -321,6 +341,43 @@ describe('a long-term closed trail', () => {
       const detail = buildLineDetail({ ...NEARBY_LINE, trailStatus: status }, {}, [])
       expect(detail.closureLine).toBe('Closed')
     }
+  })
+})
+
+describe('a section an organization’s own notice closed', () => {
+  // What dbt's int_trail_lines__network_section_closures ships: USFS drew the
+  // line, PATC's notice named its section closed, and the reason is PATC's
+  // own sentence, verbatim.
+  const SECTION_CLOSED = {
+    ...NEARBY_LINE,
+    source: 'usfs_trails',
+    name: 'TUSCARORA - DOLL RIDGE',
+    trailStatus: 'closed',
+    closureKind: 'section',
+    closureReason:
+      'The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission.',
+    closureSource: 'patc_tuscarora_updates',
+  }
+
+  it('says who closed it in their words, with no “temporarily” their notice did not say', () => {
+    const detail = buildLineDetail(
+      SECTION_CLOSED,
+      {},
+      [],
+      'imperial',
+      'Appalachian Trail',
+      undefined,
+      {
+        ...SOURCES,
+        usfs_trails: { attribution: 'USDA Forest Service' },
+        patc_tuscarora_updates: {
+          attribution: 'Potomac Appalachian Trail Club (Tuscarora Trail Committee)',
+        },
+      },
+    )
+    expect(detail.closureLine).toBe(
+      'Closed by Potomac Appalachian Trail Club (Tuscarora Trail Committee) · The Tuscarora Trail section just west of Massanutten Mountain is closed due to loss of landowner permission.',
+    )
   })
 })
 
@@ -518,5 +575,159 @@ describe('two trails on one treadway (#1384)', () => {
       [],
     )
     expect(blank.sharedLine).toBeNull()
+  })
+})
+
+describe('what the sheet says about climb (#1476)', () => {
+  const LINE: TappedLineFacts = {
+    id: 'nynjtc:ramapo-dunderberg',
+    source: 'nynjtc_trails',
+    name: 'Ramapo–Dunderberg',
+    blazeColor: 'Red',
+    lengthMiles: 19.1,
+  }
+
+  function detail(climb: LineClimb, units: 'imperial' | 'metric' = 'imperial') {
+    return buildLineDetail(
+      LINE,
+      {},
+      [],
+      units,
+      'Appalachian Trail',
+      STANDARD_PACE,
+      {},
+      climb,
+    )
+  }
+
+  it('shows an unverified climb with the extent it was summed over (#1516)', () => {
+    // The figure is not withheld - it is real for the distance it covers, and
+    // dropping it would lose the climb on every line published before the
+    // exporter carried a length. What changes is the sentence under it: a
+    // scope, not a hedge. "Measured" is the word this phone has not earned
+    // when it cannot tell whether it holds the whole trail.
+    const { climbLine, climbNote } = detail({
+      kind: 'unverified',
+      gainFt: 1100,
+      lossFt: 900,
+      miles: 3.4,
+    })
+
+    expect(climbLine).toBe('+1,100 ft / −900 ft')
+    expect(climbNote).toBe(
+      'Climb over the 3.4 mi of this trail on this phone, which may not be all of it.',
+    )
+    // The estimate disclosure belongs to `measured` alone; two sentences
+    // about the same number is how a hiker stops reading either.
+    expect(climbNote).not.toContain('expect other sources to differ')
+  })
+
+  it('prints gain and loss in DayHikeCard’s own vocabulary', () => {
+    // One fact, two screens, one way of writing it: a hiker meeting +4,900 ft
+    // on the card and something else here would have to translate.
+    const { climbLine } = detail({
+      kind: 'measured',
+      gainFt: 4900,
+      lossFt: 4870,
+      miles: 19.1,
+    })
+
+    expect(climbLine).toBe('+4,900 ft / −4,870 ft')
+  })
+
+  it('never prints a figure without the sentence saying it is an estimate', () => {
+    // The maintainer's decision of 2026-08-25: ship the figure AND frame it.
+    // The pipeline's own check reads +18.8% against a maintaining club on
+    // rolling ground, and the junction chopping pulls the other way; nobody
+    // has measured the net.
+    const { climbNote } = detail({
+      kind: 'measured',
+      gainFt: 4900,
+      lossFt: 4870,
+      miles: 19.1,
+    })
+
+    expect(climbNote).toMatch(/estimate/)
+  })
+
+  it('follows the hiker’s units', () => {
+    const { climbLine } = detail(
+      { kind: 'measured', gainFt: 4900, lossFt: 4870, miles: 19.1 },
+      'metric',
+    )
+
+    expect(climbLine).toBe('+1,494 m / −1,484 m')
+  })
+
+  it('refuses a total over a DEM hole, and says how much of the trail it is', () => {
+    const { climbLine, climbNote } = detail({
+      kind: 'unmeasured',
+      measuredMiles: 17.1,
+      unmeasuredMiles: 2,
+    })
+
+    expect(climbLine).toBeNull()
+    expect(climbNote).toBe(
+      'Climb is not measured on 2.0 mi of this trail, so no total is shown.',
+    )
+  })
+
+  it('points a partly-downloaded line at the download rather than at the data', () => {
+    // The one absence a hiker can act on, and it must not be worded like the
+    // one they cannot.
+    const { climbLine, climbNote } = detail({
+      kind: 'partial',
+      heldMiles: 4.2,
+      publishedMiles: 19.1,
+    })
+
+    expect(climbLine).toBeNull()
+    expect(climbNote).toBe(
+      'Only 4.2 mi of this trail is downloaded, so its climb would be low.',
+    )
+  })
+
+  it('says nothing at all where there are no figures on this phone', () => {
+    // A permanent "climb unknown" on every line is the caveat-on-every-line
+    // that buries the two a hiker's safety turns on.
+    const { climbLine, climbNote } = detail({ kind: 'none' })
+
+    expect(climbLine).toBeNull()
+    expect(climbNote).toBeNull()
+  })
+
+  it('renders exactly as it always did for a caller that passes no climb', () => {
+    const before = buildLineDetail(LINE, {}, [])
+
+    expect(before.climbLine).toBeNull()
+    expect(before.climbNote).toBeNull()
+  })
+})
+
+describe('the paper map (#1574)', () => {
+  const LINE = {
+    lead: 'This spot is on sheet 119 of the New York-New Jersey Trail Conference’s',
+    title: 'Harriman-Bear Mountain Trails Map',
+    url: 'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map?utm_source=ourhike',
+  }
+
+  it('carries each resolved line through untouched - lead, product title and store url', () => {
+    const detail = buildLineDetail(
+      SPUR_LINE,
+      spur(),
+      [ROCKY_RUN],
+      'imperial',
+      'Appalachian Trail',
+      STANDARD_PACE,
+      {},
+      { kind: 'none' },
+      [LINE],
+    )
+
+    expect(detail.paperMaps).toEqual([LINE])
+  })
+
+  it('carries no paper map by default, as every caller written before it', () => {
+    expect(buildLineDetail(SPUR_LINE, spur(), [ROCKY_RUN]).paperMaps).toEqual([])
   })
 })

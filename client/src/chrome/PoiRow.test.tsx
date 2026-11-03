@@ -28,10 +28,14 @@ describe('PoiRow', () => {
     )
   })
 
-  it('keeps a broken rim on an unverified place', () => {
+  it('draws an unverified place hollow, as the map does (#1682)', () => {
     const { container } = render(<PoiRow kind="water" title="Spring" confidence="low" />)
 
-    expect(container.querySelector('.map-icon__edge')).toHaveAttribute('stroke-dasharray')
+    expect(container.querySelector('svg')).toHaveAttribute('data-confidence', 'low')
+    expect(container.querySelector('.map-icon__ring')).toHaveAttribute(
+      'stroke',
+      POI_COLORS.water,
+    )
   })
 
   it('is a button only when it opens something', async () => {

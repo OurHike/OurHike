@@ -192,13 +192,16 @@ jobs:
           MAX_CELLS: ${{ inputs.max_cells }}
 
       - name: Say what will run
+        env:
+          TOTAL: ${{ steps.cells.outputs.total }}
+          PARTIAL: ${{ steps.cells.outputs.partial }}
         run: |
-          echo "${{ steps.cells.outputs.total }} cells in the corridor."
-          if [ "${{ steps.cells.outputs.partial }}" = "true" ]; then
+          echo "$TOTAL cells in the corridor."
+          if [ "$PARTIAL" = "true" ]; then
             echo "::warning::Building a SUBSET. assemble and publish are skipped - a partial corridor must never ship."
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: corridor-inputs
           path: |
@@ -239,7 +242,7 @@ jobs:
       - name: Warm the DuckDB spatial extension
         run: python -c "import duckdb; duckdb.connect().execute('INSTALL spatial; LOAD spatial;')"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: corridor-inputs
           path: pipeline/data/raw/
@@ -259,7 +262,7 @@ jobs:
 
       # Each cell's tiles+overview+receipt cross to assemble as one artifact.
       # Retention is minimal: intermediates that exist only to cross runners.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: raster-cell-${{ matrix.cell }}
           path: pipeline/data/processed/raster_cells/
@@ -302,12 +305,12 @@ jobs:
       # it is the same corridor the 51 cells were cut against, and re-running
       # fetch_all.py here could pick up an ArcGIS update mid-run and verify
       # against a centerline the tiles never saw.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: corridor-inputs
           path: pipeline/data/raw/
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: raster-cell-*
           merge-multiple: true
@@ -322,7 +325,7 @@ jobs:
       - name: What was built
         run: ls -la data/processed/*.pmtiles && df -h /
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pmtiles-archives
           path: pipeline/data/processed/*.pmtiles
@@ -345,6 +348,13 @@ jobs:
     # build-dem.yml, build-basemap.yml): publish() does a read-modify-write
     # of the manifest, and two concurrent publishes could interleave and
     # clobber each other's entries.
+    #
+    # `environment:` and `concurrency:` on the same job means a run left
+    # `waiting` on the reviewer above holds this group for as long as it
+    # waits - the same shape as `publish-vector-data.yml`'s `publish` job
+    # (#1271), moot here in practice while this workflow stays withdrawn
+    # (#855) but worth fixing consistently with the other three if it is
+    # ever revived.
     concurrency:
       group: publish-data
       cancel-in-progress: false
@@ -369,7 +379,7 @@ jobs:
       # PROCESSED_DIR at publish time rather than reading a baked manifest, so
       # nothing depends on this being the runner that produced them. It needs
       # ~1.6 GB rather than assemble's ~7 GB.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: pmtiles-archives
           path: pipeline/data/processed/

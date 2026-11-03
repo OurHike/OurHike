@@ -41,10 +41,12 @@ export interface SeriousWarning {
    *  download could not place, which then prints no mile line (D13). */
   mile: number | null
   /** When a moderator confirmed it (`verified_at`), or null where this
-   *  phone's copy carries no date - which is every copy read from the
-   *  published baseline, since export_conditions.py does not bake the
-   *  field (lib/api.ts). The badge still says who stood behind the claim,
-   *  and says that the date is missing rather than inventing one or
+   *  phone's copy carries no date. That used to be EVERY copy read from the
+   *  published baseline; since #1377 export_conditions.py bakes the field,
+   *  so it is now only a report nobody has confirmed, or a release published
+   *  before that landed (lib/api.ts carries the dates and how this comment
+   *  came to claim the opposite). The badge still says who stood behind the
+   *  claim, and says that the date is missing rather than inventing one or
    *  falling silent about it: a hiker weighing a claim about a person is
    *  entitled to know when somebody last stood behind it, and "the download
    *  does not say" is the honest answer here. */

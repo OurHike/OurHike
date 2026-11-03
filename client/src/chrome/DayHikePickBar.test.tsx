@@ -87,6 +87,9 @@ const ROUTE: GraphRoute = {
   // only has to be a valid GraphRoute. Null is the real state on a phone
   // holding no elevation artifact (#1011).
   climb: null,
+  // One tapped pair, and it produced both legs: the trail changes name under
+  // the hiker rather than at a point they placed.
+  legsPerPair: [2],
 }
 
 const DRAFT: DayHikeDraft = {
@@ -113,6 +116,12 @@ function routedFrom(route: GraphRoute, gapMiles = 0): DraftStatus {
     // The bar prints the total and not the parts, so the shape is what matters
     // here rather than the split.
     gaps: gapMiles > 0 ? [{ afterLegs: route.legs.length, miles: gapMiles }] : [],
+    // The two taps that bracket the walk. The bar prints counts rather than
+    // rows, so these matter to it only as the shape a routed status has.
+    turns: [
+      { afterLegs: 0, ordinal: 0, label: 1, endsStretch: false },
+      { afterLegs: route.legs.length, ordinal: 1, label: 2, endsStretch: false },
+    ],
   }
 }
 

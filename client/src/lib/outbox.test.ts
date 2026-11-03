@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set, update } from 'idb-keyval'
 import {
+  amendQueuedReport,
+  attachQueuedPhotos,
   enqueue,
   enqueueAppFailure,
   hasWorkThatNeedsNoAccount,
+  sendableNow,
   listQueued,
   removeQueued,
   retryQueued,
@@ -12,6 +15,7 @@ import {
   MAX_UNDO_HOLD_MS,
   OUTBOX_KEY,
   type AppFailureDraft,
+  type OutboxItem,
 } from './outbox'
 import { BUILD_INFO } from './buildInfo'
 
@@ -106,6 +110,21 @@ describe('listQueued', () => {
     mockedGet.mockResolvedValue(undefined)
 
     expect(await listQueued()).toEqual([])
+  })
+
+  it('reads a key holding something other than a list as empty, and writes past it (#1578)', async () => {
+    // Every other persisted store validates on read; this one cast whatever
+    // was under the key, so a non-list value threw "not iterable" from every
+    // flush and every enqueue after it.
+    let stored: unknown = { not: 'a queue' }
+    mockedGet.mockImplementation(async () => stored)
+    mockedUpdate.mockImplementation(async (_key, updater) => {
+      stored = updater(stored as never)
+    })
+
+    expect(await listQueued()).toEqual([])
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+    expect(await listQueued()).toHaveLength(1)
   })
 })
 
@@ -410,10 +429,101 @@ describe('a transient failure', () => {
   })
 })
 
+// --- One challenge's tags in the order they were made (Challenges) ---------
+
+describe("a challenge's tag that fails for want of signal", () => {
+  const AT = '2026-06-01T00:00:00.000Z'
+  const tag = (id: string, challenge: string, item: string) => ({
+    id,
+    authoredAt: AT,
+    challengeTag: { challenge_id: challenge, item_id: item, how: 'hand' },
+  })
+  const untag = (id: string, challenge: string, item: string | null) => ({
+    id,
+    authoredAt: AT,
+    challengeUntag: { challenge_id: challenge, item_id: item },
+  })
+
+  it('holds back its removal, so the removal never lands before the tag', async () => {
+    withStoredQueue([tag('t1', 'atc', 'mcafee'), untag('u1', 'atc', 'mcafee')])
+    const sent: string[] = []
+
+    const result = await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
+
+    expect(sent).toEqual([])
+    expect(result).toEqual({ sent: 0, failed: 2, stuck: 0, held: 0 })
+  })
+
+  it("holds back that challenge's entry, which the server reads the tags for", async () => {
+    withStoredQueue([
+      tag('t1', 'atc', 'mcafee'),
+      {
+        id: 'e1',
+        authoredAt: AT,
+        challengeEntry: { challenge_id: 'atc', name: 'Jo', item_ids: ['mcafee'] },
+      },
+    ])
+    const sent: string[] = []
+
+    await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
+
+    expect(sent).toEqual([])
+  })
+
+  it("holds back nothing of another challenge's, nor any report", async () => {
+    withStoredQueue([
+      tag('t1', 'atc', 'mcafee'),
+      untag('u2', 'long-path', null),
+      { id: 'r1', authoredAt: AT, payload: { type: 'blowdown' } },
+    ])
+    const sent: string[] = []
+
+    await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('offline')
+        sent.push(item.id)
+      },
+      () => null,
+    )
+
+    expect(sent).toEqual(['u2', 'r1'])
+  })
+
+  it('does not hold anything back behind a tag the server refused', async () => {
+    // A 4xx never reached the server's table, so nothing behind it can land
+    // out of order against it.
+    withStoredQueue([tag('t1', 'atc', 'mcafee'), untag('u1', 'atc', 'mcafee')])
+    const sent: string[] = []
+
+    await flushOutbox(
+      async (item) => {
+        if (item.id === 't1') throw new Error('refused')
+        sent.push(item.id)
+      },
+      () => 'This account has more challenge tags than one hiker can make.',
+    )
+
+    expect(sent).toEqual(['u1'])
+  })
+})
+
 // --- Carrying the photo, not a link to one (#234) -------------------------
 
-describe('a report queued with a photo', () => {
+describe('a report queued with photos', () => {
   const BYTES = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })
+  const SECOND = new Blob([new Uint8Array([4, 5, 6])], { type: 'image/jpeg' })
 
   // Its own empty store per test. The global `beforeEach` clears calls but
   // not implementations, so without this the queue is whatever the previous
@@ -426,42 +536,47 @@ describe('a report queued with a photo', () => {
     // Not `payload.photo_url`, which is the shape for a photo already
     // uploaded. Out here the report is usually written with no signal at all
     // and flushes days later, so the image has to survive in IndexedDB.
-    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), BYTES)
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), [BYTES, SECOND])
 
     const [item] = await listQueued()
-    expect(item.photo).toBe(BYTES)
+    // In pick order, which is the order lib/api.ts numbers them in - a
+    // blowdown is three trunks and the first photo is the one the note is
+    // usually written about (#1439).
+    expect(item.photos).toEqual([BYTES, SECOND])
   })
 
-  it('leaves the key off entirely when there is no photo', async () => {
-    // An explicit `photo: undefined` is a difference that reads as one to
-    // every comparison and rewrite the queue goes through.
+  it('leaves the key off entirely when there are no photos', async () => {
+    // An explicit `photos: undefined` is a difference that reads as one to
+    // every comparison and rewrite the queue goes through - and so is an
+    // empty array, which is why both are dropped.
     await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), [])
 
-    const [item] = await listQueued()
-    expect('photo' in item).toBe(false)
+    const queued = await listQueued()
+    expect(queued.map((item) => 'photos' in item)).toEqual([false, false])
   })
 
   it('hands the photo to the sender along with the report', async () => {
     // The send is what turns bytes into an upload; the outbox's only job is
     // that they are still there when it runs.
-    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), BYTES)
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), [BYTES])
     const send = vi.fn().mockResolvedValue(undefined)
 
     await flushOutbox(send)
 
-    expect(send.mock.calls[0][0].photo).toBe(BYTES)
+    expect(send.mock.calls[0][0].photos).toEqual([BYTES])
   })
 
   it('keeps the photo when the send fails and the item stays queued', async () => {
     // The retry has to carry the same bytes; losing them on the first failed
     // flush would mean the photo only ever survived a first-try success,
     // which on this trail is the uncommon case.
-    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), BYTES)
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), [BYTES, SECOND])
 
     await flushOutbox(vi.fn().mockRejectedValue(new Error('no signal')))
 
     const [item] = await listQueued()
-    expect(item.photo).toBe(BYTES)
+    expect(item.photos).toEqual([BYTES, SECOND])
   })
 })
 
@@ -562,6 +677,40 @@ describe('an app-failure report in the queue', () => {
 
 // The predicate lib/outboxSync.ts consults before declining to flush while
 // signed out. Without it the one report that needs no account waited for one.
+describe('sendableNow', () => {
+  const REPORT: OutboxItem = {
+    id: 'r-1',
+    authoredAt: '2026-07-27T08:00:00.000Z',
+  } as OutboxItem
+  const APP_FAILURE: OutboxItem = {
+    id: 'f-1',
+    authoredAt: '2026-07-27T09:00:00.000Z',
+    appFailure: {
+      what_happened: 'It stopped drawing my position.',
+      harms: [],
+      build: 'OurHike 1.0.0 · commit 6e23f12 · built 2026-06-01 00:00 UTC',
+      was_offline: true,
+    },
+  }
+
+  it('counts every unfailed item while signed in', () => {
+    expect(sendableNow([REPORT, APP_FAILURE], true)).toBe(2)
+  })
+
+  it('counts only app-failure reports while signed out, the one write that needs no account', () => {
+    expect(sendableNow([REPORT, APP_FAILURE], false)).toBe(1)
+    expect(sendableNow([REPORT], false)).toBe(0)
+  })
+
+  it('never counts an item already marked failed', () => {
+    const failed = {
+      ...REPORT,
+      failure: { reason: 'refused', at: '2026-07-27T10:00:00.000Z', build: 'x' },
+    } as OutboxItem
+    expect(sendableNow([failed], true)).toBe(0)
+  })
+})
+
 describe('hasWorkThatNeedsNoAccount', () => {
   const FAILURE: AppFailureDraft = {
     what_happened: 'It stopped drawing my position.',
@@ -720,5 +869,145 @@ describe('a report held for its undo window', () => {
         AT.getTime(),
       ),
     ).toBe(false)
+  })
+})
+
+describe('amending a report still in the queue (#1563)', () => {
+  const WRITTEN = new Date('2026-07-27T08:00:00Z')
+  const BYTES = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })
+
+  beforeEach(() => {
+    withStoredQueue()
+  })
+
+  it('writes the note onto the queued report, leaves the rest alone, and answers true', async () => {
+    // The receipt's "Add detail - optional", written on the way out. True is
+    // what lets the receipt close quietly.
+    await enqueue({ ...DRAFT, signed_name: 'Switchback' }, WRITTEN)
+    const [item] = await listQueued()
+
+    await expect(
+      amendQueuedReport(item.id, { note: 'Big oak, step over the top.' }),
+    ).resolves.toBe(true)
+
+    const [amended] = await listQueued()
+    expect(amended.payload).toMatchObject({
+      type: 'blowdown',
+      note: 'Big oak, step over the top.',
+      signed_name: 'Switchback',
+    })
+  })
+
+  it('clears a key given an explicit undefined - an unticked box has no value, not a false one', async () => {
+    await enqueue({ ...DRAFT, contact_ok: true }, WRITTEN)
+    const [item] = await listQueued()
+
+    await amendQueuedReport(item.id, { contact_ok: undefined })
+
+    const [amended] = await listQueued()
+    expect('contact_ok' in (amended.payload ?? {})).toBe(false)
+  })
+
+  it('answers false for a report that has already gone, and writes nothing', async () => {
+    await expect(amendQueuedReport('gone', { note: 'too late' })).resolves.toBe(false)
+    expect(await listQueued()).toEqual([])
+  })
+
+  it('answers false while the report\u2019s own send is out, rather than writing to a row about to go', async () => {
+    // The flush reads the queue, sends, then removes the item. An amendment
+    // landing between the send and the removal would be written to a row
+    // the success path deletes a moment later - the server holds the body
+    // from before it, and the queue no longer holds the words. False is the
+    // truth the receipt can say (review of #1571). The photos the same.
+    await enqueue(DRAFT, WRITTEN)
+    const [item] = await listQueued()
+    let amendedMidFlight: boolean | null = null
+    let attachedMidFlight: boolean | null = null
+
+    await flushOutbox(async () => {
+      amendedMidFlight = await amendQueuedReport(item.id, { note: 'mid-flight' })
+      attachedMidFlight = await attachQueuedPhotos(item.id, [BYTES])
+    })
+
+    expect(amendedMidFlight).toBe(false)
+    expect(attachedMidFlight).toBe(false)
+    expect(await listQueued()).toEqual([])
+  })
+
+  it('sends the second report with the note added to it while the first report was sending', async () => {
+    // flushOutbox used to read the queue once and send each item from that
+    // snapshot. An amendment to report two, accepted while report one's
+    // request was out, was written to the stored row and then lost: report
+    // two went out as it was at the start of the pass, and its row - the only
+    // copy of the added note - was deleted on success (v1.3.2 release review).
+    await enqueue({ ...DRAFT, note: 'first' }, WRITTEN)
+    await enqueue({ ...DRAFT, note: 'second' }, WRITTEN)
+    const [, second] = await listQueued()
+    const sentNotes: Array<string | undefined> = []
+    let amended: boolean | null = null
+
+    await flushOutbox(async (item) => {
+      if (item.payload?.note === 'first') {
+        amended = await amendQueuedReport(second.id, { note: 'ADDED DETAIL' })
+      }
+      sentNotes.push(item.payload?.note)
+    })
+
+    expect(amended).toBe(true)
+    expect(sentNotes).toEqual(['first', 'ADDED DETAIL'])
+  })
+
+  it('takes an amendment again once a failed send has left the report queued', async () => {
+    // The guard is the request, not the item: a report a flush could not
+    // send is back in the queue and back to being amendable.
+    await enqueue(DRAFT, WRITTEN)
+    const [item] = await listQueued()
+    await flushOutbox(vi.fn().mockRejectedValue(new Error('no signal')))
+
+    await expect(amendQueuedReport(item.id, { note: 'after the retry' })).resolves.toBe(
+      true,
+    )
+    await expect(attachQueuedPhotos(item.id, [BYTES])).resolves.toBe(true)
+  })
+})
+
+describe('attaching photos to a report still in the queue (#1563)', () => {
+  const WRITTEN = new Date('2026-07-27T08:00:00Z')
+  const BYTES = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })
+  const SECOND = new Blob([new Uint8Array([4, 5, 6])], { type: 'image/jpeg' })
+  const THIRD = new Blob([new Uint8Array([7, 8, 9])], { type: 'image/jpeg' })
+
+  beforeEach(() => {
+    withStoredQueue()
+  })
+
+  it('stores the whole set beside the report, replacing whatever it held', async () => {
+    // The receipt is the one surface that attaches this way and it holds
+    // the full list, so the set replaces rather than appends: a tile removed
+    // on the receipt is a photo that must not travel.
+    await enqueue(DRAFT, WRITTEN, [BYTES])
+    const [item] = await listQueued()
+
+    await expect(attachQueuedPhotos(item.id, [SECOND, THIRD])).resolves.toBe(true)
+
+    const [attached] = await listQueued()
+    expect(attached.photos).toEqual([SECOND, THIRD])
+    expect(attached.payload).toEqual(item.payload)
+  })
+
+  it('removes the key rather than writing an empty array when the set is empty', async () => {
+    // `enqueue`'s rule, kept: an empty array is a difference that reads as
+    // one to every comparison the queue goes through.
+    await enqueue(DRAFT, WRITTEN, [BYTES])
+    const [item] = await listQueued()
+
+    await attachQueuedPhotos(item.id, [])
+
+    const [attached] = await listQueued()
+    expect('photos' in attached).toBe(false)
+  })
+
+  it('answers false for a report that has already gone', async () => {
+    await expect(attachQueuedPhotos('gone', [BYTES])).resolves.toBe(false)
   })
 })

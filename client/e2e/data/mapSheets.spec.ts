@@ -32,6 +32,7 @@ import {
   ABOVE_THE_SEAM_ZOOM,
   BELOW_THE_SEAM_ZOOM,
 } from '../support/seed'
+import { freshenNewestNotice } from '../support/freshNotice'
 
 /**
  * HOW LONG THE TRAIL SKETCHES ARE ALLOWED TO TAKE, and why this is not the
@@ -82,6 +83,17 @@ const SKETCHES_BOUND_MS = 90_000
  */
 test.describe.configure({ timeout: 180_000 })
 
+/**
+ * The card's one pull, by every name it can carry (chrome/PoiCard.tsx's
+ * `expandLabel`): "Notes & details" where the type takes notes, "Details"
+ * where it does not, and either with weather named in it once a forecast for
+ * the waypoint's square has arrived (#1056) - "Notes, weather & details",
+ * "Weather & details". The forecast arrives after the card does, so the name
+ * can change while a test is looking at it; anchoring on every form is what
+ * keeps that from being a race.
+ */
+const THE_PULL = /^(Notes, weather & details|Notes & details|Weather & details|Details)$/
+
 /** On the map tab, past first run, at whatever camera the caller seeded. */
 async function openMap(page: Page): Promise<void> {
   await seedPreferences(page)
@@ -90,10 +102,18 @@ async function openMap(page: Page): Promise<void> {
   await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
 }
 
-/** Above the pin seam, where pins draw and the trail line is thick enough to
- *  touch. Seeded before the boot, so the app opens there rather than flying. */
-async function openMapOnTheTrail(page: Page): Promise<void> {
-  await seedCamera(page, ON_THE_TRAIL, ABOVE_THE_SEAM_ZOOM)
+/** Above the pin seam by default, where pins draw and the trail line is thick
+ *  enough to touch. Seeded before the boot, so the app opens there rather than
+ *  flying.
+ *
+ *  The zoom is a parameter because the notice sweep below needs a wider frame
+ *  than the line and card sweeps do, for a reason that is about the data
+ *  rather than about the app - see `tapANotice`. */
+async function openMapOnTheTrail(
+  page: Page,
+  zoom: number = ABOVE_THE_SEAM_ZOOM,
+): Promise<void> {
+  await seedCamera(page, ON_THE_TRAIL, zoom)
   await openMap(page)
   // WAIT ON SOMETHING THAT PROVES THE SEQUENCE COMPLETED, not on a timer
   // (CLAUDE.md). The In view door is not enough: it appears as soon as the
@@ -121,6 +141,20 @@ async function openMapOnTheTrail(page: Page): Promise<void> {
  * clears the pills at both phone heights this suite runs.
  */
 const HEADER_ROWS = 7
+
+/** Every dialog a tap on this map can open that is NOT the one a sweep is
+ *  hunting. Listed rather than matched by a pattern, so adding a sheet to the
+ *  app is a deliberate line here rather than a silent change in what a sweep
+ *  will click on. `Legend` is absent on purpose: the sweeps close it before
+ *  they begin, and a sweep that could reopen and re-close it would hide a real
+ *  regression in that opening. */
+const OTHER_SHEETS = ['Who maintains this trail', 'Which long hike?'] as const
+
+/** A dialog by its accessible name, which is how every sheet in this file is
+ *  found. */
+function sheetNamed(page: Page, name: string) {
+  return page.getByRole('dialog', { name })
+}
 
 async function frameOf(page: Page): Promise<{
   x: number
@@ -170,18 +204,33 @@ async function openLegend(page: Page): Promise<Locator> {
  * trip. The coarse grid below is that measurement turned into a budget — it
  * reaches that point in about fifteen taps — and the fine pass behind it is
  * what catches a release that moves the line between two coarse rows.
+ *
+ * ONLY A SHEET THAT OFFERS "Take this trail" ENDS THE SWEEP. Release
+ * 2026-10-03 draws the National Park Service's trails at this camera, and
+ * the sweep's first hit there was Sugarland Mountain Trail, whose sheet says
+ * "Not the trail you chose" and offers no Take (flow-data, run 37112698327).
+ * Every test below is about a trail a hiker can take, so a sheet for any
+ * other line is closed and the sweep carries on, as it does past a pin.
  */
 async function tapTheTrail(page: Page): Promise<Locator> {
   const box = await frameOf(page)
   const sheet = page.getByRole('dialog', { name: 'Trail line' })
   const card = page.getByRole('dialog', { name: 'Waypoint' })
+  let untakeable = 0
 
   const tap = async (across: number, down: number): Promise<boolean> => {
     await page.mouse.click(
       box.x + (box.width * across) / 20,
       box.y + (box.height * down) / 20,
     )
-    if ((await sheet.count()) > 0) return true
+    if ((await sheet.count()) > 0) {
+      if ((await sheet.getByRole('button', { name: /Take this trail/ }).count()) > 0)
+        return true
+      untakeable += 1
+      await sheet.getByRole('button', { name: 'Close' }).click()
+      await expect(sheet).toHaveCount(0)
+      return false
+    }
     // A tap that lands on a PIN opens a waypoint instead, and the card then
     // covers the canvas, so every remaining tap would hit the card and the
     // sweep would run out having tested nothing. Closing it and carrying on is
@@ -202,8 +251,11 @@ async function tapTheTrail(page: Page): Promise<Locator> {
     }
   }
   throw new Error(
-    'nothing on the map opened a trail line — either the release drew no ' +
-      'trail at the seeded camera, or a tap on one no longer opens its sheet',
+    untakeable > 0
+      ? `${untakeable} tap(s) opened a trail line, and none offered "Take this trail" — ` +
+          'either the chosen trail is not drawn at the seeded camera, or its sheet lost the button'
+      : 'nothing on the map opened a trail line — either the release drew no ' +
+          'trail at the seeded camera, or a tap on one no longer opens its sheet',
   )
 }
 
@@ -245,7 +297,7 @@ test.describe('a waypoint’s card', () => {
     await expect(page.getByRole('dialog', { name: 'In view' })).toHaveCount(0)
   })
 
-  test('states: the peek withholds the photograph, the coordinates and the site strip until it is pulled open', async ({
+  test('states: the peek withholds the photograph, its credit and the coordinates until it is pulled open', async ({
     page,
   }) => {
     // THE LICENCE ARGUMENT, DRIVEN. PoiCard.tsx: "the credit is the price of
@@ -261,9 +313,24 @@ test.describe('a waypoint’s card', () => {
     await expect(card.locator('.poi-card__credit')).toHaveCount(0)
     await expect(card.locator('.poi-card__coords')).toHaveCount(0)
 
-    // What the peek DOES carry: the one-tap answer it exists for.
-    await expect(card.getByRole('group')).toBeVisible()
-    const pull = card.getByRole('button', { name: /Notes & details|Details/ })
+    // What the peek DOES carry: the name of the place, and the one control
+    // that opens the rest.
+    //
+    // THIS ASSERTED THE SITE STRIP UNTIL #1585 (2026-09-18) and can no longer,
+    // because the strip is not a property of the card but of WHICH waypoint
+    // this opens. PoiCard.tsx renders it only where `parts.length > 0`, and
+    // the map used to draw site anchors alone - every member folded away - so
+    // the first row of the In view list was reliably an anchor with parts.
+    // Nothing folds now, so the list carries members too and its first row is
+    // whichever waypoint the release happens to put there. Asserting the strip
+    // here became "a claim about the publish", which the entrance test above
+    // names as the thing these specs must not do.
+    //
+    // The strip itself is driven where it can be driven against a known site:
+    // PoiCard.test.tsx's "Parts of Chairback Gap Lean-to" cases and the same
+    // group in App.flows.test.tsx.
+    await expect(card.locator('.poi-card__name')).not.toBeEmpty()
+    const pull = card.getByRole('button', { name: THE_PULL })
     await expect(pull).toBeVisible()
 
     await pull.click()
@@ -308,10 +375,11 @@ test.describe('a trail line’s sheet', () => {
     // pinned here — what is pinned is that the sheet HAS a heading and a
     // source sentence, because a line that says "Trail" and nothing about
     // where the geometry came from is the failure this sheet exists to fix
-    // (#134). The sentence's shape is the app's; the org's name is the
-    // release's.
+    // (#134). The sentence's shape is the app's, `From ${source}.` in
+    // lib/lineDetail.ts; the org's name is the release's, and only some names
+    // begin with "the" ("From National Park Service." does not).
     await expect(sheet.getByRole('heading')).toBeVisible()
-    await expect(sheet).toContainText(/From the .+\./)
+    await expect(sheet).toContainText(/From .+\./)
     await expect(sheet.getByRole('button', { name: /Take this trail/ })).toBeVisible()
   })
 
@@ -452,6 +520,23 @@ test.describe('the plate a long press raises', () => {
 })
 
 test.describe('every trail notice the app holds', () => {
+  // TODAY'S LIST, which a phone shows while conditions/notices.json has not
+  // reached it: production's state until the cutover (#1805). UA has served
+  // that file since soak run 529 (publish-conditions.yml 37232255266,
+  // 2026-10-04), and a phone on a bucket that serves it shows the
+  // planned-hike panel in this list's place, so these two tests went red the
+  // first time they met it. They reach the list by answering the file 404,
+  // its GET and the HEAD a phone with nothing planned sends instead
+  // alike, exactly as a bucket the exporters publish does; the
+  // panel has its own test below.
+  test.beforeEach(async ({ page }) => {
+    await page
+      .context()
+      .route('**/conditions/notices.json', (route) =>
+        route.fulfill({ status: 404, body: '' }),
+      )
+  })
+
   test('entrance and states: the list carries a link out for every notice, and never the notice itself', async ({
     page,
   }) => {
@@ -488,6 +573,17 @@ test.describe('every trail notice the app holds', () => {
     // durable state — so the claim is only worth anything across a cold boot,
     // and the boot is a sibling page for the reload trap support/seed.ts
     // documents.
+    //
+    // THE ONE TEST IN THIS FILE THAT CONTROLS ITS OWN BYTES (#1426). Every
+    // other assertion here is about a shape the release is free to change;
+    // this one is about an AGE, and the age it depended on was ATC's own
+    // posting cadence — median seven days between edits, against a 72-hour
+    // window — so it asserted that a third party had published this week and
+    // went red the moment they had not. `freshenNewestNotice` moves exactly
+    // one field of the real artifact and leaves every other byte published;
+    // its header carries the measurement and why the other three fixes do
+    // not work.
+    await freshenNewestNotice(page)
     await openMap(page)
     const legendDoor = page.getByRole('button', { name: /^Legend/ })
     await expect(legendDoor).toHaveText(/new trail notice/)
@@ -510,6 +606,47 @@ test.describe('every trail notice the app holds', () => {
     // wrong reason.
     await expect(fresh.getByRole('button', { name: /^Legend/ })).toHaveText('Legend')
     await fresh.close()
+  })
+})
+
+test.describe('the notices for planned hikes', () => {
+  test('entrance: a phone with nothing planned downloads none of notices.json, and still opens the planned-hike panel, saying so', async ({
+    page,
+  }) => {
+    // With conditions/notices.json a phone shows the notices that touch a
+    // hike planned in the next 7 days, never every club's list. The file
+    // is downloaded only once a hike is planned, and this phone plans nothing, so it only asks the bucket
+    // with a HEAD whether the file is served (lib/publishedNotices.ts's
+    // noticesListed). That HEAD is the response waited on here; it used to
+    // be the file's own GET, and the "Gathered by OurHike on" line that
+    // proved the file parsed is gone with it, as nothing was downloaded to
+    // date. What proves the bucket's answer was read is the panel itself:
+    // without it the phone shows the list the tests above hold.
+    const methods: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.endsWith('/conditions/notices.json'))
+        methods.push(request.method())
+    })
+    const listed = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname.endsWith('/conditions/notices.json') &&
+        response.request().method() === 'HEAD',
+    )
+    await openMap(page)
+    const response = await listed
+    test.skip(
+      response.status() === 404,
+      'This environment serves no conditions/notices.json, so a phone shows the list the tests above hold.',
+    )
+    expect(response.status()).toBe(200)
+
+    const legend = await openLegend(page)
+    await legend.getByRole('button', { name: /^Notices for your planned hikes/ }).click()
+    const panel = page.getByRole('dialog', { name: 'Notices for your planned hikes' })
+    await expect(panel).toBeVisible()
+    await expect(panel).toContainText('You have no hike planned')
+    await expect(panel).not.toContainText('Gathered by OurHike')
+    expect(methods).not.toContain('GET')
   })
 })
 
@@ -578,7 +715,7 @@ test.describe('what the field has said about a place', () => {
       .getByRole('button')
       .count()
 
-    await card.getByRole('button', { name: /Notes & details|Details/ }).click()
+    await card.getByRole('button', { name: THE_PULL }).click()
     await expect(card).toHaveClass(/poi-card--open/)
 
     // SAME QUESTION, MORE ANSWERS. The group keeps its name, so the opened
@@ -650,7 +787,7 @@ test.describe('a photo the hiker keeps, and the ask before it leaves', () => {
       .click()
     const card = page.getByRole('dialog', { name: 'Waypoint' })
     await expect(card).toBeVisible()
-    await card.getByRole('button', { name: /Notes & details|Details/ }).click()
+    await card.getByRole('button', { name: THE_PULL }).click()
     await expect(card).toHaveClass(/poi-card--open/)
 
     await card.locator('input[type=file]').last().setInputFiles(A_PICTURE_NOBODY_TOOK)
@@ -737,11 +874,33 @@ test.describe('an organization’s own trail notice', () => {
    * two mutually exclusive from outside and is why this sweeps for one and
    * closes the other rather than reusing `tapTheTrail`.
    *
-   * MEASURED 2026-09-11 against release 2026-09-10, at the shared camera: a
-   * full sweep of the frame below the header opens a notice sheet eight times
-   * and a trail line ten, so a band is comfortably findable here. The release
-   * publishes 38 ATC updates and 18 NYNJTC alerts; one of the ATC ones sits at
-   * mi 195.8 in the Smokies, which is why this camera has a band at all.
+   * THIS SWEEP RUNS BELOW THE SEAM, and that is the whole of what #1490's
+   * second symptom turned out to be. It used to run at ABOVE_THE_SEAM_ZOOM on
+   * a measurement taken 2026-09-11 against release 2026-09-10 - "eight notice
+   * sheets and ten trail lines" - and it went to zero notices on 2026-09-23
+   * without a line of client code changing. The same commit passed on
+   * 2026-09-21 and failed on 2026-09-23; only the published conditions moved,
+   * from 38 ATC updates to 36.
+   *
+   * Re-measured 2026-09-23 against the live UA bucket, sweeping this same
+   * camera at three zooms and counting what each tap opened:
+   *
+   *   z12.5 (above the seam)   0 notices, 10 waypoint cards, 5 line sheets
+   *   z9                       1 notice
+   *   z6.5 (below the seam)   15 notices, 27 line sheets
+   *
+   * The reason is in the style rather than in the release. A single mile
+   * marker draws as a POINT, and lib/atcUpdateStyle.ts only draws that point
+   * from ATC_UPDATE_POINT_MIN_ZOOM (7) up - so above the seam the sweep's
+   * whole target is whichever point notice happens to fall inside a frame a
+   * kilometre wide, which is a thing ATC controls and changes weekly. A
+   * stretch draws as a LINE with no zoom limit, and the long ones - the
+   * Smokies permit change at mi 167-239.4, Hurricane Helene at 239.4-637.8 -
+   * are in frame at the corridor zoom whatever ATC published this morning.
+   *
+   * So the sweep now aims at the geometry that keeps existing. It is not a
+   * weaker test: all three tests in this block assert on the SHEET's contents,
+   * and none of them is about the zoom it was opened from.
    */
   async function tapANotice(page: Page): Promise<Locator> {
     const box = await frameOf(page)
@@ -756,7 +915,18 @@ test.describe('an organization’s own trail notice', () => {
           box.y + (box.height * down) / 20,
         )
         if ((await notice.count()) > 0) return notice
-        for (const other of [line, card]) {
+        // WHATEVER IT OPENED, not the two dialogs somebody listed when this
+        // was written. A sheet left open covers the map, so every remaining
+        // tap of the sweep lands on it and the run reports "no notice
+        // anywhere" - which is the same symptom as a missing band and a
+        // completely different cause. Measured at this camera 2026-09-23: a
+        // sweep below the seam opens "Who maintains this trail" 15 times and
+        // "Which long hike?" 14 times, and neither was in the old list.
+        for (const other of [
+          line,
+          card,
+          ...OTHER_SHEETS.map((name) => sheetNamed(page, name)),
+        ]) {
           if ((await other.count()) > 0) {
             await other
               .getByRole('button', { name: /^Close/ })
@@ -769,14 +939,16 @@ test.describe('an organization’s own trail notice', () => {
     }
     throw new Error(
       'no tap on the whole frame opened a trail notice — either the release ' +
-        'stopped publishing one over this camera, or a tap on a band no longer opens it',
+        'stopped publishing a band over this camera, a tap on a band no ' +
+        'longer opens it, or a sheet this sweep does not know how to close ' +
+        'covered the map after the first tap that opened one (#1490)',
     )
   }
 
   test('entrance and states: the sheet is the organization’s notice, and says so rather than speaking for them', async ({
     page,
   }) => {
-    await openMapOnTheTrail(page)
+    await openMapOnTheTrail(page, BELOW_THE_SEAM_ZOOM)
     const sheet = await tapANotice(page)
 
     // WHOSE NOTICE, AND WHEN. The org is named and dated in the same line,
@@ -795,7 +967,7 @@ test.describe('an organization’s own trail notice', () => {
   test('states: it refuses to be read as OurHike’s advice, in as many words', async ({
     page,
   }) => {
-    await openMapOnTheTrail(page)
+    await openMapOnTheTrail(page, BELOW_THE_SEAM_ZOOM)
     const sheet = await tapANotice(page)
 
     // THE SENTENCE THAT MAKES THE WHOLE SHEET SAFE, and the reason this test
@@ -814,7 +986,7 @@ test.describe('an organization’s own trail notice', () => {
   test('exit: closing it leaves the map, and never leaves a second sheet behind', async ({
     page,
   }) => {
-    await openMapOnTheTrail(page)
+    await openMapOnTheTrail(page, BELOW_THE_SEAM_ZOOM)
     const sheet = await tapANotice(page)
 
     await sheet.getByRole('button', { name: /^Close/ }).click()
@@ -829,6 +1001,30 @@ test.describe('an organization’s own trail notice', () => {
 })
 
 test.describe('who looks after this stretch', () => {
+  // Room for openMapBelowTheSeam's own SKETCHES_BOUND_MS wait plus a full
+  // CLUB_SECTIONS_BOUND_MS sweep inside the same test, with the rest of this
+  // file's usual overhead (camera seed, legend open/close) on top of both.
+  test.describe.configure({ timeout: 240_000 })
+
+  /**
+   * HOW LONG THE CLUB-SECTION LAYER IS ALLOWED TO TAKE, swept for rather than
+   * waited on directly (#1490).
+   *
+   * `club_sections.json` is its own fetch, separate from the corridor
+   * sketches `SKETCHES_BOUND_MS` guards — lib/clubSections.ts's header names
+   * it as a layer with its own clock, and `openMapBelowTheSeam` below only
+   * waits on "Trails in view", which is the sketches landing and says nothing
+   * about club sections. `e2e/data/alertSheets.spec.ts`'s `sweepFor` hit the
+   * identical shape for closure and warning marks and its own comment records
+   * why waiting on that same legend section was the wrong fix there: the
+   * marks were already drawn before the section it was waiting on ever
+   * appeared. This copies that file's answer rather than re-deriving it — the
+   * sweep itself is the wait, repeated until the deadline instead of run once.
+   *
+   * Measured (#1490): a single pass missed the layer about one run in three.
+   */
+  const CLUB_SECTIONS_BOUND_MS = 90_000
+
   /**
    * Below the seam, and sweep for the club sheet rather than the line sheet.
    *
@@ -845,29 +1041,57 @@ test.describe('who looks after this stretch', () => {
     const box = await frameOf(page)
     const club = page.getByRole('dialog', { name: 'Who maintains this trail' })
     const line = page.getByRole('dialog', { name: 'Trail line' })
+    // The dot rank reaches this camera since #1585, so a tap in the sweep can
+    // land on a waypoint dot and open its card instead - the dot's tap box is
+    // ~20 px, far wider than a pin's. A miss here exactly as a side trail's
+    // sheet is, and closed for the same reason: a card left open sits over the
+    // lower map and takes the sweep's next taps itself.
+    const card = page.getByRole('dialog', { name: 'Waypoint' })
 
-    for (let down = HEADER_ROWS; down < 20; down += 1) {
-      for (let across = 1; across < 20; across += 1) {
-        await page.mouse.click(
-          box.x + (box.width * across) / 20,
-          box.y + (box.height * down) / 20,
-        )
-        // Read straight after the click, the way `tapTheTrail` does. The
-        // first version of this waited a beat with `expect.poll`, which was
-        // both pointless — the predicate it polled was always true — and
-        // actively harmful: on a loaded machine two `count()` calls can
-        // outlast the poll's own timeout, so the wait invented a failure the
-        // app had nothing to do with.
-        if ((await club.count()) > 0) return club
-        if ((await line.count()) > 0) {
-          await line.getByRole('button', { name: /^Close/ }).click()
-          await expect(line).toHaveCount(0)
+    const tap = async (across: number, down: number): Promise<boolean> => {
+      await page.mouse.click(
+        box.x + (box.width * across) / 20,
+        box.y + (box.height * down) / 20,
+      )
+      // Read straight after the click, the way `tapTheTrail` does. The
+      // first version of this waited a beat with `expect.poll`, which was
+      // both pointless — the predicate it polled was always true — and
+      // actively harmful: on a loaded machine two `count()` calls can
+      // outlast the poll's own timeout, so the wait invented a failure the
+      // app had nothing to do with. For the same reason, a tap that opened
+      // nothing costs one read here rather than one per dialog.
+      if ((await club.or(line).or(card).count()) === 0) return false
+      if ((await club.count()) > 0) return true
+      if ((await line.count()) > 0) {
+        await line.getByRole('button', { name: /^Close/ }).click()
+        await expect(line).toHaveCount(0)
+      }
+      if ((await card.count()) > 0) {
+        await card.getByRole('button', { name: /Close waypoint details/ }).click()
+        await expect(card).toHaveCount(0)
+      }
+      return false
+    }
+
+    // SWEEP UNTIL THE DEADLINE, NOT ONCE (#1490). A single pass races
+    // club_sections.json: nothing before this waits for it directly, so a
+    // pass that starts before it has landed finds nothing and used to throw
+    // immediately. Re-sweeping is how this waits on the layer itself, the
+    // same shape as alertSheets.spec.ts's sweepFor.
+    const deadline = Date.now() + CLUB_SECTIONS_BOUND_MS
+    let passes = 0
+    do {
+      passes += 1
+      for (let down = HEADER_ROWS; down < 20; down += 1) {
+        for (let across = 1; across < 20; across += 1) {
+          if (await tap(across, down)) return club
         }
       }
-    }
+    } while (Date.now() < deadline)
     throw new Error(
-      'no tap on the whole frame opened the club sheet — either the release moved the ' +
-        'A.T. out of this camera, or the club-section artifact stopped publishing',
+      `swept the whole frame ${passes} time(s) over ${CLUB_SECTIONS_BOUND_MS} ms and never opened ` +
+        'the club sheet — either the release moved the A.T. out of this camera, the club-section ' +
+        'artifact stopped publishing, or it simply had not arrived yet (#1490)',
     )
   }
 

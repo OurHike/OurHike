@@ -21,11 +21,13 @@ import type {
   PointLike,
 } from 'maplibre-gl'
 import type { Closure } from '../lib/closureBanner'
-import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import { CLOSURE_LAYER_ID, closurePointId } from '../lib/closureStyle'
 import { warningIdAt } from './warningLayers'
+import { poiPinAt } from './poiPinProbe'
 import { isBroadAdvisory } from '../lib/closureSpan'
 import { trailSlice, type TrailIndex } from '../lib/trailPosition'
 import { whenStyleReady } from './styleReady'
+import { CLUB_CLOSURE_FAR_LAYER_ID, CLUB_CLOSURE_LAYER_ID } from './styleIds'
 
 export const CLOSURE_SOURCE_ID = 'closures'
 
@@ -153,6 +155,41 @@ export function closureIdAt(
   return typeof id === 'string' && id !== '' ? id : null
 }
 
+/** Where a club closure's feature carries the notice it draws
+ *  (map/clubClosureTaps.ts): its `notice_id`, as a hazard area's does. */
+export const CLUB_CLOSURE_ID_PROPERTY = 'notice_id'
+
+/**
+ * Which club closure a touch landed on, by notice id, or null (the
+ * maintainer's closure-map standard, 2026-10-11): the paper along a closed line, or the cross
+ * at a closed point, in the same box as `closureIdAt`'s tape.
+ *
+ * HERE, BESIDE THE TAPE'S PROBE, because every handler that yields to the
+ * tape yields to this too, in closureLayers.ts's order - the warning pin, a
+ * waypoint pin, the tape, a club closure, then an ATC band, a waypoint dot,
+ * a line, a hazard area - and two of those handlers are in the launch bundle
+ * (map/poiTaps.ts, map/atcUpdateLayers.ts), where map/clubClosureTaps.ts is
+ * not. Silent before the style holds either layer, for `closureIdAt`'s
+ * reason.
+ */
+export function clubClosureIdAt(
+  map: MapLibreMap,
+  point: { x: number; y: number },
+): string | null {
+  // And the small ✕ of z5 and z6 (map/clubClosureLayers.ts's
+  // buildClubClosureFarLayer): a tap on the ✕ that won its spot opens that
+  // closure's sheet, the same sheet as at z7.
+  const layers = [
+    CLUB_CLOSURE_LAYER_ID,
+    closurePointId(CLUB_CLOSURE_LAYER_ID),
+    CLUB_CLOSURE_FAR_LAYER_ID,
+  ].filter((layer) => map.getLayer(layer) !== undefined)
+  if (layers.length === 0) return null
+  const [feature] = map.queryRenderedFeatures(closureTapBox(point), { layers })
+  const id = feature?.properties?.[CLUB_CLOSURE_ID_PROPERTY]
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
 /**
  * Wires taps on the closure tape to `onSelect`, and returns a detach.
  *
@@ -160,13 +197,29 @@ export function closureIdAt(
  * closure sheet is dismissed by its own close, and a tap on bare map is
  * left to the handlers that own bare map.
  *
- * ONE TOUCH, ONE INTERPRETER, in one order: the warning pin, then this
- * tape, then a waypoint pin, then an ATC band, then a line. Each handler
+ * ONE TOUCH, ONE INTERPRETER, in one order: the warning pin, then a
+ * waypoint PIN, then this tape, then a club's closure (`clubClosureIdAt`),
+ * then an ATC band, then a line. Each handler
  * asks the layers above it and reports nothing where they win - this one
- * yields to the warning pin, poiTaps.ts yields to both, lineTaps.ts to all
- * three. The first version had each safety mark report every hit, so a
- * warning pin on closed trail opened two sheets on one touch, and which
+ * yields to the warning pin and the waypoint pin, poiTaps.ts yields to the
+ * warning pin (and, for its DOT rank only, to this tape), lineTaps.ts to
+ * all of them. The first version had each safety mark report every hit, so
+ * a warning pin on closed trail opened two sheets on one touch, and which
  * landed on top was the order two effects happened to be declared in.
+ *
+ * THE WAYPOINT PIN MOVED ABOVE THE TAPE IN #1419 (the maintainer's call,
+ * 2026-09-14), and the yield here is the other half of that flip. Before
+ * it, a shelter or spring pin on a closed stretch could not be opened by
+ * tapping it at all - poiTaps.ts gave the whole touch to the tape and
+ * promised a second tap that asks the identical question. Flipping poiTaps
+ * alone would have opened the closure sheet AND the waypoint card on one
+ * touch, which is precisely the defect the paragraph above records, so the
+ * yield has to be symmetric. The probe is shared rather than reimplemented:
+ * map/poiPinProbe.ts, a leaf, because poiTaps.ts imports this module for
+ * `closureIdAt` and cannot be imported back.
+ *
+ * A DOT is not a pin and does not win here - the tape keeps it, for the
+ * reason poiTaps.ts gives at its own dot rank.
  */
 export function attachClosureTaps(
   map: MapLibreMap,
@@ -174,6 +227,7 @@ export function attachClosureTaps(
 ): () => void {
   const onClick = (event: MapMouseEvent) => {
     if (warningIdAt(map, event.point) !== null) return
+    if (poiPinAt(map, event.point) !== undefined) return
     const id = closureIdAt(map, event.point)
     if (id !== null) onSelect(id)
   }

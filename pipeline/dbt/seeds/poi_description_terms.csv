@@ -1,0 +1,52 @@
+vocabulary,code,phrase
+storeys,2,Two-storey
+storeys,3,Three-storey
+exterior_material,0,block
+exterior_material,1,board-and-batten
+exterior_material,2,clapboard
+exterior_material,3,corrugated-metal
+exterior_material,4,timber
+exterior_material,5,log
+exterior_material,6,log-and-stone
+exterior_material,7,plywood
+exterior_material,8,post-and-beam
+exterior_material,11,steel
+exterior_material,12,stone
+parking_surface,0,asphalt
+parking_surface,1,concrete
+parking_surface,3,gravel
+parking_surface,4,dirt
+parking_surface,5,grass
+privy_type,0,composting
+privy_type,1,moldering
+privy_type,2,composting
+privy_type,3,pit
+privy_type,4,vault
+vista_location,mtn/ridge/outcrop,a ridge or rock outcrop
+vista_location,summit,a summit
+vista_location,lookout tower,a lookout tower
+vista_location,tower/platform,a tower platform
+vista_location,viewing platform,a viewing platform
+vista_location,overlook,an overlook
+vista_location,bridge,a bridge
+vista_location,water feature,the water
+vista_location,utility corridor - powerline,a powerline corridor
+vista_location,utility - powerline,a powerline corridor
+vista_location,utility corridor - pipeline,a pipeline corridor
+vista_location,open area,an open area
+vista_location,open area - maintained,a maintained clearing
+vista_location,open area - managed,a managed clearing
+vista_location,open area - natural,a natural clearing
+vista_location,shelter,a shelter
+vista_location,campsite,a campsite
+stream_source,nhd,USGS
+stream_source,osm,OpenStreetMap contributors
+stream_claim,nhd,maps it as
+stream_claim,osm,tag it as
+stream_flow,perennial,year-round
+stream_flow,intermittent,seasonal
+stream_flow,ephemeral,seasonal
+water_kind,spring,Spring
+water_kind,drinking_water,Drinking water point
+water_kind,water_tap,Water tap
+water_kind,water_well,Well

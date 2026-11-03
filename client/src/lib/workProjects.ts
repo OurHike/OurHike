@@ -237,3 +237,10 @@ export function workProjectDates(project: WorkProjectSummary): string {
 
 /** The published document's shape, for useConditions to hold. */
 export type PublishedWorkProjects = PublishedConditions<WorkProjectSummary>
+
+/** "YYYY-MM-DD" as UTC midnight, for lib/crews.ts - which reads the same
+ *  dates against a hiker's day and must not spell them a second way. */
+export const utcDayOf = utcDay
+
+/** One UTC day in millis, exported for the same reason. */
+export const DAY_IN_MS = DAY_MS

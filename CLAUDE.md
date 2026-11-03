@@ -146,6 +146,49 @@ Leave that line alone and name the issue in full in the prose above it.
 This governs what you write. It is not a licence to go retitling references in files you are
 not otherwise touching.
 
+## Name the thing, then say the thing about it
+
+**A sentence about this repository carries something a reader can look up** — a file, a
+function, a constant, a number with a unit, an issue number, a string the app renders.
+The section above makes that rule for issue references; it is the same rule everywhere
+else, and everywhere else it is being missed.
+
+Measured 2026-09-15 against `main` at 02418cd: **10 of the last 100 non-merge commit
+subjects** contain any such token, and **471 of 7,202 `it()` names** in `client/src` do.
+The second figure moves as names get fixed — that is the point of it, and why it carries
+a ref. The commands are in the
+skill and re-run in a second. Read them as a proxy rather than a defect count — `shows
+the distance in miles when the hiker chose miles` names no symbol and is perfectly clear
+— but 6.5% is low enough to explain a maintainer who cannot follow along.
+
+The bodies are not the problem. `Answer the bucket in the detail recipes, rather than
+racing it` sits on a commit whose body names the failing selector, the timeout, the hook,
+and says outright that the diagnosis was reasoned rather than reproduced. The information
+existed and did not reach the line people read. So the fix is a check on the short
+surfaces, not more effort: **the search test** (does the sentence contain one thing a
+reader could find), **the "the" test** (every `the X` — was X introduced, or is `X` its
+real name), and, for tests, **the 2 a.m. test** (it goes red in CI and you see only the
+name; do you know what broke).
+
+[`.claude/skills/plain-language/SKILL.md`](.claude/skills/plain-language/SKILL.md) is the
+rest: the three checks worked through, the five habits that produce a cryptic line
+(a pronoun-shaped noun, definition by contrast alone, anthropomorphism in place of a
+verb, the aphorism as the only statement of a rule, elegance checked instead of
+information), and what each surface needs — comments, test names, test bodies, commit
+subjects, and a chat reply.
+
+[GLOSSARY.md](GLOSSARY.md) is the "the" test's third answer: the words that really are
+shared vocabulary here, so `the bucket` needs no introduction and `the settle` does. It
+is worth reading once for what it found — **ten of these words mean more than one thing**.
+`seam` means four (a boundary between map cells, a zoom threshold, a test injection
+point, the client/backend API), `the camera` is both the map viewport and the rig that
+photographs the preview, and `bucket` is the R2 bucket, a spatial lookup grid and a
+hiker's own trip grouping. Those get disambiguated on first use, every time.
+
+**None of this touches the evidence grades.** Plain is not confident: `nobody has checked
+this` is plainer than whatever would replace it. What gets cut is the private referent,
+never the caveat.
+
 ## Show what you changed
 
 **Every pull request body carries a `## Screenshot` section**, and the template
@@ -209,6 +252,41 @@ This is about conversation, not the repository. The evidence grades, full issue 
 and the `## Screenshot` section above are still required in what gets written into the
 repo — a PR body is read later, by someone else, and earns its length; a chat reply is
 read now, by the person waiting on it, and doesn't.
+
+## Show the maintainer what you mean, and keep showing it
+
+The maintainer, 2026-09-17: *"I need you to start polling me with more questions with more
+visuals. Actual screenshots or wireframes. I'm getting questions, but we aren't
+communicating well. The visuals really help me understand what you plan to do."* And:
+*"This shouldn't just happen once in the session either, we are doing a constant feedback
+loop."*
+
+The section above puts a question in the poll tool. This one says what the poll has to
+carry: **a choice about anything a hiker sees goes to the maintainer with a picture** — a
+rendered mock or a screenshot, sent to the side panel first and named in the question —
+and it goes at every fork, not once. Before any code, the plan is drawn. After the first
+build, the screenshot sits beside the mock and the question is whether they match. Before
+the pull request, the recipe and the `## Screenshot` section above carry the same picture
+to the reviewer. A choice with genuinely nothing to draw says `No visual: <why>` in the
+question, which is a real answer for exactly the reason the Screenshot section's one-line
+answer is. None of this is a licence to poll about everything — routine calls are still
+yours to make — but when a question does go to the maintainer, it goes with the picture.
+
+The maintainer chose the shape by poll, 2026-09-17, on **#1566 — A session's questions to
+the maintainer carry no wireframe or screenshot, so the plan cannot be seen from the
+words**, from a wireframe page and two real frames: the rendered mock as the default
+picture, over a drawing inside the poll (which stays the fallback for a session with no
+side panel); a hook that lets a picture-less poll through and tells the session
+afterwards, over one that refuses it; and one reminder line at session start, resume and
+compaction, over one on every prompt. `.claude/hooks/visual_poll.py` is both halves —
+`check` after every poll, `remind` at start — and `.github/tests/test_visual_poll_hook.py`
+holds what it counts as a picture and that it never blocks.
+[`.claude/skills/visual-poll/SKILL.md`](.claude/skills/visual-poll/SKILL.md) is the rest:
+the three kinds of picture a session can make here and what each cannot show, the loop,
+and the poll itself.
+
+An unattended session never polls at all (`night-shift/SKILL.md`: "nothing here waits for
+an answer"), so none of this reaches it — the rule is about how to ask, not whether to.
 
 ## Claim the issue before you branch
 

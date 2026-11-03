@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
+import { policyFromEnv } from './scripts/csp.mjs'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -110,9 +111,15 @@ export default defineConfig({
       // #202) - a reviewer tool that ships with every PR preview but is not
       // part of the app a hiker sees (no tab, no service worker
       // registration of its own; it rides the same origin).
+      //
+      // A third since #1683: spotify-callback.html, where Spotify returns a
+      // hiker after "Connect Spotify". Its own page because the app reads
+      // `?code=` and `?error=` on its own URL as its own sign-in
+      // (src/lib/spotify.ts).
       input: {
         main: join(ROOT, 'index.html'),
         viewer: join(ROOT, 'viewer.html'),
+        spotifyCallback: join(ROOT, 'spotify-callback.html'),
       },
     },
   },
@@ -120,6 +127,23 @@ export default defineConfig({
     // Falls back to whatever `require` resolved if upstream ever drops the
     // .mjs, so a future release can only cost the ESM build, never the app.
     alias: existsSync(CONTOUR_ESM) ? { 'maplibre-contour': CONTOUR_ESM } : {},
+  },
+  // THE ONE PLACE A BROWSER DRIVES THIS APP UNDER ITS OWN POLICY, which is
+  // what makes the policy a measurement rather than a guess. `vite preview` is
+  // what client/scripts/screenshot.mjs spawns for `--dist`, so pr-preview.yml's
+  // camera walks the standing shots and every recipe the pull request touches
+  // with these headers served - and a violation is a console message in the
+  // job log rather than something a reviewer has to go looking for.
+  //
+  // Report-only, so it blocks nothing here and nothing on the deployed preview
+  // either. scripts/csp.mjs is the policy and the whole argument for it: where
+  // it is served, why production cannot serve a header at all, and which two
+  // of its directives are still unvalidated.
+  //
+  // `npm run preview` by hand gets it too, deliberately - a developer checking
+  // a build locally is one of the two places a violation can be noticed.
+  preview: {
+    headers: { 'Content-Security-Policy-Report-Only': policyFromEnv() },
   },
   plugins: [
     react(),
@@ -246,6 +270,16 @@ export default defineConfig({
             // scripts/check-build-output.mjs fails the build if this
             // pattern stops matching the chunk Vite actually emits.
             globIgnores: ['**/photoScreenEngine-*.js'],
+            // Spotify returns to spotify-callback.html WITH a query string
+            // (#1683), and the precache matches a URL only without one, so
+            // the navigation would fall through to the app-shell fallback
+            // and boot index.html with Spotify's `?code=` and `?error=` on
+            // it - exactly what the separate page exists to avoid. Read off
+            // the built dist/sw.js on 2026-09-26: its only navigation route
+            // is `NavigationRoute(createHandlerBoundToURL("index.html"))`.
+            // Denied here, the page comes from the network, which a hiker
+            // mid-sign-in has by definition.
+            navigateFallbackDenylist: [/spotify-callback\.html/],
           },
           includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
           manifest: {
@@ -328,6 +362,9 @@ export default defineConfig({
         // The viewer page's bootstrap - DOM glue over viewerController.ts
         // and viewerStyle.ts, which are tested; same reasoning as main.tsx.
         'src/viewer/main.ts',
+        // The Spotify callback page's bootstrap (#1683), on the same
+        // reasoning: glue over lib/spotify.ts and callbackMessage.ts.
+        'src/spotifyCallback/main.ts',
         // The DEM worker's entry - worker glue over demRpc.ts and
         // demTiles.ts, which are tested; jsdom cannot run a worker at all,
         // so covering the three lines of wiring would mean pretending to.

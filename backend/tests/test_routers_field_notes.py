@@ -12,8 +12,12 @@ deleted.
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.profile import Role
+from app.routers import field_notes as field_notes_router
 from tests.factories import make_profile
 from tests.tokens import auth_headers
 
@@ -228,6 +232,54 @@ def test_flagging_requires_auth_and_counts_people_not_taps(client, db_session):
     assert first.status_code == 201
     assert again.status_code == 200
     assert db_session.query(NoteFlag).count() == 1
+
+
+def test_the_database_itself_refuses_a_second_flag_from_one_account(client, db_session):
+    """ "Counts people, not taps" used to rest on the router's SELECT alone
+    (#1545). `uq_note_flags_note_flagger` is what makes it true whatever the
+    router does."""
+    note_id = _post_note(client, str(uuid.uuid4())).json()["id"]
+    flagger = make_profile(db_session, Role.hiker)
+    db_session.add(NoteFlag(note_id=note_id, flagged_by=flagger.id, reason="first"))
+    db_session.commit()
+
+    db_session.add(NoteFlag(note_id=note_id, flagged_by=flagger.id, reason="again"))
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+    assert db_session.query(NoteFlag).count() == 1
+
+
+def test_losing_the_double_flag_race_is_a_200_and_leaves_one_row(client, db_session, monkeypatch):
+    """The #265 shape at the flag seam: two flags from one account, close
+    enough together that both pass the lookup, both insert. A test cannot put
+    two requests inside one round trip, so it stages the loser's view instead
+    - the lookup misses, the constraint refuses the insert for real, and the
+    recovery path has to answer the way a plain second tap is answered."""
+    author_id = str(uuid.uuid4())
+    note_id = _post_note(client, author_id).json()["id"]
+    flagger = str(uuid.uuid4())
+    assert client.post(f"/field-notes/{note_id}/flag", json={"reason": "spam"}, headers=auth_headers(flagger)).status_code == 201
+
+    real_lookup = field_notes_router._existing_flag
+    lookups: list[int] = []
+
+    def the_losers_view(db, note_id_, flagger_id):
+        lookups.append(1)
+        # The first lookup is the pre-check, and in the race the other
+        # request's row is not there yet; the second is the recovery, by
+        # which time it is.
+        return None if len(lookups) == 1 else real_lookup(db, note_id_, flagger_id)
+
+    monkeypatch.setattr(field_notes_router, "_existing_flag", the_losers_view)
+
+    again = client.post(f"/field-notes/{note_id}/flag", json={}, headers=auth_headers(flagger))
+
+    assert again.status_code == 200, again.text
+    assert again.json() == {"status": "already flagged"}
+    assert db_session.query(NoteFlag).count() == 1
+    assert len(lookups) == 2, "the recovery re-asked rather than guessing"
 
 
 def test_the_note_queue_is_gated_to_moderator_roles(client):

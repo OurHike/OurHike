@@ -735,7 +735,7 @@ def _water_records(test: dict, workdir: Path) -> list[dict]:
         json.dumps(
             {
                 "sites": [
-                    {key: row.get(key) for key in ("layer", "atc_global_id", "distance_ft", "provenance")}
+                    {key: row.get(key) for key in ("layer", "poi_id", "distance_ft", "provenance")}
                     for row in _given(test, "base_atc__water_distance")
                 ]
             }

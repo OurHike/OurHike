@@ -44,6 +44,7 @@ vi.mock('./lib/api', () => ({
   sendReport: vi.fn(async () => undefined),
   permanentFailureReason: vi.fn(() => null),
   fetchReports: vi.fn(async () => []),
+  fetchMyReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
   // Disputes ride the same read as the notes they are computed from (#876).

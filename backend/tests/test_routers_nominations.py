@@ -257,6 +257,74 @@ class TestSubmitting:
         response = client.post("/clubs/nominations", json=a_submission(contacts=[]), headers=auth_headers(hiker.id))
         assert response.status_code == 422
 
+    @pytest.mark.parametrize(
+        ("website", "contact"),
+        [
+            ("https://gmail.com", "mallory@gmail.com"),
+            ("https://www.outlook.com", "mallory@outlook.com"),
+            ("https://com", "a@b.com"),
+            # Five providers the first list of 22 missed: before they were
+            # listed, a nomination on each one was accepted (201).
+            ("https://duck.com", "mallory@duck.com"),
+            ("https://hotmail.co.uk", "mallory@hotmail.co.uk"),
+            ("https://web.de", "mallory@web.de"),
+            ("https://gmx.de", "mallory@gmx.de"),
+            ("https://email.com", "mallory@email.com"),
+            # Under a provider rather than at it: a claim takes an address at
+            # a subdomain of the org's domain, and Fastmail delivers
+            # anything@mallory.fastmail.com to the account mallory@fastmail.com.
+            ("https://mallory.fastmail.com", "anything@mallory.fastmail.com"),
+        ],
+    )
+    def test_a_website_whose_domain_proves_nothing_is_refused_and_nothing_is_stored(self, client, db_session, website, contact):
+        """#1909 - A nomination and a claim make a free webmail account the
+        codeowner of any organization name, the seat #1635 closed on POST
+        /clubs. The website's domain becomes the club's, and claiming the club
+        takes any verified address there as the proof of who runs it, so a
+        webmail provider or a bare top-level domain would make that proof
+        anybody's. Every contact here is at the domain, so the contact gate
+        alone let every one of them through."""
+        hiker = make_profile(db_session)
+        contacts = [{"email": contact, "source_page": "x", "proposed_by": "hiker"}]
+        response = client.post(
+            "/clubs/nominations",
+            json=a_submission(website=website, org_name="Appalachian Trail Conservancy", contacts=contacts),
+            headers=auth_headers(hiker.id),
+        )
+
+        assert response.status_code == 422
+        assert "a person has to pick this organization up" in response.json()["detail"]
+        assert db_session.query(Club).count() == 0
+        assert db_session.query(OrgNomination).count() == 0
+
+    @pytest.mark.parametrize("org_name", ["Admin", "New", "ATC"])
+    def test_a_nominated_organization_never_takes_a_slug_post_clubs_refuses(self, client, db_session, org_name):
+        """`POST /clubs` refuses `admin` and `new` (RESERVED_SLUGS: each
+        already means something under /org/) and refuses `atc` to any domain
+        but appalachiantrail.org (PUBLISHER_DOMAINS). A nomination derived its
+        slug from the name and checked neither, so each of these took the bare
+        slug. Nobody typed the slug, so nothing is refused: the name with the
+        domain's first label is the next candidate, as for a taken slug."""
+        hiker = make_profile(db_session)
+        response = client.post("/clubs/nominations", json=a_submission(org_name=org_name), headers=auth_headers(hiker.id))
+
+        assert response.status_code == 201
+        assert response.json()["club_slug"] == f"{org_name.lower()}-carolinamountainclub"
+
+    def test_the_publisher_a_slug_is_held_for_still_gets_it_by_nomination(self, client, db_session):
+        """The same rule as `POST /clubs`: `atc` is held FOR
+        appalachiantrail.org, so nominating "ATC" on that domain takes it."""
+        hiker = make_profile(db_session)
+        contacts = [{"email": "info@appalachiantrail.org", "source_page": "x", "proposed_by": "hiker"}]
+        response = client.post(
+            "/clubs/nominations",
+            json=a_submission(website="https://appalachiantrail.org", org_name="ATC", contacts=contacts),
+            headers=auth_headers(hiker.id),
+        )
+
+        assert response.status_code == 201
+        assert response.json()["club_slug"] == "atc"
+
     HOSTILE_ADDRESSES = [
         "javascript:alert(1)",
         "JavaScript:alert(1)",

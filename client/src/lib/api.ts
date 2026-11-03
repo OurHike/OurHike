@@ -188,14 +188,15 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
  * A third stance, and the reason reads could not just borrow `authedFetch`
  * (#286). That one refuses without a token, which is right for a write the
  * server would refuse anyway. A read must not: browsing has never needed an
- * account in this app, and `list_reports` is built to answer an anonymous
- * caller with the public set.
+ * account in this app, and every read here answers an anonymous caller.
  *
- * But the token still goes when it exists, and that is not a nicety - it is
- * what lets a reporter see their own unmoderated report. Without it someone's
- * own report vanishes from the app between submitting it and a moderator
- * reaching it, which is precisely what "Waiting" on the More screen is
- * describing.
+ * The token still goes when it exists, and two of its three callers need it:
+ * `list_field_notes` (`fetchFieldNotes`) and the report photo links
+ * (`fetchReportPhotoLink`) answer a signed-in caller with more of their own.
+ * The third, `fetchPoiPhotos`, reads `list_photos`
+ * (backend/app/routers/poi_photos.py), which takes no caller, so the token
+ * changes nothing there. The three conditions reads do not use this any more,
+ * and THE SHARED READS below says why.
  */
 async function readFetch(path: string, signal?: AbortSignal): Promise<Response> {
   const token = await accessToken()
@@ -205,6 +206,29 @@ async function readFetch(path: string, signal?: AbortSignal): Promise<Response> 
     headers: token === null ? {} : { Authorization: `Bearer ${token}` },
   })
 }
+
+/*
+ * THE SHARED READS. `fetchClosures`, `fetchReports` and `fetchDisputes` call
+ * `apiFetch` with no headers, so they never carry a token, even when there is
+ * one (#1916 - A signed-in hiker's app sends its token on the three
+ * edge-cached reads, so they either skip the cache or hide the hiker's own
+ * queued report). A fifth stance, kept as a convention rather than a wrapper
+ * because the launch budget counts every eager byte
+ * (features/LAUNCH_BUDGET.md §3).
+ *
+ * These are the reads a cache in front of the API keeps one copy of for
+ * everybody (#1907 - Let Cloudflare cache GET /closures, /reports and
+ * /disputes in front of the API, and write the click-path that stands it
+ * up). A token makes a request the cache cannot simply answer from that copy:
+ * it either goes past it to the API, or is answered from it, and Cloudflare's
+ * docs do not say which. The first spends the API's free tier on every
+ * signed-in hiker. The second hides a reporter's own waiting report. The
+ * server never reads the caller on `/closures` or `/disputes`. On `/reports`
+ * a token adds the caller's own reports at any status, and unmasks fields
+ * this app never reads (`ReportOut.for_viewer` in
+ * backend/app/schemas/report.py); the own reports come from `/reports/mine`
+ * instead (`fetchMyReports`).
+ */
 
 /**
  * A write the server accepts with or without an account, carrying the token
@@ -293,8 +317,14 @@ export interface ReportSummary {
 }
 
 /**
- * Reports visible to this caller: public and moderated, plus their own at any
- * status when a token went with the request.
+ * The public, moderated reports everybody gets, from `GET /reports`, sent
+ * with no token even when the hiker is signed in (THE SHARED READS above,
+ * #1916).
+ *
+ * The hiker's own reports at any status are `fetchMyReports`, a read of its
+ * own that lib/useConditions.ts merges in. Kept apart so this list never
+ * waits on that one: a fresh warning is drawn the moment it arrives, and a
+ * slow or failed private read cannot hold it back.
  *
  * **Throws rather than returning `[]` on failure, and that is the point.** An
  * empty list and a failed fetch draw the same map and mean opposite things on
@@ -302,8 +332,25 @@ export interface ReportSummary {
  * is open. The caller has to be able to say it does not know.
  */
 export async function fetchReports(signal?: AbortSignal): Promise<ReportSummary[]> {
-  const response = await readFetch('/reports', signal)
+  const response = await apiFetch('/reports', { signal })
   return (await response.json()) as ReportSummary[]
+}
+
+/**
+ * The signed-in hiker's own reports at any status, from `GET /reports/mine`.
+ * Without them, someone's own report would vanish from the app between
+ * submitting it and a moderator reaching it, which is what "Waiting" on the
+ * More screen describes.
+ *
+ * Through `authedFetch`, so it throws `NotSignedInError` before any request
+ * when nobody is signed in. Also throws on a 2xx body that is not a list, so
+ * a malformed answer fails this read alone instead of reaching the merge in
+ * lib/useConditions.ts, where spreading it would throw.
+ */
+export async function fetchMyReports(): Promise<ReportSummary[]> {
+  const mine: unknown = await (await authedFetch('/reports/mine')).json()
+  if (!Array.isArray(mine)) throw new TypeError('GET /reports/mine sent no list')
+  return mine as ReportSummary[]
 }
 
 /**
@@ -396,7 +443,7 @@ export interface ClosureSummary {
  * hiker would act on by walking into it.
  */
 export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummary[]> {
-  const response = await readFetch('/closures', signal)
+  const response = await apiFetch('/closures', { signal })
   return (await response.json()) as ClosureSummary[]
 }
 
@@ -415,7 +462,7 @@ export async function fetchClosures(signal?: AbortSignal): Promise<ClosureSummar
  * about a spring.
  */
 export async function fetchDisputes(signal?: AbortSignal): Promise<DisputeSummary[]> {
-  const response = await readFetch('/disputes', signal)
+  const response = await apiFetch('/disputes', { signal })
   return (await response.json()) as DisputeSummary[]
 }
 

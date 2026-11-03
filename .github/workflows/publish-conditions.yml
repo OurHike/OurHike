@@ -274,6 +274,14 @@ on:
         type: choice
         options: [scheduled, exporters, dbt]
         default: scheduled
+      # publish.py refuses to replace a published, non-empty closures or
+      # reports list with an empty one (#1912) and exits 1 after publishing
+      # the rest. Tick this only when the drop is real: every verified
+      # closure was resolved, say. A scheduled run never has it.
+      allow_empty_conditions:
+        description: "Let a bake that reads zero closures or reports replace a published list that holds some (default: refuse, exit 1)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -1572,6 +1580,10 @@ jobs:
           # failed writer's key at the bucket's last copy, its file never
           # read, rather than refusing the whole publish.
           OURHIKE_BUILD_PARTIAL: ${{ steps.build.outputs.partial }}
+          # The override for publish.py's refusal to publish an emptied
+          # closures or reports list over a non-empty one (#1912); empty on
+          # a schedule, where `inputs` is not set.
+          OURHIKE_ALLOW_EMPTY_CONDITIONS: ${{ inputs.allow_empty_conditions && 'true' || '' }}
         # publish.py collects whatever data/processed/ holds, which in this
         # job is the conditions manifest and nothing else - a fresh checkout
         # has run no other export script. The manifest merge is additive, so

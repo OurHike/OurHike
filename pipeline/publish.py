@@ -2109,15 +2109,73 @@ def collect_dbt_phone_files(
     return found
 
 
+#: Set to "true" to let a bake that reads zero verified closures or public
+#: reports replace a live copy that holds some. publish-conditions.yml sets it
+#: from its `allow_empty_conditions` dispatch input and from nothing else.
+ALLOW_EMPTY_CONDITIONS_ENV_VAR = "OURHIKE_ALLOW_EMPTY_CONDITIONS"
+
+#: The conditions files whose emptiness a hiker reads as "none": artifact name
+#: -> the key its JSON document keeps its rows under
+#: (export_conditions.write_document). `disputes` and `notes` are left out:
+#: #1912 names closures and reports, and nobody has said what a normal floor
+#: is for the others.
+EMPTIABLE_CONDITIONS = {"conditions/closures.json": "closures", "conditions/reports.json": "reports"}
+
+
+def _row_count(document: bytes | None, kind: str) -> int | None:
+    """How many rows `document` keeps under `kind`, or None when it is not that
+    shape (absent, unparseable, no such list). None means "nothing here to
+    protect", never zero."""
+    if document is None:
+        return None
+    try:
+        rows = json.loads(document).get(kind)
+    except (ValueError, AttributeError):
+        return None
+    return len(rows) if isinstance(rows, list) else None
+
+
+def hold_emptied_conditions(artifacts: dict[str, dict], s3_client, bucket: str, prefix: str) -> dict[str, str]:
+    """The conditions files in `artifacts` that would replace a published list
+    holding rows with an empty one, each with why (#1912). The caller drops
+    them from the upload, so the published copy stands, and fails the run once
+    the rest is out.
+
+    An emptied `closures` table (a bad migration, a stray DELETE, a moderation
+    bug) bakes `{"closures": []}` past every other check here; the phone then
+    shows "no closures" rather than "we lost them", and the key is overwritten
+    in place, so no earlier copy is kept. A fall from N to a smaller non-zero
+    count is not held: a resolved closure is a real change, and only zero is
+    indistinguishable from a lost table. Set ALLOW_EMPTY_CONDITIONS_ENV_VAR
+    when the drop is real."""
+    if os.environ.get(ALLOW_EMPTY_CONDITIONS_ENV_VAR, "").lower() == "true":
+        return {}
+    held: dict[str, str] = {}
+    for name, kind in EMPTIABLE_CONDITIONS.items():
+        entry = artifacts.get(name)
+        if entry is None:
+            continue
+        if _row_count(from_manifest_path(entry["path"]).read_bytes(), kind) != 0:
+            continue
+        live = _row_count(_published_bytes(s3_client, bucket, f"{prefix}{name}"), kind)
+        if live:
+            held[name] = (
+                f"this bake read 0 {kind} and the published copy holds {live}; set {ALLOW_EMPTY_CONDITIONS_ENV_VAR}=true "
+                f"(the `allow_empty_conditions` dispatch input) if the drop is real"
+            )
+    return held
+
+
 def fail_for_held_files(held: dict[str, str]) -> None:
     """Fail the run, once everything else is published, for each phone file
-    whose source int_closures__gate held: the phone keeps that file's last
-    copy, with its own age, and the red run is how somebody finds out."""
+    whose source int_closures__gate held, or that hold_emptied_conditions held:
+    the phone keeps that file's last copy, with its own age, and the red run is
+    how somebody finds out."""
     if not held:
         return
     for key, why in sorted(held.items()):
         print(f"::error title={key} not rewritten::{why}. Its last published copy stands; every other file was published.")
-    raise SystemExit(f"{len(held)} phone file(s) held back by {DBT_GATE_MODEL}: {', '.join(sorted(held))}.")
+    raise SystemExit(f"{len(held)} phone file(s) held back: {', '.join(sorted(held))}.")
 
 
 def with_dbt_phone_files(artifacts: dict[str, dict], dbt: DbtPhoneFiles) -> dict[str, dict]:
@@ -3084,6 +3142,14 @@ def main(argv: list[str] | None = None) -> dict:
         # broken handoff the refusal below is for: the run results say they ran.
         kept_everything = not artifacts and bool(dbt.kept)
         held = dbt.held
+    if writes_enabled() and EMPTIABLE_CONDITIONS.keys() & artifacts.keys():
+        emptied = hold_emptied_conditions(artifacts, r2_client(), os.environ["R2_BUCKET"], data_env.prefix_for(environment))
+        for key, why in sorted(emptied.items()):
+            del artifacts[key]
+            print(f"  HELD: {key} - {why}.")
+        held = {**held, **emptied}
+        if emptied and not artifacts:
+            fail_for_held_files(held)
     if kept_everything:
         print("Nothing to publish: every phone file's writer kept its last good file this run. No new version written.")
         fail_for_held_files(held)

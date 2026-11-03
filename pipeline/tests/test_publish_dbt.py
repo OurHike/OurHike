@@ -1446,7 +1446,7 @@ def test_main_fails_for_a_held_file_when_nothing_else_changed(monkeypatch, s3_cl
     project.build(writers=writers)
     _main_on_dbt(monkeypatch, s3_client, project, {"nynjtc_trail_alerts": HELD})
 
-    with pytest.raises(SystemExit, match="held back by int_closures__gate"):
+    with pytest.raises(SystemExit, match="held back"):
         publish.main()
 
     assert _keys(s3_client) == {}

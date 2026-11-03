@@ -2642,3 +2642,100 @@ def test_a_file_with_no_published_size_is_left_to_the_phone(s3_client, local_art
     result = publish.publish({**local_artifacts, **entry}, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
 
     assert WHOLE in result["release_artifacts"]
+
+
+# --- #1912: a bake that reads zero closures does not replace a published list that holds some ---
+
+
+def _conditions_file(tmp_path, kind: str, rows: list) -> dict:
+    path = tmp_path / f"{kind}.json"
+    path.write_text(json.dumps({"generated_at": "2026-10-27T00:00:00Z", kind: rows}))
+    return {f"conditions/{kind}.json": {"path": str(path), "sha256": publish.sha256_file(path)}}
+
+
+def _put_published(s3_client, kind: str, rows: list) -> None:
+    s3_client.put_object(Bucket=BUCKET, Key=f"conditions/{kind}.json", Body=json.dumps({kind: rows}).encode())
+
+
+def _main_with(monkeypatch, s3_client, artifacts: dict) -> None:
+    monkeypatch.setattr(publish, "collect_artifacts", lambda: artifacts)
+    monkeypatch.setattr(publish, "collect_sidecars", dict)
+    monkeypatch.setattr(publish, "collect_photos", dict)
+    monkeypatch.setattr(publish.boto3, "client", lambda *a, **k: s3_client)
+    monkeypatch.setenv("R2_BUCKET", BUCKET)
+    monkeypatch.setenv("R2_ENDPOINT_URL", "https://unused.invalid")
+    monkeypatch.setenv("R2_ACCESS_KEY_ID", "unused")
+    monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "unused")
+
+
+def _published_rows(s3_client, kind: str) -> list:
+    return json.loads(publish._published_bytes(s3_client, BUCKET, f"conditions/{kind}.json"))[kind]
+
+
+def test_main_exits_1_and_leaves_two_published_closures_when_the_bake_reads_none(monkeypatch, s3_client, tmp_path):
+    _put_published(s3_client, "closures", [{"id": 1}, {"id": 2}])
+    _main_with(monkeypatch, s3_client, _conditions_file(tmp_path, "closures", []))
+
+    with pytest.raises(SystemExit, match="conditions/closures.json"):
+        publish.main()
+
+    assert _published_rows(s3_client, "closures") == [{"id": 1}, {"id": 2}]
+
+
+def test_main_publishes_the_rest_of_the_bake_before_failing_for_the_emptied_list(monkeypatch, s3_client, tmp_path):
+    _put_published(s3_client, "closures", [{"id": 1}])
+    _main_with(
+        monkeypatch,
+        s3_client,
+        {**_conditions_file(tmp_path, "closures", []), **_conditions_file(tmp_path, "reports", [{"id": 9}])},
+    )
+
+    with pytest.raises(SystemExit):
+        publish.main()
+
+    assert _published_rows(s3_client, "closures") == [{"id": 1}]
+    assert _published_rows(s3_client, "reports") == [{"id": 9}]
+
+
+def test_main_publishes_the_empty_closures_when_allow_empty_conditions_is_true(monkeypatch, s3_client, tmp_path):
+    _put_published(s3_client, "closures", [{"id": 1}, {"id": 2}])
+    _main_with(monkeypatch, s3_client, _conditions_file(tmp_path, "closures", []))
+    monkeypatch.setenv(publish.ALLOW_EMPTY_CONDITIONS_ENV_VAR, "true")
+
+    publish.main()
+
+    assert _published_rows(s3_client, "closures") == []
+
+
+def test_a_bake_that_falls_from_two_closures_to_one_is_published(monkeypatch, s3_client, tmp_path):
+    """Only zero is held: a resolved closure is a real change."""
+    _put_published(s3_client, "closures", [{"id": 1}, {"id": 2}])
+    _main_with(monkeypatch, s3_client, _conditions_file(tmp_path, "closures", [{"id": 1}]))
+
+    publish.main()
+
+    assert _published_rows(s3_client, "closures") == [{"id": 1}]
+
+
+def test_the_first_ever_bake_of_zero_closures_is_published_because_no_copy_is_published_yet(monkeypatch, s3_client, tmp_path):
+    _main_with(monkeypatch, s3_client, _conditions_file(tmp_path, "closures", []))
+
+    publish.main()
+
+    assert _published_rows(s3_client, "closures") == []
+
+
+def test_an_empty_published_closures_list_is_replaced_by_an_empty_one_without_a_hold(s3_client, tmp_path):
+    _put_published(s3_client, "closures", [])
+
+    held = publish.hold_emptied_conditions(_conditions_file(tmp_path, "closures", []), s3_client, BUCKET, "")
+
+    assert held == {}
+
+
+def test_a_published_copy_that_is_not_json_does_not_hold_an_empty_bake(s3_client, tmp_path):
+    s3_client.put_object(Bucket=BUCKET, Key="conditions/closures.json", Body=b"<html>502</html>")
+
+    held = publish.hold_emptied_conditions(_conditions_file(tmp_path, "closures", []), s3_client, BUCKET, "")
+
+    assert held == {}

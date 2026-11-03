@@ -976,9 +976,10 @@ export function SafetyPrivacySettings({
       </label>
       <p className="settings__note">
         Counts when you open OurHike, sign in, make or finish a hike plan, view the map,
-        and how long a visit lasts. With location on, your phone's position goes with each
-        count, sealed as it arrives; only the rough area it falls in, a grid square about
-        the size of a town, stays readable. Kept six months. Off stops all of it.
+        how long a visit lasts, and choosing to give $0. With location on, your phone's
+        position goes with each count but the $0 one, sealed as it arrives; only the rough
+        area it falls in, a grid square about the size of a town, stays readable. Kept six
+        months. Off stops all of it.
       </p>
       <label className="settings__row">
         <span className="settings__label">Link them to my account</span>

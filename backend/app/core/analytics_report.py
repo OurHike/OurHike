@@ -65,7 +65,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import analytics_quality as quality
 from app.core import analytics_storage
-from app.core.analytics_rollup import ALL, add_months, closes_on
+from app.core.analytics_rollup import ALL, SUPPORT_METRIC, add_months, closes_on
 from app.core.time import utc_now
 from app.models.analytics import (
     AnalyticsAnomaly,
@@ -113,6 +113,19 @@ FOLLOWERS = {
     "hikers_active": ("events_identified",),
 }
 
+# Support choices at each level (`support_chosen_<cents>`, app/core/
+# analytics_rollup.py) are counts of people too - rule 2, each level alone.
+# No total of the levels is published, and `events` counts the six other
+# kinds only, so a masked level cannot come back by subtraction inside the
+# report - it could, through `events`, until the fourth #1885 review. Outside it, the /support/ page publishes the
+# year's count of paying supporters (app/core/support.py `year_total`); its
+# definition differs from these (charges in a year, renewals included, against
+# choices begun in a month), so subtracting one from the other is a rough
+# estimate at best - said here because "rough" is a guess about the data.
+#
+# Phones' $0 rows and paid rows both sit on the all-clubs, all-platforms
+# slice, the only one the rollup writes them to.
+
 # Counts of events, not of people. An event count under the floor was made by
 # fewer than the floor, so it is masked whatever cell it is in - which is
 # what masks a club's plans, completions, sign-ins and map views at all: a
@@ -138,6 +151,7 @@ EVENT_COUNTS = frozenset(
         "fixes",
         "unsealed_no_key",
         "events_after_close",
+        "support_after_close",
     }
 )
 # What an event count carries with it, masked whenever it is.
@@ -217,7 +231,7 @@ def mask_cells(cells: dict[str, dict[str, float]]) -> tuple[dict[str, dict[str, 
                 shown[metric] = None
             elif metric in DEVICE_COUNTS and (_small(count) or _small(people - count)):
                 shown[metric] = None
-            elif metric in EVENT_COUNTS and _small(count):
+            elif (metric in EVENT_COUNTS or metric.startswith(SUPPORT_METRIC)) and _small(count):
                 shown[metric] = None
             else:
                 shown[metric] = value
@@ -473,6 +487,7 @@ def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MO
             "floor": K_FLOOR,
             "months": [],
             "clubs": [],
+            "support_levels": [],
             "cells": {},
             "masked": [],
             "cohorts": [],
@@ -489,6 +504,14 @@ def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MO
     masked, whole = mask_cells(dict(cells))
 
     clubs = sorted({key.split("|")[1] for key in cells if key.split("|")[1] != ALL})
+    support_levels = sorted(
+        {
+            int(metric[len(SUPPORT_METRIC) :])
+            for values in cells.values()
+            for metric in values
+            if metric.startswith(SUPPORT_METRIC)
+        }
+    )
     last_key = db.query(AnalyticsSealKey.month).order_by(AnalyticsSealKey.month.desc()).first()
 
     return {
@@ -506,6 +529,7 @@ def build_report_data(db: Session, *, environment: str, months: int = DEFAULT_MO
             for state in states
         ],
         "clubs": clubs,
+        "support_levels": support_levels,
         "cells": masked,
         "masked": sorted(whole),
         "cohorts": _cohorts(db, month_list[-1]),

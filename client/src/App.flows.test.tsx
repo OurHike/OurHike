@@ -1104,7 +1104,7 @@ describe('signing in from Settings', () => {
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('tab', { name: 'More' }))
 
-    await user.click(await screen.findByRole('button', { name: /^you/i }))
+    await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
 
     expect(
@@ -1124,7 +1124,7 @@ describe('signing in from Settings', () => {
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('tab', { name: 'More' }))
 
-    await user.click(await screen.findByRole('button', { name: /^you/i }))
+    await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
     await screen.findByRole('button', { name: /continue with google/i })
 
@@ -1139,7 +1139,7 @@ describe('signing in from Settings', () => {
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('tab', { name: 'More' }))
 
-    await user.click(await screen.findByRole('button', { name: /^you/i }))
+    await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
     await user.click(await screen.findByRole('button', { name: /not now/i }))
 
@@ -1163,7 +1163,7 @@ describe('signing in from Settings', () => {
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('tab', { name: 'More' }))
 
-    await user.click(await screen.findByRole('button', { name: /^you/i }))
+    await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
     await user.click(await screen.findByRole('button', { name: /sign in/i }))
     await screen.findByRole('button', { name: /continue with google/i })
 
@@ -1782,7 +1782,7 @@ describe('who a report says it is from (#233)', () => {
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('button', { name: /^you/i }))
+    await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
     await user.selectOptions(
       await screen.findByRole('combobox', { name: /signed as/i }),
       'section',

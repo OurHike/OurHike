@@ -182,7 +182,7 @@ describe('setting one', () => {
     await renderApp()
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('button', { name: /^you/i }))
+    await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
     await user.click(
       await screen.findByRole('button', { name: /say where you are walking/i }),
     )
@@ -201,7 +201,7 @@ describe('setting one', () => {
     await renderApp()
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('button', { name: /^you/i }))
+    await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
     await user.click(
       await screen.findByRole('button', { name: /say where you are walking/i }),
     )
@@ -226,7 +226,7 @@ describe('setting one', () => {
     await renderApp()
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('button', { name: /^you/i }))
+    await user.click(await screen.findByRole('button', { name: /^you(?!r support)/i }))
     await user.click(await screen.findByRole('button', { name: /northbound · mi/i }))
     await user.click(await screen.findByRole('button', { name: /clear this hike/i }))
 

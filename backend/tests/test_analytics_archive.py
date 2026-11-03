@@ -27,6 +27,7 @@ from app.models.analytics import (
     AnalyticsArchivePart,
     AnalyticsEvent,
     AnalyticsMonthly,
+    UsageEvent,
 )
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -368,6 +369,42 @@ def test_the_rollup_counts_archived_rows_back_into_a_closed_months_late_rows(db_
 
     late = db_session.get(AnalyticsMonthly, (OCTOBER, "events_after_close", ALL, ALL))
     assert late.value == 1
+
+
+def test_an_archived_support_choice_is_neither_a_late_event_nor_a_late_support_choice(db_session, store, script):
+    """#1885 keeps support choices out of `events`, and counts the ones that
+    arrive after a close as `support_after_close`. Once the archive has moved a
+    closed month's support rows, its late counts must still tell the two
+    apart: `analytics_archive_parts.rows` counts both, and read alone it
+    turned every archived support choice into a late event."""
+    _october(db_session)
+    for day in (3, 9, 17):
+        _event(db_session, date(2026, 10, day), event="support_chosen", platform="web", support_cents=0)
+    _close_october(db_session)
+    _archive(db_session, store, script)
+    _event(db_session, date(2026, 10, 30), received=date(2026, 11, 25))
+    _event(db_session, date(2026, 10, 30), received=date(2026, 11, 25), event="support_chosen", platform="web", support_cents=0)
+
+    analytics_rollup.run(db_session, today=date(2026, 11, 26))
+
+    late = {
+        metric: db_session.get(AnalyticsMonthly, (OCTOBER, metric, ALL, ALL)).value
+        for metric in ("events_after_close", "support_after_close")
+    }
+    assert late == {"events_after_close": 1, "support_after_close": 1}
+
+
+def test_the_six_archived_event_columns_are_every_event_but_a_support_choice():
+    """The rollup reads an archived day's support choices as `rows` less the
+    six event columns (`_ARCHIVED_EVENTS`). A seventh event added without a
+    column of its own would be counted as support choices; this fails first."""
+    named = {
+        sql.split("event = '")[1].split("'")[0]
+        for column, sql in analytics_quality.DAILY_COUNTS.items()
+        if column in analytics_rollup._ARCHIVED_EVENTS.split(" + ")
+    }
+
+    assert named == {event.value for event in UsageEvent} - {UsageEvent.support_chosen.value}
 
 
 def test_rows_held_come_down_once_the_archive_has_run_before_the_rollup(db_session, store, script):

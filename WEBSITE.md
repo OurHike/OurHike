@@ -283,6 +283,13 @@ safety-relevant. A redesign that adds a friendly install button to the homepage
 reintroduces it silently. Carry the comment across with the code.
 
 ### 5.5 Support the trail — the money page
+**Rewritten 2026-10-23 as the pay-what-you-want page** (#1876,
+[features/SUPPORTING_OURHIKE.md](features/SUPPORTING_OURHIKE.md)): the ideals,
+Jean Stephenson's story as Dave Field tells it on The Green Tunnel, how
+choosing works, where every dollar goes, the stages of who holds it, the
+year's running total read live, and the direct-giving links, unchanged. The
+text below is the page's earlier spec, kept for its reasoning.
+
 The business model's only surface. Per `features/PRICING_MODEL.md`: the
 thru-hike pass, the regional pass, the all-access ceiling, the volunteer
 exemption, and direct links to the organizations' own giving pages. Structure
@@ -522,7 +529,9 @@ lost:
 3. **OSM/ODbL attribution** appears wherever OSM-derived data is shown, site
    included (LAUNCH_CHECKLIST.md §7).
 4. **No purchase surface inside the mobile app shell.** The app links out; the
-   web transacts (FEATURES.md).
+   web transacts (FEATURES.md). Since 2026-10-23 the store apps do not even
+   link out for OurHike's own support - the setup link goes by email
+   (features/SUPPORTING_OURHIKE.md §5).
 5. **Nothing safety-relevant behind a paywall, ever** (value #5,
    PRICING_MODEL.md pricing value #1) — a commitment the pricing page should
    state out loud, since it is the differentiator.

@@ -7,6 +7,7 @@ import {
   type ClubRunLike,
   type HeartbeatStamp,
   milesByClub,
+  NO_STAMP,
   sharesFromMiles,
   type UsageDetails,
   type UsageEventName,
@@ -129,6 +130,9 @@ function goldenBatch(): { identified: boolean; events: UsageRow[] } {
         stamp({ month_first: true, month_returning: true, kind_month_first: true }),
         { pageviews: 7, session_length: 'm5_to_20' },
       ),
+      // A kept $0, stamped as lib/useUsageMeasurement.ts stamps it: the level
+      // and nothing else (`LEVEL_ONLY_EVENTS`).
+      row(7, 'support_chosen', 'ios', false, NO_STAMP, { support_cents: 0 }),
     ],
   }
 }
@@ -164,6 +168,7 @@ describe('the golden batch', () => {
         'platform',
         'session_length',
         'signed_in',
+        'support_cents',
         'week_first',
       ].sort(),
     )

@@ -35,6 +35,7 @@ from app.routers import (
     profiles,
     reports,
     ridge_runner,
+    support,
     synced_day_hikes,
     synced_trips,
     trail_challenges,
@@ -209,3 +210,4 @@ app.include_router(nominations.router)
 # because the club's counts and CSV are read off the hiker's rows, and two
 # routers would be two places deciding what a count may reveal.
 app.include_router(trail_challenges.router)
+app.include_router(support.router)

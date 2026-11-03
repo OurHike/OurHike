@@ -3,7 +3,9 @@
 Six things a hiker does are counted - installing the app, signing in, making
 a hike plan, completing one, viewing the map, and a session with its
 pageviews - and every one of them arrives at `POST /usage-events`
-(app/routers/analytics.py) as one row of `analytics_events`.
+(app/routers/analytics.py) as one row of `analytics_events`. A seventh, a
+support choice's level (#1876), is a row of the same table that carries the
+level and nothing else; a paid one is written by the server, not a phone.
 
 WHAT THE MAINTAINER DECIDED, AND WHAT IT REVERSED
 
@@ -67,10 +69,17 @@ from app.db.base import Base
 
 
 class UsageEvent(str, enum.Enum):
-    """The six things counted, and nothing else - the registry EVENTING.md §3
+    """The things counted, and nothing else - the registry EVENTING.md §3
     asks for. `POST /usage-events` refuses any other name, which is what stops
     "no free text" being a rule everyone remembers until the afternoon somebody
-    interpolates a trail name into an event key."""
+    interpolates a trail name into an event key.
+
+    `support_chosen` is the seventh, added by #1885 on top of #1902's six: one
+    row per answer to "what do you give", carrying its level in
+    `support_cents` and nothing else about who gave it (the maintainer, poll
+    2026-10-27, "the level only"). A $0 answer comes from the phone when it is
+    chosen; a paid level is written by the server when Stripe confirms the
+    first payment (app/core/analytics_support.py), never by a phone."""
 
     app_installed = "app_installed"
     user_login = "user_login"
@@ -78,6 +87,13 @@ class UsageEvent(str, enum.Enum):
     hike_plan_completed = "hike_plan_completed"
     map_screen_viewed = "map_screen_viewed"
     session = "session"
+    support_chosen = "support_chosen"
+
+
+# Events that carry their own fact and nothing about the hiker or the phone:
+# no account, no fix, no club, no heartbeat flag. Enforced by the schema for
+# what a phone sends and by the route for what it stores.
+LEVEL_ONLY_EVENTS = frozenset({UsageEvent.support_chosen})
 
 
 class UsagePlatform(str, enum.Enum):
@@ -209,6 +225,13 @@ class AnalyticsEvent(Base):
     # to the month's public key. Nothing in this backend can open it; only
     # `scripts/analytics_keys.py open`, run with the secret, can.
     sealed = Column(LargeBinary, nullable=True)
+
+    # A `support_chosen` row's level, in US cents a year: 0 from a phone, the
+    # paid amount Stripe confirmed from the server. Null on every other event.
+    # A level and a date, and no key, because "the level only" was the
+    # maintainer's answer (poll 2026-10-27) - so nothing here can say which
+    # supporter a row was, beyond what `support_choices` already holds.
+    support_cents = Column(Integer, nullable=True)
 
 
 class IntakeOutcome(str, enum.Enum):

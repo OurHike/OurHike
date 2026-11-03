@@ -448,11 +448,18 @@ export function Onboarding({
               because a first-run screen has no room to hedge and the thing
               being asserted is ours to assert: it is a statement about where
               OurHike's own hand is, not a claim about anybody else.
+
+              NARROWED 2026-10-23 (#1876): this ended "OurHike takes no cut and
+              holds no money" until OurHike began asking hikers to cover its
+              OWN costs, pay-what-you-want. "Holds no money" stopped being true
+              of OurHike in general at that point; "takes no cut of what you
+              give them" is the half that is still true, and the half this
+              paragraph was ever about.
             */}
             <p>
               Your money belongs with the people holding the tools. The ATC, and other
               organizations who keep these trails open, take members and donations
-              directly &mdash; OurHike takes no cut and holds no money.
+              directly &mdash; OurHike takes no cut of what you give them.
             </p>
             <p className="onboarding__reassurance">No account. Nothing to sign up for.</p>
           </section>

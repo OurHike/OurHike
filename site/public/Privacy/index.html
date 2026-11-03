@@ -229,7 +229,7 @@
 
     <main class="wrap">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated October 29, 2026</p>
+      <p class="updated">Last updated November 3, 2026</p>
 
       <p class="lede">
         OurHike is a small, volunteer-built offline map for hikers, in
@@ -310,6 +310,58 @@
         moderators and are never public.
       </p>
 
+      <h3>Supporting OurHike</h3>
+      <p>
+        Once a year OurHike asks what you would like to give: $0, $12, $60
+        or $120 a year. <strong>A $0 answer stays on your phone</strong>,
+        and we never learn it was yours. While usage counts are on, the
+        phone also sends one count that somebody chose $0: the date, the
+        kind of phone and the app version, nothing else.
+      </p>
+      <p>
+        A paid choice needs an account. Stripe takes the card, and we never
+        see it. We keep:
+      </p>
+      <ul>
+        <li>
+          your account's email address, where we tell you when a payment
+          starts and when it stops (receipts come from Stripe). A payment is
+          matched to you by a reference number, never by email;
+        </li>
+        <li>
+          the amount, how often, when it started, renews and stopped, each
+          charge with the year it paid for, any refund, and Stripe's
+          reference numbers for them and for you;
+        </li>
+        <li>
+          what Stripe tells us about it — started, changed, paused,
+          cancelled — without your name, any note you left, or a reason you
+          gave for cancelling;
+        </li>
+        <li>when we told you that a change of payment provider means one email from us;</li>
+        <li>
+          one count of the amount, made at the first payment and kept six
+          months like the other usage counts. It has a random ID of its own,
+          so it cannot be linked to you, and it is not made if usage counts
+          were off on that phone or on your account;
+        </li>
+        <li>a log of the emails we sent you about it: address, subject and date;</li>
+        <li>
+          whether you turned those emails off. Each one links to a page where
+          you can, or turn off every email from OurHike; Your support in the
+          app has the first switch too.
+        </li>
+      </ul>
+      <p>
+        If you delete your account, a choice you never paid for loses your
+        address, your account and its email log, and is kept only so that a
+        payment from an old link is recognised and stopped. A payment you
+        made is kept as an accounting record for seven years after it ends,
+        then deleted with its email log, and anything still charging is
+        stopped for you. If you turned the emails off, that stays, so we
+        still don't send them.
+      </p>
+
       <h3>Kept only on your phone</h3>
       <p>
         Downloaded maps, your settings and reports waiting for signal stay
@@ -325,10 +377,10 @@
 
       <h3 id="usage-analytics">Usage statistics</h3>
       <p>
-        Unless you turn it off, OurHike counts six things: first opening the
-        app, signing in, making a hike plan, finishing one, viewing the map,
-        and each visit, with how many screens it showed and roughly how long
-        it lasted.
+        Unless you turn it off, OurHike counts seven things: first opening
+        the app, signing in, making a hike plan, finishing one, viewing the
+        map, each visit, with how many screens it showed and roughly how
+        long it lasted, and the amount chosen when you are asked what to give.
       </p>
       <ul>
         <li>
@@ -362,6 +414,14 @@
           <strong>No</strong>: nothing identifying your account goes with
           your counts beyond whether some account is signed in, and positions
           are still sent while location is on.
+        </li>
+        <li>
+          <strong>A choice of what to give is counted by its amount
+          alone</strong>: it carries no position, no club and none of the
+          yes-or-no answers above, and it is never linked to your account,
+          even if you said yes. Your phone counts $0 when you choose it; our
+          server counts a paid amount when the payment provider confirms the
+          first payment, because only then is it known to have gone through.
         </li>
         <li>
           Counts and positions are kept for the six whole months after the
@@ -408,6 +468,14 @@
       <ul>
         <li><strong>Supabase</strong> runs sign-in and stores your account for us.</li>
         <li>
+          <strong>Stripe</strong>, our card processor — only if you choose to
+          give a paid amount. We send it your email address, to fill in its
+          payment page, and a reference number for your choice; you give it
+          your card details yourself on that page. It sends us back the
+          payment details listed above, and we ask it to stop your payment
+          when you press Stop.
+        </li>
+        <li>
           <strong>Trail clubs and maintainers</strong> see reports for the
           sections they maintain, and public reports show your trail name to
           anyone — never your real name or email.
@@ -440,6 +508,11 @@
         </li>
         <li>Turn usage statistics off, or unlink them, in More → Safety &amp; privacy.</li>
         <li>Clear stored maps and settings any time from your device or browser.</li>
+        <li>
+          Stop a paid choice from the app, under More → Your support →
+          Stop, and stop our emails about it with the unsubscribe link
+          each one carries.
+        </li>
       </ul>
 
       <h2>Children</h2>

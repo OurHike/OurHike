@@ -432,7 +432,19 @@ if (serviceWorker !== undefined) {
 // absolute line still cannot do is tell organic growth from a drift smaller
 // than the room left; a check against `main`'s own figure would, and is
 // #1591's open half.
-const EAGER_JS_BUDGET_BYTES = 240 * 1024
+//
+// 241 KB SINCE 2026-10-26, the maintainer's call by poll on #1876 - Ask
+// every hiker to choose what they give after their fifth day of use, $0
+// included, and take payment only on the website. main stood at 245,470
+// bytes, 290 under 240 KB, by this walk on 2026-10-24. The support feature
+// deferred everything that could leave (screens/SupportGate.tsx: both
+// screens, the nudge lines and the three API calls load after launch) and
+// still measured 245,909: the shell's wiring and the preload map's entries
+// for two deferred screens, about 430 bytes. Asked whether to raise the line
+// a kilobyte, find the bytes in unrelated code, or wait for #1591's relative
+// check, the maintainer chose the kilobyte - with 290 bytes of room the next
+// feature trips it too, which is the absolute line's known failure above.
+const EAGER_JS_BUDGET_BYTES = 241 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 /**

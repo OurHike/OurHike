@@ -1,7 +1,7 @@
 """clubs.maintainer_written: who wrote the row, kept apart from who registered it
 
 Revision ID: c3a9e5d27f18
-Revises: 897b71ad5fff
+Revises: 8f6794da722d
 Create Date: 2026-10-27 15:30:00.000000
 
 **#1913 — Deleting the registrant's account turns a self-registered
@@ -31,6 +31,14 @@ tests/test_migrations.py; nobody has queried production's or UA's clubs.
 Additive and reversible: downgrade drops the column. The code that reads it
 must not run before this upgrade (backend/HOSTING.md, the migration-skew
 section): `stood_behind()` is in every hiker-facing read of assignments.
+
+RE-POINTED 2026-11-03 onto 8f6794da722d (#1945 - main has two Alembic heads
+since #1927 merged after #1936). This revision was written against
+897b71ad5fff, and the usage archive's 8f6794da722d landed on that same parent
+three minutes before it, so `main` had two heads and `alembic upgrade head`
+refused to run. This one moved, not that one: UA already held 8f6794da722d
+(migrate run 44) and no database held this, while moving the archive's would
+have made Alembic read this revision as applied in UA and skip it for good.
 """
 
 import sqlalchemy as sa
@@ -38,7 +46,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "c3a9e5d27f18"
-down_revision = "897b71ad5fff"
+down_revision = "8f6794da722d"
 branch_labels = None
 depends_on = None
 

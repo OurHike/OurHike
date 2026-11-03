@@ -1,0 +1,92 @@
+/* The Ten Essentials page (screens/TenEssentials.tsx, #1689). Semantic
+   tokens only, as plan.css's header says, and its header, crumb and card
+   anatomy are plan.css's own so the page reads as part of the Plan tab. */
+
+.essentials {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+/* The one disclosure (frame D of the 2026-09-26 mock): the sunken note box
+   the Plan home already uses for a sentence the hiker should read first. */
+.essentials__disclose {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+.essentials__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface-card);
+  overflow: hidden;
+}
+
+.essentials__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-3, 12px);
+  border-top: 1px solid var(--border-1);
+}
+
+.essentials__item:first-child {
+  border-top: 0;
+}
+
+.essentials__check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--brand-primary);
+}
+
+/* The whole name and note are the checkbox's label, so the tap target is
+   the row's width rather than a 22 px square. */
+.essentials__label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.essentials__name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.essentials__note {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* 44 px tall, the touch-target floor the rest of the app keeps. */
+.essentials__shop {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-2, 8px);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--link);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.essentials__foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}

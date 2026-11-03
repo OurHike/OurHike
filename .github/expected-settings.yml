@@ -424,6 +424,66 @@ settings:
       created the rollup's role in it or set this secret, and the job warns
       and skips until somebody does.
 
+  PRODUCTION_ANALYTICS_ARCHIVE_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      Production's Postgres, for analytics-rollup.yml's archive step to move
+      each closed month's usage rows that no account is linked to into
+      Parquet files in R2, and delete them from Postgres (#1923). It connects
+      as `ourhike_analytics_archive`, whose grants features/EVENTING.md writes
+      out: every column of the usage rows, `sealed` included because the
+      files carry it, but only on rows with no account linked - plus the
+      archive's own two tables. It is the one credential here that can read
+      `sealed`, which is ciphertext under a key no server holds.
+      Tenant-qualified username, exactly as the conditions reader's entry
+      explains. Optional because unset is the current state: the step warns
+      and skips, and rows stay in Postgres until the rollup deletes them at
+      six months, as they did before the archive existed.
+
+  PRODUCTION_USAGE_ARCHIVE_R2_ACCESS_KEY_ID:
+    where: secret
+    required: false
+    why: >-
+      Half of an R2 API token with Object Read & Write on the one bucket
+      `ourhike-usage-production`, for the archive step above to write each
+      month's files and delete them at six months. Scoped to that bucket
+      alone, so this token reads no other bucket and no other key here reads
+      usage files. Its endpoint is the account's, R2_ENDPOINT_URL. Optional
+      for the database URL's reason above.
+
+  PRODUCTION_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY:
+    where: secret
+    required: false
+    why: >-
+      The other half, shown once at creation, so a lost one is a reminted
+      token. Optional for the database URL's reason above.
+
+  UA_ANALYTICS_ARCHIVE_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      UA's Postgres, the same role and grants as the production entry above,
+      for the archive step of the rollup's UA job. Optional because unset is
+      the current state, and the step warns and skips until somebody creates
+      the role in UA's project and sets this.
+
+  UA_USAGE_ARCHIVE_R2_ACCESS_KEY_ID:
+    where: secret
+    required: false
+    why: >-
+      Half of a token like production's above, on the one bucket
+      `ourhike-usage-ua` - its own token, so a UA run cannot touch
+      production's files (the maintainer's choice, #1923, 2026-10-29).
+      Optional for UA_ANALYTICS_ARCHIVE_DATABASE_URL's reason.
+
+  UA_USAGE_ARCHIVE_R2_SECRET_ACCESS_KEY:
+    where: secret
+    required: false
+    why: >-
+      The other half of the UA token. Optional for
+      UA_ANALYTICS_ARCHIVE_DATABASE_URL's reason.
+
   PROTECTIONS_READ_TOKEN:
     where: secret
     required: false

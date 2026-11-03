@@ -428,3 +428,70 @@ class AnalyticsOpening(Base):
     # "user_key <key>" or "whole month".
     selector = Column(String(120), nullable=False)
     rows_opened = Column(Integer, nullable=True)
+
+
+class AnalyticsArchivePart(Base):
+    """One Parquet file of a closed month's unlinked rows, in the usage archive (#1923).
+
+    The maintainer's choice in poll 5 (2026-10-27): once a month closes, its
+    rows with no `user_key` leave Postgres for a private R2 bucket, one per
+    environment, and the linked rows stay here to their six months, so account
+    deletion, unlinking and the export never have to rewrite a file.
+
+    Written by the nightly archive step (app/core/analytics_archive.py) only
+    after its file is in R2, in the same transaction that deletes the rows the
+    file holds, so a row is always in exactly one of the two places. `rows` is
+    what the rollup adds back when it counts a closed month's late rows
+    (app/core/analytics_rollup.py `_count_late`); `sha256` is what
+    `scripts/analytics_keys.py open` checks a downloaded file against.
+    `deleted_at` is set when the month passes retention and its files go.
+    """
+
+    __tablename__ = "analytics_archive_parts"
+
+    month = Column(Date, primary_key=True)
+    # 1 for the pass that archived the month at its close, 2 and on for rows
+    # that arrived, or were unlinked, after that.
+    part = Column(Integer, primary_key=True)
+    object_key = Column(String(64), nullable=False)
+    rows = Column(Integer, nullable=False)
+    bytes = Column(Integer, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    written_at = Column(DateTime, nullable=False, default=utc_now)
+    deleted_at = Column(DateTime, nullable=True)
+
+
+class AnalyticsArchivedDaily(Base):
+    """What the archived rows of each day counted, for the readers that stay on Postgres (#1923).
+
+    The nightly checks and the usage report read up to 112 days of daily
+    series (app/core/analytics_quality.py `_series_window`), and once closed
+    months' unlinked rows go to R2 Postgres holds about 45 days of every row.
+    The maintainer's choice (poll, 2026-10-29) was a table of counts over
+    giving those readers an R2 token: the archive step adds what the rows it
+    moves counted, in the transaction that deletes them, with the same SQL the
+    checks count with (`analytics_quality.DAILY_COUNTS`), so a series reads
+    rows still held plus these and comes out as it did before the rows moved
+    (tests/test_analytics_archive.py).
+
+    Counts only: no position, no account, no row. A month's lines go with its
+    files at retention.
+    """
+
+    __tablename__ = "analytics_archived_daily"
+
+    local_date = Column(Date, primary_key=True)
+    received_on = Column(Date, primary_key=True)
+    platform = Column(String(8), primary_key=True)
+    # '' for a row that carried no version, as the checks' own grouping writes it.
+    app_version = Column(String(40), primary_key=True)
+    rows = Column(Integer, nullable=False, default=0)
+    installs = Column(Integer, nullable=False, default=0)
+    logins = Column(Integer, nullable=False, default=0)
+    plans_made = Column(Integer, nullable=False, default=0)
+    plans_completed = Column(Integer, nullable=False, default=0)
+    map_views = Column(Integer, nullable=False, default=0)
+    sessions = Column(Integer, nullable=False, default=0)
+    pageviews = Column(Integer, nullable=False, default=0)
+    phones_this_week = Column(Integer, nullable=False, default=0)
+    no_key = Column(Integer, nullable=False, default=0)

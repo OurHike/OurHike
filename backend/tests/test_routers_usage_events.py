@@ -557,16 +557,31 @@ def test_with_no_rollup_heartbeat_at_all_every_batch_is_paused(client, db_sessio
     assert _intake(db_session) == {("", "paused"): 2}
 
 
+def _the_only_heartbeat(db_session, now):
+    """Make the rollup's heartbeat `now`, and no other.
+
+    `_rollup_has_run` has already written this month's row as computed now,
+    and `make_rollup_heartbeat` writes the row for `now`'s own month. On the
+    first days of a month, a time `analytics_rollup_stale_days` back falls in
+    the previous month, so it lands on another row and this month's fresh one
+    stays the newest (#1951 - test_a_heartbeat_older_than_the_stale_days_pauses_collection
+    fails on the first three days of every month; measured 2026-11-03, 202
+    where 503 was expected). So the rows go first.
+    """
+    db_session.query(AnalyticsMonth).delete()
+    db_session.commit()
+    make_rollup_heartbeat(db_session, now=now)
+
+
 def test_a_heartbeat_older_than_the_stale_days_pauses_collection(client, db_session, today):
-    stale = utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1)
-    make_rollup_heartbeat(db_session, now=stale)
+    _the_only_heartbeat(db_session, utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1))
 
     assert _post(client, [_event(today)]).status_code == 503
     assert _intake(db_session) == {("", "paused"): 1}
 
 
 def test_a_heartbeat_inside_the_stale_days_lets_the_batch_in(client, db_session, today):
-    make_rollup_heartbeat(db_session, now=utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=-60))
+    _the_only_heartbeat(db_session, utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=-60))
 
     assert _post(client, [_event(today)]).status_code == 202
 

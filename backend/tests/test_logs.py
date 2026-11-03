@@ -169,11 +169,35 @@ def test_a_failure_is_logged_by_its_route_template_never_by_the_token_in_its_pat
     assert "tok_a-capability-nobody-should-log" not in json.dumps(line)
 
 
-def test_a_403_and_a_200_are_not_logged(small_app, lines):
+def test_a_403_is_logged_and_a_200_is_not(small_app, lines):
+    # Every 4xx since the maintainer's poll of 2026-11-03: with uvicorn's access
+    # log off (backend/Dockerfile), this line is the only record a 403 leaves.
     small_app.get("/ok")
     small_app.get("/forbidden")
 
-    assert [entry for entry in lines if entry["logger"] == "app.request"] == []
+    assert [entry["message"] for entry in lines if entry["logger"] == "app.request"] == ["GET /forbidden -> 403"]
+
+
+def test_a_request_no_route_matched_is_logged_without_its_path(small_app, lines):
+    response = small_app.get("/no-such-page/a-secret-somebody-pasted")
+
+    assert response.status_code == 404
+    (line,) = [entry for entry in lines if entry["logger"] == "app.request"]
+    assert line["message"] == "GET (no route) -> 404"
+    assert "a-secret-somebody-pasted" not in json.dumps(line)
+
+
+def test_a_guessed_nomination_link_is_logged_by_its_template_never_by_the_token(client, lines):
+    # The 404s somebody guessing `/nominations/{token}` links would leave, and
+    # the reason the maintainer chose to log every 4xx: one line each, by the
+    # route's template, so the guesses can be seen and a real token is never
+    # written down.
+    response = client.get("/nominations/tok_a-guess-nobody-should-log")
+
+    assert response.status_code == 404
+    (line,) = [entry for entry in lines if entry["logger"] == "app.request"]
+    assert line["message"] == "GET /nominations/{token} -> 404"
+    assert "tok_a-guess-nobody-should-log" not in json.dumps(line)
 
 
 def test_the_real_app_exposes_the_id_header_to_a_browser(client):

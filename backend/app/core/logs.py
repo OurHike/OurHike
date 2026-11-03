@@ -9,7 +9,7 @@ at 3 pm" could not be tied to a line.
 WHAT THIS IS. The `app` logger (every module's `logging.getLogger(__name__)`
 is a child of it), one handler writing one JSON object per line to stderr, and
 a middleware that mints a request id, returns it as `X-Request-Id`, and logs
-one line for each 401 and each 5xx - including the 500 an unhandled exception
+one line for each 4xx and each 5xx - including the 500 an unhandled exception
 becomes, which `RequestIdMiddleware` answers itself so that it carries the id
 too (the reason is on the class).
 
@@ -25,9 +25,17 @@ id or a token in the path stays out too. Nor the values a failed database
 statement was bound to: `describe_failure` below is how a caller logs a
 database error by its names alone.
 
-@unvalidated: the 401-and-5xx filter on the request line is picked, not
-measured. It is the two classes the issue names as invisible; whether 403, 429
-or a slow 200 belong beside them is a question for the first week of real logs.
+EVERY 4XX, NOT ONLY THE 401. The first filter was 401 and 5xx, the two classes
+#1759 named as invisible. Then `--no-access-log` (backend/Dockerfile) took away
+the only other record of a 403, 404, 409, 422 or 429 - a run of 404s from
+somebody guessing `/nominations/{token}` links included - and the maintainer
+chose by poll, 2026-11-03, to log every 4xx here instead, by route template like
+the rest. A request no route matched is logged as `(no route)`, so a scanner's
+paths stay out as well.
+
+@unvalidated: what every 4xx costs in volume on the host's log, which nobody
+has measured because no host has served real traffic yet; the first week of
+real logs will say, and a slow 200 is still not logged at all.
 
 AND ONE LINE UVICORN WRITES IS DROPPED. Uvicorn's access log (the
 `uvicorn.access` logger) opens every line with the client's address. For
@@ -206,7 +214,7 @@ class RequestIdMiddleware:
                 await PlainTextResponse("Internal Server Error", status_code=500)(scope, receive, send_with_id)
             raise
         finally:
-            if status_code == 401 or status_code >= 500:
+            if status_code >= 400:
                 # The route's template, never the path the caller sent: a path
                 # can carry a capability (`/nominations/{token}` is a vote that
                 # lasts `TOKEN_DAYS`, 45), and the template is what a reader needs to

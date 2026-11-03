@@ -1,7 +1,7 @@
 """support choices and support events
 
 Revision ID: c5a8e2d4f913
-Revises: af3335f631cb
+Revises: a5d81c3f9b27
 Create Date: 2026-10-23 01:00:00.000000
 
 What a hiker chose to give OurHike, paid choices only (#1876): a $0 answer
@@ -38,10 +38,11 @@ rule, tests/test_migration_rls.py's union): PostgREST would otherwise serve
 every supporter's email and amount to anyone holding the anon key.
 
 Re-pointed on 2026-11-03, still unreleased, from #1903's 897b71ad5fff onto
-af3335f631cb, the revision that joins main's two heads (#1948 - Join
-main's two Alembic heads, 8f6794da722d and c3a9e5d27f18, in a merge
-revision). No database has this revision, so moving its parent moves
-nothing anywhere.
+a5d81c3f9b27, main's one head once #1950 made 8f6794da722d and
+c3a9e5d27f18 a line and #1928 (Decide whether a maintainer covers a
+waypoint from its published mile, not the mile on the note) landed on
+it. No database has this revision, so moving its parent moves nothing
+anywhere.
 
 Additive and reversible: downgrade drops the four tables and nothing else.
 """
@@ -54,7 +55,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c5a8e2d4f913"
-down_revision: Union[str, Sequence[str], None] = "af3335f631cb"
+down_revision: Union[str, Sequence[str], None] = "a5d81c3f9b27"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

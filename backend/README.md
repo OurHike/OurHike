@@ -100,6 +100,19 @@ Three things worth knowing before running it against real data:
 
 Without this, `GET /maintainer-assignments` and the thanks resolution both run against empty tables - and the client returns `[]` on failure, so "nothing is loaded" and "nobody is assigned" look identical ([#249](https://github.com/OurHike/OurHike/issues/249)). Real per-club admin tooling is `features/VOLUNTEERING.md`'s larger module; this is the deliberate answer for one club getting started.
 
+### Where each waypoint is: `load_waypoint_miles.py`
+
+`waypoint_miles` holds each waypoint's mile from the published waypoint export, and `GET /disputes` reads it to decide whether a maintainer covers a waypoint: the waypoint's own mile, never the one written on a note ([#1917 — A maintainer's note settles a water dispute anywhere on the trail, because the covering check reads the mile the note's author typed, not where the waypoint is](https://github.com/OurHike/OurHike/issues/1917)). Like `clubs` and `maintainer_assignments`, nothing writes it over HTTP.
+
+```
+python load_waypoint_miles.py ../pipeline/data/processed/poi/*.geojson           # says what it would do
+python load_waypoint_miles.py ../pipeline/data/processed/poi/*.geojson --commit  # does it
+```
+
+- **Give it every type's file at once.** The files are the whole answer: a waypoint in the table and in no file given is deleted, and the dry run lists each deletion first. A load that would delete more than a tenth of the table is refused unless `--allow-shrink` says the release really retired them; one type's file alone would have deleted 2,592 of release 2026-10-10-2's 3,024 rows.
+- **Run it after each waypoint publish**, against UA and against production. Until it has run against an environment, no waypoint there has a loaded mile. A covering maintainer's `not_found` still marks a waypoint from the mile they typed; what waits for the load is one maintainer's confirmation taking a dispute off, which until then needs two people's. `max(loaded_at)` is when the table last matched a release, because every run stamps every row it keeps.
+- **It refuses** files that place no waypoint on the trail rather than empty the table, a file name given twice, a feature that is not a GeoJSON Feature, and a mile below 0 or above 5,000.
+
 ## Migrations
 
 `alembic/versions/` began as two migrations — `initial_schema`, creating all seven tables (`clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`), and `enable_row_level_security`, which locks them against Supabase's PostgREST front door — and has grown since (eight revisions as of 2026-08-18); the directory itself is the current list.
@@ -128,13 +141,13 @@ Point `DATABASE_URL` at the real Supabase Postgres connection string first. Deli
 
 The image reads `PORT` from the environment, which is what makes it portable across Render, Railway, Koyeb, Cloud Run and Fly without editing anything.
 
-**Not yet done, and needs real decisions first:**
-1. Create the service on the chosen host, pointed at this directory's `Dockerfile`.
+**Not yet done.** The decisions are made, and `../LAUNCH_CHECKLIST.md` §6 is the click-path, setting by setting; this list is what each step needs from this directory:
+1. Create the service on the chosen host, pointed at this directory's `Dockerfile`, and serve it at `api.ourhike.org` behind Cloudflare (`HOSTING.md`, decided 2026-10-23).
 2. Set the real runtime secrets there - never committed, never baked into the image: `DATABASE_URL` (the **transaction** pooler, port 6543, which is a different value from the session pooler the migrate job holds on 5432), `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
    - **`SUPABASE_JWT_SECRET` is deliberately not in that list**, and used to be. A hosted Supabase project signs with ES256 and publishes the public half as a JWKS, so there is no shared secret to set; `app/config.py` defaults it empty for exactly that reason and `../LAUNCH_CHECKLIST.md` 4.4 says so. Set it only against a self-hosted Supabase, which this deployment is not.
    - Report photos (#234) need five more, and they are **not** the `R2_*` four the pipeline publishes with: `R2_PHOTO_ENDPOINT_URL`, `R2_PHOTO_BUCKET`, `R2_PHOTO_ACCESS_KEY_ID`, `R2_PHOTO_SECRET_ACCESS_KEY`, `R2_PHOTO_WRITE_ENABLED=true`. `R2_PHOTO_BUCKET` must name a **private** bucket - see `../LAUNCH_CHECKLIST.md` 1.7 and the comment in `app/config.py` for what pointing it at the published one would publish. Leaving all five unset is a valid deployment: it simply cannot take or serve photos, and both endpoints answer 503 rather than failing.
-3. Run the Migrations step above against the real `DATABASE_URL` - not automatic, see why above.
-4. Point the client's API base URL at the deployed service, and add its origin to Supabase's allowed redirect URLs (see `../LAUNCH_CHECKLIST.md`).
+3. Run the Migrations step above against the real `DATABASE_URL` - not automatic, see why above. Already done for production: it read `b4d8e1f7a263`, the head on `main`, when checked on 2026-10-27.
+4. Point the client's API base URL at the deployed service. Its origin needs no place on Supabase's redirect allow-list, which this step used to ask for: sign-in returns to the app's origin, never to the API's.
 
 **A cold start is now expected rather than designed against.** The host sleeps when idle, and the first request after that pays 30-60 seconds. Every remaining caller tolerates it - reports wait in the outbox, moderation is a person at a desk - with one exception worth knowing before it surprises somebody: opening a report photo after a quiet period will visibly wait. HOSTING.md argues that is affordable now because a photo is not a warning; closures no longer come from here at all.
 

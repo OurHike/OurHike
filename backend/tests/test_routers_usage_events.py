@@ -557,16 +557,27 @@ def test_with_no_rollup_heartbeat_at_all_every_batch_is_paused(client, db_sessio
     assert _intake(db_session) == {("", "paused"): 2}
 
 
+def _only_heartbeat(db_session, at) -> None:
+    """The rollup's heartbeat as exactly `at`, and no other.
+
+    `make_rollup_heartbeat` keys its row by `at`'s month, so in a month's first
+    days a moment three days back landed in last month's row and left
+    `_rollup_has_run`'s fresh one for this month beside it - read as alive,
+    which failed the stale test on the 1st to 3rd of every month (#1949)."""
+    db_session.query(AnalyticsMonth).delete()
+    db_session.commit()
+    make_rollup_heartbeat(db_session, now=at)
+
+
 def test_a_heartbeat_older_than_the_stale_days_pauses_collection(client, db_session, today):
-    stale = utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1)
-    make_rollup_heartbeat(db_session, now=stale)
+    _only_heartbeat(db_session, utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1))
 
     assert _post(client, [_event(today)]).status_code == 503
     assert _intake(db_session) == {("", "paused"): 1}
 
 
 def test_a_heartbeat_inside_the_stale_days_lets_the_batch_in(client, db_session, today):
-    make_rollup_heartbeat(db_session, now=utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=-60))
+    _only_heartbeat(db_session, utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=-60))
 
     assert _post(client, [_event(today)]).status_code == 202
 

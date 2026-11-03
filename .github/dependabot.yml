@@ -50,6 +50,14 @@ updates:
       client-minor-and-patch:
         patterns: ["*"]
         update-types: [minor, patch]
+      # vitest and @vitest/coverage-v8 each require the other's exact
+      # version, so a major bump of one alone can never install: #1407
+      # (vitest 5.0.0) and #1409 (@vitest/coverage-v8 5.0.0) each failed
+      # `npm ci` on the other's peer range, 2026-09-14. A major of either
+      # comes as one pull request with the other.
+      vitest-major:
+        patterns: ["vitest", "@vitest/*"]
+        update-types: [major]
 
   # -------------------------------------------------------------- pipeline
   # requirements.txt here is compiled output, not a hand-written list.

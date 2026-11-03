@@ -8,10 +8,12 @@ from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
+from app.core.edge_cache import NoStoreByDefaultMiddleware
 from app.core.logs import RequestIdMiddleware, configure_logging
 from app.db.session import check_database, database_host
 from app.routers import (
@@ -68,6 +70,15 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="OurHike backend", lifespan=_lifespan)
 
+# The innermost two, added first for that reason: both act on what the routes
+# answer, and nothing outside them needs a body before it is compressed.
+# app/core/edge_cache.py is the reasoning for the second. Gzip is there because
+# Render bills bytes leaving the service past 5 GB a month, at $0.15/GB (read
+# 2026-10-23, backend/HOSTING.md), and JSON shrinks well; Starlette's defaults
+# (bodies of 500 bytes and up, level 9) are used as they come.
+app.add_middleware(GZipMiddleware)
+app.add_middleware(NoStoreByDefaultMiddleware)
+
 # Added BEFORE the CORS middleware below, which matters: `add_middleware`
 # puts each new middleware outermost, so this one ends up inside CORS and a
 # 413 it answers on its own still carries the CORS headers a browser needs to
@@ -81,7 +92,9 @@ app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
 # Authorization header (Supabase Auth), never a cookie, so credentialed
 # CORS isn't needed - allow_credentials stays False, which is what makes a
 # wildcard origin safe here. Tighten to an env-driven allowlist once real
-# deployed origins are known.
+# deployed origins are known - and take GET /closures, /reports and /disputes
+# out of the edge cache in the same change, because a shared copy can carry
+# only one origin's answer (app/core/edge_cache.py).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

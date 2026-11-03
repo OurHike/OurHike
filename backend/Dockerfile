@@ -47,4 +47,14 @@ USER ourhike
 ENV PORT=8000
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# --no-access-log: uvicorn's access log writes every raw path, and a path can
+# carry a capability. GET /nominations/{token} is a vote that lasts TOKEN_DAYS
+# (45). app/core/logs.py logs every 4xx and 5xx instead, by route template and
+# with a request id, so a run of 404s from somebody guessing tokens on
+# /nominations/{token} still shows, without the tokens. What goes is a line for
+# each success and redirect (tests/test_logs.py pins that a 200 leaves none). A
+# few handlers log an event of their own (app/routers/profiles.py's refused
+# deletion, for one), never the request. The maintainer chose the flag by poll
+# on 2026-10-27, while standing the backend up, and every 4xx by poll on
+# 2026-11-03, once the first choice was found to have dropped those lines too.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --no-access-log"]

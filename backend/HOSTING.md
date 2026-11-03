@@ -60,7 +60,8 @@ had excluded.
 
 **Render's free tier**, specifically:
 
-- **$0**, and no card.
+- **$0** inside the free allowances, and no card needed to start. One is on file by the
+  maintainer's choice of 2026-10-27; "What a stranger can do to the free tier" says why.
 - **No configuration file.** A Dockerfile is all it needs, and `backend/Dockerfile` is
   already host-agnostic — it reads `PORT` from the environment for exactly this reason.
 - **No CLI.** Deploys happen on push, from the connected repository. `flyctl` was never
@@ -89,6 +90,138 @@ version of this document counted that against Render, and it was right to: a set
 nobody can see in a pull request is a setting that drifts. `render.yaml` is the answer if
 that becomes a problem; it is deliberately not being added pre-emptively, because a config
 file nobody needs yet is the thing this change is removing.
+
+**What the free tier does at its limits, read from Render's own docs on 2026-10-23**
+(`render.com/docs/free`, `/outbound-bandwidth`, `/deploys`), because each one bears on
+something below:
+
+- **750 free instance hours a month, shared by the whole workspace.** A sleeping service
+  uses none, and one that never sleeps uses about 730. A UA backend on the free tier as
+  well would share the same 750, so the day production stays awake all month is the day
+  it moves to Starter and UA stays free.
+- **5 GB of outbound bandwidth a month on the Hobby workspace, then $0.15/GB.** With no
+  card on file, going past it suspends every free service for the rest of the month
+  rather than billing. That was the ceiling
+  [#395 — Put a ceiling on the bill before the app is public](https://github.com/OurHike/OurHike/issues/395)
+  first chose. The maintainer then chose a card (poll, 2026-10-27), so past 5 GB is
+  billed instead; "What a stranger can do to the free tier" says what that trades. Either
+  way it is why the next section exists: as wired before it, the hikers' own reads would
+  reach this limit.
+- **The pre-deploy command is for paid instances only.** That settles one of the two
+  remedies the migration-skew section below weighs: on the free tier there is no deploy
+  hook, so the ordering discipline is the remedy for as long as the service is free.
+- **A free service may be restarted at any time**, and it spins up in about a minute.
+
+## In front of it: Cloudflare, with three reads cached at the edge
+
+**Decided by the maintainer, by poll, on 2026-10-23, while planning #600 — Nothing owns standing up the production backend, and the image has never run against a real Docker daemon.** The API is served at
+`api.ourhike.org`, a proxied CNAME in the `ourhike.org` zone, which is already on
+Cloudflare. Three anonymous reads are cached there for five minutes: `GET /closures`,
+`GET /reports` and `GET /disputes`. Everything else passes straight through to Render.
+[app/core/edge_cache.py](app/core/edge_cache.py) is the code and its header is the reasoning
+for each rule; this section is what the cache costs and why it is here.
+
+**Why it is here: every hiker's app reads this service, account or not.**
+`client/src/lib/useConditions.ts` asks for `GET /closures`, `/reports`, `/field-notes` and
+`/disputes` when the app opens with signal, again every hour while it stays open, and again
+on return after five minutes away. So the live tier's traffic grows with every hiker, not
+only with those who sign in. "Nothing a hiker reads on the trail depends on this service"
+(above) is true of the safety read and was never true of the bill. The cost model behind
+the decision put the point where those reads use up Render's and Supabase's free 5 GB a
+month at about 2,750 hikers. That figure is reasoned from usage inputs nobody has measured
+(how often the app opens with signal, how many bytes each open reads); the two 5 GB limits
+are the vendors' own. With the cache, this service sees at most one request per URL per
+edge location every five minutes for the anonymous reads, however many hikers ask. Two
+things stretch "per URL": Cloudflare keeps a separate copy per `Origin` header value (the
+app's own two origins, in practice), and signed-in reads, below.
+
+**What it costs: $0,** on Cloudflare's free plan, in a zone that already exists: one CNAME,
+one cache rule, one WAF rule and the one rate-limiting rule the plan allows, all in
+[LAUNCH_CHECKLIST.md](../LAUNCH_CHECKLIST.md) §6. Gzip is on in `app/main.py` for the same
+bill, since it cuts the bytes Render counts.
+
+**What it leaves uncached, and what that costs.** `GET /field-notes` and
+`GET /waypoints/{poi_id}/photos` embed presigned photo URLs that expire five minutes after
+signing, and `app/core/photos.py` rules out a shared copy of either. So the field-note read
+still reaches this service once per hiker per open. The same model puts Supabase Free's
+5 GB of egress at about 9,500 hikers a month with field notes uncached, against about
+130,000 with all four reads cached. Both figures are @unvalidated: they assume field notes
+are a quarter of the bytes a hiker's app reads, and nothing has measured that. The
+maintainer chose this over caching field notes for 60 s (poll, 2026-10-27), on condition of
+the follow-up that removes the trade: a stable photo route like reports already have, so the
+list carries no signature, which is
+[#1905 — GET /field-notes embeds 5-minute signed photo links, so the edge cache cannot keep it and every hiker's app open still reaches the API](https://github.com/OurHike/OurHike/issues/1905).
+
+**Signed-in reads are the open question.** The app sends a signed-in hiker's token on all
+three shared reads (`readFetch` in `client/src/lib/api.ts`), and the API answers any request
+carrying one `private, no-store`. Cloudflare's docs say it does not store that answer. They
+do not say outright whether it answers such a request from the anonymous copy it already
+holds, and §6 step 7's last check finds out, but they point to yes: the default cache key
+has no `Authorization` in it, and only Enterprise can add a header to it
+(developers.cloudflare.com/cache/how-to/cache-keys), and `Authorization` is listed among
+the reasons not to store a response, not among the reasons to skip the lookup
+(developers.cloudflare.com/cache/concepts/cache-responses; both read 2026-10-29).
+
+If it does, nothing private leaks, because the anonymous copy holds less, but a reporter's
+own report is missing from every signed-in read answered from that copy, and the 300 s TTL
+does not bound it. Only anonymous reads refill the copy, and an anonymous caller is given
+only public reports that are verified or resolved (`list_reports` in
+`app/routers/reports.py`). So wherever anonymous reads keep the copy warm, a report waiting
+in the queue stays missing until a moderator verifies it, and one dismissed is never in the
+copy at all. The app then says the list it read does not hold them: "sent under a different
+account, or read before they went" (`client/src/screens/YourReports.tsx`). That is reasoned
+from the code and those docs; there is no live zone to watch it on yet. If it does not,
+every signed-in hiker's reads reach this service, so the origin carries the signed-in share
+of all reads (1 in 5 hikers sign in, in the cost model, @unvalidated) on top of the edge's
+misses. Either way the fix is a client change, so it ships with a release, and it is what
+removes both:
+[#1916 — A signed-in hiker's app sends its token on the three edge-cached reads, so they either skip the cache or hide the hiker's own queued report](https://github.com/OurHike/OurHike/issues/1916).
+
+**What would undo it.** Narrowing CORS from `*` (a shared copy can carry only one answer),
+or a cache rule that stops honouring the origin's `Cache-Control`. The second is the one to
+watch, and a `HIT` does not show it: a rule that ignores the origin's header still answers
+`HIT`, and Cloudflare passes the origin's `Cache-Control` on under it ("the original
+`Cache-Control` header passes downstream from our edge even if Edge Cache TTL overrides are
+present", developers.cloudflare.com/cache/concepts/cache-control, read 2026-10-29). The copy
+itself shows it. `pipeline/check_deployment.py` reads `GET /closures` every day the way a
+hiker's browser does, with the app's own `Origin`, and fails on a copy older than the 300 s
+its `s-maxage` allows (its `Age`), on `cf-cache-status: STALE` or `UPDATING` (an expired
+copy, which `s-maxage` rules out), and on any `Cache-Control` but the API's anonymous one (a
+stored signed-in answer carries `private, no-store`). It misses such a rule while the copy
+it reads is under 300 s old, which on a quiet zone is whenever its own first read filled
+it. §6 step 7 runs the same reads once by hand.
+
+## What a stranger can do to the free tier
+
+**The 5 GB a month is a ceiling a stranger can reach on purpose,** and the edge cache does
+not stop them. It only takes the anonymous hikers' reads off the meter. Every route the
+edge does not keep still answers each request from Render. `/openapi.json` is 59,426 bytes
+gzipped (257,105 raw, measured 2026-10-27 against this branch), so about 84,000 requests
+spend Render's month, and `GET /field-notes` grows with the season. The cache's own key can
+be varied too: Cloudflare keeps a copy per `Origin` value and per a few other headers, and
+only Enterprise can change that. §6 closes the cheap routes round it: the `onrender.com`
+address off, any query string on the three cached paths refused, and one address held to 50
+requests in 10 seconds on the API's own paths. The plan's rate limit cannot test the
+hostname, so it names the API's paths rather than all of them: a rule over every path would
+also count `data.ourhike.org`, where every hiker's map downloads come from. Many addresses
+at once still get through.
+
+**What reaching it costs depends on one setting: a card on Render. The maintainer chose
+the card, by poll on 2026-10-27.**
+- **No card on file** (not chosen): Render spins the workspace's services down until the
+  next month (`render.com/docs/outbound-bandwidth`). Hikers keep the map, and the published
+  baseline still carries the closures already verified. But reports wait in outboxes, and
+  no new closure can be verified, so `conditions/closures.json` gains nothing until the
+  next month. On the safety read, that is the cost.
+- **A card on file** (chosen): the same stranger costs $0.15 per GB past the first 5. That
+  is arithmetic, not a forecast: 100 GB is $15, and the total is bounded only by their
+  patience. Render's bandwidth page names no spend limit and no alert (read 2026-10-27).
+
+**With the card, nothing in this repository notices.** The API stays up, so `/health` and
+the edge check in **#738 — Deployed app reachability** stay green while the bill grows. The
+workspace's Billing page in Render is where it shows, and LAUNCH_CHECKLIST.md §6 step 8
+asks for a weekly look there until an alert exists. That alert belongs to **#395 — Put a
+ceiling on the bill before the app is public**.
 
 ## Which build is serving, and why the release order depends on it
 
@@ -128,6 +261,19 @@ only then publish the draft. With it, the ordering holds by construction and the
 stays four buttons — which is the reason to set it at creation rather than to discover
 later that it was worth setting.
 
+**"Always ahead" holds only while deploys succeed.** Render deploys with zero downtime, so a
+new build that has not passed its health check within 15 minutes is cancelled and the one
+before keeps serving (render.com/docs/deploys and render.com/docs/health-checks, read
+2026-10-29). The startup guards in `app/config.py` turn a plain-http `SUPABASE_URL`, or a
+`DATABASE_URL` and a `SUPABASE_URL` from two different projects, into exactly that: every
+merge after the setting went wrong is refused the same way until it is fixed, and `/health`
+and the daily edge check stay green whenever the older build passed them, because it is the
+one answering. The API
+reports no commit of its own, so the service's **Deploys** page is where it shows, and
+LAUNCH_CHECKLIST.md §6 step 7 starts there. Of a deploy cancelled that way, Render says it
+"notifies you according to your settings" (render.com/docs/health-checks), which are worth
+leaving on for this service.
+
 ### The gap this does not close: backend code against an unmigrated schema
 
 **"Always ahead of the app" is a claim about the client/backend pair. It says nothing
@@ -163,7 +309,10 @@ nothing here has picked one:
   Costs one dashboard setting, made at the same account-work moment as #600, rather than
   discipline on every PR thereafter — but nobody here has a Render account to confirm
   the feature works as documented, or what happens to in-flight requests against the
-  *previous* release while the command runs.
+  *previous* release while the command runs. **And it is not available on the free
+  tier**: Render's docs say "the pre-deploy command is available for paid web services,
+  private services, and background workers" (read 2026-10-23). So this remedy waits for
+  Starter, and the ordering discipline above is the one that applies until then.
 
 What would settle it: #600 actually creating the service, at which point this becomes a
 real setting to test rather than a documented risk. Until then, a PR that adds both a
@@ -219,8 +368,10 @@ vendor costs least to keep up with.
 
 ## Revisit if
 
-The free tier is withdrawn or starts suspending the service; or the cold start turns out
-to bite something that is not a photo; or the backend shrinks far enough that
+The free tier is withdrawn or starts suspending the service; or the edge cache stops
+answering `HIT`, which puts the free quotas back within reach of a few thousand hikers; or
+the cold start turns out to bite something that is not a photo; or the backend shrinks far
+enough that
 PostgREST-with-policies plus a function for presigning genuinely covers it — noting that
 [#393](https://github.com/OurHike/OurHike/issues/393) rejected that once already, because
 `_visible_to` has drifted before when it lived in two places.

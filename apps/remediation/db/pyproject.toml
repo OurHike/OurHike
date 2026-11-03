@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "S"]
+# assert is how pytest checks; the tests' throwaway tokens are not secrets, and
+# their SQL is fixed text with values passed as parameters.
+per-file-ignores = { "tests/*" = ["S101", "S105", "S106", "S608"] }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

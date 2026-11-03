@@ -317,6 +317,32 @@ settings:
       create one from CI, and a typo here is a deploy that fails saying the
       project was not found.
 
+  REMEDIATION_PAGES_PROJECT:
+    where: variable
+    required: false
+    why: >-
+      The Cloudflare Pages project Site Remediation's web app is uploaded to
+      by remediation-analysis.yml (#1904), with the week's scored files beside it.
+      A separate project from CLOUDFLARE_PAGES_PROJECT because it is a
+      separate app at its own address. Uploaded with OurHike's Cloudflare
+      token and account, which are scoped to the account rather than to one
+      project. Optional because the job skips the upload with a notice until
+      it is set; it has to name a project that already exists, because
+      wrangler does not create one from CI.
+
+  REMEDIATION_SITES_DATABASE_URL:
+    where: secret
+    required: false
+    why: >-
+      A Postgres login for Site Remediation's site load (#1906): a role that is
+      a member of remediation_loader and so may call remediation.load_sites() and
+      nothing else (apps/remediation/db/README.md). remediation-analysis.yml's
+      load-sites job, on main only, gives it each run's sites.json, which is
+      what every claim and every club's weights are checked against. Session
+      pooler (port 5432), for the reason UA_MIGRATION_DATABASE_URL gives.
+      Optional because the job skips the load with a notice until it is set;
+      until then no site can be claimed.
+
   UA_MIGRATION_DATABASE_URL:
     where: secret
     required: false

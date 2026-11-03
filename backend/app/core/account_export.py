@@ -27,13 +27,13 @@ nothing here pretends otherwise.
 
 WHAT IS NOT IN IT, WHICH THE ARCHIVE ITSELF SAYS
 
-Five things, listed in `NOT_INCLUDED` below and written into every export so
+Six things, listed in `NOT_INCLUDED` below and written into every export so
 a hiker reading the file offline learns it from the file rather than from us:
 the photograph bytes, anything that never left their handset, Supabase Auth's
 own record of them, the positions and account id sealed inside their usage
-events, and whose account each thanks they wrote was credited to. The last two
-are the columns of their own rows the file leaves out, and `build_export` says
-why beside each.
+events, whose account each thanks they wrote was credited to, and whose
+account claimed each invitation they sent. The last three are the columns of
+their own rows the file leaves out, and `build_export` says why beside each.
 
 The photographs are the one that deserves an argument rather than a bullet.
 Their bytes live in R2 and the only way to hand out an R2 object is a signed
@@ -102,6 +102,9 @@ NOT_INCLUDED: tuple[str, ...] = (
     "Whose account each thanks you wrote was credited to. That is another "
     "volunteer's account, which OurHike tells nobody but its moderators. The thanks "
     "itself - your words, and where and when you wrote them - is in this file.",
+    "Whose account claimed each invitation you sent. That is the other person's "
+    "account, not yours to be handed. The invitation itself - who it was for, and "
+    "whether and when it was claimed - is in this file.",
 )
 
 # Added to the list above only when it is true: linked usage rows exist, and
@@ -292,7 +295,20 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         # (core/account_deletion.py unlinks rather than deletes).
         "organizations_you_registered": _rows(db, Club, Club.created_by == profile_id),
         "workdays_you_posted": _rows(db, WorkProject, WorkProject.created_by == profile_id),
-        "people_you_invited": _rows(db, RoleInvite, RoleInvite.invited_by == profile_id),
+        # EVERY COLUMN BUT `claimed_by`, the account that claimed the
+        # invitation. The one who most wants it is the stranger behind a held
+        # registration, who named a real organization's secretary: GET /clubs
+        # and the org export stopped handing them the secretary's id (#1914 -
+        # GET /clubs publishes every admin's account id and decline reason to
+        # anyone, and an account id is all it takes to write into that
+        # person's private thanks inbox), and this file would have handed it
+        # straight back, beside the address they typed (#1952). `claimed_at`
+        # stays, so whether and when it was claimed is still here.
+        # NOT_INCLUDED says so to the reader.
+        "people_you_invited": [
+            {column: value for column, value in row.items() if column != "claimed_by"}
+            for row in _rows(db, RoleInvite, RoleInvite.invited_by == profile_id)
+        ],
         "roster_loads_you_ran": _rows(db, RosterSyncRun, RosterSyncRun.run_by == profile_id),
         "embed_keys_you_made": _rows(db, ConsoleKey, ConsoleKey.created_by == profile_id),
         # A challenge definition they last saved for an organization - the

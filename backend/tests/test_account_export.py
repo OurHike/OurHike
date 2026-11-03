@@ -13,9 +13,11 @@ from __future__ import annotations
 import json
 
 from app.core.account_export import NOT_INCLUDED, build_export
+from app.core.time import utc_now
 from app.db.base import Base
 from app.models.closure import ClosureApproval
 from app.models.org_registry import RegistrySignoff
+from app.models.org_role import RoleInvite
 from app.models.profile import Role
 from app.models.report import Report, ReportType, Visibility
 from tests.factories import make_closure, make_profile
@@ -127,7 +129,7 @@ def test_it_carries_the_columns_the_response_schemas_redact(db_session):
 
 
 def test_it_leaves_out_whose_account_a_thanks_was_credited_to(db_session):
-    """The one column of the hiker's own rows this file leaves out, and why.
+    """A column of the hiker's own rows this file leaves out, and why.
 
     `maintainer_id` on a thanks is the account the server credited, from the
     thanks' mile and date, and only a moderator is told it (ReportOut). Here
@@ -156,6 +158,30 @@ def test_it_leaves_out_whose_account_a_thanks_was_credited_to(db_session):
     assert thanks["note"] == "Thank you for the blowdowns"
     assert "maintainer_id" not in thanks
     assert credited.id not in json.dumps(archive)
+
+
+def test_it_leaves_out_whose_account_claimed_an_invitation_the_hiker_sent(db_session):
+    """#1952 - A held registration's registrant reads the secretary's account
+    id from their own export, in people_you_invited[].claimed_by.
+
+    The stranger behind a held registration names a real organization's
+    secretary; once the secretary signs in, `claimed_by` is their account id.
+    GET /clubs stopped handing it over (#1914), so this file must not either.
+    That it was claimed, and when, stays."""
+    profile = _furnished(db_session)
+    secretary = make_profile(db_session)
+    [invite] = db_session.query(RoleInvite).filter(RoleInvite.invited_by == profile.id).all()
+    invite.claimed_by = secretary.id
+    invite.claimed_at = utc_now()
+    db_session.commit()
+
+    archive = build_export(db_session, profile)
+
+    [row] = archive["people_you_invited"]
+    assert row["email"] == invite.email
+    assert row["claimed_at"] is not None
+    assert "claimed_by" not in row
+    assert secretary.id not in json.dumps(archive)
 
 
 def test_a_photo_carries_the_key_that_identifies_its_object(db_session):
@@ -196,6 +222,7 @@ def test_it_says_what_it_does_not_contain(db_session):
     assert "never left your phone" in joined
     assert "supabase auth" in joined
     assert "credited" in joined
+    assert "claimed each invitation" in joined
 
 
 def test_the_whole_archive_is_json(db_session, client):

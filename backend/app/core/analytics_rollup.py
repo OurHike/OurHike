@@ -289,6 +289,23 @@ _MONTH_SUPPORT_ROWS = text(
     " where local_date >= :start and local_date < :end and event = 'support_chosen' and support_cents is not null"
 )
 
+# A closed month's rows the archive step moved to R2 (app/core/analytics_archive.py),
+# split the way `_MONTH_ROWS` and `_MONTH_SUPPORT_ROWS` split the rows still
+# held. Read from `analytics_archived_daily`, whose six event columns are
+# `analytics_quality.DAILY_COUNTS`' and whose `rows` counts every row, rather
+# than from `analytics_archive_parts.rows`, which counts both kinds together and
+# turned each archived support choice into a late event. Every row is one of
+# the six events or a support choice (`UsageEvent`), so what `rows` holds
+# beyond the six is support choices (tests/test_analytics_archive.py).
+_ARCHIVED_EVENTS = "installs + logins + plans_made + plans_completed + map_views + sessions"
+_MONTH_ARCHIVED = text(
+    f"select coalesce(sum({_ARCHIVED_EVENTS}), 0) from analytics_archived_daily where local_date >= :start and local_date < :end"
+)
+_MONTH_SUPPORT_ARCHIVED = text(
+    f"select coalesce(sum(rows - ({_ARCHIVED_EVENTS})), 0) from analytics_archived_daily"
+    " where local_date >= :start and local_date < :end"
+)
+
 # What every stored metric means is the SQL above, the close window that
 # decides which rows a month froze with, and the User-table upsert that
 # `hikers_new` and the milestones come from (app/routers/analytics.py
@@ -374,13 +391,19 @@ def _replace_month(db: Session, month: date, rows: list[AnalyticsMonthly]) -> No
 def _count_late(db: Session, state: AnalyticsMonth) -> None:
     """Refresh a closed month's `events_after_close`, the only number it still moves.
 
-    Rows held now less the rows the month was closed with (its frozen
-    `events`). Exact while nothing is deleted from a closed month; account
-    deletion removes a hiker's rows, and the count then reads low by those -
-    never high, so it cannot invent lateness.
+    Rows held now, plus the rows the archive moved to R2 (#1923,
+    `analytics_archived_daily`), less the rows the month was closed with (its
+    frozen `events`) - support choices apart, on both sides. Exact while nothing is deleted from a closed month;
+    account deletion removes a hiker's rows, and the count then reads low by
+    those. It can read high one way, since #1923: a resend of a row the
+    archive has moved is stored again, because `POST /usage-events` finds a
+    resend by its id among the rows Postgres holds (features/EVENTING.md §0,
+    "What this build does not do").
     """
     month = state.month
-    held = db.execute(_MONTH_ROWS, {"start": month, "end": add_months(month, 1)}).scalar_one()
+    window = {"start": month, "end": add_months(month, 1)}
+    held = db.execute(_MONTH_ROWS, window).scalar_one()
+    held += db.execute(_MONTH_ARCHIVED, window).scalar_one()
     frozen = (
         db.query(AnalyticsMonthly.value)
         .filter(
@@ -393,7 +416,8 @@ def _count_late(db: Session, state: AnalyticsMonth) -> None:
     )
     late = max(0, held - int(frozen or 0))
     # Support choices the same way, against the levels the month froze.
-    support_held = db.execute(_MONTH_SUPPORT_ROWS, {"start": month, "end": add_months(month, 1)}).scalar_one()
+    support_held = db.execute(_MONTH_SUPPORT_ROWS, window).scalar_one()
+    support_held += db.execute(_MONTH_SUPPORT_ARCHIVED, window).scalar_one()
     support_frozen = (
         db.query(func.coalesce(func.sum(AnalyticsMonthly.value), 0))
         .filter(

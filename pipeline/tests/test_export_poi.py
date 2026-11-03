@@ -203,6 +203,25 @@ def no_real_water_distance_file(tmp_path, monkeypatch):
     monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", tmp_path / "no-water-distance-file.json")
 
 
+@pytest.fixture(autouse=True)
+def no_real_network_lines(tmp_path, monkeypatch):
+    """Keep the real trail network out of every test here (#1669).
+
+    `export_poi.NETWORK_LINES_PATH` is fixed at import as
+    `data/processed/nearby_trails.geojson`, so the `OUT_DIR` patch every test
+    makes never moved it. On a machine that has run `export_nearby_trails.py`
+    the file is 253,554,744 bytes and 142,892 lines (measured 2026-09-24),
+    and each of the 60 calls here to `main()`, `build_enriched_records()` or
+    `read_sources()` loaded and indexed all of it: `scripts/test.sh` sat at
+    94% for over ten minutes. CI has no such file, which is why only a
+    working tree ever noticed.
+
+    In this file rather than conftest.py because
+    test_water_covers_trail_sources.py asserts the real constant's value.
+    """
+    monkeypatch.setattr(export_poi, "NETWORK_LINES_PATH", tmp_path / "no-network-lines.geojson")
+
+
 # TRAIL_WATER_PATH is redirected for the whole suite by conftest.py's
 # no_real_trail_water, which is autouse there rather than here because
 # unify_all_sources reads it and every caller of that function needs the

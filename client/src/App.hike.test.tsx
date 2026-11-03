@@ -55,6 +55,7 @@ vi.mock('./lib/api', () => ({
   // Disputes ride the same read as the notes they are computed from (#876).
   fetchDisputes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => []),
+  fetchMyReports: vi.fn(async () => []),
   // PoiCard -> useCommunityPhotos runs on mount; a factory missing it throws
   // the card into the map boundary (App.dayHike.test.tsx's note).
   fetchPoiPhotos: vi.fn(async () => []),

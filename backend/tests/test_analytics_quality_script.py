@@ -102,6 +102,16 @@ def test_a_rollup_that_succeeded_is_not_a_finding(script, tmp_path):
     assert "rollup_failed|*" not in _verdict_keys(script, tmp_path, TODAY, "--rollup-outcome", "success")
 
 
+def test_a_failed_archive_reaches_the_verdict_the_same_night(script, tmp_path):
+    """#1923: the archive step's fault would otherwise show only once rows piled up."""
+    assert "archive_failed|*" in _verdict_keys(script, tmp_path, TODAY, "--archive-outcome", "failure")
+
+
+def test_an_archive_skipped_for_want_of_a_bucket_is_not_a_finding(script, tmp_path):
+    """The workflow skips the archive until its bucket is configured, and says so itself."""
+    assert "archive_failed|*" not in _verdict_keys(script, tmp_path, TODAY, "--archive-outcome", "skipped")
+
+
 def test_checks_that_cannot_run_are_named_by_class_and_their_values_are_not_printed(script, monkeypatch, capsys):
     """The text of a database error ends in the values its statement was
     bound to; a traceback here would publish them."""

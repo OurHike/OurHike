@@ -332,6 +332,15 @@ def test_a_layer_matching_the_servers_count_is_returned(requests_mock):
     assert len(fetch_layer_geojson(LAYER_URL)["features"]) == 3
 
 
+def test_a_rows_where_reaches_every_page_and_the_count_the_read_is_checked_against(requests_mock):
+    """#1920: the centerline row reads ATC's official route only. Counted without
+    the clause, its 3,027 rows would read as a 3,028-feature layer cut short."""
+    requests_mock.get(LAYER_URL + "/query", _pages_then_count([_page(3), {"features": []}], {"count": 3}))
+
+    assert len(fetch_layer_geojson(LAYER_URL, where="Status = 'Official A.T. Route'")["features"]) == 3
+    assert [r.qs["where"] for r in requests_mock.request_history] == [["status = 'official a.t. route'"]] * 3
+
+
 def test_more_features_than_the_count_is_not_a_failure(requests_mock):
     """A layer edited between the pages and the count can move either way;
     an overshoot loses nothing, so only a shortfall raises."""

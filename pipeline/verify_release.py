@@ -148,6 +148,24 @@ HIKER_ORIGIN = "https://ourhike.org"
 # trails.geojson would make check 15 assert that the data agrees with itself.
 CORRIDOR_BBOX = (-85.0, 33.5, -66.5, 46.5)
 
+# What check 15 holds the `nearby_*` files to instead (#1873). Those carry
+# every registered organization's features nationwide, so the corridor box
+# flagged 27,694 `nearby_poi` and 216,898 `nearby_trails` features on
+# 2026-10-17-2 (counts from the issue, measured there, not re-measured here).
+# The weaker bound keeps the two failures the corridor box was written for:
+# coordinates outside longitude/latitude (projected metres) and a point within
+# NULL_ISLAND_DEGREES of (0, 0). The 1 degree is `@unvalidated`: picked, wide
+# enough to be unmistakably a failed projection and nowhere near any US
+# territory; what would settle it is the nearest real feature to (0, 0) in any
+# registered source, which nobody has looked for.
+GLOBE_BBOX = (-180.0, -90.0, 180.0, 90.0)
+NULL_ISLAND_DEGREES = 1.0
+
+
+def _is_national(key: str) -> bool:
+    return key.rsplit("/", 1)[-1].startswith("nearby_")
+
+
 # Sources this bound does not apply to - registered nationwide on purpose,
 # per the maintainer's 2026-08-25 decision (export_nearby_trails.py's own
 # docstring, #1019): "There shouldnt be a ring around NYC. Include all of
@@ -642,14 +660,21 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
             continue
         reports.append(_report(13, key, OK, f"a FeatureCollection of {len(features)} features"))
 
-        name = key.removeprefix("poi_").removesuffix(".geojson")
+        # Basename first: `v2/poi_trailhead.geojson` has to land on the same
+        # type name as `poi_trailhead.geojson`, or ALLOWED_EMPTY_POI_TYPES
+        # exempts the v1 file and fails its byte-identical v2 twin (#1873).
+        name = key.rsplit("/", 1)[-1].removeprefix("poi_").removesuffix(".geojson")
         counts[name] = len(features)
 
         # 15. No null or empty geometries, and nothing outside the corridor
         # bar NATIONWIDE_SOURCES above. A feature at (0, 0) is what a
         # projection bug looks like - empty geometry is held to that
         # regardless of source; only the bbox half is exempted.
-        west, south, east, north = CORRIDOR_BBOX
+        # `nearby_*` are national by the maintainer's 2026-08-25 decision, so
+        # the corridor box is the wrong question for them (#1873): they get
+        # the bound that is still true of every real place, which still
+        # catches projected metres and null island.
+        west, south, east, north = GLOBE_BBOX if _is_national(key) else CORRIDOR_BBOX
         empty = 0
         astray = 0
         for feature in features:
@@ -661,14 +686,17 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
             if (feature.get("properties") or {}).get("source") in NATIONWIDE_SOURCES:
                 continue
             for lon, lat in _positions(coordinates):
-                if not (west <= lon <= east and south <= lat <= north):
+                if not (west <= lon <= east and south <= lat <= north) or (
+                    _is_national(key) and abs(lon) < NULL_ISLAND_DEGREES and abs(lat) < NULL_ISLAND_DEGREES
+                ):
                     astray += 1
                     break
 
         if empty or astray:
-            reports.append(_report(15, key, FAILED, f"{empty} feature(s) with no geometry, {astray} outside the AT corridor"))
+            where = "on Earth, off null island" if _is_national(key) else "inside the AT corridor"
+            reports.append(_report(15, key, FAILED, f"{empty} feature(s) with no geometry, {astray} not {where}"))
         else:
-            reports.append(_report(15, key, OK, "every feature has a geometry, and all of them are on the trail"))
+            reports.append(_report(15, key, OK, "every feature has a geometry, and all of them are plausibly placed"))
 
         # 16. The TRAIL_BLAZE_COLORS.md contract, for trails only.
         if key.startswith("trails"):
@@ -1527,9 +1555,40 @@ def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dic
     return [_report(21, key, OK, f"{len(features)} tombstones, every retired ledger row present and resolving")]
 
 
-def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict]:
+def fetch_pointed_release(base: str, environment: str, schema_version: str, session=None) -> str | None:
+    """The release id `channels.json` names for this environment, or None.
+
+    Since 2026-10-16 (RELEASING.md §10) that, not `latest.json`, is what
+    decides which folder phones read (#1873). `base` is the environment's own
+    root, which is where its `channels.json` sits.
+    """
+    try:
+        response = (session or requests).get(f"{base}/channels.json", timeout=HTTP_TIMEOUT)
+        if response.status_code != 200:
+            return None
+        release = (response.json().get(environment) or {}).get(schema_version)
+    except (requests.RequestException, ValueError, AttributeError):
+        return None
+    return release if isinstance(release, str) else None
+
+
+def check_all(base: str, session=None, hash_artifacts: bool = True, release: str | None = None) -> list[dict]:
+    """Every check against `base`, or against one release folder of it.
+
+    With `release`, the manifest read is `releases/<id>/manifest.json` and every
+    artifact is fetched from that folder, which is what a phone does. Checks 3,
+    17 and 19 still read the root's release index, so they compare this folder
+    with its predecessor exactly as before.
+    """
     session = session or requests.Session()
-    manifest = fetch_manifest(base, session)
+    root = base
+    if release:
+        base = f"{root}/{release_key(release, '').rstrip('/')}"
+        manifest = fetch_manifest(base, session, key=RELEASE_MANIFEST_NAME)
+        if manifest is not None:
+            manifest = {"release": release, **manifest}
+    else:
+        manifest = fetch_manifest(base, session)
 
     reports = [check_manifest(manifest)]
     if manifest is None or reports[0]["state"] == FAILED:
@@ -1615,7 +1674,7 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
     # Last, because it is the only group that reads a DIFFERENT release than
     # the one every check above is about, and because check 19 is the
     # expensive one when hashing is on.
-    reports += release_checks(base, manifest, session, hash_artifacts)
+    reports += release_checks(root, manifest, session, hash_artifacts)
     reports += skipped_checks()
     return reports
 
@@ -1653,6 +1712,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=data_env.ENVIRONMENTS,
         help="Verify this environment's release rather than the base as given (features/DATA_ENVIRONMENTS.md).",
     )
+    parser.add_argument(
+        "--release",
+        metavar="ID",
+        help="Verify this release folder (releases/<ID>/) rather than latest.json, which since promotion lists only "
+        "the conditions files. `pointer` verifies whichever release the environment's channels.json names.",
+    )
+    parser.add_argument("--schema-version", default="v1", help="The channels.json entry `--release pointer` reads.")
     parser.add_argument("--json", metavar="OUT", type=Path, help="Also write the verdict to OUT as JSON.")
     parser.add_argument(
         "--no-hash",
@@ -1674,7 +1740,16 @@ def main(argv: list[str] | None = None) -> int:
         print("No release to verify: pass --base or set DATA_BASE_URL.", file=sys.stderr)
         return 2
 
-    reports = check_all(base, hash_artifacts=not args.no_hash)
+    release = args.release
+    if release == "pointer":
+        environment = data_env.resolve(args.env)
+        release = fetch_pointed_release(base, environment, args.schema_version)
+        if release is None:
+            print(f"No {args.schema_version} release named by {base}/channels.json for {environment}.", file=sys.stderr)
+            return 2
+        print(f"Verifying release {release}, the one {environment}'s channels.json names.")
+
+    reports = check_all(base, hash_artifacts=not args.no_hash, release=release)
     for report in reports:
         print(f"  {report['state'].upper():8} {report['check']:>3}  {report['key']:34} {report['detail']}")
 

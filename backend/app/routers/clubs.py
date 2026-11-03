@@ -27,7 +27,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_email, get_current_user
+from app.core.auth import get_current_email, get_current_user, get_current_user_optional
 from app.core.org_access import OrgAccess, club_by_slug, org_access, require_org_admin, resolve_access
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
@@ -37,7 +37,7 @@ from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import RoleInvite
-from app.models.profile import Profile
+from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.trail_challenge import ChallengeEntry, ClubChallenge
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from app.schemas.org import (
@@ -49,21 +49,51 @@ from app.schemas.org import (
     OrgOut,
     OrgSettingsUpdate,
     ScoreboardOut,
+    why_domain_proves_nothing,
 )
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
 
 
-def _with_admins(db: Session, club: Club) -> OrgOut:
-    """One org plus its seats, which is how every screen reads it.
+def _with_admins(db: Session, club: Club, viewer: Profile | None) -> OrgOut:
+    """One org plus its seats, as `viewer` may read them. None is anonymous.
 
     Assembled here rather than by a relationship because `Club` deliberately
     declares none: the models in this backend are plain tables, and a lazy
     relationship is a query that fires somewhere nobody expected it.
+
+    Every seat's holder and decline reason go to moderators and to this org's
+    approved admins (`OrgAdminOut.for_viewer` says why). "Approved admin" is
+    `resolve_access`'s rule, an `approved_at`, read off the seats already
+    loaded here rather than queried again - with one exception that rule does
+    not make.
+
+    **A HELD REGISTRATION'S REGISTRANT IS NOT ONE OF THEM.** `register_org`
+    approves the registrant's seat on the spot, and an org is `pending`
+    exactly when the only address at its domain was one that registrant
+    typed for somebody else - #1635's unverified stranger. Counting that seat
+    let a stranger name `sec@ramapotrails.org` on the form, wait for the
+    secretary to sign in and decline, and read the secretary's account id
+    and reason (the review of #1926), which also told them which account
+    that address belongs to. Until somebody at the domain approves a seat
+    the registrant reads their own seat only, like any other seat holder.
+
+    The seats' dates go wider: to moderators and to everybody holding a seat
+    here, approved or not, held org or not. `OrgAdminOut.for_viewer` says
+    which console screens need that.
     """
     admins = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).order_by(OrgAdmin.invited_at).all()
+    is_moderator = viewer is not None and viewer.role in MODERATOR_ROLES
+    own_seat = next((admin for admin in admins if viewer is not None and admin.person_id == viewer.id), None)
+    sees_every_holder = is_moderator or (
+        club.state != OrgState.pending and own_seat is not None and own_seat.approved_at is not None
+    )
+    sees_every_date = is_moderator or own_seat is not None
     out = OrgOut.model_validate(club)
-    out.admins = [OrgAdminOut.model_validate(admin) for admin in admins]
+    out.admins = [
+        OrgAdminOut.for_viewer(admin, viewer, sees_every_holder=sees_every_holder, sees_every_date=sees_every_date)
+        for admin in admins
+    ]
     return out
 
 
@@ -97,11 +127,18 @@ def _revoke_the_registrants_unverified_seat(db: Session, club: Club, *, verified
     anybody else at the organization.
 
     A no-op when the person who just proved the domain IS the registrant
-    (their own seat is the one being kept, not revoked) or when nobody
-    registered this club in the first place (an `unclaimed` row a maintainer
-    wrote by hand, which has no founder seat to revisit).
+    (their own seat is the one being kept, not revoked) or when a maintainer
+    wrote this row (`Club.maintainer_written`: an `unclaimed` row with no
+    founder seat to revisit).
+
+    Not keyed on `created_by` being null, which is what it used to read, and
+    what made it skippable: account deletion nulls `created_by`, so a
+    registrant who deleted their account before the real domain holder
+    approved left every seat they had handed out in place (#1913 - Deleting
+    the registrant's account turns a self-registered organization into a
+    maintainer-written one, and lets an accomplice keep an admin seat).
     """
-    if club.created_by is None or club.created_by == verified_by:
+    if club.maintainer_written or (club.created_by is not None and club.created_by == verified_by):
         return
     # NOT ONLY THE FOUNDER'S OWN SEAT: everything that rested on the
     # registration's authority goes with it. The form takes a second address
@@ -143,7 +180,10 @@ def _somebody_holds_the_domain(domain: str, addresses: list[str | None]) -> bool
 
 
 @router.get("", response_model=list[OrgOut])
-def list_orgs(db: Session = Depends(get_db)) -> list[OrgOut]:
+def list_orgs(
+    db: Session = Depends(get_db),
+    viewer: Profile | None = Depends(get_current_user_optional),
+) -> list[OrgOut]:
     """Every organization anyone may look at.
 
     Public, and no account needed - the same posture as every other browsing
@@ -157,15 +197,19 @@ def list_orgs(db: Session = Depends(get_db)) -> list[OrgOut]:
     # stranger typed. `unclaimed` stays - see `OrgState`, where the two are
     # distinguished.
     clubs = db.query(Club).filter(Club.state.notin_([OrgState.deleted, OrgState.pending])).order_by(Club.name).all()
-    return [_with_admins(db, club) for club in clubs]
+    return [_with_admins(db, club, viewer) for club in clubs]
 
 
 @router.get("/{slug}", response_model=OrgOut)
-def read_org(slug: str, db: Session = Depends(get_db)) -> OrgOut:
+def read_org(
+    slug: str,
+    db: Session = Depends(get_db),
+    viewer: Profile | None = Depends(get_current_user_optional),
+) -> OrgOut:
     """One organization. Public: what an org publishes about itself is public
     by construction - that is what registering is. The roster, the hours and
     the unpublished registry are other resources with their own gates."""
-    return _with_admins(db, club_by_slug(db, slug))
+    return _with_admins(db, club_by_slug(db, slug), viewer)
 
 
 @router.get("/{slug}/scoreboard", response_model=ScoreboardOut)
@@ -385,7 +429,7 @@ def register_org(
             )
         )
     db.commit()
-    return _with_admins(db, club)
+    return _with_admins(db, club, current_user)
 
 
 @router.post("/{slug}/admins", response_model=OrgOut, status_code=status.HTTP_201_CREATED)
@@ -427,7 +471,7 @@ def invite_admin(
             )
         )
         db.commit()
-    return _with_admins(db, access.club)
+    return _with_admins(db, access.club, current_user)
 
 
 def _an_admin_offered_it(db: Session, club: Club, seat: OrgAdmin) -> bool:
@@ -483,14 +527,6 @@ def approve_seat(
             detail="Nobody at this organization invited you as an admin, so there is no seat to accept",
         )
 
-    if seat.approved_at is None:
-        seat.approved_at = utc_now()
-    # A decline is reversible, so approving after declining clears the
-    # refusal rather than leaving a row that says both. The audit trail is
-    # the endpoint's caller list, not two contradictory columns.
-    seat.declined_at = None
-    seat.decline_reason = None
-
     # THE ONE THING THAT RELEASES A HELD REGISTRATION. `pending` means the
     # only address at this org's domain was one the registrant typed for
     # somebody else (see `register_org`), so it waits for that somebody to
@@ -502,12 +538,43 @@ def approve_seat(
     #
     # The registrant approving their own seat cannot release it, because
     # their address is the one that failed the check at registration.
-    if club.state == OrgState.pending and club.domain and _somebody_holds_the_domain(club.domain, [email]):
+    #
+    # Decided BEFORE anything is written, because the release rests on the
+    # proof `claim_org` takes - a verified address at the org's domain - and
+    # is refused on the same terms: at a domain anybody can get an address
+    # at, that address proves nothing (#1909 - A nomination and a claim make
+    # a free webmail account the codeowner of any organization name, the seat
+    # #1635 closed on POST /clubs). `OrgCreate` refuses such a domain now, but
+    # a `pending` row registered before `PUBLIC_EMAIL_DOMAINS` named its
+    # provider still carries one - v1.3.2 to v1.3.4 held registrations and
+    # checked them against no list at all - and the registrant's typed invite
+    # to a second address there would otherwise release it.
+    releases = club.state == OrgState.pending and bool(club.domain) and _somebody_holds_the_domain(club.domain, [email])
+    problem = why_domain_proves_nothing(club.domain) if releases else None
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{problem} An address there cannot show you run this organization, so a person has to pick it up.",
+        )
+
+    if seat.approved_at is None:
+        seat.approved_at = utc_now()
+    # A decline is reversible, so approving after declining clears the
+    # refusal rather than leaving a row that says both. The audit trail is
+    # the endpoint's caller list, not two contradictory columns.
+    seat.declined_at = None
+    seat.decline_reason = None
+
+    if releases:
         club.state = OrgState.claimed
         club.verified_by = VerifiedBy.email
         _revoke_the_registrants_unverified_seat(db, club, verified_by=current_user.id)
+        # As in `claim_org`, and after the revocation, which reads it: from
+        # here the admins are whoever proved the domain, which no maintainer
+        # reviewed.
+        club.maintainer_written = False
     db.commit()
-    return _with_admins(db, club)
+    return _with_admins(db, club, current_user)
 
 
 @router.post("/{slug}/admins/{admin_id}/decline", response_model=OrgOut)
@@ -540,7 +607,7 @@ def decline_seat(
     seat.decline_reason = payload.reason
     seat.approved_at = None
     db.commit()
-    return _with_admins(db, club)
+    return _with_admins(db, club, current_user)
 
 
 @router.post("/{slug}/claim", response_model=OrgOut)
@@ -590,6 +657,18 @@ def claim_org(
                 "your address against. Nominate it instead and a person will pick it up."
             ),
         )
+    # Before the address check, and so before the freeze below. A stored
+    # domain that proves nothing makes "an address at the org's domain" true
+    # for anybody (#1909 - A nomination and a claim make a free webmail account
+    # the codeowner of any organization name, the seat #1635 closed on
+    # POST /clubs). Checked here as well as where nominations write the
+    # domain, because a row written before that door refused one still has it.
+    problem = why_domain_proves_nothing(club.domain)
+    if problem:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{problem} An address there cannot show you run this organization, so a person has to pick it up.",
+        )
     if not _somebody_holds_the_domain(club.domain, [email]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -619,18 +698,34 @@ def claim_org(
     club.state = OrgState.claimed
     club.verified_by = VerifiedBy.email
     club.created_by = club.created_by or current_user.id
-    db.add(
-        OrgAdmin(
-            club_id=club.id,
-            person_id=current_user.id,
-            title=payload.title,
-            is_codeowner=True,
-            invited_at=now,
-            approved_at=now,
+    # After the revocation above, which reads it. From here the admins are
+    # whoever proved the domain, which no maintainer reviewed.
+    club.maintainer_written = False
+    # A domain holder a held registration named already has a seat: signing
+    # in seated them from the invitation, and the revocation above keeps the
+    # seat of whoever is proving the domain. A second row was a 500
+    # (`uq_club_admins_club_person`), found by the 2026-10-29 review; claiming
+    # is their agreement, as approving would have been.
+    seat = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id, OrgAdmin.person_id == current_user.id).one_or_none()
+    if seat is None:
+        db.add(
+            OrgAdmin(
+                club_id=club.id,
+                person_id=current_user.id,
+                title=payload.title,
+                is_codeowner=True,
+                invited_at=now,
+                approved_at=now,
+            )
         )
-    )
+    else:
+        seat.title = payload.title or seat.title
+        seat.is_codeowner = True
+        seat.approved_at = seat.approved_at or now
+        seat.declined_at = None
+        seat.decline_reason = None
     db.commit()
-    return _with_admins(db, club)
+    return _with_admins(db, club, current_user)
 
 
 @router.patch("/{slug}", response_model=OrgOut)
@@ -638,6 +733,7 @@ def update_org(
     slug: str,
     payload: OrgSettingsUpdate,
     access: OrgAccess = Depends(require_org_admin),
+    current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OrgOut:
     """Change the organization's own details.
@@ -649,7 +745,7 @@ def update_org(
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(access.club, field, value)
     db.commit()
-    return _with_admins(db, access.club)
+    return _with_admins(db, access.club, current_user)
 
 
 @router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
@@ -739,6 +835,18 @@ def export_org(
     def row(obj: object, fields: tuple[str, ...]) -> dict[str, object]:
         return {field: getattr(obj, field) for field in fields}
 
+    def seat(admin: OrgAdmin) -> dict[str, object]:
+        exported = row(admin, ("id", "person_id", "title", "is_codeowner", "approved_at", "declined_at"))
+        # `_with_admins`'s rule for a held registration, here too: its
+        # registrant passes `require_org_admin` on a seat that registering
+        # approved, against an address they typed for somebody else, so the
+        # only holder this file names for them is themselves. Without it the
+        # export handed them the secretary's account id that GET /clubs/{slug}
+        # withholds (measured while fixing the review of #1926).
+        if club.state == OrgState.pending and admin.person_id != access.person_id:
+            exported["person_id"] = None
+        return exported
+
     return {
         "org": row(club, ("id", "slug", "name", "domain", "website", "region", "membership_url", "donation_url")),
         "parks": [row(p, ("id", "name", "kind")) for p in parks],
@@ -762,10 +870,7 @@ def export_org(
             row(c, ("challenge_id", "definition", "window_closes", "takes_entries", "pr_url", "updated_at"))
             for c in db.query(ClubChallenge).filter(ClubChallenge.club_id == club.id).order_by(ClubChallenge.challenge_id).all()
         ],
-        "admins": [
-            row(a, ("id", "person_id", "title", "is_codeowner", "approved_at", "declined_at"))
-            for a in db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).all()
-        ],
+        "admins": [seat(a) for a in db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).all()],
         # Assembled by the roster endpoint rather than re-queried here, so the
         # file an organization downloads and the screen they read it on cannot
         # answer differently. Two assemblies of the same list is how an export

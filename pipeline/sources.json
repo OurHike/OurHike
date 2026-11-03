@@ -38,6 +38,8 @@
       "title": "A.T. Centerline",
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Centerline/FeatureServer/0",
+      "where": "Status = 'Official A.T. Route'",
+      "where_comment": "ONLY WHAT ATC MARKS AS THE ROUTE IS THE A.T. (#1920 - ATC's A.T. centerline layer gained a 'New Hampshire' state outline on 2026-10-26, and the monthly build drew it as the A.T.). Measured live 2026-10-27: 3,028 features, of which 3,027 carry Status 'Official A.T. Route' (3,026 'Appalachian National Scenic Trail' and 'Webcliff'), and OBJECTID 3072, named 'New Hampshire', carries no Status, club or dates, and is a state outline added at 2026-10-26 17:45:40 UTC (the layer's editingInfo). Unfiltered, release 2026-10-27 drew it as A.T. centerline and its elevation profile failed the null-height share. Applied by the server, so the extract, its as-landed copy and fetch_all.py all read the same 3,027 rows. A segment ATC has not marked official stays off rather than being drawn as the trail a hiker follows; if ATC renamed the value and nothing matched, the run check refuses the empty or collapsed table (this row is not may_be_empty) and the last good one stands.",
       "person_fields": ["Creator", "Editor"],
       "person_fields_comment": "Creator and Editor are ArcGIS editor tracking: the account that created or last edited each row, found on this layer by a metadata read on 2026-10-03. extract/_kinds.py's PERSON_FIELDS drops them on every layer; listed here too so this row says which of its own columns never load.",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",

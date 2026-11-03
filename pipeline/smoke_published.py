@@ -205,11 +205,11 @@ class HttpRangeSource:
         return response.content
 
 
-def fetch_manifest(base: str, session: requests.Session | None = None) -> dict | None:
-    """`latest.json`, or None if there is not one to read."""
+def fetch_manifest(base: str, session: requests.Session | None = None, key: str | None = None) -> dict | None:
+    """`latest.json` (or `key`, a release folder's `manifest.json`), or None if there is not one to read."""
     getter = (session or requests).get
     try:
-        response = getter(f"{base}/{MANIFEST_KEY}", timeout=HTTP_TIMEOUT)
+        response = getter(f"{base}/{key or MANIFEST_KEY}", timeout=HTTP_TIMEOUT)
         if response.status_code != 200:
             return None
         return response.json()

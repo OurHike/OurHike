@@ -617,6 +617,9 @@ jobs:
           R2_WRITE_ENABLED: "true"
           OURHIKE_DATA_ENV: ua
           OURHIKE_PHONE_FILES: dbt
+          # As "Publish to UA": this reads the dbt writers' files too, and
+          # without it a held writer refused the step (#1921).
+          OURHIKE_BUILD_PARTIAL: ${{ needs.build.outputs.partial }}
           R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -663,6 +666,9 @@ jobs:
       - name: Every written phone file is what UA's latest.json names
         env:
           DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          # A held writer's key is left out of what was written, rather than
+          # refusing the check, as in "Publish to UA" (#1921).
+          OURHIKE_BUILD_PARTIAL: ${{ needs.build.outputs.partial }}
         run: |
           if [ -z "$DATA_BASE_URL" ]; then
             echo "::error title=No DATA_BASE_URL::there is no public URL to read UA's latest.json from, so nothing was confirmed."

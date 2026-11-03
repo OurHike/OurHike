@@ -139,7 +139,7 @@ voice, and a provenance that stops at this file is provenance no hiker has.
 Where the site has no actual
 water point folded in, a close-enough distance is also named among the nearby
 parts - see attach_nearby - so the answer to "is there water" stops depending
-on the 9 opentrail points that happen to fold. 305 of 512 features publish one
+on the opentrail points that happen to fold (9 at the time of #668, undated since - re-measure before relying on it). 305 of 512 features publish one
 (the FarOut-measured rows joined on the maintainer's 2026-08-13
 authorisation, sources.json's atc_licence block / #688); the rest have no
 CSI neighbour (most of Maine) or an unreadable value, and publish nothing
@@ -945,7 +945,8 @@ def attach_nearby(records: list[dict]) -> int:
             ]
         # ATC's own distance-to-water fills in where no actual water point
         # folded into the site (#668) - which is nearly everywhere, since only
-        # 9 opentrail points fold over the whole corridor. Anchors and POIs in
+        # few opentrail points fold over the whole corridor (9 at the time of #668,
+        # not re-measured since). Anchors and POIs in
         # no site both take it; a member does not, because its site's anchor
         # already answers "is there water" for the one pin a hiker can see.
         # Never beside a real water member: one site, one water distance.

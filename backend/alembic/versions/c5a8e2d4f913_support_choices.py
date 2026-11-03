@@ -1,7 +1,7 @@
 """support choices and support events
 
 Revision ID: c5a8e2d4f913
-Revises: 897b71ad5fff
+Revises: af3335f631cb
 Create Date: 2026-10-23 01:00:00.000000
 
 What a hiker chose to give OurHike, paid choices only (#1876): a $0 answer
@@ -37,6 +37,12 @@ RLS is enabled on all four tables because this revision adds them (b3d1c7a94e02'
 rule, tests/test_migration_rls.py's union): PostgREST would otherwise serve
 every supporter's email and amount to anyone holding the anon key.
 
+Re-pointed on 2026-11-03, still unreleased, from #1903's 897b71ad5fff onto
+af3335f631cb, the revision that joins main's two heads (#1948 - Join
+main's two Alembic heads, 8f6794da722d and c3a9e5d27f18, in a merge
+revision). No database has this revision, so moving its parent moves
+nothing anywhere.
+
 Additive and reversible: downgrade drops the four tables and nothing else.
 """
 
@@ -48,7 +54,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "c5a8e2d4f913"
-down_revision: Union[str, Sequence[str], None] = "897b71ad5fff"
+down_revision: Union[str, Sequence[str], None] = "af3335f631cb"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -100,6 +100,19 @@ Three things worth knowing before running it against real data:
 
 Without this, `GET /maintainer-assignments` and the thanks resolution both run against empty tables - and the client returns `[]` on failure, so "nothing is loaded" and "nobody is assigned" look identical ([#249](https://github.com/OurHike/OurHike/issues/249)). Real per-club admin tooling is `features/VOLUNTEERING.md`'s larger module; this is the deliberate answer for one club getting started.
 
+### Where each waypoint is: `load_waypoint_miles.py`
+
+`waypoint_miles` holds each waypoint's mile from the published waypoint export, and `GET /disputes` reads it to decide whether a maintainer covers a waypoint: the waypoint's own mile, never the one written on a note ([#1917 — A maintainer's note settles a water dispute anywhere on the trail, because the covering check reads the mile the note's author typed, not where the waypoint is](https://github.com/OurHike/OurHike/issues/1917)). Like `clubs` and `maintainer_assignments`, nothing writes it over HTTP.
+
+```
+python load_waypoint_miles.py ../pipeline/data/processed/poi/*.geojson           # says what it would do
+python load_waypoint_miles.py ../pipeline/data/processed/poi/*.geojson --commit  # does it
+```
+
+- **Give it every type's file at once.** The files are the whole answer: a waypoint in the table and in no file given is deleted, and the dry run lists each deletion first. A load that would delete more than a tenth of the table is refused unless `--allow-shrink` says the release really retired them; one type's file alone would have deleted 2,592 of release 2026-10-10-2's 3,024 rows.
+- **Run it after each waypoint publish**, against UA and against production. Until it has run against an environment, no waypoint there has a loaded mile. A covering maintainer's `not_found` still marks a waypoint from the mile they typed; what waits for the load is one maintainer's confirmation taking a dispute off, which until then needs two people's. `max(loaded_at)` is when the table last matched a release, because every run stamps every row it keeps.
+- **It refuses** files that place no waypoint on the trail rather than empty the table, a file name given twice, a feature that is not a GeoJSON Feature, and a mile below 0 or above 5,000.
+
 ## Migrations
 
 `alembic/versions/` began as two migrations — `initial_schema`, creating all seven tables (`clubs`, `profiles`, `closures`, `hikes`, `maintainer_assignments`, `reports`, `user_preferences`), and `enable_row_level_security`, which locks them against Supabase's PostgREST front door — and has grown since (eight revisions as of 2026-08-18); the directory itself is the current list.

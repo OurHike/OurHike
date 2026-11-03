@@ -25,6 +25,7 @@ from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.nomination import NominationContact, NominationRefusal, OrgNomination
 from app.models.org_role import RoleInvite
 from app.models.profile import Profile
+from app.models.report import Report
 from tests.factories import make_admin, make_assignment, make_org, make_profile, make_role, make_section
 from tests.tokens import auth_headers
 
@@ -112,9 +113,46 @@ def test_a_self_registered_orgs_own_assignment_does_not_open_other_hikers_thanks
     assert filed.status_code == 201, filed.text
 
     # Neither resolved to them when it arrived, nor delivered to them after.
-    assert filed.json()["maintainer_id"] is None
-    assert filed.json()["club_id"] is None
+    # Off the stored row: the filer is not told whose account a thanks was
+    # credited to (ReportOut.for_viewer).
+    stored = db_session.get(Report, filed.json()["id"])
+    assert (stored.maintainer_id, stored.club_id) == (None, None)
     assert client.get("/reports/thanks", headers=headers).json() == []
+
+
+def test_a_self_registered_orgs_own_assignment_does_not_make_a_name_count_for_a_thanks(client, db_session):
+    """The by-name half of the test above, for #1914 - GET /clubs publishes
+    every admin's account id and decline reason to anyone, and an account id
+    is all it takes to write into that person's private thanks inbox.
+
+    #1914's rule is that a thanks naming a `maintainer_id` keeps that name
+    only if `stood_behind()` believes one of that person's assignments
+    (`_the_record_stands_behind` in routers/reports.py). Any assignment at all
+    would let an organization that registered itself a minute ago make any
+    account a hiker can write to, by assigning it a stretch. Nothing else
+    pins the filter: the review of #1926 removed it and the thanks, console,
+    report and permission test files stayed green (358 passed)."""
+    club, _, headers = _self_registered(client, db_session)
+    target = make_profile(db_session)
+    section = make_section(db_session, club, name="Everything", start_mile=0.0, end_mile=2200.0)
+    assigned = client.post(
+        "/clubs/totally-real/assignments",
+        json={"person_id": target.id, "section_id": section.id, "start_mile": 0.0, "end_mile": 2200.0},
+        headers=headers,
+    )
+    assert assigned.status_code == 201, assigned.text
+
+    filed = client.post(
+        "/reports",
+        json={"type": "thanks", "reporter_type": "thru", "maintainer_id": target.id, "note": "I know where you hike."},
+        headers=auth_headers(str(uuid.uuid4())),
+    )
+    assert filed.status_code == 201, filed.text
+
+    # Read off the stored row rather than the filer's response, because the
+    # row is what `GET /reports/thanks` delivers from.
+    assert db_session.get(Report, filed.json()["id"]).maintainer_id is None
+    assert client.get("/reports/thanks", headers=auth_headers(target.id)).json() == []
 
 
 def test_an_unconfirmed_proposal_is_not_a_maintainers_word(client, db_session):

@@ -369,3 +369,66 @@ def test_the_challenge_entry_backfill_names_the_owner_and_freezes_the_tags(migra
         )
     assert {"club_id", "hand_item_ids", "untagged_item_ids"}.isdisjoint(columns)
     assert foreign_keys == []
+
+
+def test_the_maintainer_written_backfill_marks_only_rows_no_person_wrote(migration_engine):
+    """c3a9e5d27f18 adds `clubs.maintainer_written` and fills it once (#1913 -
+    Deleting the registrant's account turns a self-registered organization
+    into a maintainer-written one, and lets an accomplice keep an admin seat).
+    `created_by IS NULL` alone is what account deletion fakes, so the rows a
+    deleted account left behind - a registration claimed or held, a
+    nomination - must come out false, and only a maintainer's row true. Rows
+    after the upgrade default to false, which a maintainer's path has to
+    change."""
+    config = _alembic_config()
+    command.upgrade(config, "897b71ad5fff")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into profiles (id, role, created_at) values "
+                "('person-1', 'hiker', now()), ('accomplice', 'hiker', now()), ('nominator', 'hiker', now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into clubs (id, name, created_by, state) values "
+                "('loaded', 'Loaded Club', null, 'unclaimed'), "
+                "('registered', 'Registered Club', 'person-1', 'claimed'), "
+                # Registrants who deleted their accounts: deletion nulls
+                # `created_by` and takes their own seat, not the accomplice's.
+                "('claimed-then-deleted', 'Evil Trails', null, 'claimed'), "
+                "('held-then-deleted', 'Ramapo', null, 'pending'), "
+                "('seated-then-deleted', 'Seated', null, 'unclaimed'), "
+                "('nominated-then-deleted', 'Nominated', null, 'unclaimed')"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into club_admins (id, club_id, person_id, is_codeowner, invited_at) values "
+                "('seat-1', 'held-then-deleted', 'accomplice', true, now()), "
+                "('seat-2', 'seated-then-deleted', 'accomplice', true, now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into org_nominations (id, club_id, nominated_by, website, state, proposal_token, "
+                "token_expires_at, pages_read, created_at) values "
+                "('nom-1', 'nominated-then-deleted', 'nominator', 'https://nominated.example', 'proposed', 'tok-1', "
+                "now() + interval '1 day', 0, now())"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with migration_engine.begin() as connection:
+        connection.execute(sqlalchemy.text("insert into clubs (id, name) values ('after', 'After the upgrade')"))
+        flags = dict(connection.execute(sqlalchemy.text("select id, maintainer_written from clubs")).tuples().all())
+    assert flags == {
+        "loaded": True,
+        "registered": False,
+        "claimed-then-deleted": False,
+        "held-then-deleted": False,
+        "seated-then-deleted": False,
+        "nominated-then-deleted": False,
+        "after": False,
+    }

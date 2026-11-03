@@ -253,6 +253,9 @@ _HIKERS_NEW = text("select count(*) from analytics_users where new_month = :star
 
 _MONTH_ROWS = text("select count(*) from analytics_events where local_date >= :start and local_date < :end")
 
+# A closed month's rows the archive step moved to R2 (app/core/analytics_archive.py).
+_MONTH_ARCHIVED = text("select coalesce(sum(rows), 0) from analytics_archive_parts where month = :month")
+
 # What every stored metric means is the SQL above, the close window that
 # decides which rows a month froze with, and the User-table upsert that
 # `hikers_new` and the milestones come from (app/routers/analytics.py
@@ -325,13 +328,18 @@ def _replace_month(db: Session, month: date, rows: list[AnalyticsMonthly]) -> No
 def _count_late(db: Session, state: AnalyticsMonth) -> None:
     """Refresh a closed month's `events_after_close`, the only number it still moves.
 
-    Rows held now less the rows the month was closed with (its frozen
-    `events`). Exact while nothing is deleted from a closed month; account
-    deletion removes a hiker's rows, and the count then reads low by those -
-    never high, so it cannot invent lateness.
+    Rows held now, plus the rows the archive moved to R2 (#1923,
+    `analytics_archive_parts`), less the rows the month was closed with (its
+    frozen `events`). Exact while nothing is deleted from a closed month;
+    account deletion removes a hiker's rows, and the count then reads low by
+    those. It can read high one way, since #1923: a resend of a row the
+    archive has moved is stored again, because `POST /usage-events` finds a
+    resend by its id among the rows Postgres holds (features/EVENTING.md §0,
+    "What this build does not do").
     """
     month = state.month
     held = db.execute(_MONTH_ROWS, {"start": month, "end": add_months(month, 1)}).scalar_one()
+    held += db.execute(_MONTH_ARCHIVED, {"month": month}).scalar_one()
     frozen = (
         db.query(AnalyticsMonthly.value)
         .filter(

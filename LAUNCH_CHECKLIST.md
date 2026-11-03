@@ -246,6 +246,7 @@ To a non-browser agent such as `curl`, the custom domain can answer with a hidde
 The backend verifies Supabase-issued JWTs. Browsing never needs an account; this is only for contributing.
 
 **4.1** Create a project at supabase.com. Free tier covers 500 MB / 50k monthly active users, comfortably past MVP scale.
+Usage measurement (#1902) shares that 500 MB: six months of its raw rows outgrows the 250 MB it may hold somewhere past 300 phones a day (`features/EVENTING.md` §0, "Operating it"). The maintainer's choice, 2026-10-27, is a paid plan before then, with `analytics_storage_ceiling_mb` and `database_quota_mb` raised to match in `backend/app/config.py`; the nightly usage checks raise `storage_near_ceiling` when it is time, and `database_near_quota` when the whole database - every table the app keeps - passes four-fifths of 500 MB, the size at which Supabase turns a Free-plan database read-only (supabase.com/docs/guides/platform/database-size, read 2026-10-27). Both show on the usage report's data-quality panel, in its storage strip. #1923 — Move each closed month's unlinked usage rows out of Postgres into a Parquet file in a private R2 bucket is built, and moves that point to roughly 600-1,100 phones a day (reasoned there, on rates nobody has measured) once each environment's archive is set up: a bucket, a lifecycle rule, a token and a database role, `features/EVENTING.md` §0, "Operating it", step 7. Until then its nightly step warns and skips, and this paragraph stands as written.
 
 **4.2** Project Settings → API. Collect:
 
@@ -439,36 +440,208 @@ It mattered because email/password was a real sign-in path here — `VITE_AUTH_P
 
 ---
 
+## 5b. Back the database up nightly
+
+**Supabase Free keeps no backups** (supabase.com/pricing, read 2026-10-23), and the maintainer chose a nightly dump to a private R2 bucket over Supabase Pro ([#1908 — Back production's database up nightly to a private R2 bucket, because Supabase Free keeps no backups](https://github.com/OurHike/OurHike/issues/1908)). A lost database is worse than lost data: `publish-conditions.yml` bakes the closures every phone reads from it, so one that came back empty would tell hikers no trail is closed.
+
+`.github/workflows/backup-database.yml` runs at 05:12 UTC. It dumps `public` and Supabase's `auth.users` and `auth.identities`, restores the dump into a throwaway Postgres 17, and fails unless every table comes back holding exactly the rows `count(*)` found in it, counted in the same snapshot `pg_dump` dumped. Only then does it encrypt the dump with `age` and upload it. Until everything below is set, its tracking issue, **Nightly database backup**, says production has no backup.
+
+### Set it up
+
+1. **The role**, in the production project's SQL editor, as `postgres`. Generate the password; it goes nowhere but the secret in step 2.
+
+   ```sql
+   create role ourhike_backup with login password '<generated>' bypassrls;
+   grant usage on schema public, auth to ourhike_backup;
+   grant select on all tables in schema public to ourhike_backup;
+   grant select on all sequences in schema public to ourhike_backup;
+   grant select on auth.users, auth.identities to ourhike_backup;
+   alter default privileges for role postgres in schema public grant select on tables to ourhike_backup;
+   alter default privileges for role postgres in schema public grant select on sequences to ourhike_backup;
+   ```
+
+   Measured on UA, 2026-10-27, which runs the same Postgres 17.6 build as production: `postgres` may create a role with `BYPASSRLS`, and may grant `SELECT` on both `auth` tables. `BYPASSRLS` is what makes the dump complete, because every table has row-level security on (5a). Without it, the dump step refuses at its row count, and the tracking issue opens. The default privileges name `postgres` because that is the role migrations run as (5). If that ever changes, name the new role there. Otherwise the first table a migration adds will make the dump step refuse, loudly.
+2. **The connection string**: Settings → Database → Connection string → **Session pooler** (port 5432, never the transaction pooler on 6543, which the job refuses by name). The username is `ourhike_backup.<project-ref>`, in the shape 5 explains. Save it as the repository secret `BACKUP_DATABASE_URL`. The job insists on an encrypted connection: it defaults to `sslmode=require`, and refuses a weaker setting.
+3. **The bucket**: R2 → Create bucket, named for this alone, for example `ourhike-db-backups`. Give it no public access and no custom domain. Then, on its **Settings** tab, two rules, both on the prefix `postgres/` and both 90 days, the retention the maintainer chose:
+   - **Object lifecycle rules**: delete objects under `postgres/` 90 days after upload. The job never deletes anything.
+   - **Bucket lock rules → Add rule**: a rule name, the prefix `postgres/`, and a retention period of 90 days. Cloudflare's [bucket locks page](https://developers.cloudflare.com/r2/buckets/bucket-locks/) (last updated 2026-10-28, read 2026-10-29) says that once a rule is saved, "changes to protected objects are blocked from that point on. This includes overwrites, deletes, completing uploads that started earlier, and removal by lifecycle rules"; that it protects "both existing objects and objects created after the rule is enabled"; that lock rules "take precedence over lifecycle rules"; and that a blocked single-object request fails with HTTP `409` and `ObjectLockedByBucketPolicy`. The lock is there because the token in step 4 can delete and overwrite, and as a repository secret any branch's workflow could use it to wipe every backup. R2's [token page](https://developers.cloudflare.com/r2/api/tokens/) (read 2026-10-29) lists "edit bucket configuration" under Admin Read & Write and not under Object Read & Write, so that token should not be able to remove the lock either. That is reasoned from the table, not tried (@unvalidated): a delete of a backup with the job's own token, expected to fail with `409`, would settle it. The same page warns that "a bucket cannot be emptied while any bucket lock rules are configured".
+
+   Save the bucket's name as the secret `BACKUP_R2_BUCKET`.
+
+   **What the lifecycle rule does when the job stays broken: it deletes by age alone.** Each backup is deleted 90 days after its upload whether or not a newer one exists, and R2 says objects are "typically removed from a bucket within 24 hours" of expiring ([object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/), read 2026-10-29). So if every night fails for 90 days in a row, the last good backup is deleted like the rest and the bucket holds no backup at all. The lock does not prevent that: it also ends at 90 days, and only keeps a backup from going sooner. The clock starts at the newest key under `postgres/`, which carries its date: fix the job, or switch the lifecycle rule off, before that backup is 90 days old. The tracking issue opens on the first failed night and says the same.
+4. **The token**: R2 → Manage API tokens → Create API token, **Object Read & Write**, applied to that bucket only. Save it as `BACKUP_R2_ACCESS_KEY_ID` and `BACKUP_R2_SECRET_ACCESS_KEY`. R2 offers no write-only token, so this one can read the dumps back. That is why they are encrypted before they leave the runner. It can delete them too, which is what the lock in step 3 is for. `R2_ENDPOINT_URL` is already set (1).
+5. **The key**, on your own machine, never in a session or a CI job:
+
+   ```
+   age-keygen -o ourhike-backups.key
+   ```
+
+   It prints the public key, `age1…`. Save that as the repository **variable** `BACKUP_AGE_RECIPIENT`. It can only seal, so a build log may show it. Keep `ourhike-backups.key` offline, in a password manager or on paper. **Losing it loses every backup made to it, and anyone holding it and a bucket token can read every hiker's data.**
+6. **Run it once**: Actions → Back up the database → Run workflow. The restore step prints every table with the rows it held when it was dumped and the rows the restore holds, which should be equal. The upload step ends `Stored postgres/YYYY/MM/DD/ourhike-<stamp>.tar.age`. Then do the drill below once with that file.
+7. **Prove the trap is caught**, which is #1908's acceptance. Create a second role exactly like step 1, but without `bypassrls`, point `BACKUP_DATABASE_URL` at it, and run the workflow. The dump step should fail with `query would be affected by row-level security policy`, and the tracking issue should open. Then put the real secret back, run it again so the issue closes, and drop the second role.
+
+### The restore drill
+
+Followed on 2026-10-27 against a local rehearsal: a Postgres 16.15 database built to Alembic head with row-level security on, a stand-in `auth` schema, and age 1.1.1. It was followed twice: once with Postgres 16's own tools, and once with Postgres 17's from the `postgres:17` image the job uses, restoring into a Postgres 17 database. Not yet followed against a real backup.
+
+**It needs Postgres 17 twice: the client tools and the server you restore into.** Production's dumps are written by `pg_dump` 17, and measured 2026-10-29 against an archive `pg_dump` 17.11 wrote: `pg_restore` 16.15 refuses the file (`unsupported version (1.16) in file header`), and `pg_restore` 17.11 restoring into a Postgres 16.15 server stops at its first statement (`unrecognized configuration parameter "transaction_timeout"`). A throwaway server is one command, and the commands below then reach it through the libpq variables:
+
+```
+docker run -d --rm --name ourhike-drill -e POSTGRES_PASSWORD=drill -p 5433:5432 postgres:17
+export PGHOST=localhost PGPORT=5433 PGUSER=postgres PGPASSWORD=drill    # with Postgres 17's client tools on PATH
+age --decrypt --identity ourhike-backups.key --output backup.tar ourhike-<stamp>.tar.age
+tar -xf backup.tar      # public.dump, auth.dump, live-rows.tsv, restored-rows.tsv, manifest.json
+sha256sum public.dump auth.dump live-rows.tsv restored-rows.tsv    # against manifest.json
+createdb ourhike_restore_drill
+psql -d ourhike_restore_drill -c 'drop schema public cascade; create schema auth'
+pg_restore --no-owner --no-privileges --exit-on-error -d ourhike_restore_drill public.dump
+pg_restore --no-owner --no-privileges --exit-on-error -d ourhike_restore_drill auth.dump
+```
+
+`drop schema public` comes first because a fresh database already has one, and the archive's own `create schema public` otherwise stops the restore. Then compare each table's `count(*)` with `live-rows.tsv`, which holds exactly the rows the dump held, and `select version_num from alembic_version` with the head the backup was taken at.
+
+### Restoring into production
+
+**@unvalidated: nobody has done this, and it is the step a real loss needs.** Restore into the **existing** production project whenever it still exists, which it does when the data is lost or damaged rather than the project itself. Its URL, its keys, the keys it signs sessions with, its OAuth providers and its redirect list then all stay as they are, and only the data comes back:
+
+1. Drop the damaged `public` schema and restore `public.dump` with `pg_restore --no-owner --no-privileges --exit-on-error`, as in the drill.
+2. Only if Supabase Auth's rows were lost too: restore `auth.dump` with `--data-only` into the tables Supabase Auth already has, emptied first, since a row already there stops the restore at its duplicate key. Their columns may have grown since the dump; a column the target has and the dump lacks takes its default.
+3. Grant again. `--no-privileges` restores no grants, and dropping `public` drops the default privileges set on it (measured 2026-10-29 on Postgres 17.11: a schema's `pg_default_acl` row is gone after it is dropped and re-created), so re-run step 1's grants and default privileges for `ourhike_backup`, and the grants for `ourhike_conditions_reader` ([features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md)) and `ourhike_analytics_rollup` ([features/EVENTING.md](features/EVENTING.md)). The roles themselves survive: no dump carries roles, and none was dropped.
+4. Compare `select version_num from alembic_version` with the head the backup was taken at; `migrate.yml` brings a restore taken before a later revision forward.
+
+**Only when the project itself is gone** does a new one have to be made, and then everything that names the project changes with it, not only the connection strings. Miss one and sign-in breaks everywhere:
+
+- the repository variables `SUPABASE_URL` and `SUPABASE_ANON_KEY` (4.2, 4.3a), which `pages.yml` and `pr-preview.yml` bake into the client, so a new client has to be built and released, and an installed app keeps the old project until it updates;
+- the backend's `SUPABASE_URL`, from which it fetches the project's signing keys at `/auth/v1/.well-known/jwks.json` (`backend/app/core/auth.py`). A new project signs with new keys, so every session the old one issued stops verifying and every hiker signs in again. `SUPABASE_JWT_SECRET` stays unset, as for any hosted project (4.2);
+- the OAuth providers (4.3): the callback URL `https://<new-ref>.supabase.co/auth/v1/callback` at Google and at GitHub, and their client IDs and secrets entered into the new project;
+- the Site URL and redirect allow-list (4.3b), the SMTP sender (4.3c) and the email templates (4.3d);
+- every secret holding a connection string: `PRODUCTION_MIGRATION_DATABASE_URL`, `PRODUCTION_CONDITIONS_DATABASE_URL`, `PRODUCTION_ANALYTICS_DATABASE_URL`, `BACKUP_DATABASE_URL`, and the backend host's own;
+- the three roles, created again with new passwords before their grants: `ourhike_conditions_reader`, `ourhike_analytics_rollup` and `ourhike_backup`. Supabase's own guide says a custom role with `LOGIN` needs its password set by hand in a new project ([Backup and Restore using the CLI](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore), read 2026-10-29).
+
+What would settle it is the drill above, run against a scratch Supabase project rather than a local Postgres.
+
+---
+
 ## 6. Host the backend
 
-The host type is picked and there is no config file to write: `backend/Dockerfile` is the whole of it, and it reads `PORT` from the environment so any Dockerfile host runs it unchanged. [backend/HOSTING.md](backend/HOSTING.md) is the reasoning — **a free scale-to-zero tier, revised 2026-08-09**, after [features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md) moved the safety read off this service and the always-on requirement that had ruled out every free tier went with it. Fly was the previous answer, nothing was ever deployed to it, and `fly.toml` is gone.
+The host type is picked and there is no config file to write: `backend/Dockerfile` is the whole of it, and it reads `PORT` from the environment so any Dockerfile host runs it unchanged. [backend/HOSTING.md](backend/HOSTING.md) is the reasoning: **Render's free tier, revised 2026-08-09**, after [features/CONDITIONS_DELIVERY.md](features/CONDITIONS_DELIVERY.md) moved the safety read off this service, and **since 2026-10-23, Cloudflare in front of it** at `api.ourhike.org`, caching three anonymous reads for five minutes. Fly was the previous answer, nothing was ever deployed to it, and `fly.toml` is gone.
 
-What is left is account work, in this order:
+**Where this stood on 2026-10-27, checked read-only from a session for #600 — Nothing owns standing up the production backend, and the image has never run against a real Docker daemon:** the production database is already migrated (`alembic_version` reads `b4d8e1f7a263`, which is `alembic heads` on `main`), all 44 tables in `public` have row-level security on with no policies, `api.ourhike.org` does not resolve yet, and the R2 account holds `our-hike` and `our-hike-raw` but no private photo bucket (1.7). So step 3 needs nothing today, and the service starts with photos off.
 
-1. **Create the service** on the chosen host, pointed at `backend/`'s Dockerfile. Deploys happen on push from the connected repository; there is no CLI to install.
-2. **Set the runtime environment** in the host's own secret store. Never committed, never baked into the image:
+What is left is account work, in this order. Secrets never pass through a session, which is why these steps are yours:
+
+1. **Create the service.** Render → **New → Web Service** → connect the `OurHike/OurHike` repository, then:
+
+   | Setting | Value | Why |
+   | --- | --- | --- |
+   | Name | `ourhike-api` | It becomes `ourhike-api.onrender.com`, the CNAME target in step 4. Any free name works; step 4 uses whatever you pick. |
+   | Region | Virginia (US East) | The Supabase project is in AWS `us-east-1`, so every query stays in one region. |
+   | Branch | `main` | backend/HOSTING.md: the backend is always ahead of the app. |
+   | Root Directory | `backend` | `backend/Dockerfile` copies `app/`, `alembic/` and `requirements.txt` from there. |
+   | Language (or Runtime) | Docker | Render builds `backend/Dockerfile`; there is no build or start command to set. |
+   | Instance type | Free | |
+   | Health Check Path | `/health` | Not `/ready`: a check that needs the database turns a database outage into a restart loop (`backend/app/main.py`). |
+   | Auto-Deploy | on every commit to `main` | |
+   | PR Previews | Off | Render copies the service's environment into a preview, "database connection information" included (render.com/docs/service-previews, read 2026-10-27), so a preview of an unmerged branch would run against the production database. |
+
+   Add a card. The maintainer chose billing over suspension by poll on 2026-10-27. With a card on file, outbound bandwidth past the free 5 GB is billed at $0.15 a GB rather than spinning the service down for the rest of the month (render.com/docs/outbound-bandwidth, read 2026-10-27; backend/HOSTING.md; #395 — Put a ceiling on the bill before the app is public).
+
+2. **Set the environment** in the service's **Environment** tab. Never committed, never baked into the image:
    ```
-   DATABASE_URL=postgresql://...   # the POOLED string, port 6543
-   SUPABASE_URL=...  SUPABASE_ANON_KEY=...
+   DATABASE_URL=postgresql://...   # Supabase → OurHike → Connect → Transaction pooler, port 6543
+   SUPABASE_URL=...                # the same value as the SUPABASE_URL repository variable
+   SUPABASE_ANON_KEY=...           # the same value as the SUPABASE_ANON_KEY repository variable
    ```
-   `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
+   Supabase's bare `postgresql://` string works as given: SQLAlchemy 2.1 loads psycopg for it (`backend/check_schema_drift.py`, measured 2026-10-20). `SUPABASE_JWT_SECRET` is **not** in that list for a hosted project — see 4.4. Set it only against a self-hosted Supabase.
 
    **The pooled string is deliberate here, and the app is built for it.** A transaction pooler hands each transaction whatever backend is free, which breaks anything a driver leaves on a connection — psycopg's automatic prepared statements above all, and that failure appears only in production and only once an endpoint is warm. `backend/app/db/session.py` turns them off, and `backend/tests/test_pooler.py` proves it against a real transaction pooler rather than asserting it. If you use the direct string instead, nothing breaks; you can set `DATABASE_PREPARED_STATEMENTS=true` to get the plan caching back.
-3. **Apply the migration** — dispatch **Migrate** (step 5), then **confirm RLS is on** (step 5a — the migration does it, but check rather than assume). Deliberately separate from deploying, and it stays that way now that a workflow does it: a migration is a reviewed action, not something that fires on every container start. Note that the secret this job holds is the **session** pooler (port 5432), while the `DATABASE_URL` above is the **transaction** pooler (6543) — two different values on the same host, both correct for their own job.
-4. **Point the client at it** by setting the `API_BASE_URL` repository variable, and add its origin to Supabase's allowed redirect URLs (4.3b). The variable is read by `pages.yml`, which bakes it into the next build, so the app reaches the backend from that deploy onward rather than immediately.
-5. **Confirm it, in this order**, because each step tells you something the previous one cannot:
+
+   **Photos start switched off**, which the backend supports: with the five `R2_PHOTO_*` variables unset, the photo routes answer 503 and everything else works. Switch them on before the release that ships `API_BASE_URL` (step 6), not later: the app reads a 503 on a photo as "no bucket yet, worth waiting out" (`client/src/lib/api.ts`), so every report with a photo would sit as *waiting to send* on the hiker's phone, though the report itself has already reached the moderators. That is 1.7, then the five variables here.
+
+3. **The migration is already applied.** Production reads `b4d8e1f7a263`, the head on `main` (checked 2026-10-27). Dispatch **Migrate** with `target: production` only when a newer revision under `backend/alembic/versions/` reaches `main`, and before the deploy that needs it: the free tier has no pre-deploy hook to do it for you (backend/HOSTING.md). Then **confirm RLS is on** (step 5a). Note that the secret that job holds is the **session** pooler (port 5432), while the `DATABASE_URL` above is the **transaction** pooler (6543) — two different values on the same host, both correct for their own job.
+
+4. **Give it its domain.** Render's own Cloudflare instructions (render.com/docs/configure-cloudflare-dns, read 2026-10-23):
+   1. Render → the service → **Settings → Custom Domains** → add `api.ourhike.org`.
+   2. Cloudflare → `ourhike.org` → **DNS** → add a `CNAME` named `api`, target `ourhike-api.onrender.com`, **Proxy status: DNS only** (grey cloud). Render has to reach the record itself to issue the certificate, and a proxied record blocks that. Add no `AAAA` record: Render does not serve IPv6.
+   3. Once Render shows the certificate as issued, switch the record to **Proxied** (orange cloud). Cloudflare then has to reach Render over HTTPS and check the certificate it is shown: SSL/TLS mode **Full (strict)**. Render's certificate for `api.ourhike.org` is real by this point, and plain **Full** would accept any certificate on the hop that carries hikers' tokens. If the zone is set to anything else, leave the zone alone (the apex points at GitHub Pages, 3b) and add a **Configuration Rule** for hostname `api.ourhike.org` that sets SSL to **Strict**. If Render's certificate ever fails to renew while proxied, strict mode answers 526 rather than carrying on unchecked, and the daily check in step 6 goes red.
+   4. Once step 7's first line answers through `api.ourhike.org`, turn the `onrender.com` address off: Render → the service → **Settings → Custom Domains → Render Subdomain → Disabled** (render.com/docs/custom-domains, read 2026-10-27; that page does not say whether a Free instance offers it). Requests to `ourhike-api.onrender.com` then get a 404 from Render and never reach the service, so nothing in step 5 can be walked round. Render's own health check is unaffected: it sends the custom domain as its `Host`.
+
+5. **Turn on the edge cache, and close the ways round it.** Cloudflare → `ourhike.org`:
+   1. **Caching → Cache Rules → Create rule.** Edit the expression by hand:
+      ```
+      (http.host eq "api.ourhike.org" and http.request.method eq "GET" and http.request.uri.path in {"/closures" "/reports" "/disputes"})
+      ```
+      **Then** *Eligible for cache*; Edge TTL *Use cache-control header if present, bypass cache if not*; Browser TTL *Respect origin*. **Never** choose *Ignore cache-control header and use this TTL* or a *Status code TTL*: Cloudflare caches a `no-store` response under either (developers.cloudflare.com/cache/troubleshooting/investigating-uncached-responses, read 2026-10-27). That is why the rule names these three paths rather than the whole hostname: the API answers them `public, max-age=0, s-maxage=300`, a signed-in caller `private, no-store`, and everything else `no-store` (`backend/app/core/edge_cache.py`), and a mistake in this rule can then reach nothing else.
+   2. **Security → WAF → Custom rules → Create rule**, action **Block**:
+      ```
+      (http.host eq "api.ourhike.org" and http.request.method eq "GET" and http.request.uri.path in {"/closures" "/reports" "/disputes"} and http.request.uri.query ne "")
+      ```
+      The app never sends a query string to these three (`client/src/lib/api.ts`), and Cloudflare keeps a separate copy per query string, so `?n=1`, `?n=2` and so on would each reach Render and Supabase. A Free plan cannot tell the cache to ignore it: Cloudflare offers that option to Enterprise and pay-as-you-go plans (developers.cloudflare.com/cache/how-to/cache-rules/settings, read 2026-10-27).
+   3. **Security → WAF → Rate limiting rules → Create rule.** Free allows one rule, counting by IP over 10 seconds, and its expression may test the path but not the hostname (developers.cloudflare.com/waf/rate-limiting-rules, read 2026-10-27). So the rule applies to every hostname in the zone, `data.ourhike.org` included: an R2 custom domain gets the zone's WAF (developers.cloudflare.com/r2/buckets/public-buckets, read 2026-10-27). That host serves every hiker's map downloads and conditions files, and many hikers can share one address behind a mobile carrier's NAT. A rule there would refuse the map to a town full of them. **Never match every path.** Match the API's own first path segments, each one exactly or followed by `/`, never as a bare prefix: `starts_with(http.request.uri.path, "/challenges")` alone also matches `/challenges.json`, which the production bucket serves at its root (`pipeline/publish.py` writes `challenges.json`, and `prefix_for` in `pipeline/lib/data_env.py` gives production keys no prefix). In this form the rule matches all 110 of the API's route paths and no path this repository publishes to `data.ourhike.org` or serves from `docs.ourhike.org` or `ourhike.org` (checked 2026-10-29 against the route table, the bucket's top-level prefixes in `pipeline/lib/r2_keys.py`, every key-shaped name in `pipeline/` and `client/src/lib/`, `site/` and `client/public/`; the bucket itself was not listed, which takes R2 credentials). It is 2,562 characters, inside the 4,096 Cloudflare allows an expression, and uses only `eq` and `starts_with()`, which Cloudflare's operator and function pages restrict to no plan: the one operator they do restrict, `matches`, needs Business (developers.cloudflare.com/ruleset-engine/rules-language/expressions, /operators and /functions, read 2026-10-29):
+      ```
+      (http.request.uri.path eq "/app-failures" or starts_with(http.request.uri.path, "/app-failures/")
+       or http.request.uri.path eq "/assist" or starts_with(http.request.uri.path, "/assist/")
+       or http.request.uri.path eq "/challenges" or starts_with(http.request.uri.path, "/challenges/")
+       or http.request.uri.path eq "/closures" or starts_with(http.request.uri.path, "/closures/")
+       or http.request.uri.path eq "/clubs" or starts_with(http.request.uri.path, "/clubs/")
+       or http.request.uri.path eq "/console" or starts_with(http.request.uri.path, "/console/")
+       or http.request.uri.path eq "/day-hikes" or starts_with(http.request.uri.path, "/day-hikes/")
+       or http.request.uri.path eq "/disputes" or starts_with(http.request.uri.path, "/disputes/")
+       or http.request.uri.path eq "/docs" or starts_with(http.request.uri.path, "/docs/")
+       or http.request.uri.path eq "/field-notes" or starts_with(http.request.uri.path, "/field-notes/")
+       or http.request.uri.path eq "/health" or starts_with(http.request.uri.path, "/health/")
+       or http.request.uri.path eq "/hikes" or starts_with(http.request.uri.path, "/hikes/")
+       or http.request.uri.path eq "/maintainer-assignments" or starts_with(http.request.uri.path, "/maintainer-assignments/")
+       or http.request.uri.path eq "/moderation" or starts_with(http.request.uri.path, "/moderation/")
+       or http.request.uri.path eq "/nominations" or starts_with(http.request.uri.path, "/nominations/")
+       or http.request.uri.path eq "/openapi.json" or starts_with(http.request.uri.path, "/openapi.json/")
+       or http.request.uri.path eq "/preferences" or starts_with(http.request.uri.path, "/preferences/")
+       or http.request.uri.path eq "/profiles" or starts_with(http.request.uri.path, "/profiles/")
+       or http.request.uri.path eq "/ready" or starts_with(http.request.uri.path, "/ready/")
+       or http.request.uri.path eq "/redoc" or starts_with(http.request.uri.path, "/redoc/")
+       or http.request.uri.path eq "/reports" or starts_with(http.request.uri.path, "/reports/")
+       or http.request.uri.path eq "/ridge-runner" or starts_with(http.request.uri.path, "/ridge-runner/")
+       or http.request.uri.path eq "/trips" or starts_with(http.request.uri.path, "/trips/")
+       or http.request.uri.path eq "/usage-events" or starts_with(http.request.uri.path, "/usage-events/")
+       or http.request.uri.path eq "/volunteer-hours" or starts_with(http.request.uri.path, "/volunteer-hours/")
+       or http.request.uri.path eq "/waypoints" or starts_with(http.request.uri.path, "/waypoints/")
+       or http.request.uri.path eq "/workdays" or starts_with(http.request.uri.path, "/workdays/"))
+      ```
+      Then more than **50 requests in 10 seconds** from one IP → **Block** for 10 seconds. @unvalidated: 50 is picked to sit well above an app open (4 reads) plus an outbox flush of a few reports with up to 6 photos each, and the outbox retries after a refusal anyway. A week of real request logs would settle it. The shared-address case applies here too: a block costs the hikers behind one address 10 seconds of live reads, while their app shows the published baseline. A route added under a new first segment is outside the rule until it is added here. If the editor refuses the expression, leave rate limiting off: a rule that can catch the map is worse than no rule.
+
+   What these leave open, stated so it is not assumed closed: Cloudflare's cache key also includes the `Origin` header and a few others, and only Enterprise can change which headers count. A stranger can vary those, or spread requests over many addresses, and reach the origin anyway. backend/HOSTING.md says what that can cost and the choice it leaves you. If Cloudflare's labels have moved, the intent of all three is: cache these three reads by the origin's `Cache-Control` and nothing else; refuse a query string on them; slow down one address that floods.
+
+6. **Point the client at it**: set the `API_BASE_URL` repository variable to `https://api.ourhike.org`. `pages.yml` bakes it into the next build, and production builds from a tag (RELEASING.md §12), so hikers reach the backend from the next release onward. The app's Content-Security-Policy picks the origin up from the same variable (`client/scripts/csp.mjs`), so there is nothing to add there. Nothing goes on Supabase's redirect allow-list either: sign-in returns to the app's origin, never to the API's. `UA_API_BASE_URL` stays unset, and UA keeps queueing reports in its outbox, which `.github/expected-settings.yml` describes as a normal state.
+
+   Setting `API_BASE_URL` also arms the daily check — `check-deployment.yml` asks `/health` on every run, and whether the edge still serves `GET /closures` from a copy no older than its 300 s, carrying the API's own `Cache-Control` and a header a browser accepts, and reports both on **#738 — Deployed app reachability**, where they currently read `skipped` because there is nothing to ask (#1359). That is the difference between finding out the free tier was withdrawn on the day it happens and finding out when somebody's report fails to send.
+
+7. **Confirm it, in this order**, because each line tells you something the one before cannot.
+
+   **First, which build is answering**, which only Render's dashboard shows: the service → **Deploys**, where Render shows a service's "current live deploy", has to show the newest commit on `main` as that deploy. Render deploys with zero downtime: the build already running keeps all the traffic while a new one starts, and a new one that has not passed its health check within 15 minutes is cancelled with the old one still serving (render.com/docs/deploys and render.com/docs/health-checks, read 2026-10-29; neither page says whether a Free instance differs). `backend/app/config.py` refuses to start on purpose, on a plain-http `SUPABASE_URL` or on a `DATABASE_URL` and a `SUPABASE_URL` from two different Supabase projects, so from outside a refused deploy is invisible: the older build answers every line below, and any line it already passes will pass. The API reports no commit of its own (nothing under `backend/app` exposes one, checked 2026-10-29), so the Deploys page is the only place to read it. If the newest deploy failed or was cancelled, its log names the setting it refused; fix it in step 2 and redeploy before going on.
+
+   Then these. None of them needs a credential, so a session can run them for you once the domain resolves:
    ```
-   curl -sS https://<service>/health          # {"status":"ok"} - the app is up
-   curl -sS https://<service>/openapi.json    # the release gate reads this
-   curl -sS https://<service>/closures        # [] - it can reach the database
+   curl -sS https://api.ourhike.org/health     # {"status":"ok"} - the app is up
+   curl -sS https://api.ourhike.org/ready      # {"status":"ok"} - the pooled DATABASE_URL works
+   curl -sS https://api.ourhike.org/closures   # [] - the tables are there
+   curl -sS -o /dev/null -D - https://api.ourhike.org/closures | grep -iE '^(age|cache-control|cf-cache-status|access-control-allow-origin):'
    ```
-   `/health` answers without touching Postgres (and a database that cannot be reached at all now stops the container from starting, #1756, with `/ready` as the endpoint that pings it), so a healthy `/health` beside a 500 on `/closures` is precisely step 3 not having been run — the error reads `UndefinedTable: relation "closures" does not exist`. Allow the cold start on the first of these: 30-60 seconds, once.
+   Run the last line twice. The second answer should carry `cf-cache-status: HIT`, `cache-control: public, max-age=0, s-maxage=300` and `access-control-allow-origin: *`, and an `age` of 300 or less if it carries one. A `HIT` alone does not prove step 5.1's rule: one that ignores the origin's header still answers `HIT`, with the API's own `cache-control` on it (backend/HOSTING.md, "What would undo it"). So run it once more five minutes later. Under step 5.1's rule that copy has expired, and with nobody else reading the API yet the answer is `EXPIRED` or `MISS`; a `HIT` with an `age` past 300 is a rule ignoring the origin's header. Then check that the ways round the cache are shut:
+   ```
+   curl -sS -o /dev/null -w '%{http_code}\n' 'https://api.ourhike.org/closures?n=1'   # 403 - step 5.2's rule
+   curl -sS -o /dev/null -w '%{http_code}\n' https://ourhike-api.onrender.com/health  # 404 - step 4.4, if Render offered it
+   ```
+   Then once with a token-shaped header:
+   ```
+   curl -sS -o /dev/null -D - -H 'Authorization: Bearer x' https://api.ourhike.org/closures | grep -iE 'cache-control|cf-cache-status'
+   ```
+   This answer says which of two things Cloudflare does with a signed-in read, which its docs point to but do not settle. A `cf-cache-status` of `HIT` means it served the stored anonymous copy: nothing private leaks, because the anonymous copy holds less, but a reporter's own report is missing from every signed-in read answered that way, and not for a bounded 300 s. Anonymous reads refill the copy without it, so wherever they keep the copy warm, a report waiting in the queue stays missing until a moderator verifies it. Anything else means signed-in reads pass straight through to Render, and the API's own `private, no-store` is on the answer. backend/HOSTING.md says what each costs; #1916 — A signed-in hiker's app sends its token on the three edge-cached reads, so they either skip the cache or hide the hiker's own queued report — removes both. A healthy `/health` beside a 500 on `/closures` reading `UndefinedTable: relation "closures" does not exist` means the database behind `DATABASE_URL` is not the migrated one.
 
-   Setting `API_BASE_URL` also arms the daily check — `check-deployment.yml` asks `/health` on every run and reports it on **#738 — Deployed app reachability**, where it currently reads `skipped` because there is nothing to ask (#1359). That is the difference between finding out the free tier was withdrawn on the day it happens and finding out when somebody's report fails to send.
+8. **Keep the bill bounded**, which is #395 — Put a ceiling on the bill before the app is public: Supabase's spend cap on. Render's bandwidth has no cap once the card is on (step 1). Its bandwidth page names no spend limit and no alert, only the service's **Metrics → Outbound Bandwidth** graph and the workspace's **Billing** page (render.com/docs/outbound-bandwidth, read 2026-10-27). So look at the Billing page weekly until #395 has an alert that does it for you. backend/HOSTING.md, "What a stranger can do to the free tier", says what the card trades.
 
-**Expect a cold start.** The service sleeps when idle and the first request after that takes 30-60 seconds. Every remaining caller tolerates it — reports wait in the outbox, moderation is a person at a desk, and closures do not come from here at all any more — with one visible exception: opening a report photo after a quiet period will wait.
+**Expect a cold start.** The service sleeps after 15 minutes idle, and Render says the first request after that takes about a minute. Cloudflare waits up to 100 seconds for an origin, so a cold start fits; a request that takes longer is answered 524, and a report caught by it goes back in the outbox. Every remaining caller tolerates the wait — reports wait in the outbox, moderation is a person at a desk, and closures do not come from here at all any more — with one visible exception: opening a report photo after a quiet period will wait.
 
-**Do not skip step 3 on the grounds that nothing is filed yet.** `POST /closures/{id}/verify` is the only thing that moves a closure to `verified`, and the published artifact carries verified closures and nothing else — so until this service is running and a moderator can act, `conditions/closures.json` is empty by construction rather than because the trail is clear.
+**Do not leave the service uncreated on the grounds that nothing is filed yet.** `POST /closures/{id}/verify` is the only thing that moves a closure to `verified`, and the published artifact carries verified closures and nothing else — so until this service is running and a moderator can act, `conditions/closures.json` is empty by construction rather than because the trail is clear.
 
 **The image builds and runs — measured 2026-09-09 (#600), and this paragraph said it never had.** `backend/Dockerfile` unmodified, built against Docker 29.3.1 and run against a real Postgres 16 and an empty database. What that establishes, each of which was previously "should work": the image builds (12 layers, 406 MB on disk); a missing `SUPABASE_URL` raises a pydantic error naming the field at startup rather than booting on an empty credential; `PORT` is honoured — probed at 10000, and the `ENV PORT=8000` fallback when it is unset, which is the one line [backend/HOSTING.md](backend/HOSTING.md) rests portability on; `/health` answers 200 and `/openapi.json` serves; booting creates **no** tables, so the Dockerfile's promise that a migration never fires unattended holds; and after `alembic upgrade head` inside the container, every table the migration creates has row-level security on — step 5a's check, answered against the migration rather than assumed (18 of 18, re-measured 2026-09-09 against the hardened image; it was 16 of 16 hours earlier, which is the count moving with the migrations rather than the answer changing).
 

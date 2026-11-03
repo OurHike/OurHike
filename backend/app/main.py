@@ -8,13 +8,16 @@ from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
+from app.core.edge_cache import NoStoreByDefaultMiddleware
 from app.core.logs import RequestIdMiddleware, configure_logging
 from app.db.session import check_database, database_host
 from app.routers import (
+    analytics,
     app_failures,
     assist,
     closures,
@@ -32,6 +35,7 @@ from app.routers import (
     profiles,
     reports,
     ridge_runner,
+    support,
     synced_day_hikes,
     synced_trips,
     trail_challenges,
@@ -67,6 +71,15 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="OurHike backend", lifespan=_lifespan)
 
+# The innermost two, added first for that reason: both act on what the routes
+# answer, and nothing outside them needs a body before it is compressed.
+# app/core/edge_cache.py is the reasoning for the second. Gzip is there because
+# Render bills bytes leaving the service past 5 GB a month, at $0.15/GB (read
+# 2026-10-23, backend/HOSTING.md), and JSON shrinks well; Starlette's defaults
+# (bodies of 500 bytes and up, level 9) are used as they come.
+app.add_middleware(GZipMiddleware)
+app.add_middleware(NoStoreByDefaultMiddleware)
+
 # Added BEFORE the CORS middleware below, which matters: `add_middleware`
 # puts each new middleware outermost, so this one ends up inside CORS and a
 # 413 it answers on its own still carries the CORS headers a browser needs to
@@ -80,7 +93,9 @@ app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
 # Authorization header (Supabase Auth), never a cookie, so credentialed
 # CORS isn't needed - allow_credentials stays False, which is what makes a
 # wildcard origin safe here. Tighten to an env-driven allowlist once real
-# deployed origins are known.
+# deployed origins are known - and take GET /closures, /reports and /disputes
+# out of the edge cache in the same change, because a shared copy can carry
+# only one origin's answer (app/core/edge_cache.py).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -119,11 +134,24 @@ def _json_safe(value):
     return value
 
 
+def _without_input(error: dict) -> dict:
+    """A validation error with what was sent taken out of it.
+
+    Pydantic puts the offending value in `input`, and on a list that is the
+    whole list: a 1 MiB field came back as 2 MiB, and a 16 MiB body as 16 MiB
+    more out of the server - outbound bandwidth is what the host bills, and
+    any caller can send the body (#1903's second review). Nothing reads it:
+    the client tells 422s apart by `loc` (client/src/lib/api.ts), and the
+    caller already holds what it sent.
+    """
+    return {key: value for key, value in error.items() if key != "input"}
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_error_survives_its_own_payload(request: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": _json_safe(jsonable_encoder(exc.errors()))},
+        content={"detail": _json_safe(jsonable_encoder([_without_input(error) for error in exc.errors()]))},
     )
 
 
@@ -155,6 +183,8 @@ app.include_router(closures.router)
 app.include_router(maintainer_assignments.router)
 app.include_router(moderation.router)
 app.include_router(app_failures.router)
+# Usage measurement (#1902, features/EVENTING.md): one write, no reads.
+app.include_router(analytics.router)
 app.include_router(field_notes.router)
 app.include_router(volunteer_hours.router)
 app.include_router(synced_trips.router)
@@ -180,3 +210,4 @@ app.include_router(nominations.router)
 # because the club's counts and CSV are read off the hiker's rows, and two
 # routers would be two places deciding what a count may reveal.
 app.include_router(trail_challenges.router)
+app.include_router(support.router)

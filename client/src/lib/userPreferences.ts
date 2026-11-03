@@ -286,6 +286,26 @@ export interface UserPreferences {
    */
   impact_panel_shown: boolean
 
+  /**
+   * "Share usage statistics" (#1902, features/EVENTING.md §0) - counts of six
+   * things a hiker does, and the phone's position with each while location is
+   * on, sealed so no OurHike server can read it.
+   *
+   * ON by default: the maintainer's split consent (poll 2026-10-27), counts on
+   * and linking asked. Off stops all of it and empties what was waiting
+   * (lib/usageQueue.ts `clearUsage`) - "off means collection stops"
+   * (EVENTING.md §9). Synced, because a hiker who turns it off on one phone
+   * means it on the next.
+   */
+  measurement_enabled: boolean
+  /**
+   * "Link them to my account": whether usage counts carry a code made from the
+   * account. Null until the hiker has been asked - once, after a sign-in
+   * (screens/UsageLinkQuestion.tsx) - and null reads as no. Changeable on
+   * Safety & privacy at any time; a no drops linked rows still waiting.
+   */
+  measurement_linked: boolean | null
+
   // Onboarding progress
   onboarding_completed: boolean
   download_choice_made: boolean
@@ -334,6 +354,9 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
 
   contribute_conditions: false,
   impact_panel_shown: true,
+
+  measurement_enabled: true,
+  measurement_linked: null,
 
   onboarding_completed: false,
   download_choice_made: false,

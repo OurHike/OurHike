@@ -1,4 +1,5 @@
-"""extract/_kinds.py's conditions_query against a real Postgres: OurHike's own closures, reports, notes and disputes.
+"""extract/_kinds.py's conditions_query against a real Postgres: OurHike's own closures, reports, notes and disputes,
+and DatabaseSize, the database's own size for the data-quality page's storage check.
 
 The rows are the bake's own (export_conditions.py's PUBLIC_*_SQL, run
 unchanged), so these tests are about what the extract adds around them. The
@@ -18,7 +19,8 @@ import psycopg
 import pytest
 
 from extract import _kinds
-from extract._kinds import ConditionsQuery
+from extract._kinds import ConditionsQuery, DatabaseSize
+from lib.database_size import MEGABYTE
 from tests.test_export_conditions import (
     ADMIN_URL,
     CLOSURES_DDL,
@@ -63,6 +65,11 @@ def ourhike(key, type_):
 
 def columns(con, table):
     return {row[0]: row[1] for row in con.execute(f'describe raw."{table}"').fetchall()}
+
+
+def size():
+    """As _shared/ourhike/database_size.py declares it, with a test's reason for its override."""
+    return DatabaseSize(key="database_size", club="ourhike", type="org", cadence_override="hourly", cadence_reason="a test")
 
 
 def test_only_verified_closures_land_and_they_name_nobody(conditions, store):
@@ -150,3 +157,26 @@ def test_a_query_that_starts_selecting_a_person_column_refuses_the_read(conditio
     monkeypatch.setitem(_kinds.CONDITIONS_QUERIES, "closures", ("closures", "SELECT id, verified_by FROM public.closures"))
     with pytest.raises(RuntimeError, match="verified_by"):
         list(ourhike("closures", "closures").rows({}))
+
+
+def test_the_database_size_lands_as_one_row_of_the_bytes_the_reader_can_measure(conditions, store):
+    report = lane(store, size())
+
+    assert report.rows["raw_ourhike__database_size"] == 1
+    con, _ = warehouse(store)
+    assert columns(con, "raw_ourhike__database_size")["database_bytes"] == "BIGINT"
+    ((landed,),) = con.execute('select database_bytes from raw."raw_ourhike__database_size"').fetchall()
+    # The sum holds this scratch database and template1 at least, each several megabytes on an empty Postgres 16.
+    assert landed > MEGABYTE
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["select 0", "select cast(null as numeric)", "select 1 where false", "select 1, 2"],
+    ids=["zero", "null", "no row", "two columns"],
+)
+def test_a_size_that_measured_nothing_is_refused_rather_than_landed(conditions, monkeypatch, answer):
+    """Absent is unknown, never zero: a reader that may connect to no database sums to 0, which is no size at all."""
+    monkeypatch.setattr(_kinds, "DATABASE_SIZE_SQL", answer)
+    with pytest.raises(RuntimeError, match="not one row holding one positive size"):
+        list(size().rows({}))

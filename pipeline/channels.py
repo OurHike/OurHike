@@ -29,13 +29,15 @@ THREE RULES, each with a test in tests/test_channels.py:
   release (dataChannel.ts's `resolves`), so writing one would only make the
   pointer lie. This is the check `publish.py --channels` made, kept.
 - A move writes only its own environment's two keys.
-- A promotion copies the release folder server side, then checks that every
-  object arrived at the source's size and, where the source's ETag is a plain
-  MD5, the same ETag, before it moves the pointer. A copy that does not
-  verify moves nothing. The folder's manifest is copied last, so a manifest
-  in the target means every object before it landed. The release is then
-  listed in the target's releases/index.json, so no later publish there
-  mints its id again (_list_in_index).
+- A promotion copies the release folder server side, and every photo its
+  files reference that the target's root `photos/` lacks and the source
+  holds (_carry_photos), then checks that every object arrived at the
+  source's size and, where the source's ETag is a plain MD5, the same ETag,
+  before it moves the pointer. A copy that does not verify moves nothing.
+  The folder's manifest is copied last, so a manifest in the target means
+  every object before it landed. The release is then listed in the target's
+  releases/index.json, so no later publish there mints its id again
+  (_list_in_index).
 
 WHO CALLS IT. build-reference.yml's last job moves UA's pointer once every
 check in that run has passed. promote-data.yml, behind the production
@@ -59,6 +61,7 @@ from functools import partial
 
 import publish
 from lib import data_env, releases
+from lib.photo_store import PHOTO_PREFIX, is_photo_key
 from lib.r2_keys import RELEASE_ID_PATTERN, assert_valid_keys
 
 CHANNELS_KEY = "channels.json"
@@ -282,7 +285,7 @@ def promote(
 
     folder = data_env.scope_key(source, releases.release_key(release, ""))
     target_folder = data_env.scope_key(target, releases.release_key(release, ""))
-    copied, checked_by_etag = 0, 0
+    copied, checked_by_etag, photos_copied, photos_absent = 0, 0, 0, []
     if _head(s3_client, bucket, manifest_key(target, release)) is not None:
         manifest = publish.load_remote_json(s3_client, bucket, manifest_key(target, release))
         held = _list(s3_client, bucket, target_folder)
@@ -292,6 +295,8 @@ def promote(
                 f"{target}'s {release} folder lacks {len(missing)} of the keys its manifest lists "
                 f"(first: {missing[0]}), so its phones would 404 them. The pointer was not moved."
             )
+        if source != target:
+            photos_copied, photos_absent = _carry_photos(s3_client, bucket, source, target, target_folder, manifest)
     elif source == target:
         raise Refused(f"{manifest_key(target, release)} is not in the bucket, so {target} cannot roll back to {release}.")
     else:
@@ -327,6 +332,7 @@ def promote(
                 f"{len(wrong)} copied object(s) do not match their source (first: {destination[wrong[0]]}). "
                 f"{target}'s {release} manifest was not written and the pointer was not moved."
             )
+        photos_copied, photos_absent = _carry_photos(s3_client, bucket, source, target, folder, manifest)
         copy_one(source_manifest)
         if not _same(objects[source_manifest], _head(s3_client, bucket, destination[source_manifest])):
             raise Refused(f"{destination[source_manifest]} does not match its source. The pointer was not moved.")
@@ -344,7 +350,66 @@ def promote(
         provenance=provenance,
         now=now,
     )
-    return {**move, "copied": copied, "checked_by_etag": checked_by_etag, "indexed": listed}
+    return {
+        **move,
+        "copied": copied,
+        "checked_by_etag": checked_by_etag,
+        "photos_copied": photos_copied,
+        "photos_absent": photos_absent,
+        "indexed": listed,
+    }
+
+
+def _carry_photos(s3_client, bucket: str, source: str, target: str, folder: str, manifest: dict) -> tuple[int, list[str]]:
+    """Copy into `target`'s root `photos/` every photo the release's files reference that it lacks, from `source`'s.
+
+    A phone resolves a card's photo key against its environment's root
+    `photos/`, never the release folder (client/src/lib/dataRelease.ts's
+    ROOT_SCOPED_PREFIXES), so a folder copy alone promotes cards whose photos
+    404: production held no `photos/` object at all after the bucket move
+    (#1878 - Production's places show no photos since the 2026-10-20
+    promotion). `folder` is whichever copy of the release folder to read the
+    keys from. The store is content-addressed, so a key the target holds is
+    these bytes already and is left alone. Returns how many were copied and
+    the referenced keys it could not carry: neither environment holds them,
+    or they are not in the one shape a photo key has (is_photo_key), which is
+    never copied, so no file can name another root key into production.
+
+    A PHOTO NEITHER HOLDS NEVER STOPS A PROMOTION, which is the one place
+    this differs from the folder's own check. A rollback is promoted the same
+    way, and one withdrawn photo must not block undoing a release that is
+    wrong about water; a card whose photo 404s shows no photo. main() warns
+    with the count. A copy that does not verify still refuses, before the
+    manifest or pointer moves, as the folder's copy does.
+    """
+    referenced: set[str] = set()
+    for name in _release_keys(manifest):
+        if publish.carries_photo_keys(name):
+            referenced |= publish.photo_keys_in(name, publish.load_remote_json(s3_client, bucket, f"{folder}{name}") or {})
+    held = _list(s3_client, bucket, data_env.scope_key(target, f"{PHOTO_PREFIX}/"))
+    wanted = sorted(key for key in referenced if data_env.scope_key(target, key) not in held)
+    if not wanted:
+        return 0, []
+    available = _list(s3_client, bucket, data_env.scope_key(source, f"{PHOTO_PREFIX}/"))
+    absent = [key for key in wanted if not is_photo_key(key) or data_env.scope_key(source, key) not in available]
+    carried = set(wanted) - set(absent)
+    pairs = {data_env.scope_key(source, key): data_env.scope_key(target, key) for key in sorted(carried)}
+    assert_valid_keys(list(pairs.values()))
+
+    def copy_one(key: str) -> str:
+        s3_client.copy_object(Bucket=bucket, CopySource={"Bucket": bucket, "Key": key}, Key=pairs[key])
+        return key
+
+    def check_one(key: str) -> tuple[str, bool]:
+        return key, _same(available[key], _head(s3_client, bucket, pairs[key]))
+
+    publish._in_parallel([partial(copy_one, key) for key in pairs])
+    wrong = [key for key, ok in publish._in_parallel([partial(check_one, key) for key in pairs]) if not ok]
+    if wrong:
+        raise Refused(
+            f"{len(wrong)} copied photo(s) do not match their source (first: {pairs[wrong[0]]}). The pointer was not moved."
+        )
+    return len(pairs), absent
 
 
 def _list_in_index(s3_client, bucket: str, environment: str, release: str, manifest: dict | None, now) -> bool:
@@ -413,6 +478,13 @@ def main(argv: list[str] | None = None) -> dict:
         print(f"{environment}'s {version} pointer already names {result['release']}; nothing was written.")
     if "copied" in result:
         print(f"Objects copied: {result['copied']}; of those, checked by ETag as well as size: {result['checked_by_etag']}.")
+        print(f"Photos copied into {environment}'s {PHOTO_PREFIX}/: {result['photos_copied']}.")
+        if result["photos_absent"]:
+            absent = result["photos_absent"]
+            print(
+                f"::warning::{len(absent)} photo key(s) the release references were not carried: in neither "
+                f"environment's {PHOTO_PREFIX}/, or not a photo key (first: {absent[0]}); those cards show no photo."
+            )
     return result
 
 

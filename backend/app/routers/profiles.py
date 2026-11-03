@@ -8,10 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.core.account_deletion import delete_account
 from app.core.account_export import build_export
+from app.core.analytics_accounts import LinkedUsageUnreachable
 from app.core.auth import get_current_github_login, get_current_user
 from app.core.logs import describe_failure
+from app.core.mail import ses_client
+from app.core.support import notify_stop
 from app.db.session import get_db
 from app.models.profile import Profile
+from app.models.support import SupportChoice
 from app.schemas.profile import DeletionReceipt, ProfileOut
 
 logger = logging.getLogger(__name__)
@@ -79,8 +83,23 @@ def delete_my_account(
     204 was considered and refused for exactly that: an empty body is the
     honest answer only if there is nothing the hiker needs to know, and here
     there is.
+
+    503 WHEN THE USAGE IT LINKED CANNOT BE FOUND. Linked usage rows exist and
+    no secret is configured to recompute this account's key
+    (app/core/analytics_accounts.py): deleting the rest would hand the hiker
+    a receipt while their usage stayed linked. Nothing is changed, and the
+    answer is the same words as the 500 below, because the same thing is true.
     """
-    summary = delete_account(db, current_user)
+    try:
+        summary = delete_account(db, current_user)
+    except LinkedUsageUnreachable:
+        db.rollback()
+        # Names only, like the 500 below: no account id, no key.
+        logger.error("account deletion refused: linked usage rows exist and no analytics user-key secret is configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The account was not deleted. Nothing was changed.",
+        ) from None
     try:
         db.commit()
     except Exception as failure:
@@ -97,6 +116,19 @@ def delete_my_account(
             detail="The account was not deleted. Nothing was changed.",
         ) from None
 
+    # Support the deletion asked to stop (#1876): whoever cancels it is asked
+    # now, after the commit, in a transaction of its own - a mail refusal must
+    # not undo a deletion that already happened. A request that does not go
+    # stays in core/support.py's retry queue, which every webhook delivery
+    # works through.
+    if summary.support_stops_requested:
+        provider = ses_client()
+        for choice_id in summary.support_stops_requested:
+            choice = db.get(SupportChoice, choice_id)
+            if choice is not None:
+                notify_stop(db, choice, mail_provider=provider)
+        db.commit()
+
     return DeletionReceipt(
         trips_deleted=summary.trips_deleted,
         day_hikes_deleted=summary.day_hikes_deleted,
@@ -109,6 +141,7 @@ def delete_my_account(
         app_failure_reports_unlinked=summary.app_failures_unlinked,
         challenge_tags_deleted=summary.challenge_tags_deleted,
         challenge_entries_deleted=summary.challenge_entries_deleted,
+        usage_events_deleted=summary.usage_events_deleted,
         kept=summary.contributions_kept,
     )
 

@@ -53,14 +53,12 @@ import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator, topOf } from './lib/navigator'
 import { TABS, type TabId } from './chrome/tabs'
-import { BailSheet } from './chrome/BailSheet'
 import { formatBytes } from './lib/formatBytes'
 import { nightsBehind } from './lib/nightsBehind'
 import type { StopFacts } from './screens/Today'
 import { usePlaces } from './lib/usePlaces'
 import { defaultPlaceCamera, type DefaultPlace } from './lib/defaultPlace'
 import type { Place } from './lib/places'
-import { PlaceSheet } from './chrome/PlaceSheet'
 import {
   hikingDetailOptions,
   noDetailOptions,
@@ -90,6 +88,7 @@ import {
   HikePicker,
   HikeSetup,
   IdentitySetup,
+  UsageLinkQuestion,
   InstallPrompt,
   MapScreen,
   Moderation,
@@ -103,6 +102,14 @@ import {
   KeepSpotSheet,
   ShareHike,
   SignInPrompt,
+  AccountPanel,
+  HikePickSheet,
+  AddDayHikeSheet,
+  DayHikesHere,
+  SectionPlanner,
+  ReportPickBar,
+  PressPlate,
+  RouteHoverPlate,
   TripList,
   Volunteer,
   VolunteerHours,
@@ -117,6 +124,8 @@ import {
   NextTurnCard,
   RouteStopPicker,
   StepAwaySheet,
+  SupportGate,
+  YourSupportPage,
 } from './screens/deferred'
 import { useAfterFirstFrame } from './lib/useAfterFirstFrame'
 import {
@@ -141,6 +150,7 @@ import { CORRIDOR_ARCHIVE_URL } from './map/archiveUrls'
 import { loadMapEngine } from './map/mapEngineLoader'
 import { DATA_CONFIGURED } from './lib/config'
 import {
+  forgetMeasurementLink,
   forgetPreferencesSync,
   loadPreferences,
   savePreferences,
@@ -160,7 +170,7 @@ import { forgetDayHikeSync } from './lib/dayHikesSync'
 import { RemovedPoiCard } from './chrome/RemovedPoiCard'
 import { resolvePoiId, tombstoneFor } from './lib/poiIdentity'
 import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
-import { deleteAccount, type DeletionReceipt } from './lib/api'
+import { API_CONFIGURED, deleteAccount, type DeletionReceipt } from './lib/api'
 import {
   DEFAULT_PREFERENCES,
   type BackgroundSource,
@@ -303,8 +313,6 @@ import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import type { RouteStopChoice } from './chrome/RouteStopPicker'
 import { RouteMapPickBar } from './chrome/RouteMapPickBar'
-import { ReportPickBar } from './chrome/ReportPickBar'
-import { SectionPlanner } from './chrome/SectionPlanner'
 import { nearestStop } from './lib/cascade'
 import { mileMarker, stopLabel } from './lib/planDisplay'
 import { longDate } from './lib/hikeText'
@@ -441,10 +449,8 @@ import { dayHikeWalk } from './lib/dayHikeWalk'
 import { TurnCard } from './chrome/TurnCard'
 import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
-import { DayHikesHere } from './chrome/DayHikesHere'
 import { planRoomFor } from './lib/planRoom'
-import { HikePickSheet } from './chrome/HikePickSheet'
-import { AddDayHikeSheet, type DayHikeCandidate } from './chrome/AddDayHikeSheet'
+import type { DayHikeCandidate } from './chrome/AddDayHikeSheet'
 import { hikeShareText } from './lib/hikeShareText'
 import type { LongHikeToday } from './screens/Today'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
@@ -466,6 +472,7 @@ import {
   listQueued,
   removeQueued,
   retryQueued,
+  sendableNow,
   type AppFailureDraft,
   type FlushResult,
   type OutboxItem,
@@ -499,7 +506,6 @@ import {
   type HikerMode,
 } from './lib/hikerMode'
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
-import { RouteHoverPlate } from './chrome/RouteHover'
 import { useRouteHover } from './chrome/useRouteHover'
 import { loadTakenTrail, saveTakenTrail } from './lib/takenTrail'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
@@ -508,7 +514,6 @@ import { fetchMyVolunteerHours } from './lib/api'
 import { queuedHoursSummary } from './lib/volunteerHours'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
 import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
-import { PressPlate } from './chrome/PressPlate'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
 import {
@@ -542,6 +547,9 @@ import {
   type MileRange,
 } from './lib/walkedMiles'
 import { clubRunAtMile, clubTimeline } from './lib/clubSections'
+import { BUILD_INFO } from './lib/buildInfo'
+import { DeferredMeasureUsage } from './lib/DeferredMeasureUsage'
+import type { UsageMeasurement, UsageMeasurementInput } from './lib/useUsageMeasurement'
 import {
   clearPlannedHike,
   hikeSummary,
@@ -600,7 +608,8 @@ import './App.css'
 // structurally rather than by review.
 import './desktop.css'
 import { SignInWindow } from './chrome/SignInWindow'
-import { AccountPanel } from './chrome/AccountPanel'
+import { BailSheet } from './chrome/BailSheet'
+import { PlaceSheet } from './chrome/PlaceSheet'
 
 // OurHike hikes one trail today - see lib/trails.ts for why this is a lookup
 // and not just a string.
@@ -888,6 +897,16 @@ function App() {
   /** Whether the RECORD answered, as against the read settling either way.
    *  What the mirror is allowed to follow - see the effect that writes it. */
   const recordRead = useRef(false)
+  /** The same fact as state, for what must re-render when it turns: usage
+   *  measurement starts only once the hiker's own answers are known. */
+  const [recordLoaded, setRecordLoaded] = useState(false)
+  /**
+   * Preference changes made before the record answered, applied on top of it
+   * when it does. Written straight away they replaced the record with the
+   * defaults plus one change - a stored "Share usage statistics: off" saved
+   * back as on by a tap that had nothing to do with it (#1903's review).
+   */
+  const earlyChanges = useRef<Partial<UserPreferences>[]>([])
   /** Whether the hiker has already changed one of the three mirrored values on
    *  this launch. Since #1301 the shell paints before the record lands and the
    *  Today header's mode switch is on that first frame, so a tap can land
@@ -936,6 +955,18 @@ function App() {
   // `selectTab` already - and the navigator's tests hold both courtesies.
   const nav = useNavigator<BailAsk>()
   const activeTab = nav.tab
+  /**
+   * Usage measurement's two plan calls (#1902), reached through a ref because
+   * the handlers that make and finish plans are declared well above the hook
+   * that answers them (`useUsageMeasurement`, beside `maintainerLine`), and a
+   * ref is the one thing they can hold without a dependency they cannot list.
+   */
+  const usageRef = useRef<UsageMeasurement | null>(null)
+  /** "Link your usage to your account?" is due: a sign-in this app started has
+   *  finished (#1902). Here rather than beside the hook's input because
+   *  `flowOpen` reads it, and is declared well above that. */
+  const [askingUsageLink, setAskingUsageLink] = useState(false)
+  const askAboutUsageLink = useCallback(() => setAskingUsageLink(true), [])
   const {
     selectTab,
     navigate,
@@ -1394,6 +1425,11 @@ function App() {
   const queuedCount = useMemo(
     () => queuedItems.filter((item) => item.failure === undefined).length,
     [queuedItems],
+  )
+  /** What the outbox can send now, which usage measurement waits behind. */
+  const sendableCount = useMemo(
+    () => sendableNow(queuedItems, account !== null),
+    [account, queuedItems],
   )
   const stuckReports = useMemo<StuckReport[]>(
     () =>
@@ -1894,14 +1930,25 @@ function App() {
     ]).then(
       ([stored, mode, open, taken]) => {
         setOpenWalk(open)
-        // A choice made in the window before this landed outranks the record:
-        // the hiker is looking at what they picked.
-        if (!mirroredTouched.current) {
-          setPreferences(stored)
-          setHikerMode(mode)
-        }
+        // A mode chosen in the window before this landed outranks the record:
+        // the hiker is looking at what they picked. Preferences are the
+        // record's, with any change made in that window applied over it - not
+        // skipped wholesale for a tap on the mode switch, which left every
+        // stored answer at its default for the launch, consent included.
+        const changed = earlyChanges.current
+        earlyChanges.current = []
+        const merged = changed.reduce<UserPreferences>(
+          (blob, change) => ({ ...blob, ...change }),
+          stored,
+        )
+        setPreferences(merged)
+        // Saved here rather than through `persistPreferences`, which is declared
+        // below this effect; a refused write is the one #315 already records.
+        if (changed.length > 0) void savePreferences(merged).catch(() => {})
+        if (!mirroredTouched.current) setHikerMode(mode)
         if (!takenTouched.current) setTakenTrailStored(taken)
         recordRead.current = true
+        setRecordLoaded(true)
         setPreferencesLoaded(true)
         markLaunch(LAUNCH_MARKS.preferences)
         // The record has spoken; the next launch's first frame starts here.
@@ -2081,6 +2128,10 @@ function App() {
   // order updatePreferences uses, and for the same reason.
   const handleSaveHike = useCallback(async (next: PlannedHike) => {
     await savePlannedHike(next)
+    // Every save counts as a plan made, an edit included: a planned hike is
+    // two miles and no identity, so an edit and a new plan cannot be told
+    // apart here (#1902).
+    usageRef.current?.planMade({ fromMile: next.startMile, toMile: next.endMile })
     setHike(next)
     setPickingHike(false)
   }, [])
@@ -2478,6 +2529,9 @@ function App() {
     // map ends up counted as hidden." It stays in `updateWouldCost`, because a
     // half-typed address is exactly what that one guards.
     collectingIdentity ||
+    // "Link your usage to your account?" is a full screen (#1902): the map
+    // under it is not in view, and must not be counted as viewed.
+    (askingUsageLink && preferences.measurement_linked === null) ||
     reportingFailure ||
     reportingClosure !== null ||
     reporting !== null
@@ -2493,6 +2547,15 @@ function App() {
       (activeTab === 'plan' && !planStepBeside) ||
       (activeTab === 'today' && !isDesktop))
   const mapShownNow = mapMounted && !flowOpen && !tabOverMap
+
+  // ---- Supporting OurHike (#1876) ----
+  //
+  // Two pieces of state, and nothing else: the rest lives in the deferred
+  // screens/SupportGate.tsx, which says why (the launch budget). A counter
+  // the Your support page bumps to open the ask, and the More row's line,
+  // which the gate reports.
+  const [supportAskRequest, setSupportAskRequest] = useState(0)
+  const [supportSummary, setSupportSummary] = useState<string | undefined>(undefined)
   /**
    * Bring the map on screen for something a tap asked to see on it - and
    * leave the tabs alone where the map is already beside the screen the tap
@@ -3177,9 +3240,11 @@ function App() {
    * gate and the arithmetic; this is only the pair of fixes it needs.
    *
    * NOTHING IS UPLOADED, and that is the design rather than an omission.
-   * features/EVENTING.md rule 2 forbids geography in the event pipe - "no
+   * features/EVENTING.md rule 2 forbade geography in the event pipe - "no
    * coordinates, no mile, no segment id, no POI id, no region" - and the rule
    * above needs none of it, because the phone is asking about its own fixes.
+   * (Rule 2 was reversed for usage events on 2026-10-27, #1902: they carry a
+   * sealed fix. This record is not one of them and still uploads nothing.)
    * What is kept is the ANSWER (mile intervals, merged) and never the evidence:
    * no coordinates, no timestamps, no ordering, so what sits on the device
    * cannot be replayed into a route down the corridor the way a fix log can.
@@ -4187,6 +4252,7 @@ function App() {
    */
   const handleLayOutSection = useCallback(
     (plan: HikePlan) => {
+      usageRef.current?.planMade({ plan })
       applyTripStore((store) => {
         const added = addTrip(store, plan)
         const id = added.openId
@@ -4653,6 +4719,7 @@ function App() {
 
   const handleFinishHike = useCallback(() => {
     if (activeHike === null) return
+    usageRef.current?.planCompleted({ hike: activeHike })
     applyTripStore((store) => finishHike(store, activeHike.id, localDay(now)))
     closeStepAway()
     // Offered, never declared - and this IS the hiker saying so, so the
@@ -4912,6 +4979,7 @@ function App() {
         ? { ...hikeDraft, name: hikeNameFromEnds(hikeDraft, pois) }
         : { ...hikeDraft, name: hikeDraft.name.trim() }
     const started: Hike = { ...named, status: 'walking' }
+    usageRef.current?.planMade({ hike: started })
     applyTripStore((store) => setActiveHike(addHike(store, started), started.id))
     setHikeDraft(null)
     setHikeSheet(null)
@@ -5803,9 +5871,12 @@ function App() {
       // in the list - so the shelf does not reorder under a hiker who
       // changed one stop. A record deleted on another phone meanwhile is
       // simply saved again: the hiker has the route in hand and asked for it.
-      const hikes = store.hikes.some((saved) => saved.id === hike.id)
-        ? store.hikes.map((saved) => (saved.id === hike.id ? hike : saved))
-        : [...store.hikes, hike]
+      const isNew = !store.hikes.some((saved) => saved.id === hike.id)
+      if (isNew && hike.recorded === 'planned')
+        usageRef.current?.planMade({ miles: hike.figures.miles })
+      const hikes = isNew
+        ? [...store.hikes, hike]
+        : store.hikes.map((saved) => (saved.id === hike.id ? hike : saved))
       // The saved card is where Save lands (#1373, frame 5c): the record
       // opens on the Plan tab with "Walk this" and the line saying where it
       // now lives, rather than the map with nothing on it. `openId` used to
@@ -6017,6 +6088,11 @@ function App() {
     void loadDayHikes().then((store) => {
       const already = savedFromSource(store.hikes, hike.id)
       const today = new Date().toISOString().slice(0, 10)
+      // A completion only when a walk was logged: logWalk hands back the same
+      // record for a day already logged (#1903's review).
+      if (already === undefined) usageRef.current?.planMade({ miles: hike.miles })
+      else if (logWalk(already, today) !== already)
+        usageRef.current?.planCompleted({ miles: already.figures.miles })
       const hikes =
         already === undefined
           ? [
@@ -6269,6 +6345,9 @@ function App() {
     if (id === null) return
     const today = localDay(new Date())
     void loadDayHikes().then((store) => {
+      const walked = store.hikes.find((hike) => hike.id === id)
+      if (walked !== undefined && logWalk(walked, today) !== walked)
+        usageRef.current?.planCompleted({ miles: walked.figures.miles })
       const next = {
         hikes: store.hikes.map((hike) => (hike.id === id ? logWalk(hike, today) : hike)),
         openId: id,
@@ -6285,6 +6364,9 @@ function App() {
   const finishOpenWalk = useCallback(
     (id: string, day: string) => {
       void loadDayHikes().then((store) => {
+        const walked = store.hikes.find((hike) => hike.id === id)
+        if (walked !== undefined && logWalk(walked, day) !== walked)
+          usageRef.current?.planCompleted({ miles: walked.figures.miles })
         const next = {
           ...store,
           hikes: store.hikes.map((hike) => (hike.id === id ? logWalk(hike, day) : hike)),
@@ -7204,6 +7286,7 @@ function App() {
   const handleLayOut = useCallback(
     (next: HikePlan) => {
       const tripId = targetRequest?.tripId ?? null
+      if (tripId === null) usageRef.current?.planMade({ plan: next })
       applyTripStore((store) =>
         tripId === null ? addTrip(store, next) : updateTrip(store, tripId, next),
       )
@@ -7449,11 +7532,10 @@ function App() {
   const updatePreferences: UpdatePreferences = useCallback(
     (patch) => {
       setPreferences((current) => {
-        const next = {
-          ...current,
-          ...(typeof patch === 'function' ? patch(current) : patch),
-        }
-        persistPreferences(next)
+        const change = typeof patch === 'function' ? patch(current) : patch
+        const next = { ...current, ...change }
+        if (recordRead.current) persistPreferences(next)
+        else earlyChanges.current.push(change)
         return next
       })
     },
@@ -9327,6 +9409,9 @@ function App() {
     const receipt = await deleteAccount()
     setAccountDeleted(true)
     await forgetPreferencesSync()
+    // The yes to linking was this account's, and it is gone (#1903's review).
+    await forgetMeasurementLink()
+    setPreferences((current) => ({ ...current, measurement_linked: null }))
     await forgetTripSync()
     await forgetDayHikeSync()
     await signOut()
@@ -9342,6 +9427,11 @@ function App() {
     // handset, look like a device that had already synced, and take this
     // one's settings for their account rather than the other way round.
     await forgetPreferencesSync()
+    // And the answer to "Link your usage to your account?", which was this
+    // account's to give: left in place it linked the next hiker to sign in on
+    // this phone without asking them (#1903's review).
+    await forgetMeasurementLink()
+    setPreferences((current) => ({ ...current, measurement_linked: null }))
     // The trips stay - they are this device's - but `since` and `seen` are
     // claims about an account this device no longer has. Left in place they
     // would make the next sign-in, possibly by somebody else on a shared
@@ -9417,11 +9507,31 @@ function App() {
   // Bumped when a sync lands, so the panel re-reads the ledgers.
   const noteSyncRan = useCallback(() => setSyncTick((tick) => tick + 1), [])
 
+  /**
+   * The account whose preferences have been reconciled this launch - when it
+   * is the one signed in, its consent answers are the ones on screen, and
+   * usage measurement may send (#1903's review). Set only by an attempt that
+   * REACHED the account: settling on one with no signal let a phone that
+   * launched on the trail send the moment signal returned, before the "off"
+   * given on another phone arrived, and the pull was never tried again that
+   * launch (#1903's second review). It is now, when signal returns.
+   */
+  const [preferencesSettledFor, setPreferencesSettledFor] = useState<string | null>(null)
+  const settledAccount = account === null ? null : account.email
+  const notePreferencesSettled = useCallback(
+    (reached: boolean) => {
+      if (reached) setPreferencesSettledFor(settledAccount)
+      noteSyncRan()
+    },
+    [settledAccount, noteSyncRan],
+  )
+
   usePreferencesSync(
     preferences,
     account !== null && syncOn,
     handleAdoptPreferences,
-    noteSyncRan,
+    notePreferencesSettled,
+    online,
   )
 
   /**
@@ -9464,6 +9574,39 @@ function App() {
     handleAdoptDayHikes,
     noteSyncRan,
   )
+
+  /**
+   * Usage measurement (#1902, features/EVENTING.md §0). One hook: it notices
+   * installs, sign-ins, sessions, screens and the map coming into view itself,
+   * and the plan handlers above call `usageRef.current` for the other two.
+   * The club at a point is the legend's own answer, the A.T. mile under it and
+   * who maintains that mile (the hook works out the second), so a map view
+   * and the legend never disagree. Built here, below the sync hooks, because
+   * whether the account's answers have arrived is one of its inputs.
+   */
+  const usageInput: UsageMeasurementInput = {
+    ready: recordLoaded,
+    consentSettled:
+      account === null || !syncOn || preferencesSettledFor === account.email,
+    enabled: preferences.measurement_enabled,
+    linked: preferences.measurement_linked,
+    accountEmail: account === null ? null : account.email,
+    newInstall: !preferences.onboarding_completed,
+    version: BUILD_INFO.version,
+    consentSyncs: account !== null && syncOn,
+    online,
+    reportsWaiting: sendableCount,
+    screen: JSON.stringify([activeTab, nav.top]),
+    mapInView: mapShownNow,
+    gps,
+    camera,
+    trailIndex,
+    clubRuns,
+    onSignIn: askAboutUsageLink,
+  }
+  const setUsage = useCallback((measurement: UsageMeasurement | null) => {
+    usageRef.current = measurement
+  }, [])
 
   // Signing in ends the sign-in flow, whichever way it completed - an email
   // form resolving in this tab, or a provider redirect landing back on a
@@ -9710,6 +9853,19 @@ function App() {
       <IdentitySetup
         onSave={handleSaveIdentity}
         onSkip={() => setCollectingIdentity(false)}
+      />
+    )
+  } else if (askingUsageLink && preferences.measurement_linked === null) {
+    // Asked once, after a sign-in this app started (#1902), and after the
+    // identity question when both are due - that one is about the report the
+    // hiker just wrote. Either answer is final until changed on Safety &
+    // privacy; a phone that synced an answer from another never asks.
+    flowScreen = (
+      <UsageLinkQuestion
+        onAnswer={(linked) => {
+          updatePreferences({ measurement_linked: linked })
+          setAskingUsageLink(false)
+        }}
       />
     )
   } else if (reportingFailure) {
@@ -10820,6 +10976,17 @@ function App() {
                   challengesScreen={challengesScreenNode}
                   challengesUp={challengesUp}
                   challengesSummary={challengesSummary}
+                  supportSummary={supportSummary}
+                  supportScreen={
+                    <YourSupportPage
+                      apiConfigured={API_CONFIGURED}
+                      signedIn={account !== null}
+                      onSignIn={() =>
+                        setAuthFlow({ screen: 'choose', afterReport: false })
+                      }
+                      onChoose={() => setSupportAskRequest((n) => n + 1)}
+                    />
+                  }
                   volunteerScreen={
                     <Volunteer
                       contributeConditions={preferences.contribute_conditions}
@@ -11178,6 +11345,7 @@ function App() {
 
   return (
     <>
+      <DeferredMeasureUsage input={usageInput} onMeasure={setUsage} />
       {nothingWouldRender && (
         <div className="app__screen">
           {/* THE FRONT DOOR, WHILE THE MAP IS STILL COMING (#1429).
@@ -12121,6 +12289,21 @@ function App() {
           window both are raised from, since a report is saved first and this
           asks how to send it. Its own z-index says the same thing; the order
           here is what makes that true even if a later layer forgets to. */}
+      {/* THE DAY-5 ASK (#1876), under the sign-in window it can hand off to
+          and held while that window or a flow is up, so the two never
+          stack. Not loaded at all in a build with no backend. */}
+      {API_CONFIGURED && afterFirstFrame && (
+        <SupportGate
+          accountEmail={account?.email ?? null}
+          online={online}
+          held={entering || flowOpen || authFlow !== null}
+          openRequest={supportAskRequest}
+          onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
+          onSummary={setSupportSummary}
+          usageCounts={preferences.measurement_enabled}
+        />
+      )}
+
       {authWindowNode}
     </>
   )

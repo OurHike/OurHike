@@ -15,7 +15,10 @@
 //
 // WHY THIS RUNS HERE AND UPLOADS NOTHING
 //
-// features/EVENTING.md §1 rule 2: "No geography, ever. No coordinates, no
+// features/EVENTING.md §1 rule 2, as it read when this was written - it was
+// reversed for usage events on 2026-10-27 (#1902, EVENTING.md §0), which carry
+// a sealed fix; this module is not one of them and still uploads nothing:
+// "No geography, ever. No coordinates, no
 // mile, no segment id, no POI id, no region. This is the #252 half of the pair,
 // and on a trail app it is the more dangerous half." A stable identifier beside
 // a trail position and a time is a hiker's route down the corridor, and #252

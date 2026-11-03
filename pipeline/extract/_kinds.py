@@ -107,6 +107,7 @@ from lib.arcgis import OffsetIgnored, feature_object_id, iter_layer_pages, layer
 from lib.atc_scrape import parse_update as parse_atc_update
 from lib.atc_scrape import update_url as atc_update_url
 from lib.club_pdfs import PARSERS as CLUB_PDF_PARSERS
+from lib.database_size import DATABASE_SIZE_SQL
 from lib.freshness_state import Freshness, compare_marker
 from lib.hikefinder import DETAIL_PATH as HIKEFINDER_DETAIL_PATH
 from lib.hikefinder import GPX_PATH as HIKEFINDER_GPX_PATH
@@ -2246,6 +2247,52 @@ def conditions_query(key: str, **overrides) -> ConditionsQuery:
     if key not in CONDITIONS_QUERIES:
         raise KeyError(f"{key}: not one of export_conditions.py's artifacts {sorted(CONDITIONS_QUERIES)}")
     return ConditionsQuery(key=key, **overrides)
+
+
+@dataclass(frozen=True)
+class DatabaseSize(Resource):
+    """OurHike's own database's size in bytes, one row a run, for the public data-quality page's storage check.
+
+    lib/database_size.py's DATABASE_SIZE_SQL, which says why the size is
+    public and what reads it, run on the conditions bake's own
+    CONDITIONS_DATABASE_URL, so each conditions leg measures its own
+    environment's database. Not a ConditionsQuery, so a failed read stops only
+    itself (extract/_run.py's stops_the_leg()): the closures and reports the
+    leg publishes never wait on a size, and the last committed row stands
+    while the source's freshness goes late on the page.
+
+    The answer must be one row holding one positive size, or the read raises:
+    `sum` over pg_database is an aggregate, so any other answer is a query
+    that broke, and a size of 0 is one that measured nothing. Absent is
+    unknown and never zero, so neither is landed. A size is no list that a
+    quiet hour empties, and its type, `org`, may not land zero rows anyway,
+    so the kind reads no count that could prove a zero.
+
+    The check answers UNKNOWN without connecting: the read is one aggregate
+    over pg_database, cheaper than a marker that could be wrong.
+    """
+
+    @property
+    def zero_proof(self) -> None:
+        return None
+
+    def change_check(self, recorded: dict | None) -> tuple[Freshness, dict | None]:
+        return Freshness.UNKNOWN, None
+
+    def column_hints(self) -> dict:
+        return {"database_bytes": {"data_type": "bigint"}}
+
+    def rows(self, proofs: dict[str, int]):
+        with psycopg.connect(export_conditions.connection_url(), connect_timeout=10) as conn:
+            answer = conn.execute(DATABASE_SIZE_SQL).fetchall()
+        # `sum` of bigint is numeric in Postgres, which psycopg gives back as a Decimal.
+        if len(answer) != 1 or len(answer[0]) != 1 or answer[0][0] is None or int(answer[0][0]) <= 0:
+            raise RuntimeError(f"{self.key}: DATABASE_SIZE_SQL answered {answer!r}, not one row holding one positive size")
+        yield {"database_bytes": int(answer[0][0])}
+
+
+def database_size(**overrides) -> DatabaseSize:
+    return DatabaseSize(key="database_size", **overrides)
 
 
 @dataclass(frozen=True)

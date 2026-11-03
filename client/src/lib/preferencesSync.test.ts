@@ -114,8 +114,28 @@ describe('reconciling for real', () => {
     const adopted = await syncPreferences(DEFAULT_PREFERENCES)
 
     expect(adopted?.theme).toBe('dark')
-    expect(await preferencesSyncState()).toEqual({ dirty: false, syncedAt: REMOTE_AT })
+    expect(await preferencesSyncState()).toEqual({
+      dirty: false,
+      syncedAt: REMOTE_AT,
+      consentTouched: [],
+    })
     expect(pushPreferences).not.toHaveBeenCalled()
+  })
+
+  it('keeps "Share usage statistics" off on a first sign-in when the hiker switched it off here, and tells the account', async () => {
+    // #1903's review, scenario A: a reinstall, sharing switched off before
+    // signing in, and the account's untouched "on" adopted over it.
+    const local = { ...DEFAULT_PREFERENCES, measurement_enabled: false }
+    await savePreferences(local)
+    vi.mocked(fetchSyncedPreferences).mockResolvedValue(
+      synced({ measurement_enabled: true, theme: 'dark' }),
+    )
+
+    const adopted = await syncPreferences(local)
+
+    expect(adopted?.measurement_enabled).toBe(false)
+    expect(adopted?.theme).toBe('dark')
+    expect(vi.mocked(pushPreferences).mock.calls[0][0].measurement_enabled).toBe(false)
   })
 
   it('repairs what the account sends before adopting it', async () => {
@@ -247,18 +267,53 @@ describe('pushing on change', () => {
   })
 
   it('sends the change and records that this device is level again', async () => {
+    await recordPreferencesPush(REMOTE_AT)
     await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
 
     await pushPreferencesIfChanged({ ...DEFAULT_PREFERENCES, theme: 'dark' })
 
     expect(pushPreferences).toHaveBeenCalledOnce()
-    expect(await preferencesSyncState()).toEqual({ dirty: false, syncedAt: LATER_AT })
+    expect(await preferencesSyncState()).toEqual({
+      dirty: false,
+      syncedAt: LATER_AT,
+      consentTouched: [],
+    })
+  })
+
+  it('never pushes before this device has reconciled with the account once', async () => {
+    // A change made before the first sign-in's pull, pushed by the timer,
+    // could beat the pull and write this install's defaults over the account.
+    await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
+
+    await pushPreferencesIfChanged({ ...DEFAULT_PREFERENCES, theme: 'dark' })
+
+    expect(pushPreferences).not.toHaveBeenCalled()
+  })
+
+  it('never pushes a consent answer this device did not give, and takes the account’s instead', async () => {
+    // #1903's review, scenario B: another phone switched sharing off and told
+    // the account; this one changed its units and pushed its stale "on" over it.
+    await recordPreferencesPush(REMOTE_AT)
+    const local = { ...DEFAULT_PREFERENCES, units: 'metric' as const }
+    await savePreferences(local)
+    vi.mocked(pushPreferences).mockResolvedValue(
+      synced({ units: 'metric', measurement_enabled: false, updated_at: LATER_AT }),
+    )
+
+    const adopted = await pushPreferencesIfChanged(local)
+
+    const sent = vi.mocked(pushPreferences).mock.calls[0][0]
+    expect('measurement_enabled' in sent).toBe(false)
+    expect('measurement_linked' in sent).toBe(false)
+    expect(adopted?.measurement_enabled).toBe(false)
+    expect((await loadPreferences()).measurement_enabled).toBe(false)
   })
 
   it('asks the account nothing, on a connection this app assumes is bad', async () => {
     // The reason this is not just `syncPreferences`: four legend toggles
     // would otherwise be four GETs to ask a question this device has already
     // written down.
+    await recordPreferencesPush(REMOTE_AT)
     await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
 
     await pushPreferencesIfChanged({ ...DEFAULT_PREFERENCES, theme: 'dark' })
@@ -267,6 +322,7 @@ describe('pushing on change', () => {
   })
 
   it('leaves the change queued when the push cannot land', async () => {
+    await recordPreferencesPush(REMOTE_AT)
     await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
     vi.mocked(pushPreferences).mockRejectedValue(new TypeError('Failed to fetch'))
 
@@ -278,19 +334,21 @@ describe('pushing on change', () => {
   it('leaves the change queued when the push is REFUSED, too', async () => {
     // A schema mismatch is somebody's to fix. Clearing the flag would throw
     // the hiker's setting away while they did.
+    await recordPreferencesPush(REMOTE_AT)
     await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
     vi.mocked(pushPreferences).mockRejectedValue(new ApiError(422, 'refused'))
 
     await expect(
       pushPreferencesIfChanged({ ...DEFAULT_PREFERENCES, theme: 'dark' }),
-    ).resolves.toBeUndefined()
+    ).resolves.toBeNull()
     expect((await preferencesSyncState()).dirty).toBe(true)
   })
 
-  it('does not adopt anything, ever', async () => {
+  it('adopts nothing from a push but a consent answer this device did not give', async () => {
     // A push is not a place to learn the account's preferences from: the
     // response is this device's own blob coming back, and treating it as
     // news would be a write echoing itself into the app.
+    await recordPreferencesPush(REMOTE_AT)
     await savePreferences({ ...DEFAULT_PREFERENCES, theme: 'dark' })
     vi.mocked(pushPreferences).mockResolvedValue(
       synced({ theme: 'light', updated_at: LATER_AT }),

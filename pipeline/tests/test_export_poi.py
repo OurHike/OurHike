@@ -203,6 +203,25 @@ def no_real_water_distance_file(tmp_path, monkeypatch):
     monkeypatch.setattr(export_poi, "WATER_DISTANCE_PATH", tmp_path / "no-water-distance-file.json")
 
 
+@pytest.fixture(autouse=True)
+def no_real_network_lines(tmp_path, monkeypatch):
+    """Keep the real trail network out of every test here (#1669).
+
+    `export_poi.NETWORK_LINES_PATH` is fixed at import as
+    `data/processed/nearby_trails.geojson`, so the `OUT_DIR` patch every test
+    makes never moved it. On a machine that has run `export_nearby_trails.py`
+    the file is 253,554,744 bytes and 142,892 lines (measured 2026-09-24),
+    and each of the 60 calls here to `main()`, `build_enriched_records()` or
+    `read_sources()` loaded and indexed all of it: `scripts/test.sh` sat at
+    94% for over ten minutes. CI has no such file, which is why only a
+    working tree ever noticed.
+
+    In this file rather than conftest.py because
+    test_water_covers_trail_sources.py asserts the real constant's value.
+    """
+    monkeypatch.setattr(export_poi, "NETWORK_LINES_PATH", tmp_path / "no-network-lines.geojson")
+
+
 # TRAIL_WATER_PATH is redirected for the whole suite by conftest.py's
 # no_real_trail_water, which is autouse there rather than here because
 # unify_all_sources reads it and every caller of that function needs the
@@ -694,10 +713,10 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
     _write_water_distance_file(
         water_path,
         [
-            {"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120, "provenance": "FarOut"},
+            {"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120, "provenance": "FarOut"},
             {
                 "layer": "campsites",
-                "atc_global_id": "campsite-glob-1",
+                "poi_id": "atc_campsites:campsite-glob-1",
                 "distance_ft": 100,
                 "provenance": "OSA_Field_Estimate",
             },
@@ -705,7 +724,7 @@ def test_export_poi_carries_water_distance_onto_shelters_and_campsites(tmp_path,
             # null distance, reason stated. Must publish nothing.
             {
                 "layer": "shelters",
-                "atc_global_id": "shelter-glob-absent",
+                "poi_id": "atc_shelters:shelter-glob-absent",
                 "distance_ft": None,
                 "provenance": None,
                 "unresolved": "no CSI row within 150 m",
@@ -759,7 +778,7 @@ def test_export_poi_publishes_no_provenance_where_the_reference_file_carried_non
     out_dir = tmp_path / "processed" / "poi"
     _write_fixture_sources(raw_dir)
     water_path = tmp_path / "water_distance.json"
-    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120}])
+    _write_water_distance_file(water_path, [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120}])
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
@@ -797,7 +816,7 @@ def test_export_poi_synthesizes_a_water_member_where_the_sentence_fired(tmp_path
     _write_fixture_sources(raw_dir)
     water_path = tmp_path / "water_distance.json"
     _write_water_distance_file(
-        water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120, "provenance": "FarOut"}]
+        water_path, [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120, "provenance": "FarOut"}]
     )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
@@ -864,7 +883,7 @@ def test_export_poi_words_the_synthesized_members_sentence_by_how_atc_arrived_at
     water_path = tmp_path / "water_distance.json"
     _write_water_distance_file(
         water_path,
-        [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 250, "provenance": provenance}],
+        [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 250, "provenance": provenance}],
     )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
@@ -899,8 +918,8 @@ def test_export_poi_synthesizes_from_the_anchor_only_never_from_a_member(tmp_pat
     _write_water_distance_file(
         water_path,
         [
-            {"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120},
-            {"layer": "campsites", "atc_global_id": "campsite-glob-1", "distance_ft": 100},
+            {"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120},
+            {"layer": "campsites", "poi_id": "atc_campsites:campsite-glob-1", "distance_ft": 100},
         ],
     )
 
@@ -928,7 +947,7 @@ def test_export_poi_keeps_far_water_out_of_the_nearby_sentence(tmp_path, monkeyp
     water_path = tmp_path / "water_distance.json"
     _write_water_distance_file(
         water_path,
-        [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 1648, "provenance": "OSA_Field_Estimate"}],
+        [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 1648, "provenance": "OSA_Field_Estimate"}],
     )
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
@@ -967,7 +986,7 @@ def test_export_poi_never_says_water_twice_when_a_real_point_already_folded(tmp_
         [_point_feature(0, -73.95, 41.0504, {"title": "Test Spring", "icon": "w", "dbid": 100})],
     )
     water_path = tmp_path / "water_distance.json"
-    _write_water_distance_file(water_path, [{"layer": "shelters", "atc_global_id": "shelter-glob-1", "distance_ft": 120}])
+    _write_water_distance_file(water_path, [{"layer": "shelters", "poi_id": "atc_shelters:shelter-glob-1", "distance_ft": 120}])
 
     monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
     monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
@@ -2475,3 +2494,29 @@ def test_absent_verdicts_are_no_anchors_rather_than_an_error(tmp_path):
     """The pre-#1016 file, and every run whose reach build has not happened -
     which read_sources already refuses on for its own reasons."""
     assert export_poi.load_osm_water_network_anchors(tmp_path / "nowhere.json") == {}
+
+
+def test_load_water_distances_keys_by_the_records_poi_id_not_a_rebuilt_globalid(tmp_path):
+    """#1729: a ledger id that no longer equals `{source}:{GlobalID}` (what a
+    re-key leaves behind) still matches, because the loader takes the record's
+    own `poi_id` instead of composing one from a GlobalID."""
+    path = tmp_path / "water_distance.json"
+    _write_water_distance_file(path, [{"layer": "shelters", "poi_id": "atc_shelters:carried-id", "distance_ft": 90}])
+
+    assert export_poi.load_water_distances(path) == {"atc_shelters:carried-id": export_poi.WaterDistance(90, None)}
+
+
+def test_load_water_distances_reads_only_the_shelters_and_campsites_layers(tmp_path):
+    """A record on any other layer is not read, even when its poi_id names a
+    shelter - int_points_of_interest__water filters on the same two layers, so
+    the two paths agree on a file that carries one."""
+    path = tmp_path / "water_distance.json"
+    _write_water_distance_file(
+        path,
+        [
+            {"layer": "shelters", "poi_id": "atc_shelters:s-1", "distance_ft": 120},
+            {"layer": "viewpoints", "poi_id": "atc_shelters:s-1", "distance_ft": 10},
+        ],
+    )
+
+    assert export_poi.load_water_distances(path) == {"atc_shelters:s-1": export_poi.WaterDistance(120, None)}

@@ -518,6 +518,32 @@ def test_reporting_surfaces_a_photo_and_person_sorts_first(client, db_session, r
     assert len(_gallery(client)) == 1
 
 
+def test_the_same_account_reporting_again_after_a_review_does_not_resurface_the_photo(client, db_session, r2, no_cooling_off):
+    """#1762: the reviewed photo stays reviewed when its reporter repeats the report."""
+    moderator = _moderator(db_session)
+    sharer = _hiker(db_session, name="Sharer")
+    reporter = _hiker(db_session, name="Reporter")
+    other = _hiker(db_session, name="Other")
+    _share(client, sharer, taken="2026-03-01")
+    _upload(client, sharer)
+    photo_id = _gallery(client)[0]["id"]
+    report = f"/waypoints/{_POI}/photos/{photo_id}/report"
+
+    assert client.post(report, json={"reason": "person"}, headers=auth_headers(reporter.id)).status_code == 204
+    reviewed = client.post(f"/moderation/poi-photos/{photo_id}/review", headers=auth_headers(moderator.id))
+    assert reviewed.status_code == 200
+
+    assert client.post(report, json={"reason": "person"}, headers=auth_headers(reporter.id)).status_code == 204
+    row = db_session.query(PoiPhoto).filter_by(id=photo_id).one()
+    db_session.refresh(row)
+    assert row.reviewed_at is not None and row.reviewed_by == moderator.id
+
+    # A different account is new eyes: it still puts the photo back in front of a person.
+    assert client.post(report, json={"reason": "person"}, headers=auth_headers(other.id)).status_code == 204
+    db_session.refresh(row)
+    assert row.reviewed_at is None and row.reported_by == other.id
+
+
 def test_reporting_a_missing_photo_is_a_404(client, db_session, r2):
     reporter = _hiker(db_session)
     response = client.post(

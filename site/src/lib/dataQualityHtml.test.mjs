@@ -37,6 +37,7 @@ const lookingView = () =>
   view(lane(examples.monthlyWithWarnings(), "monthly"), lane(examples.hourlyWithWarning(), "hourly"));
 const manyView = () =>
   view(lane(examples.monthlyManyProblems(), "monthly"), lane(examples.hourlyManyProblems(), "hourly"));
+const sizeView = () => view(MISSING, lane(examples.hourlyDatabaseNearItsLimit(), "hourly"));
 const codes = (markup) => [...markup.matchAll(/<code>(.*?)<\/code>/g)].map((m) => m[1].replaceAll("<wbr>", ""));
 
 describe("names from a file", () => {
@@ -358,6 +359,9 @@ describe("classes the page uses", () => {
     "dq-item--warn": "a warning's stripe is the default, so its modifier needs no rule of its own",
     "dq-chart__tick": "its text is styled by `.dq-chart__svg text`, with every other label in the chart",
     "dq-chart__hit": "a transparent rectangle for the pointer, drawn with fill set on the element",
+    "dq-key__limit--warn": "a warning's dashed rule is the default, so its modifier needs no rule of its own",
+    "dq-chart__limit--warn": "a warning's dashed line is the default, so its modifier needs no rule of its own",
+    "dq-chart__limit-label": "its text is styled by `.dq-chart__svg text`, with every other label in the chart",
   };
 
   it("hides an element with the hidden attribute whatever display its class sets", () => {
@@ -376,11 +380,43 @@ describe("classes the page uses", () => {
       ...lookingView().cards.map(renderCard),
       ...view({ state: "loading" }, { state: "failed", status: 500 }).cards.map(renderCard),
       renderChart(lookingView().sections.chart, 900).markup,
+      renderBody(sizeView()),
+      renderChart(sizeView().sections.chart, 900).markup,
     ].join("\n");
     const used = new Set(
       [...markup.matchAll(/class="([^"{]*)"/g)].flatMap((m) => m[1].split(/\s+/)).filter((c) => c.startsWith("dq-")),
     );
     expect([...used].filter((c) => !defined.has(c) && !(c in HOOKS))).toEqual([]);
+  });
+});
+
+describe("OurHike's own database's size, as markup (the maintainer's poll of 2026-10-28)", () => {
+  const chart = () => sizeView().sections.chart;
+
+  it("opens on the size's own history, the one entry with a history in its file", () => {
+    expect([chart().table, chart().metric]).toEqual(["base_ourhike__database_size", "database_mb"]);
+  });
+
+  it("keys its two lines, with no band and no triangle, and heads the table with what the check made of each point", () => {
+    const figure = renderChartFigure(chart());
+    expect(figure).toContain('<i class="dq-key__line"></i>Database size at each point</span>');
+    expect(figure).toContain('<i class="dq-key__limit dq-key__limit--warn"></i>Warns from 400 MB</span>');
+    expect(figure).toContain('<i class="dq-key__limit dq-key__limit--fail"></i>Fails from 475 MB</span>');
+    expect(figure).not.toContain("Usual range");
+    expect(figure).not.toContain("Flagged by Elementary");
+    expect(figure).toContain('<th scope="col">The check</th>');
+  });
+
+  it("draws both lines across the plot, each named at its right end, and stretches the axis to the higher", () => {
+    const { markup, layout } = renderChart(chart(), 900);
+    expect(markup.match(/<line class="dq-chart__limit dq-chart__limit--warn"/g)).toHaveLength(1);
+    expect(markup.match(/<line class="dq-chart__limit dq-chart__limit--fail"/g)).toHaveLength(1);
+    expect(markup).toContain(">warns 400 MB</text>");
+    expect(markup).toContain(">fails 475 MB</text>");
+    expect(markup).not.toContain('class="dq-chart__band"');
+    expect(markup).not.toContain('class="dq-chart__out"');
+    expect(layout.ticks.at(-1).value).toBeGreaterThanOrEqual(475);
+    expect(layout.limits.fail).toBeLessThan(layout.limits.warn);
   });
 });
 

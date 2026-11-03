@@ -24,9 +24,11 @@
 // battery that gets someone home. Switching tabs and coming back remounts the
 // screen anyway, costs nothing, and is what the tab bar below already does.
 //
-// **Nothing is recorded.** There is no telemetry in this client, and adding
-// some carries its own privacy weight (features/IDENTITY_AND_PRIVACY.md), so
-// this is a deliberate no rather than an oversight. The error still reaches
+// **Nothing is recorded.** There is no error telemetry in this client, and
+// adding some carries its own privacy weight (features/IDENTITY_AND_PRIVACY.md),
+// so this is a deliberate no rather than an oversight. The usage counts that
+// arrived with #1902 (features/EVENTING.md §0) count six things a hiker does
+// and carry no error, no message and no stack. The error still reaches
 // console.error, which is where a developer looks and a hiker never does.
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'

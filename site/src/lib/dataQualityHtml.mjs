@@ -238,11 +238,19 @@ ${renderShow(s.menu, s.chart.key)}
  * table open across a change, when the reader had opened it.
  */
 export function renderChartFigure(chart, { tableOpen = false } = {}) {
+  // A series held to fixed limits (dataQuality.mjs's limitedChartView) has two
+  // dashed lines where another has a band and triangles, and its table says
+  // what the check made of each point rather than a usual range.
+  const limits = chart.limits ?? null;
+  const key = limits
+    ? html`${limits.warn === null ? "" : html`<span><i class="dq-key__limit dq-key__limit--warn"></i>Warns from ${chart.format.value(limits.warn)}</span>`}
+${limits.fail === null ? "" : html`<span><i class="dq-key__limit dq-key__limit--fail"></i>Fails from ${chart.format.value(limits.fail)}</span>`}`
+    : html`<span><i class="dq-key__band"></i>Usual range</span>
+<span><svg class="dq-key__out" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1z"></path></svg>Flagged by Elementary</span>`;
   return html`<figure class="dq-figure">
 <div class="dq-key" aria-hidden="true">
 <span><i class="dq-key__line"></i>${chart.format.label} at each point</span>
-<span><i class="dq-key__band"></i>Usual range</span>
-<span><svg class="dq-key__out" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1z"></path></svg>Flagged by Elementary</span>
+${key}
 </div>
 <div class="dq-chart" data-chart tabindex="0" role="group" aria-label="The chart, point by point: use the left and right arrow keys">
 <div class="dq-chart__svg" data-chart-svg></div>
@@ -254,7 +262,7 @@ export function renderChartFigure(chart, { tableOpen = false } = {}) {
 <summary>The numbers behind the chart</summary>
 <div class="dq-table-wrap">
 <table class="dq-table">
-<thead><tr><th scope="col">When (UTC)</th><th scope="col" class="dq-num">${chart.format.label}</th><th scope="col">Usual range</th></tr></thead>
+<thead><tr><th scope="col">When (UTC)</th><th scope="col" class="dq-num">${chart.format.label}</th><th scope="col">${limits ? "The check" : "Usual range"}</th></tr></thead>
 <tbody>
 ${chart.rows.map(
   (row) => html`<tr><td class="dq-when">${row.when}</td><td class="dq-num">${row.value}</td><td>${row.expected}</td></tr>
@@ -364,7 +372,11 @@ const RIGHT = 16;
 export function chartLayout(chart, width) {
   const height = width < 560 ? 220 : 280;
   const { floor } = chart.format;
-  const values = chart.points.flatMap((p) => [p.value, p.min, p.max]).filter((v) => v !== null);
+  // A limit is drawn too, so the axis reaches it: the room left under it is what such a chart is for.
+  const limits = chart.limits ?? null;
+  const values = [...chart.points.flatMap((p) => [p.value, p.min, p.max]), limits?.warn ?? null, limits?.fail ?? null].filter(
+    (v) => v !== null,
+  );
   let lo = values.length ? Math.min(...values) : 0;
   let hi = values.length ? Math.max(...values) : 1;
   // Counts, rates and durations cannot go below zero, so a band Elementary's
@@ -387,6 +399,10 @@ export function chartLayout(chart, width) {
     xs: chart.points.map((_, i) => x(i)),
     ys: chart.points.map((p) => (p.value === null ? null : y(p.value))),
     band: chart.points.map((p) => (p.min === null || p.max === null ? null : [y(p.max), y(p.min)])),
+    limits: limits && {
+      warn: limits.warn === null ? null : y(limits.warn),
+      fail: limits.fail === null ? null : y(limits.fail),
+    },
   };
 }
 
@@ -518,6 +534,19 @@ export function renderChart(chart, width) {
       .reverse()
       .map((i) => `${r1(xs[i])},${r1(band[i][1])}`);
     parts.push(html`<path class="dq-chart__band" d="M${upper.join("L")}L${lower.join("L")}Z"></path>`);
+  }
+
+  // A series' fixed limits, each a dashed line across the plot named at its left end, which a growing size has
+  // left behind: at the right end the line the size draws ran through the label (the first render, 2026-10-28).
+  for (const [which, word] of [
+    ["warn", "warns"],
+    ["fail", "fails"],
+  ]) {
+    const ly = layout.limits?.[which];
+    if (ly === null || ly === undefined) continue;
+    parts.push(
+      html`<line class="dq-chart__limit dq-chart__limit--${which}" x1="${plot.left}" x2="${plot.left + plot.width}" y1="${r1(ly)}" y2="${r1(ly)}"></line><text class="dq-chart__limit-label" x="${plot.left + 6}" y="${r1(ly - 5)}" text-anchor="start">${word} ${chart.format.value(chart.limits[which])}</text>`,
+    );
   }
 
   for (const run of runs(n, (i) => ys[i] !== null)) {

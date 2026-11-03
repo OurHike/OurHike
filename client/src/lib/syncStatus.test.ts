@@ -37,7 +37,11 @@ const CLEAN_TRIPS: TripSyncState = {
   activeHikeDirty: false,
   activeHikeSeen: null,
 }
-const CLEAN_PREFS: PreferencesSyncState = { dirty: false, syncedAt: null }
+const CLEAN_PREFS: PreferencesSyncState = {
+  dirty: false,
+  syncedAt: null,
+  consentTouched: [],
+}
 
 function trip(id: string, name: string): Trip {
   return { id, name, plan: { stops: [], days: [] } as never }
@@ -90,7 +94,7 @@ describe('when the account was last reached', () => {
     const status = summariseSync(
       EMPTY_STORE,
       { ...CLEAN_TRIPS, since: '2026-08-20T09:00:00Z' },
-      { dirty: false, syncedAt: '2026-08-21T09:00:00Z' },
+      { dirty: false, syncedAt: '2026-08-21T09:00:00Z', consentTouched: [] },
     )
 
     expect(status.lastSyncedAt?.toISOString()).toBe('2026-08-21T09:00:00.000Z')
@@ -187,7 +191,7 @@ describe('what is on this device only', () => {
     const status = summariseSync(
       EMPTY_STORE,
       { ...CLEAN_TRIPS, hikeDirty: true },
-      { dirty: true, syncedAt: null },
+      { dirty: true, syncedAt: null, consentTouched: [] },
     )
 
     expect(status.preferencesUnsent).toBe(true)

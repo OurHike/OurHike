@@ -31,6 +31,10 @@ on:
         description: "Public base URL of the release to verify. Defaults to the DATA_BASE_URL variable."
         type: string
         required: false
+      release:
+        description: "A release id (releases/<id>/), or `pointer` for the one channels.json names. Needed for production since promotion: its latest.json lists only the conditions files (#1873)."
+        type: string
+        required: false
       strict:
         description: "Treat a SKIPPED check as a failure. Turn this on once #500 lands and checks 3/17/19 can run."
         type: boolean
@@ -98,10 +102,12 @@ jobs:
         shell: bash
         env:
           BASE: ${{ steps.can.outputs.base }}
+          RELEASE: ${{ inputs.release }}
           STRICT: ${{ inputs.strict }}
           HASH: ${{ inputs.hash }}
         run: |
           ARGS=(--base "$BASE" --json verify-release.json)
+          [ -n "$RELEASE" ] && ARGS+=(--release "$RELEASE")
           [ "$STRICT" = "true" ] && ARGS+=(--strict)
           [ "$HASH" = "false" ] && ARGS+=(--no-hash)
           python verify_release.py "${ARGS[@]}" | tee verify-release.txt

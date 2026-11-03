@@ -220,6 +220,8 @@ the finding [#252](https://github.com/OurHike/OurHike/issues/252) already paid f
 identifier next to a trail position and a time is a hiker's route down the corridor, recoverable
 with `curl`. A popularity metric built on analytics is a machine for producing exactly that pair.
 
+*2026-10-27: rule 2 was reversed for usage events (#1902, [EVENTING.md](EVENTING.md) §0). Every usage event now carries the phone's fix, sealed so no server can read it, plus a readable 0.1° square and a club. **This section's answer does not change with it.** Nobody has decided that a visited count may be built from those rows, and a count built from them would still be a popularity metric built on analytics. That decision is #596's to take, explicitly, not this note's to imply.*
+
 **From the records that already exist, instead**, which is [EVENTING.md](EVENTING.md) §4's own
 rule — *do not instrument what the server already knows*. A report carries a mile
 ([`report.py`](../backend/app/models/report.py):134) because a blowdown with no location is

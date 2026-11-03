@@ -27,10 +27,13 @@ nothing here pretends otherwise.
 
 WHAT IS NOT IN IT, WHICH THE ARCHIVE ITSELF SAYS
 
-Three things, listed in `NOT_INCLUDED` below and written into every export so
+Six things, listed in `NOT_INCLUDED` below and written into every export so
 a hiker reading the file offline learns it from the file rather than from us:
-the photograph bytes, anything that never left their handset, and Supabase
-Auth's own record of them.
+the photograph bytes, anything that never left their handset, Supabase Auth's
+own record of them, the positions and account id sealed inside their usage
+events, whose account each thanks they wrote was credited to, and whose
+account claimed each invitation they sent. The last three are the columns of
+their own rows the file leaves out, and `build_export` says why beside each.
 
 The photographs are the one that deserves an argument rather than a bullet.
 Their bytes live in R2 and the only way to hand out an R2 object is a signed
@@ -52,8 +55,10 @@ from typing import Any
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
+from app.core.analytics_accounts import LinkedUsageUnreachable, keys_or_refuse
 from app.core.photos import poi_photo_key
 from app.core.time import utc_now
+from app.models.analytics import AnalyticsEvent, AnalyticsUser
 from app.models.app_failure import AppFailure
 from app.models.closure import Closure, ClosureApproval
 from app.models.club import Club, OrgAdmin
@@ -69,6 +74,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.models.report import Report
 from app.models.ridge_runner import RidgeRunnerCommitment
+from app.models.support import SupportCharge, SupportChoice, SupportEvent
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -90,7 +96,35 @@ NOT_INCLUDED: tuple[str, ...] = (
     "Your sign-in details. Your email address, password and any linked Google or "
     "Apple account are held by Supabase Auth, not by OurHike, and are not ours to "
     "put in this file.",
+    "The exact positions and the account id inside your usage events. They were "
+    "sealed with a key no OurHike server holds, so the server that built this file "
+    "cannot read them to put them here. They are deleted with the events, six months "
+    "after the month they were recorded, or now if you delete your account.",
+    "Whose account each thanks you wrote was credited to. That is another "
+    "volunteer's account, which OurHike tells nobody but its moderators. The thanks "
+    "itself - your words, and where and when you wrote them - is in this file.",
+    "Whose account claimed each invitation you sent. That is the other person's "
+    "account, not yours to be handed. The invitation itself - who it was for, and "
+    "whether and when it was claimed - is in this file.",
 )
+
+# Added to the list above only when it is true: linked usage rows exist, and
+# this server has no secret to recompute the key that finds the hiker's among
+# them (app/core/analytics_accounts.py). The export does not fail for it -
+# everything else is still theirs to take - but it does not pretend the
+# section below is complete either.
+USAGE_NOT_LOOKED_UP = (
+    "Any usage counts linked to your account. The server that built this file does not hold the "
+    "key needed to find them, so they could not be looked up; they are still deleted six months "
+    "after the month they were recorded."
+)
+
+# The one usage-event column a hiker's file leaves out (#1902). The sealed
+# blob is their own account id and fix, but it is ciphertext this server
+# cannot open, and a file of bytes nobody can read is not an answer to "what
+# do you hold about me" - NOT_INCLUDED's sentence is. Every other column goes
+# in, read off the table so a column added tomorrow is in tomorrow's file.
+_USAGE_EVENT_LEFT_OUT = frozenset({"sealed"})
 
 
 def _plain(value: Any) -> Any:
@@ -124,6 +158,30 @@ def _rows(db: Session, model: Any, condition: Any) -> list[dict[str, Any]]:
     return [_row(instance) for instance in db.query(model).filter(condition).all()]
 
 
+def _usage(db: Session, profile_id: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
+    """The usage events this account linked by saying yes, its User-table rows, and whether it could look.
+
+    Found by recomputing the key they were stored under, with every secret it
+    could have been made with - so a list of User-table rows, one per secret
+    the account was keyed under, and almost always one. The third answer is
+    False when linked rows exist and no secret is configured to find this
+    account's; the archive then says so.
+    """
+    try:
+        keys = keys_or_refuse(db, profile_id)
+    except LinkedUsageUnreachable:
+        return [], [], False
+    columns = [column.key for column in inspect(AnalyticsEvent).mapper.columns if column.key not in _USAGE_EVENT_LEFT_OUT]
+    events = (
+        db.query(AnalyticsEvent)
+        .filter(AnalyticsEvent.user_key.in_(keys))
+        .order_by(AnalyticsEvent.local_date, AnalyticsEvent.id)
+        .all()
+    )
+    summaries = [_row(summary) for key in keys if (summary := db.get(AnalyticsUser, key)) is not None]
+    return [{column: _plain(getattr(event, column)) for column in columns} for event in events], summaries, True
+
+
 def build_export(db: Session, profile: Profile) -> dict[str, Any]:
     """The whole archive for one account.
 
@@ -140,11 +198,12 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
     active_hike = db.get(SyncedActiveHike, profile_id)
 
     photos = db.query(PoiPhoto).filter(PoiPhoto.contributor_id == profile_id).all()
+    usage_events, usage_summaries, usage_looked_up = _usage(db, profile_id)
 
     return {
         "exported_at": _plain(utc_now()),
         "exported_for": profile_id,
-        "what_this_file_does_not_contain": list(NOT_INCLUDED),
+        "what_this_file_does_not_contain": [*NOT_INCLUDED, *(() if usage_looked_up else (USAGE_NOT_LOOKED_UP,))],
         "your_account": _row(profile),
         "preferences": _row(preferences) if preferences is not None else None,
         "trips": _rows(db, SyncedTrip, SyncedTrip.profile_id == profile_id),
@@ -158,7 +217,18 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "long_hike_you_were_on": (_row(active_hike) if active_hike is not None else None),
         "planned_hike": _row(planned_hike) if planned_hike is not None else None,
         "hikes": _rows(db, Hike, Hike.user_id == profile_id),
-        "condition_reports": _rows(db, Report, Report.reporter_id == profile_id),
+        # EVERY COLUMN BUT `maintainer_id`. On a thanks it is the account the
+        # server credited - another volunteer's, resolved from the thanks'
+        # mile and authored date when the hiker named nobody - and nobody but
+        # a moderator is told it (`ReportOut`'s comment on the field). In this
+        # file, one thanks per mile and one download would rebuild the map of
+        # volunteers' account ids along the trail that #641
+        # (GET /maintainer-assignments serves volunteer account ids to
+        # anonymous callers) took away. NOT_INCLUDED says so to the reader.
+        "condition_reports": [
+            {column: value for column, value in row.items() if column != "maintainer_id"}
+            for row in _rows(db, Report, Report.reporter_id == profile_id)
+        ],
         "trail_notes": _rows(db, FieldNote, FieldNote.reporter_id == profile_id),
         "notes_you_flagged": _rows(db, NoteFlag, NoteFlag.flagged_by == profile_id),
         "closures_you_reported": _rows(db, Closure, Closure.reported_by == profile_id),
@@ -185,8 +255,38 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
             db, PoiPhotoDismissal, PoiPhotoDismissal.contributor_id == profile_id
         ),
         "volunteer_hours": _rows(db, VolunteerHoursRecord, VolunteerHoursRecord.user_id == profile_id),
+        # What they chose to give OurHike (#1876): amounts, dates, the email
+        # receipts went to, and the provider's ids - theirs to see, and what
+        # they would need to chase a charge themselves.
+        # Without `link_token`: it opens the email switches of whatever
+        # address the row is under, so in a file it works like a password
+        # (the fourth #1885 review).
+        "what_you_give_ourhike": [
+            {column: value for column, value in row.items() if column != "link_token"}
+            for row in _rows(db, SupportChoice, SupportChoice.profile_id == profile_id)
+        ],
+        # What the payment provider told us about it, as stored: the
+        # provider's own redaction, without a name, a note or the email.
+        "what_your_payment_provider_told_us": _rows(
+            db,
+            SupportEvent,
+            SupportEvent.choice_id.in_(db.query(SupportChoice.id).filter(SupportChoice.profile_id == profile_id)),
+        ),
+        # Each charge that arrived: amount, currency, date, the period it
+        # paid for, and the provider's id for it.
+        "what_you_were_charged": _rows(
+            db,
+            SupportCharge,
+            SupportCharge.choice_id.in_(db.query(SupportChoice.id).filter(SupportChoice.profile_id == profile_id)),
+        ),
         "trail_sections_you_maintain": _rows(db, MaintainerAssignment, MaintainerAssignment.maintainer_id == profile_id),
         "app_problems_you_reported": _rows(db, AppFailure, AppFailure.reporter_id == profile_id),
+        # Usage measurement (#1902): only what was linked to this account
+        # after the hiker said yes. Events from before, or after a no, carry
+        # no key and cannot be told apart from anybody else's - which is what
+        # they were sent for.
+        "usage_events_linked_to_you": usage_events,
+        "your_usage_summaries": usage_summaries,
         # Challenges (#1780). The tags are what the phone sent - item, time,
         # `gps` or `hand` - and never a position, because none was sent
         # (features/CHALLENGES.md principle 6). The entries are the one thing
@@ -220,7 +320,20 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         # (core/account_deletion.py unlinks rather than deletes).
         "organizations_you_registered": _rows(db, Club, Club.created_by == profile_id),
         "workdays_you_posted": _rows(db, WorkProject, WorkProject.created_by == profile_id),
-        "people_you_invited": _rows(db, RoleInvite, RoleInvite.invited_by == profile_id),
+        # EVERY COLUMN BUT `claimed_by`, the account that claimed the
+        # invitation. The one who most wants it is the stranger behind a held
+        # registration, who named a real organization's secretary: GET /clubs
+        # and the org export stopped handing them the secretary's id (#1914 -
+        # GET /clubs publishes every admin's account id and decline reason to
+        # anyone, and an account id is all it takes to write into that
+        # person's private thanks inbox), and this file would have handed it
+        # straight back, beside the address they typed (#1952). `claimed_at`
+        # stays, so whether and when it was claimed is still here.
+        # NOT_INCLUDED says so to the reader.
+        "people_you_invited": [
+            {column: value for column, value in row.items() if column != "claimed_by"}
+            for row in _rows(db, RoleInvite, RoleInvite.invited_by == profile_id)
+        ],
         "roster_loads_you_ran": _rows(db, RosterSyncRun, RosterSyncRun.run_by == profile_id),
         "embed_keys_you_made": _rows(db, ConsoleKey, ConsoleKey.created_by == profile_id),
         # A challenge definition they last saved for an organization - the

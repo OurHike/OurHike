@@ -448,11 +448,18 @@ export function Onboarding({
               because a first-run screen has no room to hedge and the thing
               being asserted is ours to assert: it is a statement about where
               OurHike's own hand is, not a claim about anybody else.
+
+              NARROWED 2026-10-23 (#1876): this ended "OurHike takes no cut and
+              holds no money" until OurHike began asking hikers to cover its
+              OWN costs, pay-what-you-want. "Holds no money" stopped being true
+              of OurHike in general at that point; "takes no cut of what you
+              give them" is the half that is still true, and the half this
+              paragraph was ever about.
             */}
             <p>
               Your money belongs with the people holding the tools. The ATC, and other
               organizations who keep these trails open, take members and donations
-              directly &mdash; OurHike takes no cut and holds no money.
+              directly &mdash; OurHike takes no cut of what you give them.
             </p>
             <p className="onboarding__reassurance">No account. Nothing to sign up for.</p>
           </section>
@@ -557,10 +564,15 @@ export function Onboarding({
         {step.id === 'location-permission' && (
           <section className="onboarding__step">
             <h1 className="onboarding__title">Show where you are on it?</h1>
+            {/* The promise this card used to make, "never sent anywhere", stopped
+                being true with usage statistics (#1902): the fix now also goes,
+                sealed, with the usage counts while those are on. So the card names
+                both ways out, and where the switch is, before the hiker decides. */}
             <p>
-              Location is read on this phone and never sent anywhere. Without it the map
-              still works &mdash; it just cannot tell you which side of the ridge you are
-              on.
+              Location is read on this phone. It leaves only with a report you file, or
+              sealed inside usage statistics, which you can turn off in More → Safety
+              &amp; privacy. Without it the map still works &mdash; it just cannot tell
+              you which side of the ridge you are on.
             </p>
             <div className="onboarding__actions">
               <button

@@ -11,15 +11,15 @@
 // episode player (#1683), loaded only when a hiker taps Play, only in a
 // browser. #1602 carries the argument and the staging.
 //
-// WHERE IT IS SERVED, AND WHERE IT CANNOT BE. Only the pull request preview
-// carries it, as `Content-Security-Policy-Report-Only`, from two mouths that
-// read this same function:
+// WHERE IT IS SERVED, AND WHERE IT CANNOT BE. The pull request preview and,
+// since #1887, UA carry it, as `Content-Security-Policy-Report-Only`, from
+// mouths that read this same function:
 //
 //   vite.config.ts        `vite preview`'s own response headers, so the camera
 //                         in pr-preview.yml drives every shot recipe under the
 //                         policy and a violation lands in the job log
 //   pr-preview.yml        `_site/_headers` on the Cloudflare deployment, via
-//                         the --headers CLI at the bottom of this file
+//   ua.yml                the --headers CLI at the bottom of this file
 //
 // Production is GitHub Pages (`site/CNAME`, `pages.yml`) and GitHub Pages
 // serves no custom headers at all - `pr-preview.yml` already says exactly that

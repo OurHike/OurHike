@@ -29,3 +29,9 @@ httpx
 # disappears the day either of those drops it, and the failure is at
 # import rather than in a test.
 python-dotenv
+
+# app/core/analytics_seal.py imports it directly (#1902): X25519, HKDF and
+# AES-GCM to seal a usage event's account id and GPS fix so this backend
+# cannot open what it wrote. It arrives anyway through pyjwt[crypto], which is
+# exactly why it is named here - python-dotenv's reason above, applied again.
+cryptography

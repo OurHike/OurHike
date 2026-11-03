@@ -29,6 +29,11 @@ WHO = {"workflow": "test", "run_id": "1", "run_url": "https://example.invalid/ru
 AT = datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc)
 
 
+def _photo(letter: str) -> str:
+    """A key in the one shape photo_store.photo_key() builds."""
+    return f"photos/{letter * 64}.jpg"
+
+
 @pytest.fixture(autouse=True)
 def gates(monkeypatch):
     monkeypatch.setenv(publish.WRITE_ENABLED_ENV_VAR, "true")
@@ -291,6 +296,92 @@ class TestPromoting:
         with pytest.raises(channels.Refused, match="nothing to promote"):
             _promote(s3_client, target=data_env.PRODUCTION)
         assert not any(key.startswith("releases/") for key in _keys(s3_client))
+
+    def test_a_promotion_carries_the_photos_its_release_references_into_productions_root(self, s3_client):
+        """A phone reads `photos/` at its environment's root, never from the release folder, so a folder copy alone
+        promoted cards whose photos 404 (#1878). Only the referenced photos travel; one production holds stays."""
+        shelter = {"properties": {"photo_key": _photo("a"), "photos": json.dumps([{"key": _photo("b")}])}}
+        hikes = {"hikes": [{"photo": {"url": _photo("c")}}, {"photo": {"url": "https://elsewhere.invalid/d.jpg"}}]}
+        _stage(
+            s3_client,
+            data_env.UA,
+            NEW,
+            {
+                "poi_shelter.geojson": json.dumps({"features": [shelter]}).encode(),
+                "suggested_hikes.json": json.dumps(hikes).encode(),
+            },
+        )
+        for letter in "abce":
+            s3_client.put_object(Bucket=BUCKET, Key=f"environments/ua/{_photo(letter)}", Body=f"bytes of {letter}".encode())
+        s3_client.put_object(Bucket=BUCKET, Key=_photo("a"), Body=b"bytes of a")
+
+        result = _promote(s3_client, target=data_env.PRODUCTION, release=NEW)
+
+        assert result["photos_copied"] == 2
+        assert [key for key in _keys(s3_client) if key.startswith("photos/")] == [_photo("a"), _photo("b"), _photo("c")]
+        assert s3_client.get_object(Bucket=BUCKET, Key=_photo("b"))["Body"].read() == b"bytes of b"
+
+    def test_a_referenced_photo_neither_environment_holds_is_reported_and_never_stops_the_promotion(self, s3_client):
+        """A rollback is promoted the same way, and one withdrawn photo must not block undoing a bad release."""
+        shelter = {"properties": {"photo_key": _photo("d")}}
+        _stage(s3_client, data_env.UA, NEW, {"poi_shelter.geojson": json.dumps({"features": [shelter]}).encode()})
+
+        result = _promote(s3_client, target=data_env.PRODUCTION, release=NEW)
+
+        assert result["moved"] is True and result["photos_copied"] == 0
+        assert result["photos_absent"] == [_photo("d")]
+        assert f"releases/{NEW}/manifest.json" in _keys(s3_client)
+
+    def test_a_photo_copy_that_does_not_verify_writes_no_manifest_and_moves_no_pointer(self, s3_client, monkeypatch):
+        shelter = {"properties": {"photo_key": _photo("a")}}
+        _stage(s3_client, data_env.UA, NEW, {"poi_shelter.geojson": json.dumps({"features": [shelter]}).encode()})
+        s3_client.put_object(Bucket=BUCKET, Key=f"environments/ua/{_photo('a')}", Body=b"bytes of a")
+        real_copy = s3_client.copy_object
+
+        def short_copy(**kwargs):
+            if kwargs["Key"] == _photo("a"):
+                s3_client.put_object(Bucket=BUCKET, Key=kwargs["Key"], Body=b"cut")
+                return {}
+            return real_copy(**kwargs)
+
+        monkeypatch.setattr(s3_client, "copy_object", short_copy)
+
+        with pytest.raises(channels.Refused, match="photo"):
+            _promote(s3_client, target=data_env.PRODUCTION, release=NEW)
+        assert f"releases/{NEW}/manifest.json" not in _keys(s3_client)
+        assert "channels.json" not in _keys(s3_client)
+
+    def test_promoting_a_release_production_already_holds_still_carries_its_missing_photos(self, s3_client):
+        """The 2026-10-20 promotions copied folders and no photos; promoting one of them again fills them in."""
+        files = {"poi_water.geojson": json.dumps({"features": [{"properties": {"photo_key": _photo("a")}}]}).encode()}
+        _stage(s3_client, data_env.UA, NEW, files)
+        _stage(s3_client, data_env.PRODUCTION, NEW, files)
+        s3_client.put_object(Bucket=BUCKET, Key=f"environments/ua/{_photo('a')}", Body=b"bytes of a")
+
+        result = _promote(s3_client, target=data_env.PRODUCTION, release=NEW)
+
+        assert result["copied"] == 0 and result["photos_copied"] == 1
+        assert _photo("a") in _keys(s3_client)
+
+    def test_a_rollback_within_ua_copies_no_photos(self, s3_client):
+        files = {"poi_water.geojson": json.dumps({"features": [{"properties": {"photo_key": _photo("a")}}]}).encode()}
+        _stage(s3_client, data_env.UA, OLD, files)
+
+        result = _promote(s3_client, target=data_env.UA, release=OLD)
+
+        assert result["photos_copied"] == 0 and result["photos_absent"] == []
+
+    def test_a_referenced_key_not_shaped_like_a_photo_is_never_copied_into_productions_root(self, s3_client):
+        """photo_keys_in() reads whatever a file names; only `photos/<sha256>.jpg` may travel, so no file can name
+        another root key (a pointer, a manifest) into production."""
+        shelter = {"properties": {"photo_key": "photos/../channels.json", "photos": json.dumps([{"key": "photos/x.jpg"}])}}
+        _stage(s3_client, data_env.UA, NEW, {"poi_shelter.geojson": json.dumps({"features": [shelter]}).encode()})
+        s3_client.put_object(Bucket=BUCKET, Key="environments/ua/photos/x.jpg", Body=b"not content-addressed")
+
+        result = _promote(s3_client, target=data_env.PRODUCTION, release=NEW)
+
+        assert result["photos_copied"] == 0 and result["photos_absent"] == ["photos/../channels.json", "photos/x.jpg"]
+        assert not any(key.startswith("photos/") for key in _keys(s3_client))
 
     def test_a_multipart_etag_is_checked_by_size_alone(self):
         assert channels._same({"size": 5, "etag": '"abc-3"'}, {"ContentLength": 5, "ETag": '"other"'})

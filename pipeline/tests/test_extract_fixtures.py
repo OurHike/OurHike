@@ -32,6 +32,7 @@ from extract._fixtures import (
 from extract._kinds import (
     AtcTrailUpdatePages,
     ConditionsQuery,
+    DatabaseSize,
     FeedNotices,
     GuidePages,
     NwsAlerts,
@@ -64,6 +65,7 @@ def test_every_fixture_file_with_a_resource_lands_whole(fixtures):
         | WordpressPosts
         | WordpressTerms
         | ConditionsQuery
+        | DatabaseSize
         | PublishedHikes
         | AtcTrailUpdatePages
         | GuidePages
@@ -275,7 +277,8 @@ def test_the_landed_hikes_read_back_as_the_cache_their_pages_make(fixtures, tmp_
 
 
 def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fixtures):
-    """NWS, NYNJTC's WordPress and OurHike's Postgres, each served from make_dbt_fixtures.py's conditions/ files."""
+    """NWS, NYNJTC's WordPress and OurHike's Postgres, its rows and its size, each served from make_dbt_fixtures.py's
+    conditions/ files."""
     root, counts = fixtures
     nws = json.loads((root / "raw" / "conditions" / "nws_alerts.json").read_text())
     nynjtc = json.loads((root / "raw" / "conditions" / "nynjtc_trail_alerts.json").read_text())
@@ -285,6 +288,8 @@ def test_the_hourly_lanes_other_upstreams_land_from_their_conditions_answers(fix
     assert counts["raw_nynjtc__nynjtc_trail_alerts_terms"] == sum(len(terms) for terms in nynjtc["terms"].values())
     for artifact in ("closures", "reports", "notes", "disputes"):
         assert counts[f"raw_ourhike__{artifact}"] == len(postgres[artifact]["rows"]), artifact
+    # The database's size, its one row (extract/_kinds.py's DatabaseSize), from the same document.
+    assert counts["raw_ourhike__database_size"] == len(postgres["database_size"]["rows"]) == 1
 
 
 #: Each JSON API notice source's table, and the rows make_dbt_fixtures.py's answers hold for it.

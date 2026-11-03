@@ -47,7 +47,7 @@ built, and these are the columns it needs:
 import enum
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, false
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -127,8 +127,26 @@ class Club(Base):
     assist_opted_out_at = Column(DateTime, nullable=True)
 
     # Who registered or claimed it. Null for the orgs that got here because a
-    # maintainer wrote a row in pipeline/sources.json, which is most of them.
+    # maintainer wrote a row in pipeline/sources.json, which is most of them,
+    # and null again once that person deletes their account
+    # (app/core/account_deletion.py). So null does not say who wrote the row;
+    # `maintainer_written` below does.
     created_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+
+    # WHETHER A MAINTAINER WROTE THIS ROW, which is what `stood_behind()`
+    # (app/core/assignments.py) believes an organization's own admins on. A
+    # column of its own rather than "`created_by` is null", because account
+    # deletion nulls `created_by` above, and deleting the registrant's account
+    # used to turn a self-registered organization into a maintainer-written
+    # one (#1913 - Deleting the registrant's account turns a self-registered
+    # organization into a maintainer-written one, and lets an accomplice keep
+    # an admin seat).
+    #
+    # False unless a maintainer's path sets it, and `load_assignments.py` is
+    # the one that does. Every self-service path leaves it false, and
+    # `claim_org` sets it false: after a claim, the admins are whoever proved
+    # the domain, not anybody a maintainer reviewed.
+    maintainer_written = Column(Boolean, nullable=False, default=False, server_default=false())
 
     # THE PULL REQUEST THIS ORGANIZATION'S REGISTRY IS SITTING IN, when
     # three codeowners have signed and `registry_pr_enabled` let one be

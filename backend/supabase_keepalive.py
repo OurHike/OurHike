@@ -74,8 +74,12 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # identifier-next-to-a-place pair #252 removed, served to anyone. The
     # other seven are the monthly figures, the User table, the public keys,
     # the record of every opening, the intake counts and the data-quality
-    # findings.
+    # findings. The archive's two (#1923) are its ledger of Parquet files and
+    # the daily counts of what moved - no rows and no positions, but a day's
+    # traffic all the same.
     "analytics_anomalies",
+    "analytics_archive_parts",
+    "analytics_archived_daily",
     "analytics_events",
     "analytics_intake",
     "analytics_monthly",

@@ -2,6 +2,7 @@
 
     DATABASE_URL=... python scripts/analytics_quality.py [--today YYYY-MM-DD] [--verdict PATH]
         [--rollup-outcome success|failure|cancelled|skipped]
+        [--archive-outcome success|failure|cancelled|skipped]
 
 What is checked, and the thresholds, are app/core/analytics_quality.py's
 docstring. This file is the command around it, run nightly by
@@ -9,7 +10,11 @@ docstring. This file is the command around it, run nightly by
 rollup step failed, which the workflow passes in as `--rollup-outcome` and
 this records as a `rollup_failed` finding, so a broken job is news in the
 tracking issue the same night rather than three days later when collection
-pauses behind it.
+pauses behind it. `--archive-outcome` does the same for the archive step
+before the rollup (#1923), as `archive_failed` - except that `skipped` is no
+finding there: the workflow skips the archive while its bucket is not
+configured, which is a setting nobody has made yet, and says so in its own
+warning.
 
 IT PRINTS NO FIGURES. Actions logs and issues on this repository are public,
 so what leaves this command names a check, the slice it is about, which way
@@ -69,13 +74,21 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="How tonight's rollup step ended, as the workflow saw it. Anything but success is a finding.",
     )
+    parser.add_argument(
+        "--archive-outcome",
+        choices=STEP_OUTCOMES,
+        default=None,
+        help="How tonight's archive step ended. Failure or cancelled is a finding; skipped, an unconfigured bucket, is not.",
+    )
     args = parser.parse_args(argv)
     today = args.today or utc_now().date()
     rollup_failed = args.rollup_outcome not in (None, "success")
+    archive_failed = args.archive_outcome in ("failure", "cancelled")
 
     try:
         with SessionLocal() as db:
-            findings = record(db, run_checks(db, today=today, rollup_failed=rollup_failed), today=today)
+            checks = run_checks(db, today=today, rollup_failed=rollup_failed, archive_failed=archive_failed)
+            findings = record(db, checks, today=today)
             public = public_findings(db, findings, today=today)
     except Exception as failure:
         # Caught rather than left to print its traceback: this log is public.

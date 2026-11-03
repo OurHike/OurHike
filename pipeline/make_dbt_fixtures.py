@@ -6245,7 +6245,8 @@ ELEVATION_PRODUCT_FIXTURES = {
 # OBJECTID, and nothing else: they were written before any model read these
 # tables, and each club's base model reads them now (base_nysdec__dec_lands
 # among them). The values are invented: no real feature is copied. Two rows
-# each, in the row's own `geometry_kind`.
+# each, in the row's own `geometry_kind`, and a third for a row naming
+# `part_fields`: a second part of the first feature.
 CLUB_PLACES_KEYS = (
     "fltc_map_sheet_index",
     "dec_lands",
@@ -6386,6 +6387,13 @@ def _club_places_fixtures() -> dict[str, dict]:
             features.append(
                 {"type": "Feature", "properties": properties, "geometry": CLUB_PLACES_GEOMETRY[entry["geometry_kind"]](i)}
             )
+        if entry.get("part_fields") is not None:
+            # A second part of the first feature (make_dbt_staging.py's `part_fields`): the same key and attributes,
+            # its own shape, OBJECTID and part fields, so the fixture build unions two shapes under one key.
+            part = {**features[0]["properties"], "OBJECTID": 3}
+            for n, field in enumerate(entry["part_fields"]):
+                part[field] = f"fixture-{key}-part-{n}"
+            features.append({"type": "Feature", "properties": part, "geometry": CLUB_PLACES_GEOMETRY[entry["geometry_kind"]](2)})
         files[f"{key}.geojson"] = _feature_collection(features)
     return files
 

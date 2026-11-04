@@ -238,9 +238,24 @@ test('the database-size row reads its megabytes and the limit it fails at, and c
     'warns 400 MB',
     'fails 475 MB',
   ])
-  await expect(page.locator('.dq-key__band')).toHaveCount(0)
-  await expect(page.getByText('Fails from 475 MB')).toBeVisible()
-  await expect(page.locator('thead th').filter({ hasText: 'The check' })).toBeVisible()
+  // The key names both lines. It is aria-hidden, so the caption under the
+  // chart is what a screen reader hears, and it says the same two sizes.
+  const key = page.locator('.dq-key')
+  await expect(key.locator('.dq-key__band')).toHaveCount(0)
+  await expect(key).toContainText('Warns from 400 MB')
+  await expect(key).toContainText('Fails from 475 MB')
+  await expect(page.locator('.dq-figcaption')).toContainText(
+    'The check warns from 400 MB and fails from 475 MB.',
+  )
+
+  // THE NUMBERS BEHIND THE CHART say what the check made of each point by
+  // the same two lines, rather than a usual range: the last run, at 415 MB,
+  // is past the warning line and short of the failing one.
+  await page.getByText('The numbers behind the chart').click()
+  const table = page.locator('.dq-figure .dq-table')
+  await expect(table.getByRole('columnheader', { name: 'The check' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Usual range' })).toHaveCount(0)
+  await expect(table.locator('tbody tr').last()).toContainText('Warns')
 })
 
 test('the Show menu chooses from the keyboard on a laptop @desktop', async ({ page }) => {

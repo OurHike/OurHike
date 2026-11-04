@@ -354,11 +354,11 @@ describe('Browse', () => {
 // From the reviews of 2026-09-30 and 2026-10-01 (features/CHALLENGES.md, "The
 // reviews"): the places a hiker could fall through on these screens.
 describe('the window, Triple Crown peaks, the earned-place sheet and a closed list', () => {
-  it('offers no new blaze outside the window, and says when it opens', () => {
+  it('offers nothing to earn outside the window, and says when it opens', () => {
     detail({ today: '2027-05-01' })
     expect(screen.queryByRole('button', { name: /^Earn it/ })).toBeNull()
     expect(
-      screen.getByText(/Opens May 13\. Blazes count from then\./),
+      screen.getByText(/Opens May 13\. Trail karma counts from then\./),
     ).toBeInTheDocument()
   })
 
@@ -366,7 +366,7 @@ describe('the window, Triple Crown peaks, the earned-place sheet and a closed li
     detail({ today: '2027-05-01', state: EMPTY_CHALLENGE_STATE })
     expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
     expect(
-      screen.getByText(/Opens May 13\. Blazes count from then\./),
+      screen.getByText(/Opens May 13\. Trail karma counts from then\./),
     ).toBeInTheDocument()
   })
 
@@ -408,7 +408,7 @@ describe('the window, Triple Crown peaks, the earned-place sheet and a closed li
     expect(row).toHaveFocus()
   })
 
-  it('takes a blaze back from the earned place with one tap, however it was made', async () => {
+  it('takes an earned item back from its place with one tap, however it was made', async () => {
     const state = tag(
       join(EMPTY_CHALLENGE_STATE, ATC_CHALLENGE.id, new Date('2027-06-01T12:00:00Z')),
       ATC_CHALLENGE,

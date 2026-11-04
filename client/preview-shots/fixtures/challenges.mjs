@@ -934,5 +934,5 @@ export const UNJOINED_STATE = { ...SEEDED_STATE, joined: [], tags: [] }
 export async function openChallenges(page) {
   await page.getByRole('tab', { name: 'More' }).click()
   await page.getByRole('button', { name: /^Challenges/ }).click()
-  await page.getByRole('heading', { name: 'Your blazes' }).waitFor()
+  await page.getByRole('heading', { name: 'Your trail karma' }).waitFor()
 }

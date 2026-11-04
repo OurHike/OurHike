@@ -50,6 +50,7 @@ import {
   placeWords,
   titleOrSealed,
 } from '../lib/challengeText'
+import { formatDistance, type UnitSystem } from '../lib/units'
 import type { MileRange } from '../lib/walkedMiles'
 import { asksWhere } from '../lib/wherePlace'
 import { BlazeTile } from './BlazeTile'
@@ -69,6 +70,8 @@ export interface TileSheetProps {
   todayRanges?: readonly MileRange[]
   /** The fix snapped to the trail, or null; never asked for here. */
   fixMile?: number | null
+  /** The hiker's unit system (Settings), for how far "Near you" is. */
+  units?: UnitSystem
   onEarn: () => void
   /** Takes the earned item back - `poi` for one peak of a Triple Crown. */
   onTakeBack?: (poi?: string) => void
@@ -85,6 +88,7 @@ export function TileSheet({
   earnable,
   todayRanges = [],
   fixMile = null,
+  units = 'imperial',
   onEarn,
   onTakeBack,
   onSetNote,
@@ -146,7 +150,9 @@ export function TileSheet({
     if (passedToday) nearYou = 'You passed it today.'
     else if (fixMile !== null) {
       const along = Math.abs(fixMile - place.mile)
-      nearYou = `${along.toLocaleString('en-US', { maximumFractionDigits: 1 })} mi along the trail from you.`
+      // A distance, so the hiker's own units (lib/units.ts) - unlike the
+      // "mi 714.9" marker beside a place, which is the trail's mile axis.
+      nearYou = `${formatDistance(along, units)} along the trail from you.`
     }
   }
   // Other items of this list at the same place, and a Triple Crown's peaks.

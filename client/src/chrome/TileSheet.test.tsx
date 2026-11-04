@@ -83,6 +83,14 @@ describe('a tile, opened (#1963)', () => {
     expect(screen.queryByText(/Near you/)).toBeNull()
   })
 
+  it('says how far "Near you" is in the hiker’s own units, not always in miles', () => {
+    // McAfee Knob Summit is mile 714.92 in the fixture; a fix at 711.7 is
+    // 3.22 miles back, 5.18 km. unitDisplay.test.ts caught this line spelling
+    // "mi" itself, which a hiker on kilometres would have read as miles.
+    sheet({ fixMile: 711.7, units: 'metric' })
+    expect(screen.getByText('5.2 km along the trail from you.')).toBeInTheDocument()
+  })
+
   it('tells an on-trail at-home item that earning it asks where, and a couch item nothing', () => {
     sheet({ item: item('white-blaze-photo') })
     expect(screen.getByText(/asks where it happened/)).toBeInTheDocument()

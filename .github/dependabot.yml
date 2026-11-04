@@ -69,7 +69,10 @@ updates:
       # Lifted when §4.4's cuts make the room, or the maintainer moves the
       # line. @types/react and @types/react-dom are held with them: 19.3's
       # types describe APIs 19.2.8 does not have, and @types/react-dom
-      # 19.3.0 requires @types/react ^19.3.0 (the same commit).
+      # 19.3.0 requires @types/react ^19.3.0 (the same commit). An ignore
+      # also holds back Dependabot's security updates for these four, so a
+      # fix published only in 19.3.x would not be proposed while the hold
+      # stands: read the advisories when the hold is revisited.
       - dependency-name: react
         versions: [">=19.3"]
       - dependency-name: react-dom

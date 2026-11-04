@@ -505,8 +505,14 @@ class HeldTransaction:
 
 
 def _rows_by_catalog(reltuples: int) -> str:
-    """`pg_class.reltuples` as a reader should take it: -1 means never counted, not minus one row."""
-    return "never counted by the catalog" if reltuples < 0 else f"about {reltuples:,} row(s) by the catalog"
+    """`pg_class.reltuples` as a reader should take it: -1 means never counted, not minus one row.
+
+    Never the figure: this reaches the public log on the uncovered-schema
+    refusal, and a production table's row count is its size, the rule the
+    header gives for every other line here (the second security pass,
+    2026-11-04). Whether the table holds rows is what the refusal needs.
+    """
+    return "never counted by the catalog" if reltuples < 0 else "holds rows by the catalog"
 
 
 def _counting_sql(tables: list[list[str]]) -> str:

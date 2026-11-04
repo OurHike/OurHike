@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BlazeCard } from './BlazeCard'
+import { BLAZE_ICONS } from './blazeIcons'
 import { ATC_CHALLENGE } from '../lib/challenges.fixtures'
 import { EMPTY_CHALLENGE_STATE, join, tag, tagsFor } from '../lib/challengeProgress'
 
@@ -25,7 +26,7 @@ function earned(...ids: string[]) {
 }
 
 describe('the blaze card (#1962)', () => {
-  it('draws one tile per item in the club’s sections, white once earned', () => {
+  it('draws one tile per item in the club’s sections, gold once earned', () => {
     const { container } = render(
       <BlazeCard
         challenge={ATC_CHALLENGE}
@@ -132,5 +133,19 @@ describe('the blaze card (#1962)', () => {
     )
     expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true')
     expect(container.querySelectorAll('button')).toHaveLength(0)
+  })
+
+  it('draws the learn glyph for an item that names no icon, rather than an empty tile', () => {
+    const challenge = {
+      ...ATC_CHALLENGE,
+      items: ATC_CHALLENGE.items.map((entry, index) =>
+        index === 0 ? { ...entry, icon: null } : entry,
+      ),
+    }
+    const { container } = render(
+      <BlazeCard challenge={challenge} tags={earned()} today={TODAY} size="card" />,
+    )
+    const first = container.querySelector('.blaze-tile path')
+    expect(first?.getAttribute('d')).toBe(BLAZE_ICONS.learn)
   })
 })

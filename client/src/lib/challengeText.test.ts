@@ -113,7 +113,7 @@ describe('the blaze card’s one sentence (#1962)', () => {
     )
   })
 
-  it('says in four words that nothing is earned yet, with no hundred and no zero', () => {
+  it('says in one short sentence that nothing is earned yet, with no hundred and no zero', () => {
     const line = cardSummary(ATC_CHALLENGE, earned())
     expect(line).toBe('Trail karma you earn appears here.')
     expect(line).not.toMatch(/\d/)

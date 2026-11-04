@@ -24,14 +24,10 @@
 // pressed at, chosen to clear the 44 px minimum with room.
 
 import { useMemo } from 'react'
-import {
-  isSealed,
-  itemTitle,
-  type Challenge,
-  type ChallengeItem,
-} from '../lib/challenges'
+import { isSealed, type Challenge, type ChallengeItem } from '../lib/challenges'
 import { isItemDone, type ChallengeTag } from '../lib/challengeProgress'
 import { cardSummary, titleOrSealed } from '../lib/challengeText'
+import { CHALLENGE_WORDS } from '../lib/challengeWords'
 import { BlazeTile } from './BlazeTile'
 import '../screens/challenges.css'
 
@@ -97,7 +93,7 @@ export function BlazeCard({
                   }
                   label={
                     expanded
-                      ? `${done(item) ? 'Earned: ' : ''}${titleOrSealed(item, challenge, today)}`
+                      ? `${done(item) ? `${CHALLENGE_WORDS.done}: ` : ''}${titleOrSealed(item, challenge, today)}`
                       : undefined
                   }
                 />
@@ -111,7 +107,7 @@ export function BlazeCard({
             <span>{items.length}</span>
           </span>
         )
-        const name = `${section.title}, ${earned} earned of ${items.length}`
+        const name = `${section.title}, ${earned} ${CHALLENGE_WORDS.past} of ${items.length}`
         if (size === 'card' && onOpenSection !== undefined) {
           return (
             <button
@@ -141,11 +137,3 @@ export function BlazeCard({
     </div>
   )
 }
-
-/** The title a tile is read by, for a test or a recipe: itemTitle with the
- *  sealed line, as BlazeCard labels its pressable tiles. */
-export const blazeTileLabel = (
-  item: ChallengeItem,
-  challenge: Challenge,
-  today: string,
-) => itemTitle(item, today) ?? titleOrSealed(item, challenge, today)

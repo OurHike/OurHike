@@ -198,6 +198,9 @@ describe('the blaze card in the header (#1962)', () => {
       'aria-pressed',
       'true',
     )
+    // The tap lands somewhere a hiker can perceive: focus moves to the pill
+    // it chose, which is scrolled into view (review of #1990).
+    expect(screen.getByRole('button', { name: 'Protect' })).toHaveFocus()
   })
 
   it('makes the tiles buttons only when made bigger, and a tile opens its own row', async () => {

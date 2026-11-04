@@ -2,8 +2,9 @@
 //
 // The pine header names it, its window and - only when the club set one - the
 // finish line; under them the blaze card (chrome/BlazeCard.tsx, #1962): the
-// club's items as tiles in the club's sections, one white blaze per earned
-// item, in place of the strip that laid the places along the trail by mile.
+// club's items as tiles in the club's sections, a tile turning karma gold for
+// each earned item, in place of the strip that laid the places along the
+// trail by mile.
 // A tap on a section of the card opens the list at that section; the card
 // can be made bigger, and only then is a tile itself a button, which opens
 // its row. Filter
@@ -113,15 +114,21 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   // reader; a pinch stays a possible follow-up, not a plan.
   const [bigger, setBigger] = useState(false)
   // A tile tapped on the big card: its row is shown under the right pill,
-  // scrolled into view and given focus, after the render that draws it.
+  // scrolled into view and given focus, after the render that draws it. A
+  // section tapped on the card does the same for that section's pill, so the
+  // tap visibly lands somewhere - the list sits below the fold under a card
+  // of a hundred tiles, and a screen reader heard nothing change (review of
+  // #1990). `section:` marks a pill rather than a row.
   const [goTo, setGoTo] = useState<string | null>(null)
   useEffect(() => {
     if (goTo === null) return
     setGoTo(null)
-    const row = document.getElementById(`challenge-item-${goTo}`)
-    if (row === null) return
-    row.scrollIntoView?.({ block: 'center' })
-    row.focus()
+    const target = goTo.startsWith('section:')
+      ? document.querySelector<HTMLElement>('.challenge-pills [aria-pressed="true"]')
+      : document.getElementById(`challenge-item-${goTo}`)
+    if (target === null) return
+    target.scrollIntoView?.({ block: 'center' })
+    target.focus()
   }, [goTo])
   // Where focus goes back to when the sheet closes - the row that opened it,
   // or the page's title when that row is gone.
@@ -247,7 +254,10 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           tags={tags}
           today={today}
           size={bigger ? 'expanded' : 'card'}
-          onOpenSection={(sectionId) => setFilterKey(sectionId)}
+          onOpenSection={(sectionId) => {
+            setFilterKey(sectionId)
+            setGoTo(`section:${sectionId}`)
+          }}
           onOpenItem={(item) => {
             setFilterKey(item.section)
             setGoTo(item.id)
@@ -256,7 +266,6 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <button
           type="button"
           className="challenge-button challenge-button--ghost blaze-card__zoom"
-          aria-pressed={bigger}
           onClick={() => setBigger((current) => !current)}
         >
           {bigger ? 'Smaller tiles' : 'Bigger tiles'}

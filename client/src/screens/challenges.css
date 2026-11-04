@@ -251,35 +251,11 @@
   text-decoration: underline;
 }
 
-/* The strip: every place on the list laid along the trail in mile order,
-   ends labelled with the first and last place rather than any count. */
-.challenge-strip {
-  position: relative;
-  height: 18px;
-  margin: 4px 8px 0;
-  border-top: 1px solid var(--border-chrome);
-}
-
-/* A point on a strip or a line: positioned by its mile, centred on it. */
+/* A point on a line: positioned by its mile, centred on it. */
 .challenge-strip__point {
   position: absolute;
   top: -8px;
   width: 0;
-}
-
-.challenge-strip .challenge-diamond {
-  width: 10px;
-  height: 10px;
-  margin: 0 0 0 -5px;
-}
-
-.challenge-strip__ends {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--fg-chrome-3);
 }
 
 .challenge-pills {
@@ -990,10 +966,11 @@ div.challenge-row__open {
 }
 
 /* ---- The blaze card (#1962, features/CHALLENGES_BLAZE_CARD.md) ----
-   Tiles taller than wide, the proportion of a painted blaze; the three sizes
+   Tiles taller than wide, 1 by 1.3; the three sizes
    are the frames' and @unvalidated (BlazeCard.tsx says what would settle
-   them). Chrome tokens only: the card sits on the pine header, where
-   --border-chrome is the frames' pine-700 tile and --bg-canvas their paper.
+   them). Chrome tokens for colour: the card sits on the pine header, where
+   --border-chrome is the frames' pine-700 tile; the earned tile's one-pixel
+   shadow is the only raw colour, a lift rather than a hue.
    A tile becoming earned is a 150 ms colour change and nothing else
    (maintainer, 2026-09-30: no stamp animation). */
 
@@ -1048,7 +1025,7 @@ div.challenge-row__open {
   align-items: baseline;
   padding: 0 1px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   line-height: 1;
@@ -1125,7 +1102,10 @@ div.challenge-row__open {
 
 .blaze-tile--sealed {
   background: transparent;
-  border: 1.5px dashed var(--brand-primary);
+  /* --fg-chrome-3 on the chrome: 7.73:1 light, 6.35:1 dark, measured from
+     tokens/colors.css. --brand-primary was 2.21:1 in the light theme, under
+     the 3:1 a non-text mark needs (review of #1990). */
+  border: 1.5px dashed var(--fg-chrome-3);
 }
 
 .blaze-tile--press {

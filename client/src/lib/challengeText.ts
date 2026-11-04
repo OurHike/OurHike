@@ -119,8 +119,8 @@ export function statusLine(
 /**
  * The one sentence a screen reader hears for the blaze card (#1962): what is
  * earned, by section, and never what is not. "12 trail karma earned: 3 Learn, 7
- * Experience, 2 Protect." A card with nothing earned yet says so in four
- * words rather than printing a hundred.
+ * Experience, 2 Protect." A card with nothing earned yet says so in one
+ * short sentence rather than printing a hundred.
  */
 export function cardSummary(challenge: Challenge, tags: readonly ChallengeTag[]): string {
   const parts: string[] = []

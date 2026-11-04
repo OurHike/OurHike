@@ -7,7 +7,7 @@ const item = (id: string) => ATC_CHALLENGE.items.find((entry) => entry.id === id
 
 // features/CHALLENGES_BLAZE_CARD.md, hard requirement 2: "Where did it
 // happen?" only when it can mean something.
-describe('when a blaze asks where it happened (#1963)', () => {
+describe('when earning an item asks where it happened (#1963)', () => {
   it('never asks for a gps tag - the walk is the place', () => {
     for (const entry of ATC_CHALLENGE.items) expect(asksWhere(entry, 'gps')).toBe(false)
   })

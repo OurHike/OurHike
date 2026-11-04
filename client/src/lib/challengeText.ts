@@ -180,7 +180,7 @@ export function formatMoment(iso: string): string {
   return `${MONTHS[at.getMonth()]} ${at.getDate()} · ${clock}`
 }
 
-/** One line for where a blaze happened (lib/wherePlace.ts), as the sheet and
+/** One line for where an earned item happened (lib/wherePlace.ts), as the sheet and
  *  the Where view print it: a mile, a day's extent, a place, a state, or
  *  "Not on the trail". */
 export function placeWords(place: TagPlace): string {

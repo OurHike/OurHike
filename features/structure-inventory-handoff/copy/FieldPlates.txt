@@ -1,4 +1,4 @@
-# FieldPlates.dc.html — rendered text, captured 2026-11-04
+# FieldPlates.dc.html — rendered text, captured 2026-11-04 from design-references/walkthrough/index.html, which renders this artboard
 
 Field guide plates
 One photograph per issue, one ink colour on paper, as the app shows them one at a time. Three are in; the rest are being sourced from licensed photo collections and the club. See the shot list in the Field Guide doc.

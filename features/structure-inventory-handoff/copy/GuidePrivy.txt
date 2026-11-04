@@ -1,4 +1,4 @@
-# GuidePrivy.dc.html — rendered text, captured 2026-11-04
+# GuidePrivy.dc.html — rendered text, captured 2026-11-04 from design-references/walkthrough/index.html, which renders this artboard
 
 Field card
 Privy

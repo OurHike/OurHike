@@ -19,6 +19,13 @@ each screen's rendered text. The 36 artboards and the walkthrough page are held 
 maintainer, not committed. This document is the one home; where it and the handoff
 disagree, this one is meant to win, and says why.
 
+Two things about the folder that its own README does not say. **It is about 873 KB as
+committed, with three plates** (measured from the tree on 2026-11-04), where the README
+says "the two small plates; about 250 KB": that line predates the Steps plate and the move
+to photographs. And **13 of its `copy/` files were recaptured** - the twelve field cards and
+the plate sheet - from the walkthrough page rather than from the artboards, because the
+zip's copy described the earlier pencil plates; each of those files says so in its header.
+
 **Scope: designed, nothing built** (2026-11-04). Not yet placed on the roadmap; see Open
 questions. The handoff's sample data and its draft ATC request point at the NY-NJ Trail
 Conference's A.T. stretch as the first club, which is an expectation, not a decision
@@ -82,7 +89,8 @@ thinnest, and the second by **never overwriting anything**.
 
 5. **The club's own chain reviews, not a global moderator.** The Local Chair accepts; a
    section supervisor accepts for the sections under their role. Unsafe is never a
-   global alert: it is first in the Chair's queue and, when mail is enabled, one email.
+   global alert: it is first in the Chair's queue and, when mail is enabled, one email to
+   each approved club admin (the Local Chair, decided under Permissions).
 
 6. **No streaks, no badges, no notifications.** `client/src/test/noNotifications.test.ts`
    fails the build if the Notification or Push API appears in shipped code. A claim on an
@@ -187,11 +195,20 @@ later comparison, once the backend reads published POIs.
 **What the alternative would have drawn, measured for the poll.** ATC's own layers, fetched
 2026-11-04: the A.T. centerline (`ANST_Centerline`) and official parking areas
 (`ANST_Facilities` layer 2), clipped to NYNJTC's polygon in `APPA_Trail_Club_Sections`.
-The 367 centerline segments chain into 156.2 mi; ATC's own `Length_Ft` sums to 155.9 mi.
-Of the 59 parking areas, 49 sit within 500 ft of the line (median 75 ft away), making 43
-trailheads once lots within 0.1 mi of each other are merged. That gives 44
-parking-to-parking areas, median 2.7 mi, from 0.1 mi to 14.8 mi (Elk Pen to Seven Lakes
-Drive). The 500 ft and 0.1 mi cut-offs were picks for that picture, not findings. One
+The 367 centerline segments inside the polygon chain into 156.2 mi; ATC's own `Length_Ft`
+sums to 155.9 mi. **Not all of that is attributed to NYNJTC.** ATC's `Trail_Club` field names
+NYNJTC on 365 of the 367 segments, which sum to 152.2 mi. The other two are the I-80 bridge,
+0.5 mi, which ATC attributes to AMC's Delaware Valley Chapter, and a 3.2 mi segment whose
+`Trail_Club` and `Region` fields hold the codes `7` and `1` where every other row holds a
+name; its `Comments` call it the Palisades Parkway relocation, inside NYNJTC's stretch, so it
+reads as a coding inconsistency rather than another club's trail, but nothing here settles
+which. Of the 59 parking areas, 49 sit within 500 ft of the line (median 59 ft away for
+those 49; 75 ft for all 59), making 43 trailheads once lots within 0.1 mi of each other are
+merged. That gives 44 parking-to-parking areas, median 2.7 mi, from 0.1 mi to 14.8 mi (Elk
+Pen to Seven Lakes Drive). Dropping both segments not attributed to NYNJTC moves none of
+those counts or the median; the longest area falls to 12.8 mi, because the Palisades
+Parkway segment lies inside it. The 500 ft and 0.1 mi cut-offs were picks for that picture,
+not findings. One
 difference was already visible: the handoff's sample area "Dennytown Road to Canopus Hill
 Road" ends at a road with no ATC parking area, so a parking-to-parking rule would never
 draw it.
@@ -261,8 +278,12 @@ are app state, as everywhere else in the client, which has no router library by 
 - **New tables need row-level security in their own migration.** `RLS_TABLES` and
   `rls_statements()` copied from `b3d1c7a94e02_enable_row_level_security.py`;
   `test_migration_rls.py` fails the build otherwise.
-- **Enums are `VARCHAR` plus `CHECK`**, `Enum(X, native_enum=False, length=N)`, and
-  timestamps are naive UTC (`test_column_conventions.py`).
+- **Enums are `native_enum=False` with a length, so Postgres holds a plain `VARCHAR(N)`
+  and no type.** Not a `CHECK` constraint, whatever `test_column_conventions.py`'s header
+  says: migrated to head `e4b8d2a7c391` on 2026-11-04, the public schema held no `CHECK`
+  constraints at all, and SQLAlchemy creates one only under `create_constraint=True`. The
+  values are validated by Pydantic at the edge and by the enum in the session. Timestamps
+  are naive UTC (`test_column_conventions.py`).
 - **The OpenAPI document only grows.** New paths, no new required fields on existing
   request schemas, so `backend/openapi_baselines/` is untouched.
 - **Photos reuse the report pipeline with no table.** A key of their own beside
@@ -358,6 +379,7 @@ so the first migration holds only what a pilot needs.
 | See priority areas, claim a day, start a walk, submit observations and photos | Enrolled at that club, waiver signed and training done | New `require_inventory_volunteer(slug)` |
 | See the queue; accept, send back, merge, not ours; assign a code; edit a structure | The Local Chair, meaning any approved club admin (decided 2026-11-04), for everything; a section supervisor for observations in sections under their role | New `require_inventory_reviewer(slug)` on `resolve_access`; the section narrowing is the one new piece |
 | See the inventory list and map | Admin, supervisor, any enrolled volunteer, any maintainer with an assignment on that trail | `OrgAccess` flags, read-only |
+| See a record's photos | The volunteer who took them, the club's admins, and a supervisor for a structure in a section under their role | The photo link answers everybody else with the same 404 a missing photo gets |
 | Export CSV and GeoJSON, change settings, publish locations | Club admin | `require_org_admin`, as `download_entries` in `backend/app/routers/trail_challenges.py` |
 | Read a published location without an account | Anyone | Only when `publish_locations` is on, and only `kind`, `lat`, `lon`, `code`: never condition, notes or photos |
 
@@ -366,6 +388,27 @@ so the first migration holds only what a pilot needs.
 enrollment row, who need not hold a maintainer assignment. Every row above becomes a row in
 `backend/tests/test_org_permission_matrix.py`, over its `EVERYBODY` plus one new person who
 holds an enrollment and no assignment.
+
+**A supervisor's sections count only agreed assignments, on both sides of the reporting
+line.** An assignment grants nothing until it is confirmed or was never a proposal -
+`resolve_access`'s rule for the roles a person holds, from #1635 — The organization
+console's new endpoints trust self-registered orgs with maintainer powers, seats and mail.
+The survey applies it to the crews under a supervisor too, so proposing somebody onto a
+section does not put that section's records in the supervisor's reach before an admin
+confirms it.
+
+**Photos are narrower than the inventory list, for now.** The list and map rows above let
+enrolled volunteers and assigned maintainers read the inventory; a record's photos reach
+only the people who took them or review them. Whether the list's readers see photos too is
+a question for #2007 — Inventory and history: worst first, a history per structure, the
+Chair's note, CSV and GeoJSON. Until it is answered they do not, which is the narrower
+answer to start from for photographs of a club's working data.
+
+**A waiver version names one text, for good, once anybody has signed it.** A signature
+records the version, not the words, so the same version with different words is refused,
+and so is a signed version coming back after it was replaced or cleared: the settings row
+keeps only the current text, so there is nothing to compare a returning version against.
+A changed waiver takes a new version.
 
 **Decided 2026-11-04, by the maintainer by poll: the Local Chair is any approved club
 admin** (`is_admin`: an approved seat in `club_admins`, codeowners included). It is the

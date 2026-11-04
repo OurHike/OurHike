@@ -9602,7 +9602,15 @@ function App() {
     camera,
     trailIndex,
     clubRuns,
-    onSignIn: askAboutUsageLink,
+    // "Link your usage to your account?" only where the rows can go. With
+    // no API_BASE_URL - "unset is what every build currently produces"
+    // (.github/expected-settings.yml) - lib/usageQueue.ts answers 'later' for
+    // every batch, so the question asked a hiker to link rows that never
+    // leave the phone. The counts stay on by default and the login is still
+    // recorded (the maintainer's split consent, unchanged); only the
+    // question waits for a backend, the same gate the day-5 ask below
+    // mounts on. App.usageLink.test.tsx holds both builds.
+    onSignIn: API_CONFIGURED ? askAboutUsageLink : undefined,
   }
   const setUsage = useCallback((measurement: UsageMeasurement | null) => {
     usageRef.current = measurement
@@ -12291,17 +12299,41 @@ function App() {
           here is what makes that true even if a later layer forgets to. */}
       {/* THE DAY-5 ASK (#1876), under the sign-in window it can hand off to
           and held while that window or a flow is up, so the two never
-          stack. Not loaded at all in a build with no backend. */}
+          stack. Not loaded at all in a build with no backend.
+
+          IN A BOUNDARY OF ITS OWN THAT SHOWS NOTHING, because this mount sits
+          after the last screen-level boundary above and the gate is a
+          screens/deferred.ts entry: a chunk that never arrives (a precache
+          evicted mid-hike, a build served half from one deploy and half from
+          the next) is thrown from the gate's render, and the only catcher
+          used to be main.tsx's - whose fallback is the whole page and cannot
+          offer the tab bar. An ask is not worth the map (RELEASING.md §8b,
+          "the map drawing at all"). lib/DeferredMeasureUsage.tsx answers the
+          same question with its own loader, which swallows the import; here
+          the boundary is the cheaper answer in eager bytes - ErrorBoundary is
+          already in this closure for the map and the three screens above, so
+          this costs one element and a null fallback where a loader would be a
+          module of its own, and the gate stays one entry in the preload map.
+          The failure still reaches console.error, from the boundary. The
+          boundary has no resetKey: the ask is lost for this launch, and the
+          next launch's mount imports again (deferredScreen forgets a failed
+          import). The same null also swallows a render error inside the
+          gate or the ask itself, which main.tsx's boundary used to make
+          loud; the ask's own unit tests (SupportGate.test.tsx,
+          SupportAsk.test.tsx, lib/support.test.ts) are what catch those now.
+          App.supportGateChunk.test.tsx is the guard for the chunk. */}
       {API_CONFIGURED && afterFirstFrame && (
-        <SupportGate
-          accountEmail={account?.email ?? null}
-          online={online}
-          held={entering || flowOpen || authFlow !== null}
-          openRequest={supportAskRequest}
-          onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
-          onSummary={setSupportSummary}
-          usageCounts={preferences.measurement_enabled}
-        />
+        <ErrorBoundary fallback={() => null}>
+          <SupportGate
+            accountEmail={account?.email ?? null}
+            online={online}
+            held={entering || flowOpen || authFlow !== null}
+            openRequest={supportAskRequest}
+            onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
+            onSummary={setSupportSummary}
+            usageCounts={preferences.measurement_enabled}
+          />
+        </ErrorBoundary>
       )}
 
       {authWindowNode}

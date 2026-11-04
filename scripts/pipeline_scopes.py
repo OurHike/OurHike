@@ -29,6 +29,19 @@ scripts/suite_scopes.py - a hand copy is exactly the half that goes stale):
    and handed out dispatch advice for inputs neither workflow has.
    test_pipeline_scopes.py pins the roster exactly, so the next
    misclassification fails a test instead of reaching a PR body.
+   ONE PATH THE RULE CANNOT SEE IS NAMED BY HAND, with its reason, in
+   OWN_UPLOADERS: publish-podcasts.yml uploads through export_podcasts.py's
+   own boto3 `upload()` and never runs publish.py, so 52715269's edit to
+   pipeline/reference/podcast_episodes.json (v1.3.5's cycle) showed as
+   STALE for every path but the one that publishes it (found 2026-11-04 by
+   the release review). The signal that would derive it - a step env
+   setting R2_WRITE_ENABLED to "true" - also marks promote-data.yml, which
+   moves a release and publishes nothing a code change stales, and
+   archive-nynjtc-sheets.yml, a one-off archive the maintainer ruled is not
+   a pipeline (its header), so a hand entry with a test behind it was the
+   honest shape: test_pipeline_scopes.py fails if the entry's workflow
+   starts running publish.py (then it is derived, and the entry is a second
+   copy) or stops running a script that writes the bucket.
 2. Its direct scope is every `<name>.py` its text mentions that exists under
    pipeline/ - the same deliberately loose filename-mention rule as
    .github/tests/test_exporters_are_published.py, and the same trade: a
@@ -145,6 +158,18 @@ NEVER_STALE_RE = re.compile(r"^pipeline/tests/|\.md$")
 #: Searched only in `run:` scripts with their comment lines dropped - see
 #: run_scripts() - because an echo or a comment can name the publisher too.
 INVOKES_PUBLISH_RE = re.compile(r"(?<![\w.])python3?\s+(?:(?:[\w./-]*/)?publish\.py\b|-m\s+publish\b)")
+#: Publishing paths the invocation rule cannot see, each with its own rerun
+#: note (the module docstring, rule 1). The note is the entry's, because the
+#: generic one ends "production is the release train's promotion", and what
+#: these publish sits at the bucket root under each environment's prefix,
+#: which no release folder carries and promote-data.yml never moves.
+OWN_UPLOADERS = {
+    "publish-podcasts.yml": (
+        "after the merge: dispatch it with publish=true, data_environment=ua; production needs its own dispatch from "
+        "the release train (data_environment=production, the maintainer's approval), because it writes "
+        "podcasts/episodes.json at the bucket root, which no release folder carries, so promote-data.yml never moves it"
+    ),
+}
 #: `python -m extract._run`, from any interpreter path: the workflows run the
 #: extract's own venv, `"$RUNNER_TEMP/extract/bin/python" -m extract._run`.
 INVOKES_EXTRACT_RE = re.compile(r"python3?\"?\s+-m\s+extract\._run\b")
@@ -222,10 +247,11 @@ def dispatched(workflow: Path) -> list[Path]:
 
 
 def publishing_workflows() -> list[Path]:
-    """Every workflow that runs publish.py, and every one that dispatches such a workflow (the module docstring)."""
+    """Every workflow that runs publish.py, every one that dispatches such a workflow, and the ones OWN_UPLOADERS
+    names (the module docstring)."""
     workflows = sorted(WORKFLOWS.glob("*.yml"))
     direct = {path for path in workflows if INVOKES_PUBLISH_RE.search(run_scripts(path))}
-    return [path for path in workflows if path in direct or direct.intersection(dispatched(path))]
+    return [path for path in workflows if path in direct or path.name in OWN_UPLOADERS or direct.intersection(dispatched(path))]
 
 
 def extract_paths() -> list[Path]:
@@ -350,7 +376,11 @@ def rerun_note(workflow: Path) -> str:
     is rerun by that schedule, and can be dispatched sooner with its own
     required inputs, which the note names from its workflow_dispatch block
     rather than assuming publish and data_environment.
+
+    A path OWN_UPLOADERS names carries its own note, written with the entry.
     """
+    if workflow.name in OWN_UPLOADERS:
+        return OWN_UPLOADERS[workflow.name]
     triggers = _triggers(workflow)
     if "schedule" in triggers:
         return "nothing to dispatch: its own schedule reruns it from main after the merge"

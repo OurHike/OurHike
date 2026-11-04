@@ -26,8 +26,11 @@ TWO LOCKS, AND THIS FILE HOLDS BOTH.
    through. The step's own script is run here under bash for that case.
 
 The same two locks keep the production leg from a dispatch that picks
-`phone_files: dbt`, from any ref: that path has soaked on UA only, and
-production stays on the exporters until the cutover. The
+`phone_files: dbt`, from any ref: a dispatched path runs UA's leg alone,
+and production's own path is whatever its line says — `dbt` since the
+cutover of 2026-10-23 (#1880 — Production still builds its notices, closures
+and hazard areas with the exporters, so 78 organizations' notices reach UA
+only); it ran the exporters until then. The
 schedule passes no input, and a dispatch left at `phone_files: scheduled`
 asks for no path, so neither is touched.
 

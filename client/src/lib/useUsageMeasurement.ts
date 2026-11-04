@@ -145,6 +145,17 @@ export type PlanSource = PlanExtent | { plan: HikePlan } | { hike: Hike }
 export interface UsageMeasurement {
   planMade: (source: PlanSource) => void
   planCompleted: (source: PlanSource) => void
+  /**
+   * Resolves once every record, store write and send this hook has started
+   * has finished - FOR THE SUITE, which App never calls. TESTING.md's rule
+   * is that a test waits on an observable that proves the sequence
+   * completed, never on a sleep, and the sequences here end in a write or a
+   * send nothing outside the hook can see finish: a test asserting that
+   * nothing was recorded or sent waits on this. A real-clock sleep in its
+   * place passed on a broken hook exactly as readily as on a correct one
+   * (the seven in useUsageMeasurement.test.tsx before this existed).
+   */
+  idle: () => Promise<void>
 }
 
 function extentOf(source: PlanSource): PlanExtent {
@@ -213,6 +224,23 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     latest.current = input
   })
 
+  // Every piece of work this hook starts, held until it settles, so `idle`
+  // below can say when none is left. `track` returns the same promise, so a
+  // caller that awaits or ignores it is unchanged.
+  const pending = useRef(new Set<Promise<unknown>>())
+  const track = useCallback(<T>(work: Promise<T>): Promise<T> => {
+    const held = pending.current
+    held.add(work)
+    const done = () => {
+      held.delete(work)
+    }
+    work.then(done, done)
+    return work
+  }, [])
+  const idle = useCallback(async (): Promise<void> => {
+    while (pending.current.size > 0) await Promise.allSettled([...pending.current])
+  }, [])
+
   const pointClubs = useCallback(
     (lon: number, lat: number): Record<string, number> | undefined => {
       const { trailIndex, clubRuns } = latest.current
@@ -277,18 +305,21 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
 
   /** Stamp and queue one row - nothing while the switch is off, in any tab. */
   const record = useCallback(
-    async (
+    (
       event: UsageEventName,
       details: UsageDetails,
       stamping: Stamping = { at: new Date(), fix: 'held' },
-    ) => {
-      const current = latest.current
-      if (!current.ready || !current.enabled) return
-      await updateUsage((store) =>
-        store.off ? store : stampInto(store, event, details, stamping),
-      )
-    },
-    [stampInto],
+    ): Promise<void> =>
+      track(
+        (async () => {
+          const current = latest.current
+          if (!current.ready || !current.enabled) return
+          await updateUsage((store) =>
+            store.off ? store : stampInto(store, event, details, stamping),
+          )
+        })(),
+      ),
+    [stampInto, track],
   )
 
   /** A visit starting now, owned by whoever is here now. */
@@ -375,63 +406,72 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
   useEffect(() => {
     if (!input.ready || !input.enabled || started.current) return
     started.current = true
-    void (async () => {
-      const now = Date.now()
-      // ONE WRITE for the install and the mark that it was counted, so a phone
-      // killed between them, or a second tab launching at the same moment,
-      // cannot count one install twice (#1903's review).
-      const store: UsageStore = await updateUsage((current) => {
-        if (current.initialized || current.off) return current
-        if (latest.current.newInstall)
+    void track(
+      (async () => {
+        const now = Date.now()
+        // ONE WRITE for the install and the mark that it was counted, so a phone
+        // killed between them, or a second tab launching at the same moment,
+        // cannot count one install twice (#1903's review).
+        const store: UsageStore = await updateUsage((current) => {
+          if (current.initialized || current.off) return current
+          if (latest.current.newInstall)
+            return {
+              ...stampInto(
+                current,
+                'app_installed',
+                {},
+                { at: new Date(now), fix: null },
+              ),
+              initialized: true,
+            }
+          // An install that finished first run before measurement existed is not
+          // a new device either: its first event must not say `ever_first`.
           return {
-            ...stampInto(current, 'app_installed', {}, { at: new Date(now), fix: null }),
+            ...current,
             initialized: true,
+            heartbeat: { ...current.heartbeat, ever: true },
           }
-        // An install that finished first run before measurement existed is not
-        // a new device either: its first event must not say `ever_first`.
-        return {
-          ...current,
-          initialized: true,
-          heartbeat: { ...current.heartbeat, ever: true },
-        }
-      })
-      // A RELAUNCH WITHIN THE IDLE GAP CONTINUES THE VISIT, the rule the
-      // visibility path below already keeps: a phone that kills the app, an
-      // OAuth redirect reloading the page and a return from the organization
-      // console each counted a second visit before #1903's review.
-      if (store.off) return
-      await continueOrBegin(now, 1)
-    })()
-  }, [input.ready, input.enabled, stampInto, continueOrBegin])
+        })
+        // A RELAUNCH WITHIN THE IDLE GAP CONTINUES THE VISIT, the rule the
+        // visibility path below already keeps: a phone that kills the app, an
+        // OAuth redirect reloading the page and a return from the organization
+        // console each counted a second visit before #1903's review.
+        if (store.off) return
+        await continueOrBegin(now, 1)
+      })(),
+    )
+  }, [input.ready, input.enabled, stampInto, continueOrBegin, track])
 
   useEffect(() => {
     const onVisibility = () => {
       if (!latest.current.ready || !latest.current.enabled) return
       const now = Date.now()
-      void (async () => {
-        if (document.visibilityState === 'hidden') {
-          await updateUsage((store) =>
-            store.session === null
-              ? store
-              : { ...store, session: touchSession(store.session, now) },
-          )
-          // SENT ON THE WAY OUT, not only every five minutes: a phone that
-          // opens the app once for two minutes and uninstalls it otherwise
-          // never sends its install, and the hikers who try the app and leave
-          // are exactly the ones a count must not lose. A send cut short by
-          // the app closing loses nothing - a row leaves the queue only once
-          // the server has answered for it.
-          const { online, reportsWaiting, consentSettled } = latest.current
-          if (online && reportsWaiting === 0 && consentSettled)
-            void flushFor(latest.current)
-          return
-        }
-        await continueOrBegin(now, 0)
-      })()
+      void track(
+        (async () => {
+          if (document.visibilityState === 'hidden') {
+            await updateUsage((store) =>
+              store.session === null
+                ? store
+                : { ...store, session: touchSession(store.session, now) },
+            )
+            // SENT ON THE WAY OUT, not only every five minutes: a phone that
+            // opens the app once for two minutes and uninstalls it otherwise
+            // never sends its install, and the hikers who try the app and leave
+            // are exactly the ones a count must not lose. A send cut short by
+            // the app closing loses nothing - a row leaves the queue only once
+            // the server has answered for it.
+            const { online, reportsWaiting, consentSettled } = latest.current
+            if (online && reportsWaiting === 0 && consentSettled)
+              void track(flushFor(latest.current))
+            return
+          }
+          await continueOrBegin(now, 0)
+        })(),
+      )
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [continueOrBegin, touchSession])
+  }, [continueOrBegin, touchSession, track])
 
   // --- pageviews ---------------------------------------------------------------------
   const lastScreen = useRef<string | null>(null)
@@ -441,12 +481,14 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     if (previous === null || previous === input.screen || !input.ready || !input.enabled)
       return
     const now = Date.now()
-    void updateUsage((store) =>
-      store.session === null
-        ? store
-        : { ...store, session: touchSession(store.session, now, 1) },
+    void track(
+      updateUsage((store) =>
+        store.session === null
+          ? store
+          : { ...store, session: touchSession(store.session, now, 1) },
+      ),
     )
-  }, [input.screen, input.ready, input.enabled, touchSession])
+  }, [input.screen, input.ready, input.enabled, touchSession, track])
 
   // --- the map coming into view --------------------------------------------------------
   const mapWasInView = useRef(false)
@@ -489,12 +531,12 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
   useEffect(() => {
     if (!input.ready) return
     if (input.enabled) {
-      void resumeUsage()
+      void track(resumeUsage())
     } else {
       started.current = false
-      void clearUsage()
+      void track(clearUsage())
     }
-  }, [input.ready, input.enabled])
+  }, [input.ready, input.enabled, track])
 
   // A no, a sign-out, or the account that said yes going away: what is still
   // waiting leaves without an account, and carries no tag of one either. A row
@@ -505,9 +547,9 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
   const wasLinked = useRef(linkedNow)
   useEffect(() => {
     if (wasLinked.current !== null && linkedNow === null && input.ready)
-      void unlinkWaitingRows()
+      void track(unlinkWaitingRows())
     wasLinked.current = linkedNow
-  }, [linkedNow, input.ready])
+  }, [linkedNow, input.ready, track])
 
   // --- sending, after the hiker's own work ----------------------------------------------
   const canSend =
@@ -519,12 +561,12 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
   useEffect(() => {
     if (!canSend) return
     // The account that matters is the one signed in when the batch leaves.
-    void flushFor(latest.current)
+    void track(flushFor(latest.current))
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void flushFor(latest.current)
+      if (document.visibilityState === 'visible') void track(flushFor(latest.current))
     }, FLUSH_EVERY_MS)
     return () => window.clearInterval(timer)
-  }, [canSend])
+  }, [canSend, track])
 
   // App calls these inside the hiker's own save, before it writes: nothing a
   // count does may throw there and cancel what the hiker asked for.
@@ -539,6 +581,7 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     return {
       planMade: (source: PlanSource) => plan('hike_plan_made', source),
       planCompleted: (source: PlanSource) => plan('hike_plan_completed', source),
+      idle,
     }
-  }, [record])
+  }, [record, idle])
 }

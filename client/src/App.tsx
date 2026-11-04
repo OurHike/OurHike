@@ -9602,7 +9602,15 @@ function App() {
     camera,
     trailIndex,
     clubRuns,
-    onSignIn: askAboutUsageLink,
+    // "Link your usage to your account?" only where the rows can go. With
+    // no API_BASE_URL - "unset is what every build currently produces"
+    // (.github/expected-settings.yml) - lib/usageQueue.ts answers 'later' for
+    // every batch, so the question asked a hiker to link rows that never
+    // leave the phone. The counts stay on by default and the login is still
+    // recorded (the maintainer's split consent, unchanged); only the
+    // question waits for a backend, the same gate the day-5 ask below
+    // mounts on. App.usageLink.test.tsx holds both builds.
+    onSignIn: API_CONFIGURED ? askAboutUsageLink : undefined,
   }
   const setUsage = useCallback((measurement: UsageMeasurement | null) => {
     usageRef.current = measurement

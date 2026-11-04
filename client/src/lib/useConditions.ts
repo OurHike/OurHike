@@ -523,9 +523,13 @@ export function useConditions(
   useEffect(() => {
     if (!ready) return
     let cancelled = false
+    // Aborted by the cleanup, so a download this run was superseded on stops
+    // instead of running on beside the next run's (#1870).
+    const controller = new AbortController()
+    const read = { online, signal: controller.signal }
     const reader = import('./publishedNotices')
     void reader
-      .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, { online }))
+      .then(({ readPublishedNotices }) => readPublishedNotices(hikePlanned, read))
       .then(
         ({ published, listed, missing }) => {
           if (cancelled) return
@@ -540,7 +544,7 @@ export function useConditions(
         () => undefined,
       )
     void reader
-      .then(({ fetchPublishedHazardAreas }) => fetchPublishedHazardAreas({ online }))
+      .then(({ fetchPublishedHazardAreas }) => fetchPublishedHazardAreas(read))
       .then(
         (hazards) => {
           if (!cancelled && hazards !== null) setHazardFile(hazards)
@@ -548,7 +552,7 @@ export function useConditions(
         () => undefined,
       )
     void reader
-      .then(({ fetchPublishedTrailClosures }) => fetchPublishedTrailClosures({ online }))
+      .then(({ fetchPublishedTrailClosures }) => fetchPublishedTrailClosures(read))
       .then(
         (closures) => {
           if (!cancelled && closures !== null) setClosureFile(closures)
@@ -557,6 +561,7 @@ export function useConditions(
       )
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [online, refreshCount, ready, hikePlanned])
 

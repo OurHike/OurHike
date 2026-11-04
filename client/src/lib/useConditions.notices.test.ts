@@ -114,7 +114,12 @@ describe('conditions/notices.json and a planned hike', () => {
       const read = vi.spyOn(notices, 'readPublishedNotices')
       const { result } = renderHook(() => useConditions(false, true, false))
       // Waits on the read itself settling, since offline it changes no state.
-      await waitFor(() => expect(read).toHaveBeenCalledWith(false, { online: false }))
+      await waitFor(() =>
+        expect(read).toHaveBeenCalledWith(
+          false,
+          expect.objectContaining({ online: false }),
+        ),
+      )
       await read.mock.results[0].value
       expect(noticeRequests(spy)).toEqual([])
       expect(result.current.clubNoticesListed).toBe(false)
@@ -127,6 +132,38 @@ describe('conditions/notices.json and a planned hike', () => {
     await waitFor(() => expect(noticeRequests(spy)).toEqual(['HEAD']))
     expect(result.current.clubNoticesListed).toBe(false)
     expect(result.current.clubNotices).toBeNull()
+  })
+})
+
+// #1870: a download the hook has moved on from is aborted, not left to run
+// out its own deadline beside the next one.
+describe('a conditions download the hook has moved on from', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('is aborted when a flapping connection starts the next read, and when the hook unmounts', async () => {
+    const signals: AbortSignal[] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      if (init?.signal) signals.push(init.signal)
+      return new Promise<Response>(() => undefined)
+    })
+    const { rerender, unmount } = renderHook(
+      ({ online }) => useConditions(online, true, true),
+      { initialProps: { online: true } },
+    )
+    await waitFor(() => expect(signals.length).toBeGreaterThanOrEqual(3))
+    const first = [...signals]
+    expect(first.every((signal) => !signal.aborted)).toBe(true)
+
+    rerender({ online: false })
+    rerender({ online: true })
+    await waitFor(() => expect(first.every((signal) => signal.aborted)).toBe(true))
+
+    const second = signals.filter((signal) => !first.includes(signal))
+    expect(second.length).toBeGreaterThanOrEqual(3)
+    expect(second.every((signal) => !signal.aborted)).toBe(true)
+
+    unmount()
+    await waitFor(() => expect(second.every((signal) => signal.aborted)).toBe(true))
   })
 })
 

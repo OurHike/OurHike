@@ -1,6 +1,7 @@
 // The blaze card (#1962, features/CHALLENGES_BLAZE_CARD.md): the ATC's
-// hundred items as a card of tiles in the ATC's four sections, one white
-// blaze per earned item. The frame is features/design/blaze-card/Card.dc.html
+// hundred items as a card of tiles in the ATC's four sections, a tile
+// turning karma gold for each earned item (the maintainer, 2026-11-04: what
+// is earned is trail karma, never a blaze). The frame is features/design/blaze-card/Card.dc.html
 // and the component BlazeCard.dc.html.
 //
 // THE CARD IS A PICTURE; THE LIST IS THE CONTROL (maintainer, 2026-11-03).

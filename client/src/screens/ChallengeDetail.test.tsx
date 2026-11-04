@@ -256,7 +256,7 @@ describe('earning from the list asks where only when it can mean something (#196
       .getAllByRole('button', { name: /Take a photo of a white blaze/ })
       .find((button) => button.classList.contains('challenge-row__open'))!
     await userEvent.click(row)
-    await userEvent.click(screen.getByRole('button', { name: 'Earn the blaze' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Earn some karma' }))
     const sheet = screen.getByRole('dialog', { name: 'Where did it happen?' })
     await userEvent.click(within(sheet).getByRole('button', { name: '‹ Back' }))
     expect(props.onTag).not.toHaveBeenCalled()
@@ -457,11 +457,11 @@ describe('Browse', () => {
 // From the reviews of 2026-09-30 and 2026-10-01 (features/CHALLENGES.md, "The
 // reviews"): the places a hiker could fall through on these screens.
 describe('the window, Triple Crown peaks, the earned-place sheet and a closed list', () => {
-  it('offers no new blaze outside the window, and says when it opens', () => {
+  it('offers nothing to earn outside the window, and says when it opens', () => {
     detail({ today: '2027-05-01' })
     expect(screen.queryByRole('button', { name: /^Earn it/ })).toBeNull()
     expect(
-      screen.getByText(/Opens May 13\. Blazes count from then\./),
+      screen.getByText(/Opens May 13\. Trail karma counts from then\./),
     ).toBeInTheDocument()
   })
 
@@ -469,7 +469,7 @@ describe('the window, Triple Crown peaks, the earned-place sheet and a closed li
     detail({ today: '2027-05-01', state: EMPTY_CHALLENGE_STATE })
     expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
     expect(
-      screen.getByText(/Opens May 13\. Blazes count from then\./),
+      screen.getByText(/Opens May 13\. Trail karma counts from then\./),
     ).toBeInTheDocument()
   })
 
@@ -511,7 +511,7 @@ describe('the window, Triple Crown peaks, the earned-place sheet and a closed li
     expect(row).toHaveFocus()
   })
 
-  it('takes a blaze back from the earned place with one tap, however it was made', async () => {
+  it('takes an earned item back from its place with one tap, however it was made', async () => {
     const state = tag(
       join(EMPTY_CHALLENGE_STATE, ATC_CHALLENGE.id, new Date('2027-06-01T12:00:00Z')),
       ATC_CHALLENGE,
@@ -533,7 +533,7 @@ describe('the window, Triple Crown peaks, the earned-place sheet and a closed li
 
   it('gives focus back to the row after Take it back, which stays a button (#1963)', async () => {
     // Every row opens its tile now, earned or not, so the button that opened
-    // the sheet is still there after the blaze is taken back and focus goes
+    // the sheet is still there after the earned item is taken back and focus goes
     // back to it - never to <body>.
     const start = tag(
       join(EMPTY_CHALLENGE_STATE, ATC_CHALLENGE.id, new Date('2027-06-01T12:00:00Z')),

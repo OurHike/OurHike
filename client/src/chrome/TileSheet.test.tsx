@@ -57,11 +57,11 @@ describe('a tile, opened (#1963)', () => {
 
   it('earns with one tap and never toggles: an earned tile offers Take it back instead', async () => {
     const props = sheet()
-    await userEvent.click(screen.getByRole('button', { name: 'Earn the blaze' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Earn some karma' }))
     expect(props.onEarn).toHaveBeenCalledOnce()
     cleanup()
     const done = sheet({ tags: earned(['mcafee-knob']) })
-    expect(screen.queryByRole('button', { name: 'Earn the blaze' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Earn some karma' })).toBeNull()
     expect(screen.getByRole('status')).toHaveTextContent('Earned · Jul 2')
     await userEvent.click(screen.getByRole('button', { name: 'Take it back' }))
     expect(done.onTakeBack).toHaveBeenCalledWith(undefined)

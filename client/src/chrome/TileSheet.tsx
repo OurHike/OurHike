@@ -10,7 +10,7 @@
 // not"). Item photos arrive in slice 7; until then this header is the glyph
 // for every ATC item.
 //
-// EARNING IS ONE TAP, AND IT NEVER TOGGLES: "Earn the blaze" earns (through
+// EARNING IS ONE TAP, AND IT NEVER TOGGLES: "Earn some karma" earns (through
 // "Where did it happen?" when that can mean something - the caller decides,
 // lib/wherePlace.ts asksWhere), and an earned tile offers "Take it back".
 // Nothing here waits on the network.
@@ -70,7 +70,7 @@ export interface TileSheetProps {
   /** The fix snapped to the trail, or null; never asked for here. */
   fixMile?: number | null
   onEarn: () => void
-  /** Takes the blaze back - `poi` for one peak of a Triple Crown. */
+  /** Takes the earned item back - `poi` for one peak of a Triple Crown. */
   onTakeBack?: (poi?: string) => void
   onSetNote: (note: string) => void
   onClose: () => void
@@ -266,7 +266,7 @@ export function TileSheet({
             earnable && (
               <button type="button" className="challenge-button" onClick={onEarn}>
                 {CHALLENGE_WORDS.verb.charAt(0).toUpperCase()}
-                {CHALLENGE_WORDS.verb.slice(1)} the {CHALLENGE_WORDS.noun}
+                {CHALLENGE_WORDS.verb.slice(1)} {CHALLENGE_WORDS.some}
               </button>
             )
           )}

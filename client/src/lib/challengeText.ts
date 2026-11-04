@@ -1,5 +1,5 @@
 // The words a challenge surface prints (#1780): a row's second line, a
-// place's mile, a date, the moment a blaze was earned, the sealed line of a
+// place's mile, a date, the moment an item was earned, the sealed line of a
 // mystery item, and the one status line under a joined list. Sentences in a
 // lib/*Text.ts module, the repository's habit (lib/todayText.ts,
 // lib/hikeText.ts), so chrome/ChallengeParts.tsx holds components only and
@@ -116,7 +116,7 @@ export function statusLine(
 
 /**
  * The one sentence a screen reader hears for the blaze card (#1962): what is
- * earned, by section, and never what is not. "12 blazes earned: 3 Learn, 7
+ * earned, by section, and never what is not. "12 trail karma earned: 3 Learn, 7
  * Experience, 2 Protect." A card with nothing earned yet says so in four
  * words rather than printing a hundred.
  */
@@ -131,9 +131,8 @@ export function cardSummary(challenge: Challenge, tags: readonly ChallengeTag[])
     total += earned
     parts.push(`${earned} ${section.short}`)
   }
-  if (total === 0)
-    return `${capitalise(CHALLENGE_WORDS.nounPlural)} you earn appear here.`
-  return `${total} ${total === 1 ? CHALLENGE_WORDS.noun : CHALLENGE_WORDS.nounPlural} ${CHALLENGE_WORDS.past}: ${parts.join(', ')}.`
+  if (total === 0) return `${capitalise(CHALLENGE_WORDS.noun)} you earn appears here.`
+  return `${total} ${CHALLENGE_WORDS.noun} ${CHALLENGE_WORDS.past}: ${parts.join(', ')}.`
 }
 
 function capitalise(word: string): string {
@@ -188,7 +187,7 @@ export function formatMoment(iso: string): string {
   return `${MONTHS[at.getMonth()]} ${at.getDate()} · ${clock}`
 }
 
-/** One line for where a blaze happened (lib/wherePlace.ts), as the sheet and
+/** One line for where an earned item happened (lib/wherePlace.ts), as the sheet and
  *  the Where view print it: a mile, a day's extent, a place, a state, or
  *  "Not on the trail". */
 export function placeWords(place: TagPlace): string {

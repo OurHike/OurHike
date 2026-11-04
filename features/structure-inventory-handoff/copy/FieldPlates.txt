@@ -1,107 +1,259 @@
 # FieldPlates.dc.html — rendered text, captured 2026-11-04
 
 Field guide plates
-One plate per issue, as the app shows them one at a time. Plates traced from photographs where a photograph exists (sign, blaze); the rest are stand-in sketches until the club's photos arrive. See the shot list in the Field Guide doc.
+One photograph per issue, one ink colour on paper, as the app shows them one at a time. Three are in; the rest are being sourced from licensed photo collections and the club. See the shot list in the Field Guide doc.
 Bridge
 Don't use it. The Local Chair is told the moment it uploads.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Abutments eroded or scoured
+Abutments eroded or scoured
+PHOTO WANTED
 Loose or missing bolts
+Loose or missing bolts
+PHOTO WANTED
 Cracked beams or logs
+Cracked beams or logs
+PHOTO WANTED
 Broken or spongy decking
+Broken or spongy decking
+PHOTO WANTED
 Damaged railings
+Damaged railings
+PHOTO WANTED
+Rot
 Rot
 Puncheon
 Same as a bridge: don't use it, and the Local Chair is told when it uploads.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Sleeper sunk, section tilted
+Sleeper sunk, section tilted
+PHOTO WANTED
 Spongy or broken boards
+Spongy or broken boards
+PHOTO WANTED
 Loose fasteners
+Loose fasteners
+PHOTO WANTED
 Rot
+Rot
+PHOTO WANTED
+Slick, leaves or mud on the deck
 Slick, leaves or mud on the deck
 Shelter
 Don't sleep in it. A Poor or Unsafe shelter also raises a Shelter repair report for the crew.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Roof leaking, sagging or missing shingles
+Roof leaking, sagging or missing shingles
+PHOTO WANTED
 Floor, walls or deck rotten or broken
+Floor, walls or deck rotten or broken
+PHOTO WANTED
 Steps, railings or ramp loose
+Steps, railings or ramp loose
+PHOTO WANTED
 Fire ring: more than one, oversized, full of ash
+Fire ring: more than one, oversized, full of ash
+PHOTO WANTED
 Food storage (box, cables, pole) missing or broken
+Food storage (box, cables, pole) missing or broken
+PHOTO WANTED
+A hazard tree over the site
 A hazard tree over the site
 Privy
 A floor or seat that can't be used. Everything else is Poor.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Out of shavings
+Out of shavings
+PHOTO WANTED
 Crib full, or a cone to knock down
+Crib full, or a cone to knock down
+PHOTO WANTED
 Too wet, or smells wrong
+Too wet, or smells wrong
+PHOTO WANTED
 Floor or base logs rotting
+Floor or base logs rotting
+PHOTO WANTED
 Seat broken
+Seat broken
+PHOTO WANTED
 Door, roof, vent damaged
+Door, roof, vent damaged
+PHOTO WANTED
+Catholes around it
 Catholes around it
 Campsite
 A hazard tree over a tent site. Otherwise a campsite is Poor at worst.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Extra fire rings that visitors built
+Extra fire rings that visitors built
+PHOTO WANTED
 Ring oversized, or built up with ash
+Ring oversized, or built up with ash
+PHOTO WANTED
 Site spreading: new paths, trampled plants
+Site spreading: new paths, trampled plants
+PHOTO WANTED
 Platform or pad damaged
+Platform or pad damaged
+PHOTO WANTED
 Food storage damaged or missing
+Food storage damaged or missing
+PHOTO WANTED
+Hazard trees over the site
 Hazard trees over the site
 Water source
 Not for a bad smell or colour: nobody is in danger from the structure. Write what you suspect in the note.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Flow: flowing, trickle, or dry
+Flow: flowing, trickle, or dry
+PHOTO WANTED
 Blue blazes or the sign missing
+Blue blazes or the sign missing
+PHOTO WANTED
 Pipe or box damaged
+Pipe or box damaged
+PHOTO WANTED
 Something could foul it: a privy or camp across the stream
+Something could foul it: a privy or camp across the stream
+PHOTO WANTED
+Access path eroded
 Access path eroded
 Blaze
 A blaze is never Unsafe. If you can't see the next one, that's Poor, and the maintainer should hear about it.
 What good looks like
+PHOTO WANTED
 Faded, flaking, damaged or the wrong shape
+Faded, flaking, damaged or the wrong shape
+PHOTO WANTED
 Can't see the next one from here
+Can't see the next one from here
+PHOTO WANTED
 The tree came down
+The tree came down
+PHOTO WANTED
 Leaves or brush across the sightline
+Leaves or brush across the sightline
+PHOTO WANTED
 An old blaze never sprayed out
+An old blaze never sprayed out
+PHOTO WANTED
+A visitor's rock stack
 A visitor's rock stack
 Sign
 A sign is never Unsafe. Log a damaged or missing one as Poor.
 What good looks like
+PHOTO WANTED
 Missing
+Missing
+PHOTO WANTED
 Damaged, faded or unreadable
+Damaged, faded or unreadable
+PHOTO WANTED
 Post rotten, loose or leaning
+Post rotten, loose or leaning
+PHOTO WANTED
 Out of date, or a temporary sign left up
+Out of date, or a temporary sign left up
+PHOTO WANTED
+Flyers, ads or stickers on it
 Flyers, ads or stickers on it
 Kiosk
 A kiosk that could fall on someone. Everything else is Poor.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Content out of date
+Content out of date
+PHOTO WANTED
 Panel faded, torn or stained
+Panel faded, torn or stained
+PHOTO WANTED
 Cover cracked, missing or unlocked
+Cover cracked, missing or unlocked
+PHOTO WANTED
 Roof or posts damaged, rotten, leaning
+Roof or posts damaged, rotten, leaning
+PHOTO WANTED
 QR stickers, ads, flyers
+QR stickers, ads, flyers
+PHOTO WANTED
+A sign that should be on it and isn't
 A sign that should be on it and isn't
 Parking
 Only if the lot itself is dangerous: an entrance washed out, a tree down across it.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Litter or dumping
+Litter or dumping
+PHOTO WANTED
 Trailhead hard to find from the lot
+Trailhead hard to find from the lot
+PHOTO WANTED
 Sign or kiosk damaged
+Sign or kiosk damaged
+PHOTO WANTED
 Access blocked
+Access blocked
+PHOTO WANTED
+Cars on an unsafe pull-off outside the lot
 Cars on an unsafe pull-off outside the lot
 Steps
 A rocking step on a steep pitch. The Local Chair is told when it uploads.
 What good looks like
+PHOTO WANTED
 Stone loose, missing, settled or eroded
+Stone loose, missing, settled or eroded
+PHOTO WANTED
 Timber rotten
+Timber rotten
+PHOTO WANTED
 Water pooling on a step
+Water pooling on a step
+PHOTO WANTED
 Hikers walking around it
+Hikers walking around it
+PHOTO WANTED
+Buried in leaves or gravel
 Buried in leaves or gravel
 Something else
 Rarely: a collapsed wall or crossing. A clogged water bar is Poor.
+PHOTO WANTED
 What good looks like
+What good looks like
+PHOTO WANTED
 Water bar clogged on the uphill side, or its outlet blocked
+Water bar clogged on the uphill side, or its outlet blocked
+PHOTO WANTED
 Water bar walked around, or with no downhill exit
+Water bar walked around, or with no downhill exit
+PHOTO WANTED
 Checkdam wood rotting or missing
+Checkdam wood rotting or missing
+PHOTO WANTED
 Drainage dip filled in
+Drainage dip filled in
+PHOTO WANTED
+Cairn knocked down, or a visitor's rock stack where none belongs
 Cairn knocked down, or a visitor's rock stack where none belongs

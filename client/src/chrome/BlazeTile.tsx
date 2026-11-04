@@ -1,7 +1,8 @@
 // One tile of the blaze card (#1962, features/CHALLENGES_BLAZE_CARD.md): an
-// item's glyph until it is earned, a white blaze once it is. Taller than
-// wide, the proportion of a painted blaze (2 by 6 inches); the sizes are
-// BlazeCard.tsx's.
+// item's glyph, on dark green until it is earned and on karma gold once it
+// is (the maintainer's poll, 2026-11-04 - it was white, drawn as a blaze,
+// and blazes are official trail marking). Taller than wide, 1 by 1.3; the
+// sizes are BlazeCard.tsx's.
 //
 // NO HANDLER BELOW 44 PX. A tile is a `<button>` only when `onPress` is
 // given, and BlazeCard gives one only in its expanded state, where a tile is

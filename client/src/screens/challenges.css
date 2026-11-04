@@ -1107,9 +1107,15 @@ div.challenge-row__open {
   border-radius: 1px;
 }
 
+/* An earned tile is karma gold (the maintainer's poll, 2026-11-04, from the
+   card as built beside this): it was paper-white, which the code called "a
+   white blaze", and blazes are official trail marking - the same poll day
+   retired "blaze" as the word for what is earned. The ink is the chrome's
+   own ground, dark under both themes as the yellow needs - the support
+   nudge's pairing (support.css). */
 .blaze-tile--done {
-  background: var(--bg-canvas);
-  color: var(--fg-1);
+  background: var(--accent-blaze-yellow);
+  color: var(--bg-chrome);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
@@ -1130,6 +1136,11 @@ div.challenge-row__open {
 .blaze-tile--press:focus-visible {
   outline: 2px solid var(--accent-blaze-yellow);
   outline-offset: 2px;
+}
+
+/* A yellow ring round a yellow tile is no ring at all. */
+.blaze-tile--done.blaze-tile--press:focus-visible {
+  outline-color: var(--fg-chrome-1);
 }
 
 .blaze-tile--press:active {

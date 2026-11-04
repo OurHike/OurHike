@@ -60,7 +60,14 @@ from pathlib import Path
 import requests
 from shapely.geometry import mapping
 
-from export_basemap import GEOFABRIK_BASE, osmium_merge_cmd, planetiler_cmd
+from export_basemap import (
+    GEOFABRIK_BASE,
+    HTTP_TIMEOUT_SECONDS,
+    download_sources_cmd,
+    osmium_merge_cmd,
+    planetiler_cmd,
+    run_planetiler,
+)
 from lib.poly import from_poly, to_poly
 
 ROOT = Path(__file__).parent
@@ -235,60 +242,8 @@ def seam_between(shapes: list) -> object:
     return seam
 
 
-# Planetiler's own default is 30s, and that is what expired. Its internal
-# --http-retries=5 did not outlast the host either, so the outer retry here
-# is a third belt rather than a duplicate: Planetiler retries the request,
-# this retries the whole invocation minutes later.
-HTTP_TIMEOUT_SECONDS = 300
-
-
-def download_sources_cmd(jar: Path, osm_pbf: Path, tmp_dir: Path) -> list[str]:
-    """Fetch the profile's non-OSM sources and stop, without building.
-
-    A step of its own because those ~1.4 GB come from three third parties and
-    have now failed a run twice, in the middle of a measurement they have
-    nothing to do with. Pulling them first means the flaky part happens once,
-    before any timing starts, where CI can cache the result and where a
-    failure is unambiguously about the network rather than about sharding.
-
-    --only-download is Planetiler's own flag for this (`download source data
-    then exit`); the output path is required but never written."""
-    return [
-        "java",
-        "-jar",
-        str(jar),
-        f"--osm-path={osm_pbf}",
-        f"--tmpdir={tmp_dir}",
-        f"--http-timeout={HTTP_TIMEOUT_SECONDS}s",
-        "--only-download",
-        "--download",
-    ]
-
-
-def run_planetiler(cmd: list[str], attempts: int = 3, sleep=time.sleep, run=subprocess.run) -> int:
-    """Run Planetiler, retrying a failed attempt. Returns the attempt that
-    worked; re-raises if none did.
-
-    Here because a run died on `Error getting size of
-    water-polygons-split-3857.zip ... TimeoutException` - Planetiler fetching
-    a 928 MB shapefile from a third party that had served it fine ten minutes
-    earlier. That is weather, not a result, and a spike that reports failure
-    when osmdata.openstreetmap.de is slow teaches nothing about sharding.
-
-    Retrying is cheap and safe: downloaded sources are cached under
-    data/sources so a second attempt skips what already arrived, and --force
-    means a half-written output is overwritten rather than appended to."""
-    for attempt in range(1, attempts + 1):
-        try:
-            run(cmd, check=True)
-            return attempt
-        except subprocess.CalledProcessError:
-            if attempt == attempts:
-                raise
-            delay = 15 * attempt
-            print(f"  attempt {attempt}/{attempts} failed; retrying in {delay}s", flush=True)
-            sleep(delay)
-    raise AssertionError("unreachable")
+# HTTP_TIMEOUT_SECONDS, download_sources_cmd and run_planetiler live in
+# export_basemap.py since 2026-11-04, when the basemap build needed them too.
 
 
 def fit_fixed_and_marginal(points: list[tuple[int, int]]) -> tuple[float, float]:

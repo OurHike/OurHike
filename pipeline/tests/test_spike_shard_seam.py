@@ -12,21 +12,15 @@ the peak would pass or fail on where the poll landed - which is the same
 class of bug the sampler exists to avoid.
 """
 
-import subprocess
-from pathlib import Path
-
 import pytest
 from shapely.geometry import box
 
 from spike_shard_seam import (
-    HTTP_TIMEOUT_SECONDS,
     BuildResult,
     PeakDiskSampler,
     directory_apparent_bytes,
     directory_bytes,
-    download_sources_cmd,
     fit_fixed_and_marginal,
-    run_planetiler,
     seam_between,
 )
 
@@ -170,84 +164,8 @@ def test_both_peaks_are_tracked_independently():
     assert sampler.peak_apparent == 900
 
 
-# Planetiler downloads ~1.4 GB of profile sources from three third parties
-# before it builds anything, and one run died on a TimeoutException fetching
-# water polygons from a host that had served them fine minutes earlier. That
-# is weather. These cover the retry that stops weather being mistaken for a
-# result about sharding.
-
-
-def test_a_build_that_works_first_time_is_not_retried():
-    calls = []
-
-    attempt = run_planetiler(["java"], run=lambda cmd, check: calls.append(cmd), sleep=lambda _: None)
-
-    assert attempt == 1
-    assert len(calls) == 1
-
-
-def test_a_transient_failure_is_retried_and_the_result_kept():
-    calls = []
-
-    def flaky(cmd, check):
-        calls.append(cmd)
-        if len(calls) < 3:
-            raise subprocess.CalledProcessError(1, cmd)
-
-    attempt = run_planetiler(["java"], attempts=3, run=flaky, sleep=lambda _: None)
-
-    assert attempt == 3
-    assert len(calls) == 3
-
-
-def test_a_build_that_never_succeeds_still_fails_the_spike():
-    """Retrying must not turn a real, repeatable breakage into a green run -
-    the point is to absorb weather, not to hide a broken command line."""
-    calls = []
-
-    def always_fails(cmd, check):
-        calls.append(cmd)
-        raise subprocess.CalledProcessError(1, cmd)
-
-    with pytest.raises(subprocess.CalledProcessError):
-        run_planetiler(["java"], attempts=3, run=always_fails, sleep=lambda _: None)
-
-    assert len(calls) == 3
-
-
-def test_the_retry_backs_off_rather_than_hammering_a_struggling_host():
-    delays = []
-
-    def always_fails(cmd, check):
-        raise subprocess.CalledProcessError(1, cmd)
-
-    with pytest.raises(subprocess.CalledProcessError):
-        run_planetiler(["java"], attempts=3, run=always_fails, sleep=delays.append)
-
-    assert delays == sorted(delays) and delays[0] < delays[-1]
-
-
-def test_the_sources_are_fetched_by_a_step_that_builds_nothing():
-    """--only-download is Planetiler's own 'download source data then exit'.
-    Pulling the third-party sources before any timing starts means the flaky
-    part happens once, where CI can cache it and where a failure is
-    unambiguously about the network rather than about sharding."""
-    cmd = download_sources_cmd(Path("p.jar"), Path("in.pbf"), Path("tmp"))
-
-    assert "--only-download" in cmd
-    assert "--download" in cmd
-    assert not any(arg.startswith("--output=") for arg in cmd)
-    assert not any(arg.startswith("--maxzoom") for arg in cmd)
-
-
-def test_the_download_step_waits_far_longer_than_planetilers_default():
-    """The failure was `Error getting size of ... TimeoutException` - the 30s
-    default expiring on a slow host, twice, on a file that had served fine
-    minutes earlier."""
-    cmd = download_sources_cmd(Path("p.jar"), Path("in.pbf"), Path("tmp"))
-
-    assert f"--http-timeout={HTTP_TIMEOUT_SECONDS}s" in cmd
-    assert HTTP_TIMEOUT_SECONDS > 30
+# run_planetiler and download_sources_cmd moved to export_basemap.py on
+# 2026-11-04, and their tests to tests/test_export_basemap.py with them.
 
 
 def test_shards_that_overlap_report_the_overlapping_band_as_the_seam():

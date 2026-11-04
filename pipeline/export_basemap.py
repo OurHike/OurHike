@@ -37,6 +37,7 @@ whatever is current; --refetch forces that, and CI runners start empty anyway.
 import argparse
 import json
 import subprocess
+import time
 from pathlib import Path
 
 import duckdb
@@ -222,12 +223,9 @@ def planetiler_cmd(
     logs is a path, not a promise - and a build that pays for statistics
     nobody reads is a build paying for nothing. The spike turns it on.
 
-    http_timeout_seconds raises Planetiler's own 30s default. The profile
-    pulls ~1.4 GB from three third parties before it builds anything, and
-    `Error getting size of water-polygons-split-3857.zip ... TimeoutException`
-    is that 30s expiring on a slow host - a failure that says nothing about
-    the data and stops the build regardless. None leaves Planetiler's
-    default alone."""
+    http_timeout_seconds raises Planetiler's own 30s default for its HTTP
+    requests; HTTP_TIMEOUT_SECONDS below says what that does and does not
+    cover. None leaves Planetiler's default alone."""
     excluded = exclude_layers or []
     return [
         "java",
@@ -245,6 +243,93 @@ def planetiler_cmd(
         "--download",
         "--force",
     ]
+
+
+# Planetiler's own default is 30s. What --http-timeout governs, read in
+# Planetiler 0.10.2's Downloader.java on 2026-11-04: the connect and read
+# timeouts of each source's chunked download, and the timeout of the HEAD
+# request that sizes it. Raised so a slow host can stall the 928 MB water
+# polygons for up to five minutes before Planetiler retries the chunk.
+#
+# It does NOT govern the failure that stopped build-basemap.yml runs 57, 58
+# and 59 (2026-11-03 and -04) and two spike runs before them, though this
+# comment used to say it did. `Error getting size of
+# water-polygons-split-3857.zip ... TimeoutException` comes from
+# Downloader.run, which waits at most 10 seconds for each source's HEAD
+# answer (`item.metadata.get(10, TimeUnit.SECONDS)`, line 177), and no flag
+# moves that wait. That failure is answered by not asking: Planetiler.getPath
+# queues a source for download only when its file is missing (line 1106), so
+# build-basemap.yml caches data/sources, and run_planetiler below retries a
+# fetch that has to happen.
+#
+# @unvalidated: 300 is the spike's pick, carried over. What would settle it is
+# the longest stall a download of the water polygons has actually had, which
+# nobody has measured.
+HTTP_TIMEOUT_SECONDS = 300
+
+
+def download_sources_cmd(jar: Path, osm_pbf: Path, tmp_dir: Path) -> list[str]:
+    """Fetch the profile's third-party sources and stop, without building.
+
+    An invocation of its own so the network part runs alone, before any
+    build, and can be retried without repeating one (run_planetiler). The
+    sources are about 1.4 GB by the spike's count: the water polygons from
+    osmdata.openstreetmap.de, Natural Earth from naciscdn.org and the lake
+    centerlines from a GitHub release, all landing in data/sources. A source
+    already there is not fetched again, so a run that restored
+    build-basemap.yml's cache asks none of the three hosts anything.
+
+    --only-download is Planetiler's own flag for this (`download source data
+    then exit`); it builds nothing and writes no archive."""
+    return [
+        "java",
+        "-jar",
+        str(jar),
+        f"--osm-path={osm_pbf}",
+        f"--tmpdir={tmp_dir}",
+        f"--http-timeout={HTTP_TIMEOUT_SECONDS}s",
+        "--only-download",
+        "--download",
+    ]
+
+
+def run_planetiler(cmd: list[str], attempts: int = 3, sleep=None, run=None) -> int:
+    """Run Planetiler, retrying a failed attempt. Returns the attempt that
+    worked; re-raises if none did.
+
+    For the network part, which is weather rather than a result: the water
+    polygons failed Planetiler's 10-second HEAD wait (HTTP_TIMEOUT_SECONDS
+    above) on a host that had served them fine minutes earlier. main() runs
+    download_sources_cmd through this and its build once, unretried, because
+    a build that fails with its sources already on disk has failed for a
+    reason a second try would repeat. The spike retries its builds too,
+    which --force makes safe: a half-written archive is overwritten rather
+    than appended to.
+
+    Retrying a fetch is cheap and safe. A source that finished downloading
+    stays in data/sources and is not fetched again, and Planetiler writes
+    each one to a temporary file and moves it into place only once it is
+    whole (Downloader.downloadIfNecessary), so an interrupted download leaves
+    nothing behind to trust. The waits between attempts, 15 s then 30 s, are
+    the spike's picks and @unvalidated: nobody has measured how long the
+    host's slow spells last.
+
+    `run` and `sleep` are looked up when called rather than bound as
+    defaults, so a test that replaces subprocess.run or time.sleep replaces
+    them here too."""
+    run = run or subprocess.run
+    sleep = sleep or time.sleep
+    for attempt in range(1, attempts + 1):
+        try:
+            run(cmd, check=True)
+            return attempt
+        except subprocess.CalledProcessError:
+            if attempt == attempts:
+                raise
+            delay = 15 * attempt
+            print(f"  attempt {attempt}/{attempts} failed; retrying in {delay}s", flush=True)
+            sleep(delay)
+    raise AssertionError("unreachable")
 
 
 def load_corridor_4326(buffer_miles: float | None = None):
@@ -370,6 +455,11 @@ def main(args: argparse.Namespace):
 
     print("Running Planetiler...")
     tmp_dir = OSM_RAW_DIR / "planetiler-tmp"
+    # The third-party sources first, alone and retried, so the build below
+    # finds them in data/sources and asks no third party anything.
+    download = download_sources_cmd(args.planetiler_jar, merged, tmp_dir)
+    print(f"  {' '.join(download)}")
+    run_planetiler(download)
     # The shipped build, and the one place the exclusion is asked for (#1116).
     cmd = planetiler_cmd(
         args.planetiler_jar,
@@ -378,6 +468,7 @@ def main(args: argparse.Namespace):
         args.max_zoom,
         None if args.no_clip else CLIP_POLY_PATH,
         tmp_dir,
+        http_timeout_seconds=HTTP_TIMEOUT_SECONDS,
         exclude_layers=UNRENDERED_LAYERS,
         languages=BUILD_LANGUAGES,
     )

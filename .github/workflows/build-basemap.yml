@@ -165,6 +165,33 @@ jobs:
           echo "$JAR_SHA256  planetiler.jar" | sha256sum -c -
           ls -la planetiler.jar
 
+      # Planetiler's profile reads three third-party files before it builds
+      # anything, about 1.4 GB: the water polygons from
+      # osmdata.openstreetmap.de, Natural Earth from naciscdn.org and the lake
+      # centerlines from a GitHub release. Runs 57, 58 and 59 (2026-11-03 and
+      # -04) all died on the first of them, because Planetiler waits at most
+      # 10 seconds for each file's HEAD answer and no flag moves that wait
+      # (export_basemap.py's HTTP_TIMEOUT_SECONDS has the source lines). A
+      # file already in data/sources is never asked about, so a run that
+      # restores them here makes no request to any of the three hosts.
+      #
+      # Keyed by month so the files refresh: the first build of a month
+      # fetches them and saves them, and every build after it that month
+      # restores them. No restore-keys fallback to an older month, on
+      # purpose: Planetiler fetches only a file that is missing, so a
+      # fallback would restore last month's files and nothing would ever be
+      # refreshed again.
+      - name: Name this month's cache of Planetiler's sources
+        id: month
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Planetiler's profile sources
+        id: sources
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/data/sources
+          key: planetiler-basemap-sources-${{ steps.month.outputs.month }}
+
       # Through env, never pasted into the script: a free-text dispatch input
       # interpolated into `run:` is shell the dispatcher wrote (#660's rule,
       # held by .github/tests/test_run_steps_take_inputs_through_env.py).
@@ -181,6 +208,36 @@ jobs:
             --max-zoom "$MAX_ZOOM" \
             ${STATES:+--states $STATES} \
             ${REGIONS:+--regions $REGIONS}
+
+      # Saved only once all three files are on disk, whether or not the build
+      # then succeeded. A partial set must never be saved: run 59 had
+      # finished two of the three when the third timed out, and saving those
+      # two under this month's key would make every later restore an exact
+      # hit, which skips this step - so the missing file would be fetched
+      # from the slow host on every run until the month turned. The three
+      # names are Planetiler 0.10.2's defaults, read from its log; a jar that
+      # renamed one would stop this saving, and the build would fetch the
+      # sources every run as it did before this cache.
+      - name: Are all three of Planetiler's sources on disk
+        id: sources-complete
+        if: always()
+        run: |
+          complete=true
+          for f in lake_centerline.shp.zip water-polygons-split-3857.zip natural_earth_vector.sqlite.zip; do
+            if [ -s "data/sources/$f" ]; then echo "present: $f"; else echo "missing: $f"; complete=false; fi
+          done
+          echo "complete=$complete" >> "$GITHUB_OUTPUT"
+
+      # continue-on-error because a save that fails (the cache service, or a
+      # re-run finding the key already written) must not fail a build that
+      # has its archive.
+      - name: Save Planetiler's profile sources
+        if: always() && steps.sources.outputs.cache-hit != 'true' && steps.sources-complete.outputs.complete == 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/data/sources
+          key: planetiler-basemap-sources-${{ steps.month.outputs.month }}
 
       - name: Cut the AT package from the build
         run: |

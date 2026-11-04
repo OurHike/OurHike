@@ -23,12 +23,15 @@ import export_basemap
 from export_basemap import (
     AT_STATES,
     BUILD_LANGUAGES,
+    HTTP_TIMEOUT_SECONDS,
     UNRENDERED_LAYERS,
+    download_sources_cmd,
     fetch_states,
     osmium_extract_cmd,
     osmium_merge_cmd,
     planetiler_cmd,
     report_archive,
+    run_planetiler,
     state_urls,
 )
 from lib import http_retry
@@ -150,7 +153,7 @@ def test_the_shipped_build_excludes_the_layers_the_app_never_draws(tmp_path, mon
         )
     )
 
-    planetiler = next(cmd for cmd in ran if cmd[0] == "java")
+    planetiler = next(cmd for cmd in ran if cmd[0] == "java" and "--only-download" not in cmd)
     excluded = [arg for arg in planetiler if arg.startswith("--exclude-layers=")]
     assert len(excluded) == 1
     named = set(excluded[0].removeprefix("--exclude-layers=").split(","))
@@ -384,11 +387,155 @@ def test_main_clips_and_merges_a_synthetic_state_end_to_end(tmp_path, monkeypatc
 
 
 def test_the_http_timeout_is_only_sent_when_raised():
-    """Planetiler's own default is 30s and that is usually right; the spike
-    raises it because the profile's 1.4 GB of third-party sources timed out
-    twice mid-measurement."""
+    """Planetiler's own default is 30s. The command builder sends nothing it
+    was not asked for; main() and the spike ask for HTTP_TIMEOUT_SECONDS."""
     default = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
     assert not any(arg.startswith("--http-timeout") for arg in default)
 
     patient = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"), http_timeout_seconds=300)
     assert "--http-timeout=300s" in patient
+
+
+def _stub_main_up_to_planetiler(tmp_path, monkeypatch, fake_run):
+    """main() with everything before Planetiler stubbed, the way the exclusion
+    test above does it, and subprocess.run replaced by `fake_run`."""
+    monkeypatch.setattr(export_basemap, "load_corridor_4326", lambda: box(-75, 40, -74, 41))
+    monkeypatch.setattr(export_basemap, "write_shapes", lambda _corridor: None)
+    monkeypatch.setattr(export_basemap, "fetch_states", lambda *a, **k: [tmp_path / "s.osm.pbf"])
+    monkeypatch.setattr(export_basemap, "report_archive", lambda _path: {})
+    monkeypatch.setattr(export_basemap, "OSM_RAW_DIR", tmp_path)
+    monkeypatch.setattr(export_basemap, "CLIP_POLY_PATH", tmp_path / "clip.poly")
+    monkeypatch.setattr(export_basemap.time, "sleep", lambda _seconds: None)
+    (tmp_path / "s.osm.pbf").write_bytes(b"pbf")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return argparse.Namespace(
+        no_clip=False,
+        states=["vermont"],
+        planetiler_jar=Path("p.jar"),
+        refetch=False,
+        max_zoom=14,
+        out=tmp_path / "out.pmtiles",
+        regions=["at"],
+    )
+
+
+def _writes_osmium_output(cmd):
+    # osmium is stubbed out, so nothing writes the files main() then stats.
+    if "-o" in cmd:
+        Path(cmd[cmd.index("-o") + 1]).write_bytes(b"clipped")
+
+
+def test_main_fetches_the_sources_alone_and_retried_before_building_once(tmp_path, monkeypatch):
+    """Basemap runs 57, 58 and 59 died fetching the water polygons, inside
+    the build. main() now fetches them on their own first, retrying a failed
+    fetch, and then builds; the build finds them on disk and fetches nothing."""
+    java: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        _writes_osmium_output(cmd)
+        if cmd[0] == "java":
+            java.append(cmd)
+            if "--only-download" in cmd and len(java) < 3:
+                raise subprocess.CalledProcessError(1, cmd)
+
+    export_basemap.main(_stub_main_up_to_planetiler(tmp_path, monkeypatch, fake_run))
+
+    assert ["--only-download" in cmd for cmd in java] == [True, True, True, False]
+    build = java[-1]
+    assert f"--output={tmp_path / 'out.pmtiles'}" in build
+    assert all(f"--http-timeout={HTTP_TIMEOUT_SECONDS}s" in cmd for cmd in java)
+
+
+def test_a_build_that_fails_with_its_sources_on_disk_is_not_retried(tmp_path, monkeypatch):
+    """Only the fetch is weather. A build that fails after it has every
+    source has failed for a reason a second try would repeat, and a retry
+    there would only spend the runner's time saying so three times."""
+    java: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        _writes_osmium_output(cmd)
+        if cmd[0] == "java":
+            java.append(cmd)
+            if "--only-download" not in cmd:
+                raise subprocess.CalledProcessError(1, cmd)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        export_basemap.main(_stub_main_up_to_planetiler(tmp_path, monkeypatch, fake_run))
+
+    assert ["--only-download" in cmd for cmd in java] == [True, False]
+
+
+# Moved here from tests/test_spike_shard_seam.py on 2026-11-04 with the code
+# they cover. The fetch these retry is weather: Planetiler's 10-second wait
+# for a HEAD answer from osmdata.openstreetmap.de (HTTP_TIMEOUT_SECONDS's
+# comment has the source lines), on a host that served the file fine minutes
+# earlier.
+
+
+def test_a_planetiler_run_that_works_first_time_is_not_retried():
+    calls = []
+
+    attempt = run_planetiler(["java"], run=lambda cmd, check: calls.append(cmd), sleep=lambda _: None)
+
+    assert attempt == 1
+    assert len(calls) == 1
+
+
+def test_a_transient_failure_is_retried_and_the_result_kept():
+    calls = []
+
+    def flaky(cmd, check):
+        calls.append(cmd)
+        if len(calls) < 3:
+            raise subprocess.CalledProcessError(1, cmd)
+
+    attempt = run_planetiler(["java"], attempts=3, run=flaky, sleep=lambda _: None)
+
+    assert attempt == 3
+    assert len(calls) == 3
+
+
+def test_a_planetiler_run_that_never_succeeds_still_fails():
+    """Retrying must not turn a real, repeatable breakage into a green run -
+    the point is to absorb weather, not to hide a broken command line."""
+    calls = []
+
+    def always_fails(cmd, check):
+        calls.append(cmd)
+        raise subprocess.CalledProcessError(1, cmd)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_planetiler(["java"], attempts=3, run=always_fails, sleep=lambda _: None)
+
+    assert len(calls) == 3
+
+
+def test_the_retry_backs_off_rather_than_hammering_a_struggling_host():
+    delays = []
+
+    def always_fails(cmd, check):
+        raise subprocess.CalledProcessError(1, cmd)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_planetiler(["java"], attempts=3, run=always_fails, sleep=delays.append)
+
+    assert delays == sorted(delays) and delays[0] < delays[-1]
+
+
+def test_the_sources_are_fetched_by_an_invocation_that_builds_nothing():
+    """--only-download is Planetiler's own 'download source data then exit'."""
+    cmd = download_sources_cmd(Path("p.jar"), Path("in.pbf"), Path("tmp"))
+
+    assert "--only-download" in cmd
+    assert "--download" in cmd
+    assert not any(arg.startswith("--output=") for arg in cmd)
+    assert not any(arg.startswith("--maxzoom") for arg in cmd)
+
+
+def test_the_fetch_lets_a_slow_download_stall_far_longer_than_planetilers_default():
+    """For a body download that stalls, not for the HEAD wait that failed
+    runs 57 to 59, which no flag moves - this test used to say otherwise."""
+    cmd = download_sources_cmd(Path("p.jar"), Path("in.pbf"), Path("tmp"))
+
+    assert f"--http-timeout={HTTP_TIMEOUT_SECONDS}s" in cmd
+    assert HTTP_TIMEOUT_SECONDS > 30

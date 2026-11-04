@@ -147,17 +147,42 @@ def test_a_blank_typed_name_is_not_a_signature(client, club, db_session):
     assert _enrol(client, club, make_profile(db_session), typed_name="   ").status_code == 422
 
 
-def test_an_organization_waiting_for_its_domain_to_confirm_it_has_no_open_survey(client, db_session):
+def _held_org(db_session):
     org = make_org(db_session, slug="held-org", state=OrgState.pending)
     admin = make_profile(db_session)
     make_admin(db_session, org, admin)
     db_session.add(InventoryClubSettings(club_id=org.id, waiver_text="Words.", waiver_version="1"))
     db_session.commit()
+    return org, admin
+
+
+def test_a_held_registration_is_the_same_404_as_no_organization_to_a_stranger(client, db_session):
+    """A held (`pending`) registration has published nothing, so a stranger
+    who tries to join its survey learns nothing either: the response is the
+    one a slug nobody registered gets. #2018 — Harden the release review's
+    security findings: one domain normaliser, held registrations off public
+    reads, strict Stripe ids and choices, hash-pinned rollup installs, made
+    `org_access` answer it that way."""
+    org, _ = _held_org(db_session)
+    stranger = auth_headers(make_profile(db_session).id)
+    body = {"typed_name": "Pat R.", "waiver_version": "1"}
+
+    held = client.post(f"/clubs/{org.slug}/inventory/enrollments", json=body, headers=stranger)
+    unknown = client.post("/clubs/nobody-registered-this/inventory/enrollments", json=body, headers=stranger)
+
+    assert held.status_code == unknown.status_code == 404
+    assert held.json() == unknown.json()
+
+
+def test_a_held_registrations_own_admin_is_told_its_survey_is_not_open_yet(client, db_session):
+    """The one person who can see a held registration exists gets the reason,
+    not a 404 about their own organization."""
+    org, admin = _held_org(db_session)
 
     response = client.post(
         f"/clubs/{org.slug}/inventory/enrollments",
         json={"typed_name": "Pat R.", "waiver_version": "1"},
-        headers=auth_headers(make_profile(db_session).id),
+        headers=auth_headers(admin.id),
     )
 
     assert response.status_code == 409

@@ -967,6 +967,27 @@ def test_without_the_choice_id_a_payment_is_kept_apart_and_the_founder_told(clie
     assert "sub_777" in _text(note)
 
 
+def test_a_choice_id_with_a_trailing_newline_attaches_to_no_choice(client, configured, db_session):
+    """`_CHOICE_ID` was written `^...$` and asked with `match`, and Python's
+    `$` also matches before a trailing newline - the trap routers/analytics.py's
+    `_version_of` documents - so a `client_reference_id` of "<id>\\n" passed
+    as a choice id (the 2026-11-04 security review). The parse is checked
+    first because it is what was wrong: the choice lookup after it compares
+    the id exactly in Postgres, so it found no choice before the fix either."""
+    user_id = str(uuid.uuid4())
+    choice = _choice_id(_choose(client, user_id))
+    session = _session(choice=f"{choice}\n")
+
+    [event] = PROVIDERS["stripe"].normalise(session)
+    assert event.choice_ref is None
+
+    assert _deliver(client, session).json() == {"result": "active"}
+    mine = db_session.query(SupportChoice).filter(SupportChoice.profile_id == user_id).one()
+    assert (mine.status, mine.provider_ref) == (SupportStatus.pending, None)
+    apart = db_session.query(SupportChoice).filter(SupportChoice.profile_id.is_(None)).one()
+    assert apart.provider_ref == "sub_777"
+
+
 def test_a_stranger_who_types_a_hikers_address_can_neither_block_nor_be_stopped_by_them(client, configured, db_session):  # R3-B4
     """The third review's attack on matching by email: nothing here reads
     the address to decide whose a payment is."""

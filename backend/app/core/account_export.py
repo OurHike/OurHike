@@ -65,6 +65,13 @@ from app.models.club import Club, OrgAdmin
 from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
+from app.models.inventory import (
+    InventoryClaim,
+    InventoryEnrollment,
+    InventoryObservation,
+    InventoryPass,
+    InventoryStructure,
+)
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.nomination import OrgNomination
 from app.models.org_registry import RegistrySignoff
@@ -305,6 +312,22 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "organizations_you_help_run": _rows(db, OrgAdmin, OrgAdmin.person_id == profile_id),
         "workdays_you_signed_up_for": _rows(db, WorkProjectSignup, WorkProjectSignup.person_id == profile_id),
         "trail_monitor_commitments": _rows(db, RidgeRunnerCommitment, RidgeRunnerCommitment.person_id == profile_id),
+        # The structure survey (#1983 — The structure inventory's five tables
+        # land in one revision, locked by RLS, with every enum as VARCHAR +
+        # CHECK; the design is features/STRUCTURE_INVENTORY.md). The
+        # waiver they signed, by version and typed name; the days they
+        # claimed; the walks they recorded; every record they logged, with
+        # every GPS reading the phone took, because the phone records what it
+        # knows and so does this file. Review decisions they made as a club
+        # admin are not here, on the `dismissed_by` precedent: the archive is
+        # what is held ABOUT the account.
+        "structure_surveys_you_joined": _rows(db, InventoryEnrollment, InventoryEnrollment.person_id == profile_id),
+        "survey_days_you_claimed": _rows(db, InventoryClaim, InventoryClaim.volunteer_id == profile_id),
+        "survey_walks_you_recorded": _rows(db, InventoryPass, InventoryPass.volunteer_id == profile_id),
+        "structure_records_you_logged": _rows(db, InventoryObservation, InventoryObservation.volunteer_id == profile_id),
+        # Names them without being about them, like the organization rows
+        # below: the club keeps every structure (core/account_deletion.py).
+        "structures_you_were_first_to_log": _rows(db, InventoryStructure, InventoryStructure.created_by == profile_id),
         "closures_you_helped_confirm": _rows(db, ClosureApproval, ClosureApproval.person_id == profile_id),
         # A registry a person read and put their name to. Theirs to take for
         # the same reason a closure approval is: it is a thing they did, not

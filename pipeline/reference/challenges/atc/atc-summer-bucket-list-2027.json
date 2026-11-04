@@ -22,6 +22,11 @@
     "@unvalidated until the ATC publishes 2027's, expected in May 2027; until then the",
     "card runs on this 2025 transcription as a labelled preview.",
     "",
+    "ONE WORD IN THE SUMMARY IS NOT THE PDF'S. The 2025 PDF says 'by September 1'; the",
+    "summary here says 'by September 7', so it agrees with the window above rather than",
+    "telling a hiker one date in the header and another under it (maintainer, poll",
+    "2026-11-04). Every other word of every line is the PDF's.",
+    "",
     "WHICH LINES ARE PLACES. 14 items name a place the ATC's own layers carry, by",
     "published POI id - the anchors block repeats each name so a reviewer can read",
     "the diff without resolving ids. 3 match any waypoint of a type (a shelter, an",
@@ -46,7 +51,7 @@
   "trail": "AT",
   "name": "A.T. Summer Bucket List",
   "status": "draft",
-  "summary": "Complete at least 25 items by September 1 to be eligible for the grand prize drawing.",
+  "summary": "Complete at least 25 items by September 7 to be eligible for the grand prize drawing.",
   "window": {
     "opens": "2027-05-13",
     "closes": "2027-09-07"

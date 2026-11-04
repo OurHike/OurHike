@@ -101,13 +101,15 @@ CLAUDE.md's *Never let a display outrun its source* forbids.
    maintainer took it back on 2026-11-04 — "blazes are official, lets not mess with them" —
    and chose **trail karma** by poll the same day: `CHALLENGE_WORDS.noun` in
    `lib/challengeWords.ts`, a mass noun ("4 trail karma"), held to never saying "blaze" by
-   `challengeWords.test.ts`. **The code names keep the old word**: `chrome/BlazeCard.tsx`,
-   `chrome/BlazeTile.tsx`, `chrome/blazeIcons.ts`, the `.blaze-card` and `.blaze-tile`
-   classes and the brief's own file name all mean the card of tiles, which a hiker reads as
+   `challengeWords.test.ts`. **The code names keep the old word**: the brief's own file name
+   and, from #1990 — The card: 100 tiles, one per item, karma gold when earned, its
+   `chrome/BlazeCard.tsx`, `chrome/BlazeTile.tsx`, `chrome/blazeIcons.ts` and the
+   `.blaze-card` / `.blaze-tile` classes all mean the card of tiles, which a hiker reads as
    "the card". A hiker-facing string that says "blaze" means sense 1 or nothing.
 
 **Say which on first use.** The challenge list still shows sense 1 in the ATC's own words
-("Take a photo of a white blaze") beside a card whose code is named for the retired sense 3.
+("Take a photo of a white blaze"), and the card #1990 adds beside it has code named for the
+retired sense 3.
 
 ### shelf
 

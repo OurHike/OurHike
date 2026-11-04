@@ -76,7 +76,7 @@ export const ATC_ARTIFACT = {
   name: 'A.T. Summer Bucket List',
   status: 'draft',
   summary:
-    'Complete at least 25 items by September 1 to be eligible for the grand prize drawing.',
+    'Complete at least 25 items by September 7 to be eligible for the grand prize drawing.',
   window: { opens: '2027-05-13', closes: '2027-09-07' },
   finish: { count: 5, label: 'for the drawing' },
   reward: { kind: 'drawing', rules_url: 'https://appalachiantrail.org/sweepstakes' },

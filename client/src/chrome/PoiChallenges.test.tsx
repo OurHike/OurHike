@@ -110,6 +110,16 @@ describe('a place card’s challenges', () => {
   })
 })
 
+describe('a place card’s draft banner and status line (#1961)', () => {
+  it('names a draft list once above its rows, and promises the club a count and never a name', () => {
+    card()
+    expect(screen.getAllByText('Draft · not yet confirmed by the ATC')).toHaveLength(1)
+    const status = document.querySelector('.challenge-status')
+    expect(status?.textContent).toMatch(/^Saved on this phone/)
+    expect(status?.textContent).toMatch(/never by name/)
+  })
+})
+
 describe('a place card, before and after joining', () => {
   it('lets a hiker read a list before joining it', async () => {
     const onOpen = vi.fn()

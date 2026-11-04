@@ -161,6 +161,32 @@ describe('one challenge', () => {
   })
 })
 
+describe('the Done pill (#1961, review of #1969)', () => {
+  it('lets the selection go with the last item taken back, keeps focus on a pill, and does not jump back later', async () => {
+    const { props, rerender } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+    const row = screen.getByText(/Springer Mountain/).closest('li')!
+    await userEvent.click(within(row).getByRole('button', { name: /^Earned:/ }))
+    expect(props.onUntag).toHaveBeenCalledTimes(1)
+    rerender(<ChallengeDetail {...props} state={joinedWith(ATC_CHALLENGE)} />)
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull()
+    const first = screen.getByRole('button', { name: 'Learn' })
+    expect(first).toHaveAttribute('aria-pressed', 'true')
+    expect(document.activeElement).toBe(first)
+    rerender(
+      <ChallengeDetail {...props} state={joinedWith(ATC_CHALLENGE, 'trivia-quiz')} />,
+    )
+    expect(screen.getByRole('button', { name: 'Learn' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Done' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+})
+
 describe('the finish', () => {
   const finished = () =>
     joinedWith(

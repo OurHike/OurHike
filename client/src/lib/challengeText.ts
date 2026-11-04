@@ -1,5 +1,5 @@
 // The words a challenge surface prints (#1780): a row's second line, a
-// place's mile, a date, the moment a blaze was earned, the sealed line of a
+// place's mile, a date, the moment an item was earned, the sealed line of a
 // mystery item, and the one status line under a joined list. Sentences in a
 // lib/*Text.ts module, the repository's habit (lib/todayText.ts,
 // lib/hikeText.ts), so chrome/ChallengeParts.tsx holds components only and
@@ -104,11 +104,14 @@ export function statusLine(
   club: Pick<Challenge, 'orgShort'>,
   state: { apiConfigured: boolean; signedIn: boolean },
 ): string {
+  // Every state promises the same two things: it is kept on this phone, and
+  // the club is told a count, never a name (review of #1969: the no-server
+  // line used to say neither, and read as if saving stopped with a server).
   if (!state.apiConfigured)
-    return `Saved on this phone until OurHike’s server is running.`
+    return `Saved on this phone, and counted for the ${club.orgShort} once OurHike’s server is running, never by name.`
   if (!state.signedIn)
-    return `Saved on this phone · counted for the ${club.orgShort} once you sign in, never by name.`
-  return `Saved on this phone · counted for the ${club.orgShort} with signal, never by name.`
+    return `Saved on this phone, and counted for the ${club.orgShort} once you sign in, never by name.`
+  return `Saved on this phone, and counted for the ${club.orgShort} with signal, never by name.`
 }
 
 const MONTHS = [

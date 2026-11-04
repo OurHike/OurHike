@@ -19,7 +19,7 @@ import { EVENING, PASSED_MCAFEE, seedChallenges } from './fixtures/challenges.mj
 export const caption =
   'Today’s camp card: what the day’s walk passed, Earn all or Not tonight (#1780, #1961, seeded day)'
 export const alt =
-  'The Today screen with a dark green card at the top reading From today’s walk, You passed places on your challenges. Earn them?, a row for the McAfee Knob item with its mile marker, and Tag all and Not tonight buttons'
+  'The Today screen with a dark green card at the top reading From today’s walk, You passed places on your challenges. Earn them?, a row for the McAfee Knob item with its mile marker, and Earn all and Not tonight buttons'
 
 export async function before(page) {
   await page.clock.setFixedTime(EVENING)

@@ -27,7 +27,7 @@ export const ATC_CHALLENGE = {
   name: 'A.T. Summer Bucket List',
   status: 'draft',
   summary:
-    'Complete at least 25 items by September 1 to be eligible for the grand prize drawing.',
+    'Complete at least 25 items by September 7 to be eligible for the grand prize drawing.',
   window: {
     opens: '2027-05-13',
     closes: '2027-09-07',

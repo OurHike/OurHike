@@ -56,15 +56,20 @@ describe('the one status line under a joined list (#1961)', () => {
   ])('is one sentence, names the phone, and never a name - %o', (state) => {
     const line = statusLine(ATC_CHALLENGE, state)
     expect(line).toMatch(/^Saved on this phone/)
+    expect(line).toMatch(/never by name/)
     expect(line).not.toMatch(FORBIDDEN)
     expect(line).not.toMatch(/\n/)
     expect(line.length).toBeLessThan(110)
   })
 
-  it('promises no server while none is configured, and no count without one', () => {
+  it('promises no server while none is configured, and still says the club never gets a name', () => {
+    // Review of #1969: this line used to say "Saved on this phone until
+    // OurHike's server is running." - no privacy promise, and readable as
+    // "saving stops once the server runs".
     const line = statusLine(ATC_CHALLENGE, { apiConfigured: false, signedIn: true })
-    expect(line).toMatch(/until OurHike’s server is running/)
-    expect(line).not.toMatch(/counted/)
+    expect(line).toBe(
+      'Saved on this phone, and counted for the ATC once OurHike’s server is running, never by name.',
+    )
   })
 
   it('says the club sees a count and never a name once there is a server', () => {

@@ -58,6 +58,35 @@ updates:
       vitest-major:
         patterns: ["vitest", "@vitest/*"]
         update-types: [major]
+    # THE HOLDS, each exact-pinned in package.json the way @capacitor/* and
+    # @maplibre/maplibre-gl-style-spec already are, and named here so the
+    # weekly group does not open a pull request that reverts one. A pin
+    # that lives only in the lockfile is a hold nobody can see.
+    ignore:
+      # react, react-dom: 19.3.1 adds 8,484 bytes of eager JavaScript to a
+      # launch budget with 788 bytes of room (d9360753, measured 2026-11-03
+      # by scripts/check-build-output.mjs; features/LAUNCH_BUDGET.md §3).
+      # Lifted when §4.4's cuts make the room, or the maintainer moves the
+      # line. @types/react and @types/react-dom are held with them: 19.3's
+      # types describe APIs 19.2.8 does not have, and @types/react-dom
+      # 19.3.0 requires @types/react ^19.3.0 (the same commit).
+      - dependency-name: react
+        versions: [">=19.3"]
+      - dependency-name: react-dom
+        versions: [">=19.3"]
+      - dependency-name: "@types/react"
+        versions: [">=19.3"]
+      - dependency-name: "@types/react-dom"
+        versions: [">=19.3"]
+      # jsdom: 30.1 computes the `background` shorthand from its longhands in
+      # getComputedStyle, so the four toHaveStyle({ background: 'var(--…)' })
+      # asserts in design-system/components/components.test.tsx fail under it
+      # (15c1eb0b, measured 2026-11-03). That commit's first reason - 30.1's
+      # Blobs breaking vitest 4.1's URL.createObjectURL - no longer applies on
+      # vitest 5.1. Lifted once those four asserts read `el.style.background`,
+      # which passes under both (the same commit measured it).
+      - dependency-name: jsdom
+        versions: [">=30.1"]
 
   # -------------------------------------------------------------- pipeline
   # requirements.txt here is compiled output, not a hand-written list.

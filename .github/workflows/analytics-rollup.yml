@@ -162,7 +162,7 @@ jobs:
       - name: Install dependencies
         id: install
         if: steps.can.outputs.go == 'true'
-        run: pip install -r requirements-archive.txt
+        run: pip install --require-hashes -r requirements-archive.txt
 
       # Its own timeout, so an archive that runs long fails here and leaves
       # the rollup its time. @unvalidated: nobody has archived a real month
@@ -293,7 +293,7 @@ jobs:
       - name: Install dependencies
         id: install
         if: steps.can.outputs.go == 'true'
-        run: pip install -r requirements-archive.txt
+        run: pip install --require-hashes -r requirements-archive.txt
 
       # Its own timeout, so an archive that runs long fails here and leaves
       # the rollup its time. @unvalidated: nobody has archived a real month

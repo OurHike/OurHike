@@ -24,7 +24,7 @@ turns a workday into an event to be amplified.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
@@ -131,8 +131,8 @@ def list_workdays(
         .filter(
             Club.state != OrgState.pending,
             WorkProject.status == ProjectStatus.upcoming,
-            WorkProject.ends_on >= date.today(),
-            WorkProject.starts_on <= date.today() + timedelta(days=window),
+            WorkProject.ends_on >= utc_now().date(),
+            WorkProject.starts_on <= utc_now().date() + timedelta(days=window),
         )
     )
     if org:

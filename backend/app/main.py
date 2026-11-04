@@ -92,10 +92,12 @@ app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
 # required - see TESTING.md's Backend section. Auth is a bearer JWT in an
 # Authorization header (Supabase Auth), never a cookie, so credentialed
 # CORS isn't needed - allow_credentials stays False, which is what makes a
-# wildcard origin safe here. Tighten to an env-driven allowlist once real
-# deployed origins are known - and take GET /closures, /reports and /disputes
-# out of the edge cache in the same change, because a shared copy can carry
-# only one origin's answer (app/core/edge_cache.py).
+# wildcard origin safe here. The deployed origins are known (HOSTING.md); the
+# wildcard stays because, without credentials, it exposes nothing a direct
+# request would not (#1767 item 10). The edge cache depends on it too: a
+# shared copy of GET /closures, /reports or /disputes can carry only one
+# origin's answer, so an allowlist here means taking those three out of the
+# edge cache in the same change (app/core/edge_cache.py).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

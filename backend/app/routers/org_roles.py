@@ -31,8 +31,6 @@ already said the larger module is where an admin surface belongs.
 
 from __future__ import annotations
 
-from datetime import date
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -380,7 +378,7 @@ def create_assignment(
         section_id=payload.section_id,
         start_mile=payload.start_mile,
         end_mile=payload.end_mile,
-        effective_from=payload.effective_from or date.today(),
+        effective_from=payload.effective_from or utc_now().date(),
         proposed_by=None if access.is_admin else access.person_id,
         confirmed_by=access.person_id if access.is_admin else None,
         confirmed_at=utc_now() if access.is_admin else None,
@@ -462,7 +460,7 @@ def step_back(
             detail="You can step back from your own section, or manage one as an admin or supervisor",
         )
 
-    assignment.effective_to = date.today()
+    assignment.effective_to = utc_now().date()
     return commit_and_refresh(db, assignment)
 
 
@@ -563,7 +561,7 @@ def sync_roster(
                     role_id=role.id if role else None,
                     start_mile=0.0,
                     end_mile=0.0,
-                    effective_from=date.today(),
+                    effective_from=utc_now().date(),
                     # Stamped either way, as `create_assignment` does. A
                     # supervisor's sync used to write neither stamp, which
                     # is the shape only the reviewed-file loader may have
@@ -596,7 +594,7 @@ def sync_roster(
     else:
         for person in would_deactivate:
             for assignment in live_by_person[person]:
-                assignment.effective_to = date.today()
+                assignment.effective_to = utc_now().date()
                 deactivated += 1
 
     run = RosterSyncRun(

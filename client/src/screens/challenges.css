@@ -994,7 +994,7 @@ div.challenge-row__open {
    are the frames' and @unvalidated (BlazeCard.tsx says what would settle
    them). Chrome tokens only: the card sits on the pine header, where
    --border-chrome is the frames' pine-700 tile and --bg-canvas their paper.
-   A tile becoming a blaze is a 150 ms colour change and nothing else
+   A tile becoming earned is a 150 ms colour change and nothing else
    (maintainer, 2026-09-30: no stamp animation). */
 
 .blaze-card {

@@ -4,9 +4,11 @@ import { join, resolve } from 'node:path'
 import { CHALLENGE_WORDS } from './challengeWords'
 
 // The maintainer's revision of 2026-09-30: never "passport" - the ATC's own
-// word for its stamp programme - and no digital stamp. The blaze card
+// word for its stamp programme - and no digital stamp. The card of tiles
 // (2026-11-03, poll 2026-11-04) made the verb "earn" and ruled out "paint",
-// because painting blazes is maintainer work. The words are in
+// because painting blazes is maintainer work; the same day's second poll
+// made what is earned "trail karma" and retired "blaze" from the app's own
+// words, because a blaze is official trail marking. The words are in
 // lib/challengeWords.ts, so choosing another is an edit to one file. This
 // holds the challenge surfaces to that: none of them spells any of the three
 // in its own code. (A club's ITEM may - the ATC's 2025 list says "Collect
@@ -58,7 +60,18 @@ describe('the words a challenge surface uses', () => {
     expect(CHALLENGE_WORDS.act).toBe('Earn it')
     expect(CHALLENGE_WORDS.done).toBe('Earned')
     expect(CHALLENGE_WORDS.verb).toBe('earn')
-    expect(CHALLENGE_WORDS.noun).toBe('blaze')
+    expect(CHALLENGE_WORDS.noun).toBe('trail karma')
+    expect(CHALLENGE_WORDS.some).toBe('some karma')
+    expect(CHALLENGE_WORDS.yours).toBe('Your trail karma')
+  })
+
+  it('never calls what a hiker earns a blaze - blazes are official trail marking', () => {
+    // The maintainer, 2026-11-04: "blazes are official, lets not mess with
+    // them". The ATC's own item text may still say "white blaze" (it means
+    // the paint); these are OurHike's words, and none of them may.
+    for (const word of Object.values(CHALLENGE_WORDS)) {
+      expect(word).not.toMatch(/blaze/i)
+    }
   })
 
   it('never names the paint or a leaderboard in any of its words', () => {

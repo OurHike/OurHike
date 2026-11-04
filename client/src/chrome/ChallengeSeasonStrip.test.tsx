@@ -27,7 +27,7 @@ function earned(...ids: string[]) {
 }
 
 describe('the season strip at the bottom of Today (#1964)', () => {
-  it('says how many blazes, where, and the club’s finish line in the club’s words', async () => {
+  it('says how much trail karma, where, and the club’s finish line in the club’s words', async () => {
     const onOpen = vi.fn()
     const { container } = render(
       <ChallengeSeasonStrip
@@ -38,7 +38,7 @@ describe('the season strip at the bottom of Today (#1964)', () => {
       />,
     )
     expect(screen.getByText('Your summer on the A.T.')).toBeInTheDocument()
-    expect(container.querySelector('.season__count')).toHaveTextContent('3 blazes')
+    expect(container.querySelector('.season__count')).toHaveTextContent('3 trail karma')
     expect(container.querySelector('.season__where')).toHaveTextContent(
       'GA · VA · 1 at home',
     )
@@ -69,7 +69,7 @@ describe('the season strip at the bottom of Today (#1964)', () => {
     expect(text.match(/\d+/g)).toEqual(['1', '5'])
   })
 
-  it('shows 0 blazes on the day of joining, as a sentence rather than a gap', () => {
+  it('shows 0 trail karma on the day of joining, as a sentence rather than a gap', () => {
     const { container } = render(
       <ChallengeSeasonStrip
         challenge={ATC_CHALLENGE}
@@ -78,7 +78,7 @@ describe('the season strip at the bottom of Today (#1964)', () => {
         onOpen={vi.fn()}
       />,
     )
-    expect(container.querySelector('.season__count')).toHaveTextContent('0 blazes')
+    expect(container.querySelector('.season__count')).toHaveTextContent('0 trail karma')
     expect(container.querySelector('.season__where')).toBeNull()
   })
 })

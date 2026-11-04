@@ -1,6 +1,6 @@
 // What the season strip at the bottom of Today says (#1964, features/
 // CHALLENGES_BLAZE_CARD.md slice 4; the frame is features/design/blaze-card/
-// Home.dc.html): how many blazes, which states they landed in, how many at
+// Home.dc.html): how much trail karma, which states it landed in, how many at
 // home, and the club's finish line in the club's words. Never a numeral for
 // what is missing (features/VOLUNTEERING.md §5 rule 2).
 //
@@ -48,15 +48,15 @@ export function stateAtMile(mile: number): TrailStateCode | null {
 
 export interface SeasonSummary {
   earned: number
-  /** States a blaze landed in, south to north, each once. */
+  /** States an earned item landed in, south to north, each once. */
   states: TrailStateCode[]
-  /** Blazes earned with no place on the trail: at home, in town, or an
+  /** Items earned with no place on the trail: at home, in town, or an
    *  at-home item the hiker did not place. */
   atHome: number
 }
 
 /**
- * Where this hiker's blazes landed: a named place's own mile, else what the
+ * Where this hiker's earned items landed: a named place's own mile, else what the
  * hiker said when asked (lib/wherePlace.ts), else "at home". A `gps` tag on
  * "any shelter" carries the shelter's place in `poi`, read the same way.
  */

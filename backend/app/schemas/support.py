@@ -20,7 +20,17 @@ class SupportChoiceIn(BaseModel):
     """A paid choice. The email is not a field: it is the verified address on
     the caller's token (core/auth.py's `get_current_email`), never one typed
     into a form, so a hiker cannot point somebody else's payment at their own
-    account."""
+    account.
+
+    `extra="forbid"`, as `SupportMailIn` below has: a field this model does
+    not declare is a 422 rather than silently dropped, so a request that
+    believes it can steer something the server decides - an `email`, a
+    `provider` - learns it cannot (the 2026-11-04 security review).
+    client/src/lib/supportApi.ts's `SupportChoiceRequest` sends exactly the
+    four fields below, and no retained OpenAPI baseline has this model, so
+    no released client sends anything else."""
+
+    model_config = ConfigDict(extra="forbid")
 
     amount_cents: PaidTier
     accounting_email: bool = False

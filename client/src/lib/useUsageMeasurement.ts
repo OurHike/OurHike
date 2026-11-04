@@ -153,9 +153,12 @@ export interface UsageMeasurement {
    * send nothing outside the hook can see finish: a test asserting that
    * nothing was recorded or sent waits on this. A real-clock sleep in its
    * place passed on a broken hook exactly as readily as on a correct one
-   * (the seven in useUsageMeasurement.test.tsx before this existed).
+   * (the seven in useUsageMeasurement.test.tsx before this existed). Named
+   * with the `ForTests` suffix client/src gives test-only API
+   * (`resetHeldCellsForTests` and the rest), so "App never calls it" is one
+   * grep.
    */
-  idle: () => Promise<void>
+  idleForTests: () => Promise<void>
 }
 
 function extentOf(source: PlanSource): PlanExtent {
@@ -224,8 +227,8 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     latest.current = input
   })
 
-  // Every piece of work this hook starts, held until it settles, so `idle`
-  // below can say when none is left. `track` returns the same promise, so a
+  // Every piece of work this hook starts, held until it settles, so
+  // `idleForTests` below can say when none is left. `track` returns the same promise, so a
   // caller that awaits or ignores it is unchanged.
   const pending = useRef(new Set<Promise<unknown>>())
   const track = useCallback(<T>(work: Promise<T>): Promise<T> => {
@@ -237,7 +240,7 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     work.then(done, done)
     return work
   }, [])
-  const idle = useCallback(async (): Promise<void> => {
+  const idleForTests = useCallback(async (): Promise<void> => {
     while (pending.current.size > 0) await Promise.allSettled([...pending.current])
   }, [])
 
@@ -581,7 +584,7 @@ export function useUsageMeasurement(input: UsageMeasurementInput): UsageMeasurem
     return {
       planMade: (source: PlanSource) => plan('hike_plan_made', source),
       planCompleted: (source: PlanSource) => plan('hike_plan_completed', source),
-      idle,
+      idleForTests,
     }
-  }, [record, idle])
+  }, [record, idleForTests])
 }

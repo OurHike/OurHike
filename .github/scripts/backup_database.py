@@ -73,15 +73,17 @@ and the tracking issue opens: loud rather than wrong. The first configured run
 settles it.
 
 WHAT CROSSES THE POOLER. Each night's dump is egress through Supavisor, which
-Supabase Free meters (FREE_EGRESS_QUOTA_BYTES). `dump` logs each archive's
+Supabase Free meters (FREE_EGRESS_QUOTA_BYTES). `dump` measures each archive's
 bytes on disk and uncompressed - the SQL text pg_restore writes from it - and
-hands the workflow the uncompressed total as `egress_bytes`, with a warning
-for the tracking issue when thirty nights like it would pass EGRESS_WARN_SHARE
-of the quota. Uncompressed, because pg_dump compresses the table data into the
-archive on the runner, after the rows crossed the pooler as uncompressed COPY
-text. The SQL text under-counts the egress too, by pg_dump's catalog queries
-and the protocol's framing: reasoned, not measured - nobody has set this figure
-beside Supabase's Shared Pooler Egress for the same night.
+hands the workflow the exact totals as the step outputs `archive_bytes` and
+`egress_bytes`, with a warning for the tracking issue when thirty nights like
+it would pass EGRESS_WARN_SHARE of the quota. The log gets only the two
+archives' combined size on disk in whole megabytes (the next paragraph says
+why). Uncompressed, because pg_dump compresses the table data into the archive
+on the runner, after the rows crossed the pooler as uncompressed COPY text. The
+SQL text under-counts the egress too, by pg_dump's catalog queries and the
+protocol's framing: reasoned, not measured - nobody has set this figure beside
+Supabase's Shared Pooler Egress for the same night.
 
 THE LOG NAMES TABLES, NEVER A COUNT. Actions logs on this repository are
 public, and a production table's row count is its size - how many hikers,
@@ -92,11 +94,19 @@ never a figure. So `verify` logs each table and whether it came back
 short, more, missing), and `dump` says how many tables it dumped and nothing
 about rows. The counts travel where they are needed: LIVE_ROWS and
 RESTORED_ROWS inside the sealed file, readable with the maintainer's key.
-An archive's bytes are still logged - a size is not a row count, and the
-egress warning is made from it. Until 2026-11-04 the log carried every
-table's dumped and restored count and their total (the release review's
-finding 5); test_backup_database.py now runs a good night and a bad one and
-fails on a count in either.
+Nor does the log carry an archive's exact size: `auth.dump` holds only
+`auth.users` and `auth.identities`, so its bytes are a fixed block of DDL plus
+a fixed amount per account, and dumping an empty and a one-account project of
+one's own gives both, so the account count follows (the security review of
+a87898ff, 2026-11-04 - reasoned from the code, not measured). So `dump` logs
+one line, both archives together on disk rounded to megabytes ("under 1 MB"
+below one), and `_output` writes the exact `archive_bytes`, `egress_bytes` and
+`egress_warning` only to $GITHUB_OUTPUT, printing them only on a run by hand
+where that is unset. The uncovered-schema refusal says whether the catalog has
+the table holding rows, never `reltuples` or its bytes on disk, which grow with
+its rows. Until 2026-11-04 the log carried every table's dumped and restored
+count and their total (the release review's finding 5); test_backup_database.py
+now runs a good night and a bad one and fails on a count in either.
 
 SECRETS STAY OUT OF ARGV. The connection string is split into libpq's own
 environment variables (PGHOST, PGPASSWORD...) for each tool, and a Docker-run
@@ -204,7 +214,10 @@ FREE_EGRESS_QUOTA_BYTES = 5 * 10**9
 #: the API, the hourly conditions bake and sign-in draw on too - picked, not
 #: measured. What would settle it: a month of the production project's Usage
 #: page, whose Shared Pooler Egress line is everything else plus these dumps,
-#: set beside the `egress_bytes` this job logs each night.
+#: set beside each night's `egress_bytes`. That is a step output and never in
+#: the public log (the module docstring), so it is read back from the sealed
+#: file: `pg_restore --file=- ARCHIVE | wc -c` for each archive, summed, is
+#: the figure `archive_bytes()` computes.
 EGRESS_WARN_SHARE = 0.5
 NIGHTS_A_MONTH = 30
 
@@ -225,17 +238,17 @@ order by 1
 """
 
 #: Tables outside `public` that may hold rows, in schemas that are not
-#: Supabase's own: what `dump` refuses over. "May hold rows" is read from the
-#: catalog, because the backup role has no grant on a schema nobody told it
-#: about and so cannot count one: `reltuples` above 0, or any page on disk
-#: (`pg_relation_size`), which also catches a table never analyzed, whose
-#: `reltuples` is -1. Both are readable without any grant on the table -
-#: measured 2026-10-29 on postgres:17 (17.11), where a role with no grant on
-#: its schema read `reltuples` -1 and 24576 bytes for a 500-row table.
+#: Supabase's own: what `dump` refuses over, each with its `reltuples`. "May
+#: hold rows" is read from the catalog, because the backup role has no grant on
+#: a schema nobody told it about and so cannot count one: `reltuples` above 0,
+#: or any page on disk (`pg_relation_size`), which also catches a table never
+#: analyzed, whose `reltuples` is -1. Both are readable without any grant on
+#: the table - measured 2026-10-29 on postgres:17 (17.11), where a role with no
+#: grant on its schema read `reltuples` -1 and 24576 bytes for a 500-row table.
 #: A table emptied by DELETE keeps its pages until VACUUM, so it can stop a
 #: dump it need not: the safe direction to be wrong in.
 UNCOVERED_TABLES_SQL = f"""
-select n.nspname || '.' || c.relname, c.reltuples::bigint, pg_relation_size(c.oid)
+select n.nspname || '.' || c.relname, c.reltuples::bigint
 from pg_class c
 join pg_namespace n on n.oid = c.relnamespace
 where c.relkind = 'r'
@@ -535,26 +548,52 @@ def _write_counts(path: Path, counts: Mapping[str, int]) -> None:
     path.write_text("".join(f"{table}\t{count}\n" for table, count in sorted(counts.items())), encoding="utf-8")
 
 
-def compare(dumped: Mapping[str, int], restored: Mapping[str, int]) -> list[str]:
-    """Why this restore does not count as a backup, one line per reason. Empty when it does.
+def _direction(before: int, after: int | None) -> str:
+    """How a dumped table came back: missing, matched, empty, short or more.
 
-    Exact equality, because `dump` counted in the very snapshot it dumped: one
-    row short is a backup missing a row, not an estimate being off.
+    The one place a table is sorted into those, so `compare`'s refusal and
+    `report`'s log line cannot disagree about a table: each phrases this
+    result its own way, and a direction one of them has no words for is a
+    KeyError rather than a quiet mismatch. Exact equality, because `dump`
+    counted in the very snapshot it dumped: one row short is a backup missing
+    a row, not an estimate being off.
     """
+    if after is None:
+        return "missing"
+    if after == before:
+        return "matched"
+    if after == 0:
+        return "empty"
+    return "short" if after < before else "more"
+
+
+#: `compare`'s words for each direction but "matched", after the table's name.
+_PROBLEM = {
+    "missing": "is in the database and missing from the restore",
+    "empty": "came back empty: it held rows when it was dumped and the restore holds none",
+    "short": "came back short of the rows it held when it was dumped",
+    "more": "came back with more rows than it held when it was dumped",
+}
+
+#: `report`'s words for each direction, beside the table's name.
+_VERDICT = {
+    "missing": "MISSING from the restore",
+    "matched": "matched",
+    "empty": "EMPTY in the restore",
+    "short": "SHORT in the restore",
+    "more": "MORE ROWS in the restore than were dumped",
+}
+
+
+def compare(dumped: Mapping[str, int], restored: Mapping[str, int]) -> list[str]:
+    """Why this restore does not count as a backup, one line per reason (`_direction`). Empty when it does."""
     problems = []
     if not restored:
         problems.append("the restore holds no tables at all")
     for table, count in sorted(dumped.items()):
-        if table not in restored:
-            problems.append(f"{table} is in the database and missing from the restore")
-        elif restored[table] == count:
-            continue
-        elif restored[table] == 0:
-            problems.append(f"{table} came back empty: it held rows when it was dumped and the restore holds none")
-        elif restored[table] < count:
-            problems.append(f"{table} came back short of the rows it held when it was dumped")
-        else:
-            problems.append(f"{table} came back with more rows than it held when it was dumped")
+        direction = _direction(count, restored.get(table))
+        if direction != "matched":
+            problems.append(f"{table} {_PROBLEM[direction]}")
     return problems
 
 
@@ -563,18 +602,7 @@ def report(dumped: Mapping[str, int], restored: Mapping[str, int]) -> str:
     lines = [f"{'table':40} restore"]
     for table in sorted(set(dumped) | set(restored)):
         before, after = dumped.get(table), restored.get(table)
-        if before is None:
-            verdict = "not counted when it was dumped"
-        elif after is None:
-            verdict = "MISSING from the restore"
-        elif after == before:
-            verdict = "matched"
-        elif after == 0:
-            verdict = "EMPTY in the restore"
-        elif after < before:
-            verdict = "SHORT in the restore"
-        else:
-            verdict = "MORE ROWS in the restore than were dumped"
+        verdict = "not counted when it was dumped" if before is None else _VERDICT[_direction(before, after)]
         lines.append(f"{table:40} {verdict}")
     return "\n".join(lines)
 
@@ -588,9 +616,7 @@ def dump(workdir: Path, tools: Tools, source_env: Mapping[str, str]) -> dict[str
         if uncovered:
             raise Refused(
                 "these tables may hold rows in a schema the backup does not dump, so it would leave them out: "
-                + "; ".join(
-                    f"{label} ({_rows_by_catalog(int(rows))}, {int(size):,} bytes on disk)" for label, rows, size in uncovered
-                )
+                + "; ".join(f"{label} ({_rows_by_catalog(int(rows))})" for label, rows in uncovered)
                 + f". Dump the schema, or, if Supabase runs it, add it to SUPABASE_SCHEMAS in {Path(__file__).name}."
             )
         tables = held.query(DUMPED_TABLES_SQL)
@@ -717,13 +743,25 @@ def seal(workdir: Path, recipient: str, now: datetime.datetime) -> tuple[Path, s
     return sealed, f"postgres/{now:%Y/%m/%d}/{sealed.name}"
 
 
+def rounded_size(total: int) -> str:
+    """A size for the public log: whole megabytes, never the byte figure (the module docstring)."""
+    if total < 10**6:
+        return "under 1 MB"
+    return f"about {round(total / 10**6):,} MB"
+
+
 def _output(name: str, value: str) -> None:
-    """A step output for the workflow, and a line for anybody running this by hand."""
-    print(f"{name}={value}")
+    """A step output for the workflow, or, on a run by hand with no $GITHUB_OUTPUT, a line on stdout.
+
+    Never both: in Actions stdout is the public log, and `archive_bytes` and
+    `egress_bytes` are exact sizes it must not carry (the module docstring).
+    """
     github_output = os.environ.get("GITHUB_OUTPUT")
-    if github_output:
-        with open(github_output, "a", encoding="utf-8") as out:
-            out.write(f"{name}={value}\n")
+    if not github_output:
+        print(f"{name}={value}")
+        return
+    with open(github_output, "a", encoding="utf-8") as out:
+        out.write(f"{name}={value}\n")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -744,10 +782,13 @@ def main(argv: list[str] | None = None) -> int:
                 "inside the sealed file, never in this log."
             )
             sizes = archive_bytes(workdir, tools)
-            for name, (on_disk, uncompressed) in sizes.items():
-                print(f"{name}: {on_disk:,} bytes, {uncompressed:,} uncompressed")
+            on_disk = sum(size for size, _ in sizes.values())
             night = sum(uncompressed for _, uncompressed in sizes.values())
-            _output("archive_bytes", str(sum(on_disk for on_disk, _ in sizes.values())))
+            print(
+                f"The two archives come to {rounded_size(on_disk)} on disk; their exact sizes go to the workflow's "
+                "step outputs, never this log."
+            )
+            _output("archive_bytes", str(on_disk))
             _output("egress_bytes", str(night))
             _output("egress_warning", egress_warning(night))
         elif args.stage == "verify":

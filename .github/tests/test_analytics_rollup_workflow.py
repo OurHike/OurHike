@@ -47,6 +47,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from test_backup_database import _run_step
 from test_conditions_production_leg_needs_main import MAIN, OTHER_REFS, _evaluate, _expression
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -140,18 +141,6 @@ def _condition(text: str) -> str:
     return _expression(text) if text.startswith("${{") else text
 
 
-def _run_step(step: dict, env: dict[str, str], tmp_path: Path) -> subprocess.CompletedProcess:
-    """A step's `run` script under bash as GitHub runs it: `bash -e`, no profile, no rc file."""
-    script = tmp_path / "step.sh"
-    script.write_text(step["run"], encoding="utf-8")
-    return subprocess.run(
-        ["bash", "--noprofile", "--norc", "-e", str(script)],
-        env={"PATH": os.environ["PATH"], **env},
-        capture_output=True,
-        text=True,
-    )
-
-
 def test_the_production_job_is_left_out_of_a_run_from_any_ref_but_main_and_the_ua_job_is_not(workflow):
     """Lock 1, evaluated. `refs/heads/Main` passes it, because GitHub's `==`
     ignores case; that ref is lock 2's case below. The UA job carries no lock:
@@ -197,9 +186,9 @@ AFTER_THE_GUARD = ("steps.can.outputs.go == 'true'", "steps.install.outcome == '
 
 def test_no_production_step_that_reads_a_secret_runs_after_a_refused_ref(workflow):
     """A failed first step skips every later step unless that step's `if:`
-    names always(), failure() or cancelled(). The archive, the rollup and the
-    checks do (the header says why), so each must also ask for something a
-    refused run cannot give it."""
+    names always(), failure() or cancelled(). The rollup and the checks do
+    (the header says why), so each must also ask for something a refused run
+    cannot give it."""
     steps = workflow["jobs"]["production"]["steps"]
     sensitive = [step for step in steps[1:] if "secrets." in json.dumps(step)]
     assert sensitive, "no production step reads a secret, so this test checks nothing"

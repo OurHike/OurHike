@@ -17,12 +17,12 @@ import { type UsageMeasurementInput, useUsageMeasurement } from './useUsageMeasu
 // should not: a restored session is not a sign-in, an old install is not a
 // new one, and nothing at all is kept while "Share usage statistics" is off.
 //
-// EVERY "NOTHING HAPPENED" WAITS ON `idle()`, the hook's own promise that
+// EVERY "NOTHING HAPPENED" WAITS ON `idleForTests()`, the hook's own promise that
 // every record, write and send it started has finished (TESTING.md: wait on
 // an observable that proves the sequence completed, never on a sleep). Seven
 // of these used to sleep 20 ms of real time and then assert absence, the
 // shape that passes on a broken hook exactly as readily as on a correct one;
-// `idle()` after the action is red on the broken hook, because the write it
+// `idleForTests()` after the action is red on the broken hook, because the write it
 // wrongly started is waited for.
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), update: vi.fn() }))
@@ -116,7 +116,7 @@ describe('while sharing is off', () => {
 
     result.current.planMade({ miles: 5 })
 
-    await result.current.idle()
+    await result.current.idleForTests()
     expect(await events()).toEqual([])
   })
 
@@ -158,7 +158,7 @@ describe('sign-in', () => {
 
     // The launch's own install and visit writes are done: so is the sign-in
     // effect, which ran in the same mount and started no write.
-    await result.current.idle()
+    await result.current.idleForTests()
     expect(await events()).not.toContain('user_login')
     expect(onSignIn).not.toHaveBeenCalled()
   })
@@ -257,7 +257,7 @@ describe('a $0 support answer', () => {
 
     writeZeroChoice(new Date())
 
-    await result.current.idle()
+    await result.current.idleForTests()
     expect(await events()).toEqual([])
   })
 })
@@ -328,7 +328,7 @@ describe('plans', () => {
     stored = { ...(stored as UsageStore), rows: [], off: true }
     result.current.planMade({ miles: 4 })
 
-    await result.current.idle()
+    await result.current.idleForTests()
     expect(await events()).toEqual([])
   })
 
@@ -399,7 +399,7 @@ describe('sending', () => {
     )
     result.current.planMade({ miles: 3 })
     await waitFor(async () => expect(await events()).toContain('hike_plan_made'))
-    await result.current.idle()
+    await result.current.idleForTests()
     expect(apiFetch).not.toHaveBeenCalled()
 
     rerender(
@@ -434,7 +434,7 @@ describe('sending linked rows', () => {
 
     rerender(input({ ...alice, online: true }))
     // The flush the signal started has run to its end, which is the hold.
-    await result.current.idle()
+    await result.current.idleForTests()
 
     expect(apiFetch).not.toHaveBeenCalled()
     expect(await events()).toContain('hike_plan_made')
@@ -487,7 +487,10 @@ describe('visits', () => {
     const first = renderHook(() => useUsageMeasurement(input()))
     const second = renderHook(() => useUsageMeasurement(input()))
 
-    await Promise.all([first.result.current.idle(), second.result.current.idle()])
+    await Promise.all([
+      first.result.current.idleForTests(),
+      second.result.current.idleForTests(),
+    ])
     expect((stored as UsageStore).session?.startedAt).toBeGreaterThan(now - 1000)
     expect((await events()).filter((event) => event === 'session')).toHaveLength(1)
   })

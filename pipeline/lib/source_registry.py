@@ -236,7 +236,9 @@ KNOWN_KINDS = frozenset(
 # files come from the Python exporters until that cutover
 # (publish-vector-data.yml; dbt's monthly lane publishes to UA only - the
 # hourly leg is a different switch, and publish-conditions.yml's
-# PRODUCTION_PHONE_FILES has said `dbt` since #1880, 2026-10-23), and none
+# PRODUCTION_PHONE_FILES has said `dbt` since 2026-10-23: #1880 - Production
+# still builds its notices, closures and hazard areas with the exporters, so
+# 78 organizations' notices reach UA only), and none
 # of them reads
 # CLUB_ARCGIS_LAYER or the five kinds registered after it for
 # pipeline/extract/ alone, nor a podcast feed or a club PDF: those reach a

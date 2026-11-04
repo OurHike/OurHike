@@ -122,15 +122,20 @@ def test_the_revision_chain_has_one_head():
     **#1950 — Re-point clubs.maintainer_written's migration onto the usage
     archive's, so main has one Alembic head again** landed at 21:05 (times
     -05:00, `git log --first-parent main`; the issue was #1945 — main has two
-    Alembic heads since #1927 merged after #1936). migrate.yml's UA run on
-    that push would have failed at `upgrade head`.
+    Alembic heads since #1927 merged after #1936, so migrate.yml cannot give
+    UA clubs.maintainer_written). migrate.yml's UA run on that push would have
+    failed at `upgrade head`.
 
-    This can only go red on `main`'s own post-merge run, never on a branch:
-    each branch holds one head until the merge puts the other beside it, and
-    nothing on a branch sees the other branch. That is still the earliest
-    anything can see it - backend-tests.yml runs on every push to main,
-    migrate.yml only on one touching alembic/versions - and it names the two
-    heads where Alembic says only "Multiple head revisions are present".
+    This goes red on the first run that sees both heads: `main`'s post-merge
+    run, or a pull request's or merge-queue entry's run that starts after the
+    other head has landed. backend-tests.yml runs on `pull_request`, whose
+    checkout is the branch merged into `main` as `main` stood when the run
+    started, and on `merge_group`. On 2026-11-02 neither pull request's run
+    could: each one's last Backend tests run started on 2026-10-29, days
+    before either merged (the Actions API, read 2026-11-04), so `main`'s run
+    was the first. migrate.yml runs only on a push touching alembic/versions,
+    and this test names the two heads where Alembic says only "Multiple head
+    revisions are present".
     Checked to have teeth with a throwaway revision beside the head
     (2026-11-04: red with it, green without). Needs no database: the heads
     are read from the files in alembic/versions.
@@ -139,7 +144,9 @@ def test_the_revision_chain_has_one_head():
 
     assert len(heads) == 1, (
         f"alembic/versions declares {len(heads)} heads, {sorted(heads)}: two branches revised the same parent, "
-        "and `alembic upgrade head` refuses to choose. Re-point the newer one onto the other, as #1950 did."
+        "and `alembic upgrade head` refuses to choose. Re-point the newer one onto the other, as "
+        "#1950 — Re-point clubs.maintainer_written's migration onto the usage archive's, so main has one Alembic head "
+        "again - did."
     )
 
 

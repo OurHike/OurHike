@@ -165,8 +165,10 @@ const NOT_CHOSEN = {
 const ASK = { name: 'Choose what you give' }
 
 /** The gate is up: it has read the stored session for itself, the second
- *  read this launch after lib/useAuth.ts's. Before the fourth #1885 review's
- *  fix it had decided by now, as a signed-out hiker. A count, not a signal:
+ *  read this launch after lib/useAuth.ts's. Before the fix from the fourth
+ *  review of #1885 - Ask every hiker to choose what they give after day five,
+ *  $0 included, and pay only on the website - it had decided by now, as a
+ *  signed-out hiker. A count, not a signal:
  *  a third launch-time caller of currentAccount in App.tsx would make this
  *  resolve before the gate has read, and the slow-restore tests below would
  *  then release the restore too early and pass without proving anything -

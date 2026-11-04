@@ -74,7 +74,7 @@ import {
   ChallengeCampCard,
   PlanChallenges,
   ChallengeDetail,
-  ChallengeSeasonStrip,
+  ChallengeSeasonStrips,
   Challenges,
   ClosureForm,
   Downloads,
@@ -9102,22 +9102,19 @@ function App() {
   ) : null
 
   // The season strip(s) at the bottom of Today (#1964): one per joined
-  // challenge with a finish line, last in every mode. Deferred with the card
-  // behind it (screens/deferred.ts), so Today's first frame does not carry it.
-  const challengeSeasonNode =
-    challenges.joined.filter((challenge) => challenge.finish !== null).length === 0
-      ? null
-      : challenges.joined
-          .filter((challenge) => challenge.finish !== null)
-          .map((challenge) => (
-            <ChallengeSeasonStrip
-              key={challenge.id}
-              challenge={challenge}
-              state={challenges.state}
-              today={challengeToday}
-              onOpen={() => openChallenge(challenge.id)}
-            />
-          ))
+  // challenge with a finish line, last in every mode. Deferred, loop and
+  // all (chrome/ChallengeSeasonStrip.tsx), so Today's first frame carries
+  // one check and one element.
+  const challengeSeasonNode = challenges.joined.some(
+    (challenge) => challenge.finish !== null,
+  ) ? (
+    <ChallengeSeasonStrips
+      joined={challenges.joined}
+      state={challenges.state}
+      today={challengeToday}
+      onOpen={openChallenge}
+    />
+  ) : null
 
   // Plan's card (frames 6 and 6b): the joined challenges' places on this
   // route by day, or - when none touches it - the one best suggestion. The

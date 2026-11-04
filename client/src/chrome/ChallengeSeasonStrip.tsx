@@ -74,3 +74,33 @@ export function ChallengeSeasonStrip({
     </section>
   )
 }
+
+/**
+ * One strip per joined challenge with a finish line, in the order joined -
+ * what the shell hands Today. The loop lives here, in the deferred chunk,
+ * rather than in App.tsx, because the launch budget is measured in bytes and
+ * App.tsx is in every first frame (features/LAUNCH_BUDGET.md).
+ */
+export function ChallengeSeasonStrips({
+  joined,
+  state,
+  today,
+  onOpen,
+}: {
+  joined: readonly Challenge[]
+  state: ChallengeState
+  today: string
+  onOpen: (challengeId: string) => void
+}) {
+  return joined
+    .filter((challenge) => challenge.finish !== null)
+    .map((challenge) => (
+      <ChallengeSeasonStrip
+        key={challenge.id}
+        challenge={challenge}
+        state={state}
+        today={today}
+        onOpen={() => onOpen(challenge.id)}
+      />
+    ))
+}

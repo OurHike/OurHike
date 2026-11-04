@@ -55,12 +55,14 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 from shapely.geometry import mapping
 
 from export_basemap import GEOFABRIK_BASE, osmium_merge_cmd, planetiler_cmd
+from lib.planetiler_sources import SOURCES_DIR, SourceUnavailable, ensure_sources
 from lib.poly import from_poly, to_poly
 
 ROOT = Path(__file__).parent
@@ -239,34 +241,29 @@ def seam_between(shapes: list) -> object:
 # what expired on the water polygons, which an earlier version of this
 # comment said: "Error getting size of ... TimeoutException" is a fixed
 # 10-second wait for each queued source's size (Planetiler v0.10.2's
-# Downloader.java, line 177) that no argument reaches (#1970). What
-# actually defends against that here is run_planetiler()'s outer retry
-# below, which reruns the whole invocation, and shard-seam-spike.yml's cache
-# of pipeline/data/sources, which leaves Planetiler nothing to queue.
+# Downloader.java, line 177) that no argument reaches (#1970). Neither did
+# run_planetiler()'s outer retry: PR #1978's run of this spike (2026-11-04)
+# failed that way on all three attempts. fetch_profile_sources() below is
+# what stops it, by putting the files in place before Planetiler starts.
 HTTP_TIMEOUT_SECONDS = 300
 
 
-def download_sources_cmd(jar: Path, osm_pbf: Path, tmp_dir: Path) -> list[str]:
-    """Fetch the profile's non-OSM sources and stop, without building.
+def fetch_profile_sources(ensure=ensure_sources, today=None) -> None:
+    """Put the profile's three non-OSM sources on disk before any timing.
 
-    A step of its own because those ~1.4 GB come from three third parties and
-    have now failed a run twice, in the middle of a measurement they have
-    nothing to do with. Pulling them first means the flaky part happens once,
-    before any timing starts, where CI can cache the result and where a
-    failure is unambiguously about the network rather than about sharding.
-
-    --only-download is Planetiler's own flag for this (`download source data
-    then exit`); the output path is required but never written."""
-    return [
-        "java",
-        "-jar",
-        str(jar),
-        f"--osm-path={osm_pbf}",
-        f"--tmpdir={tmp_dir}",
-        f"--http-timeout={HTTP_TIMEOUT_SECONDS}s",
-        "--only-download",
-        "--download",
-    ]
+    Before anything is measured because those ~1.4 GB come from three third
+    parties and failed runs of this spike in the middle of measurements they
+    had nothing to do with. Done by lib/planetiler_sources.py rather than by
+    Planetiler's own --only-download (#1970): with the files present and
+    every build pointed at them (run_build's sources_dir), Planetiler queues
+    nothing and so never waits on their hosts. A failure here is about the
+    network, not about sharding, and says which source."""
+    try:
+        outcomes = ensure(SOURCES_DIR, today=today or datetime.now(timezone.utc).date())
+    except SourceUnavailable as error:
+        raise SystemExit(f"Planetiler's profile sources are incomplete, so nothing was measured: {error}") from error
+    for outcome in outcomes:
+        print(f"  {outcome.name}: {outcome.action} - {outcome.detail}", flush=True)
 
 
 def run_planetiler(cmd: list[str], attempts: int = 3, sleep=time.sleep, run=subprocess.run) -> int:
@@ -281,7 +278,11 @@ def run_planetiler(cmd: list[str], attempts: int = 3, sleep=time.sleep, run=subp
 
     Retrying is cheap and safe: downloaded sources are cached under
     data/sources so a second attempt skips what already arrived, and --force
-    means a half-written output is overwritten rather than appended to."""
+    means a half-written output is overwritten rather than appended to.
+
+    It did not cure that error, which is a fixed 10-second wait it cannot
+    outlast (#1970). fetch_profile_sources() does, by leaving Planetiler no
+    source to queue; this retry stays for whatever else is transient."""
     for attempt in range(1, attempts + 1):
         try:
             run(cmd, check=True)
@@ -333,7 +334,15 @@ def run_build(name: str, work: Path, jar: Path, osm_pbf: Path, poly_path: Path |
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path, tmp_dir = out_dir / "build.pmtiles", out_dir / "tmp"
     cmd = planetiler_cmd(
-        jar, osm_pbf, out_path, max_zoom, poly_path, tmp_dir, layer_stats=True, http_timeout_seconds=HTTP_TIMEOUT_SECONDS
+        jar,
+        osm_pbf,
+        out_path,
+        max_zoom,
+        poly_path,
+        tmp_dir,
+        layer_stats=True,
+        http_timeout_seconds=HTTP_TIMEOUT_SECONDS,
+        sources_dir=SOURCES_DIR,
     )
     print(f"\n=== {name} ===\n  {' '.join(str(c) for c in cmd)}")
 
@@ -383,7 +392,7 @@ def run_determinism_probe(args: argparse.Namespace, raw: Path) -> None:
     pbf = fetch(f"{args.geofabrik_base}/{name}-latest.osm.pbf", raw / f"{name}.osm.pbf")
 
     print("\nDownloading Planetiler's profile sources (once, before any timing)...", flush=True)
-    run_planetiler(download_sources_cmd(args.planetiler_jar, pbf, args.work_dir / "download-tmp"))
+    fetch_profile_sources()
 
     for run in ("determinism-a", "determinism-b"):
         run_build(run, args.work_dir, args.planetiler_jar, pbf, None, args.max_zoom)
@@ -411,7 +420,7 @@ def run_disk_probe(args: argparse.Namespace, raw: Path) -> None:
     pbfs = [fetch(f"{args.geofabrik_base}/{name}-latest.osm.pbf", raw / f"{name}.osm.pbf") for name in args.states]
 
     print("\nDownloading Planetiler's profile sources (once, before any timing)...", flush=True)
-    run_planetiler(download_sources_cmd(args.planetiler_jar, pbfs[0], args.work_dir / "download-tmp"))
+    fetch_profile_sources()
 
     results = [
         run_build(f"disk-{name}", args.work_dir, args.planetiler_jar, pbf, None, args.max_zoom)
@@ -485,7 +494,7 @@ def main(args: argparse.Namespace) -> None:
 
     # Before anything is timed: get the third-party sources on disk once.
     print("\nDownloading Planetiler's profile sources (once, before any timing)...", flush=True)
-    run_planetiler(download_sources_cmd(args.planetiler_jar, merged, work / "download-tmp"))
+    fetch_profile_sources()
 
     results = [run_build("control", work, args.planetiler_jar, merged, union_poly, args.max_zoom)]
     for state, poly in zip(args.states, shard_polys):

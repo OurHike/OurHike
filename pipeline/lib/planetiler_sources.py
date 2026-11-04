@@ -62,6 +62,19 @@ MANIFEST_NAME = "planetiler_sources.json"
 #: rule for all three is simpler than a rule per source and costs 80M.
 MAX_AGE_DAYS = 30
 
+#: @unvalidated - picked. requests' connect and per-read timeout for each
+#: attempt; download_with_retry's own 600 s default would let a host that
+#: never answers hold a run for about half an hour across its three
+#: attempts, which is worse than the 12 to 19 minutes this exists to cut.
+#: 120 s is four times Planetiler's own 30 s request timeout, which all
+#: three hosts met in run 55, and twelve times the 10 s size wait that
+#: osmdata.openstreetmap.de missed. It bounds a silent host at about 6.5 minutes:
+#: three 120 s attempts plus the 5 s and 30 s backoffs. What would settle
+#: it: how long osmdata.openstreetmap.de takes to answer on a bad day, which
+#: nobody has measured past "more than 10 s" (runs 57 and 58, and PR #1978's
+#: spike run on 2026-11-04).
+SOURCE_TIMEOUT_SECONDS = 120
+
 
 @dataclass(frozen=True)
 class Source:
@@ -179,7 +192,7 @@ def ensure_sources(
 
         incoming = path.with_name(path.name + ".incoming")
         try:
-            download(source.url, incoming, label=source.name)
+            download(source.url, incoming, label=source.name, timeout=SOURCE_TIMEOUT_SECONDS)
             if not zipfile.is_zipfile(incoming):
                 raise ValueError(f"{source.url} did not answer with a zip archive")
             incoming.replace(path)

@@ -28,7 +28,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_email, get_current_user, get_current_user_optional
-from app.core.org_access import OrgAccess, club_by_slug, org_access, require_org_admin, resolve_access
+from app.core.org_access import (
+    NO_SUCH_ORGANIZATION,
+    OrgAccess,
+    club_by_slug,
+    club_for_a_public_read,
+    org_access,
+    require_org_admin,
+    resolve_access,
+)
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
 from app.core.trail_challenge import PUBLISHER_DOMAINS
@@ -49,6 +57,7 @@ from app.schemas.org import (
     OrgOut,
     OrgSettingsUpdate,
     ScoreboardOut,
+    address_is_at_domain,
     why_domain_proves_nothing,
 )
 
@@ -118,12 +127,6 @@ def _as_viewer_reads_it(club: Club, admins: list[OrgAdmin], viewer: Profile | No
     return out
 
 
-def _domain_of(email: str | None) -> str | None:
-    if not email or "@" not in email:
-        return None
-    return email.rsplit("@", 1)[1].strip().lower()
-
-
 def _revoke_the_registrants_unverified_seat(db: Session, club: Club, *, verified_by: str) -> None:
     """The other half of releasing a held registration - #1641 finding 3's
     third bullet.
@@ -190,14 +193,11 @@ def _somebody_holds_the_domain(domain: str, addresses: list[str | None]) -> bool
     form, because the form is a screen and this is the actual gate. A
     subdomain counts (`trails.ramapotrails.org`), because organizations
     really do run mail that way and refusing it would fail a legitimate
-    registration with a message nobody could act on.
+    registration with a message nobody could act on. The rule, and the
+    normalising of both sides, is `address_is_at_domain` in
+    schemas/org.py, which routers/nominations.py asks too.
     """
-    domain = domain.strip().lower()
-    for address in addresses:
-        candidate = _domain_of(address)
-        if candidate and (candidate == domain or candidate.endswith("." + domain)):
-            return True
-    return False
+    return any(address_is_at_domain(address, domain) for address in addresses)
 
 
 @router.get("", response_model=list[OrgOut])
@@ -226,15 +226,24 @@ def read_org(
     slug: str,
     db: Session = Depends(get_db),
     viewer: Profile | None = Depends(get_current_user_optional),
+    email: str | None = Depends(get_current_email),
 ) -> OrgOut:
     """One organization. Public: what an org publishes about itself is public
     by construction - that is what registering is. The roster, the hours and
-    the unpublished registry are other resources with their own gates."""
-    return _with_admins(db, club_by_slug(db, slug), viewer)
+    the unpublished registry are other resources with their own gates.
+
+    A held (`pending`) registration has published nothing, so it is a 404
+    here to all but the readers `club_for_a_public_read` names."""
+    return _with_admins(db, club_for_a_public_read(db, slug, viewer, email), viewer)
 
 
 @router.get("/{slug}/scoreboard", response_model=ScoreboardOut)
-def read_scoreboard(slug: str, db: Session = Depends(get_db)) -> ScoreboardOut:
+def read_scoreboard(
+    slug: str,
+    db: Session = Depends(get_db),
+    viewer: Profile | None = Depends(get_current_user_optional),
+    email: str | None = Depends(get_current_email),
+) -> ScoreboardOut:
     """Miles maintained, active volunteers, hours this season. Public.
 
     The design's coverage badge (embed 3), whose own caption says where each
@@ -277,8 +286,14 @@ def read_scoreboard(slug: str, db: Session = Depends(get_db)) -> ScoreboardOut:
     beside the number so the window is stated rather than implied. What would
     settle it: asking the first organizations what they call a season, and a
     column on `clubs` if the answers differ.
+
+    **A HELD (`pending`) REGISTRATION HAS NO BADGE**: a 404, as `GET
+    /clubs/{slug}` answers it, to all but the readers
+    `club_for_a_public_read` names. The embed draws nothing on a 404
+    (`read` in site/public/embed/v1/ourhike.js hands it null), as it does
+    for a held org's workdays, whose `GET /workdays?org=` is a 404 too.
     """
-    club = club_by_slug(db, slug)
+    club = club_for_a_public_read(db, slug, viewer, email)
     season_started = dt.date(utc_now().date().year, 1, 1)
 
     miles = (
@@ -416,7 +431,9 @@ def register_org(
         db.rollback()
         # The unique index on `slug` is the only thing that can collide here,
         # and a slug is chosen by a person looking at a form - so it is named
-        # rather than surfaced as a 500.
+        # rather than surfaced as a 500. It says so for a held registration's
+        # slug too, so a stranger can still learn that slug is taken
+        # (`club_for_a_public_read` says why that stays).
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"The address /org/{payload.slug} is taken. Pick another.",
@@ -511,6 +528,17 @@ def _an_admin_offered_it(db: Session, club: Club, seat: OrgAdmin) -> bool:
     )
 
 
+def _no_such_seat(club: Club) -> HTTPException:
+    """The 404 for a seat id that matches nothing at `club`.
+
+    At a held (`pending`) registration it is the 404 a slug nobody
+    registered gets, so a guessed seat id does not tell a stranger the slug
+    is held (`club_for_a_public_read`).
+    """
+    detail = NO_SUCH_ORGANIZATION if club.state == OrgState.pending else "No such admin seat"
+    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+
 @router.post("/{slug}/admins/{admin_id}/approve", response_model=OrgOut)
 def approve_seat(
     slug: str,
@@ -528,7 +556,7 @@ def approve_seat(
     club = club_by_slug(db, slug)
     seat = db.query(OrgAdmin).filter(OrgAdmin.id == admin_id, OrgAdmin.club_id == club.id).one_or_none()
     if seat is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such admin seat")
+        raise _no_such_seat(club)
     if seat.person_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -617,7 +645,7 @@ def decline_seat(
     club = club_by_slug(db, slug)
     seat = db.query(OrgAdmin).filter(OrgAdmin.id == admin_id, OrgAdmin.club_id == club.id).one_or_none()
     if seat is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such admin seat")
+        raise _no_such_seat(club)
     if seat.person_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -655,6 +683,18 @@ def claim_org(
     whoever was patient.
     """
     club = club_by_slug(db, slug)
+
+    # A HELD REGISTRATION IS A 404 TO ANYBODY WHO CANNOT CLAIM IT, as it is
+    # to a stranger reading it (`club_for_a_public_read`). Further down, the
+    # 409 for a domain that proves nothing and the 403 for a caller with no
+    # address at it each name the stored domain, so either told any
+    # signed-in account the domain `GET /clubs/{slug}` hides (the 2026-11-04
+    # security review). A caller with a verified address at a domain that
+    # proves something goes on as before.
+    if club.state == OrgState.pending and (
+        not club.domain or why_domain_proves_nothing(club.domain) or not _somebody_holds_the_domain(club.domain, [email])
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_SUCH_ORGANIZATION)
 
     if club.state == OrgState.frozen:
         raise HTTPException(

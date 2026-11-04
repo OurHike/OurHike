@@ -77,6 +77,9 @@ settings:
       the cutover), check-conditions.yml, the hourly checks, which take each leg's warehouse from its history
       store there and save Elementary's history back, and
       purge-person-fields.yml, the person-fields purge, dispatched by hand.
+      build-basemap.yml's fetch step reads it too, for the copy of
+      Planetiler's profile sources under planetiler_sources/, and warns
+      rather than stops without it (lib/planetiler_sources.py).
       REQUIRED: FALSE until the
       maintainer has minted the key and stored the three R2_RAW_* secrets
       (ELT.md, "Secrets and buckets: a maintainer action"), so
@@ -87,8 +90,8 @@ settings:
     where: secret
     required: false
     why: >-
-      Half of the one read-and-write key to the raw store's bucket. Held by the extract, pin, build, parity and purge jobs, never
-      beside the public bucket's keys. The cost the maintainer accepted with
+      Half of the one read-and-write key to the raw store's bucket. Held by the extract, pin, build, parity and purge jobs,
+      and by build-basemap.yml's one fetch step, never beside the public bucket's keys. The cost the maintainer accepted with
       it: an R2 key covers a whole bucket, so a job that only needs to read
       raw could overwrite it. Required: false for R2_RAW_BUCKET's reason.
 

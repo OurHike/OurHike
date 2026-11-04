@@ -122,8 +122,27 @@ models:
           else `<source>:<GlobalID>` for a feature the ledger does not carry,
           as build_water_distance.py's poi_id_for() resolves it (#1729).
           int_points_of_interest__water joins on it, so it survives an ATC
-          re-key the ledger has carried, where a bare GlobalID would not.
-        data_tests: [not_null, unique]
+          re-key the ledger has carried, where a bare GlobalID would not -
+          and a poi_id the ledger has retired, or never minted, joins
+          nothing there and drops the site's distance without a word.
+          tests/singular/assert_every_water_distance_in_the_file_lands_on_one_live_poi.sql
+          holds every row with a distance to the POI it reaches, at error.
+        data_tests:
+          - not_null
+          - unique
+          # Every row, distance or not, names a LIVE ledger row: the file is
+          # rebuilt after the ledger is reconciled (build_water_distance.py's
+          # docstring), so a retired id is a file nobody regenerated and an
+          # unminted one a file regenerated too early. All 512 did on
+          # 2026-11-04. At the project's switch: an error in dev and CI, a
+          # warning in production and UA, where the singular test above is
+          # the error on the rows that carry a distance.
+          - dbt_utils.relationships_where:
+              name: base_atc__water_distance_every_poi_id_is_a_live_ledger_row
+              arguments:
+                to: ref('base_ourhike__poi_identity')
+                field: poi_id
+                to_condition: retired is null
       - name: distance_ft
         description: >
           CSI's distance to the nearest water, in feet, as

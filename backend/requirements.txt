@@ -45,6 +45,7 @@ httpx==0.28.1
     # via -r backend/requirements.in
 idna==3.18
     # via
+    #   -r backend/requirements.in
     #   anyio
     #   httpx
 jmespath==1.1.0

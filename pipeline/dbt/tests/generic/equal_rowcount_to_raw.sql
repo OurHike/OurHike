@@ -19,8 +19,14 @@
     skips the model below it). This replaced dbt_utils.equal_rowcount, which
     errors on a missing table and counts a difference with no threshold of its
     own.
+
+    `compare_keys`, for a layer that serves one feature as several rows
+    (make_dbt_staging.py's `part_fields`), counts the raw table's distinct
+    keys rather than its rows: its base model keeps one row per key on
+    purpose, so that is the count it must match, and a key lost beyond the
+    parts still counts as a copy dropped.
 -#}
-{% test equal_rowcount_to_raw(model, compare_model) %}
+{% test equal_rowcount_to_raw(model, compare_model, compare_keys=none) %}
 {{ config(fail_calc=dedupe_copies_level(), warn_if=">0", error_if=">1") }}
 {%- set can_look = execute is defined and execute -%}
 {%- set can_look = can_look and load_relation is defined -%}
@@ -28,7 +34,14 @@
 select 0 as raw_rows, 0 as model_rows
 {%- else %}
 select
+    {%- if compare_keys %}
+    (
+        select count(distinct {{ dbt_utils.generate_surrogate_key(compare_keys) }})
+        from {{ compare_model }}
+    ) as raw_rows,
+    {%- else %}
     (select count(*) from {{ compare_model }}) as raw_rows,
+    {%- endif %}
     (select count(*) from {{ model }}) as model_rows
 {%- endif %}
 {% endtest %}

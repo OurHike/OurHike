@@ -43,6 +43,12 @@ WHAT EACH sources.json ROW GIVES IT:
   and its shape (base_pcta__centerline's precedent: a key needs a column beside the registry key). A row with
   none of these, or whose key holds a server's row id (OBJECTID, FID: a reload mints them again), STOPS the
   run and is named, so no table is staged without a measured key.
+- `part_fields`: a layer that serves one feature as several rows, one per polygon part (BLM's national
+  monuments, #1947). Rows sharing the key are then that feature's parts, not copies: the base model gives the row
+  it keeps the union of their shapes, duplicates_are_exact holds every column but the shape and these fields equal
+  across the parts, and equal_rowcount_to_raw counts the raw table's distinct keys, so the dissolve still leaves
+  exactly one row per key. The fields are the ones that differ per part beside the shape. A key holding the shape
+  is refused, since each part would then be its own feature.
 - `date_fields`: the layer's esriFieldTypeDate fields, which land as epoch milliseconds (extract/_kinds.py's
   ESRI_TYPES, "the base model converts them") and are cast to timestamptz here, in UTC as ArcGIS stores them.
   A row without it has its dates, if it has any, left as the integers dlt landed.
@@ -620,6 +626,16 @@ class Table:
         return f"base_{self.folder}__{self.source_table.removeprefix(f'raw_{self.folder}__')}"
 
     @property
+    def parts(self) -> bool:
+        """Rows sharing the key are one feature's parts (`part_fields`), whose shapes the base model unions."""
+        return self.entry.get("part_fields") is not None
+
+    @property
+    def part_columns(self) -> list[str]:
+        """The landed columns that differ between one feature's parts, the shape aside (`part_fields`)."""
+        return [column(field) for field in self.entry.get("part_fields") or []]
+
+    @property
     def title(self) -> str:
         title = self.entry.get("title") or self.key
         return f"{title}: its taxonomy terms" if self.lookup else title
@@ -652,6 +668,8 @@ class Table:
             raise KeyRefused(f"{self.key}: no key_fields, id_fields or id_field on its sources.json row")
         if not fields:
             fields = ["geometry"]  # a one-row layer: the registry key and its shape
+        if self.parts and ("geometry" in fields or not self.shape.geometry):
+            raise KeyRefused(f"{self.key}: part_fields unions the parts sharing a key, so the key cannot hold the shape")
         inputs = [f"'{self.key}'"]
         for field in fields:
             if field == "geometry":
@@ -880,6 +898,15 @@ def base_sql(table: Table) -> str:
     ]
     if dates:
         head += ["--", _comment(f"Dates: {', '.join(dates)}, the layer's esriFieldTypeDate fields (sources.json `date_fields`).")]
+    if table.parts:
+        why = table.entry.get("part_fields_comment")
+        head += [
+            "--",
+            _comment(
+                "Parts: rows sharing the key are one feature's parts, and each carries the union of their shapes "
+                "(sources.json `part_fields`)." + (f" {registry_words(why)}" if why else "")
+            ),
+        ]
     # SQLFluff's LT05 holds every line to 80: a long exclude list or source() call breaks over lines, the
     # source() call after its first argument, where tests/test_dbt_keys.py's pattern still reads it.
     excluded = ["geometry", *dates]
@@ -902,6 +929,17 @@ def base_sql(table: Table) -> str:
     source = f"{{{{ raw_or_empty(\n        {relation},\n        {listed}\n    ) }}}}"
     casts = "".join(f",\n        to_timestamp({name} / 1000) as {name}" for name in dates)
     key_lines = "".join(f"\n            {_key_item(item)}," for item in inputs)
+    columns = "source.*"
+    if table.parts:
+        partition = ", ".join(f"source.{name}" for name in inputs[1:])
+        union = f"st_union_agg(source.geom) over (partition by {partition}) as geom"
+        if len(union) + 12 > 80:
+            union = f"st_union_agg(source.geom) over (\n                partition by {partition}\n            ) as geom"
+        columns = f"""source.* replace (
+            -- One feature's parts: the row the dedupe keeps is the whole
+            -- feature, the union of every part's shape.
+            {union}
+        )"""
     if table.shape.geometry:
         select_source = f"""    -- dlt lands geometry as GeoJSON text and an ArcGIS date as epoch
     -- milliseconds (extract/_kinds.py's ESRI_TYPES); both are cast here, as
@@ -928,7 +966,7 @@ renamed as (
     select
         {{{{ dbt_utils.generate_surrogate_key([{key_lines}
         ]) }}}} as {table.key_column},
-        source.*
+        {columns}
     from source
 )
 
@@ -980,11 +1018,16 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
                 else []
             ),
             "        data_tests:",
-            f"          # Rows sharing {table.base}'s key must be exact copies.",
+            (
+                "          # Rows sharing a key are one feature's parts, equal but for their shapes."
+                if table.parts
+                else f"          # Rows sharing {table.base}'s key must be exact copies."
+            ),
             "          - duplicates_are_exact:",
             "              arguments:",
             f"                key_columns: {_yaml_list(_raw_key_columns(table.key_inputs()))}",
             *([f"                row_id_columns: {_yaml_list(FILE_ROW_IDS)}"] if table.entry.get("kind") in FILE_KINDS else []),
+            *([f"                part_columns: {_yaml_list(['geometry', *table.part_columns])}"] if table.parts else []),
             "          # Elementary's checks (raw_table_checks()), each at warn and run after the writers.",
             *raw_table_checks_yaml(10),
             "        description: >",
@@ -1035,6 +1078,14 @@ def base_yaml(folder: str, folder_tables: list[Table]) -> str:
             "      - equal_rowcount_to_raw:",
             "          arguments:",
             f"            compare_model: source('{folder}', '{table.source_table}')",
+            *(
+                [
+                    "            # One row per raw key: the parts sharing a key are one row here.",
+                    f"            compare_keys: {_yaml_list(_raw_key_columns(table.key_inputs()))}",
+                ]
+                if table.parts
+                else []
+            ),
             "    description: >",
             _folded(
                 f"{table.title}, every row, keyed and deduped, the layer's own columns under dlt's "

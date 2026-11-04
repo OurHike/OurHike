@@ -231,7 +231,9 @@ jobs:
             echo "::error::The sealed file's SHA-256 is $sealed_sha and the copy read back from the bucket under $KEY hashes to $stored_sha."
             exit 1
           fi
-          echo "Stored $KEY, $(stat -c %s "$SEALED") bytes, encrypted, SHA-256 $stored_sha read back from the bucket."
+          # No size: the sealed file is both archives plus a fixed overhead,
+          # so its bytes would undo the dump step's rounding (backup_database.py).
+          echo "Stored $KEY, encrypted, SHA-256 $stored_sha read back from the bucket."
 
       # Every outcome of a run from main, and nothing from a refused ref: a
       # branch's run is not news about production's backup, and must not be

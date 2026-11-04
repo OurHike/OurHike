@@ -444,7 +444,19 @@ if (serviceWorker !== undefined) {
 // a kilobyte, find the bytes in unrelated code, or wait for #1591's relative
 // check, the maintainer chose the kilobyte - with 290 bytes of room the next
 // feature trips it too, which is the absolute line's known failure above.
-const EAGER_JS_BUDGET_BYTES = 241 * 1024
+//
+// 250 KB SINCE 2026-11-04, the maintainer's call by poll, to take React
+// 19.3.1, which is all eager: main measured 246,042 bytes by this walk and
+// 254,524 with React 19.3.1 and its types, 7,740 over 241 KB. Offered
+// instead: deferring Capacitor and the first-run entry card first (about
+// 6 KB compressed by features/LAUNCH_BUDGET.md section 4.4's ratio, an
+// estimate, likely short), or holding React at 19.2 until App.tsx's
+// planning hooks leave the closure, in the order #1746 - App.tsx is 11,743
+// lines, 92 useState and 209 imports, 2.7x its size when #327 closed; eight
+// panel hooks in this order would take about 5,200 lines out - sets
+// (LAUNCH_BUDGET.md section 4.4's table). 250 KB was the line until
+// 2026-09-30, and leaves 1,476 bytes of room over 254,524.
+const EAGER_JS_BUDGET_BYTES = 250 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 /**

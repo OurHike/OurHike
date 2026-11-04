@@ -54,6 +54,19 @@ export { YourSupportPage } from './YourSupport'
 // long a launch takes to reach the map on a slow phone with one bar.
 export const ASK_WINDOW_MS = 15_000
 
+/**
+ * This launch's answer, on `<html data-support-ask>`: "asked" when the
+ * window opens by itself, "not-asked" when this launch decided against it.
+ * Written once, when the decision is taken. A "no" draws nothing, and an
+ * absence is not something a test can wait on (TESTING.md's rule 2), so
+ * e2e/supportRooms.spec.ts's day-4 check waits on this instead of on the
+ * account's answer, which still leaves the gate an effect and two renders
+ * from deciding.
+ */
+function announce(answer: 'asked' | 'not-asked'): void {
+  document.documentElement.dataset.supportAsk = answer
+}
+
 export interface SupportGateProps {
   /** The signed-in account's email, or null when signed out. */
   accountEmail: string | null
@@ -181,11 +194,17 @@ export function SupportGate({
     }
     if (decided.current) return
     decided.current = true
-    if (touched.current || Date.now() - mountedAt > ASK_WINDOW_MS) return
+    if (touched.current || Date.now() - mountedAt > ASK_WINDOW_MS) {
+      announce('not-asked')
+      return
+    }
     // Signed in and the account could not be read, or it says no choice
     // would be taken: it may already be paying, and asking a supporter to
     // choose again is the one wrong ask.
-    if (signedIn && support.server?.can_choose !== true) return
+    if (signedIn && support.server?.can_choose !== true) {
+      announce('not-asked')
+      return
+    }
     if (
       !shouldAsk({
         now: new Date(),
@@ -196,16 +215,21 @@ export function SupportGate({
         local: support.local,
       })
     ) {
+      announce('not-asked')
       return
     }
     takePendingSupportTier()
     if (signedIn) {
+      announce('asked')
       setAsk({ kind: 'choose' })
       return
     }
     void accepting().then((yes) => {
       if (yes && !touched.current && Date.now() - mountedAt <= ASK_WINDOW_MS) {
+        announce('asked')
         setAsk((open) => open ?? { kind: 'choose' })
+      } else {
+        announce('not-asked')
       }
     })
   }, [

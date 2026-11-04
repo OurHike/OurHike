@@ -47,6 +47,7 @@ from lib.build_regions import NYC_SOURCE_KEYS, combined, region_from_layers
 from lib.corridor import build_corridor
 from lib.geofabrik import AT_STATES, GEOFABRIK_BASE, state_urls  # noqa: F401 - re-exported for its callers
 from lib.http_retry import download_with_retry
+from lib.planetiler_sources import SOURCES_DIR, planetiler_args
 from lib.poly import clip_shape, to_poly
 
 ROOT = Path(__file__).parent
@@ -202,6 +203,7 @@ def planetiler_cmd(
     http_timeout_seconds: int | None = None,
     exclude_layers: list[str] | None = None,
     languages: str | None = None,
+    sources_dir: Path | None = None,
 ) -> list[str]:
     """The Planetiler invocation. --download fetches the profile's non-OSM
     sources (Natural Earth, water polygons) on first run; --polygon bounds the
@@ -222,12 +224,21 @@ def planetiler_cmd(
     logs is a path, not a promise - and a build that pays for statistics
     nobody reads is a build paying for nothing. The spike turns it on.
 
-    http_timeout_seconds raises Planetiler's own 30s default. The profile
-    pulls ~1.4 GB from three third parties before it builds anything, and
-    `Error getting size of water-polygons-split-3857.zip ... TimeoutException`
-    is that 30s expiring on a slow host - a failure that says nothing about
-    the data and stops the build regardless. None leaves Planetiler's
-    default alone."""
+    http_timeout_seconds raises Planetiler's own 30s default for each HTTP
+    request. It does NOT reach `Error getting size of
+    water-polygons-split-3857.zip ... TimeoutException`, which an earlier
+    version of this docstring said it was: that error is a fixed 10-second
+    wait for each source's size (Planetiler v0.10.2's Downloader.java,
+    line 177), and no argument changes it (#1970). None leaves the default
+    alone.
+
+    sources_dir points the profile's three sources (Natural Earth, water
+    polygons, lake centerlines) at the files fetch_planetiler_sources.py put
+    there, via lib/planetiler_sources.py's planetiler_args(). Planetiler then
+    queues none of them, and so never waits on their hosts at all - that is
+    the fix for the error above. None leaves Planetiler to find and fetch
+    them under its own defaults, which is what spike_shard_seam.py still
+    does."""
     excluded = exclude_layers or []
     return [
         "java",
@@ -242,6 +253,7 @@ def planetiler_cmd(
         *([] if languages is None else [f"--languages={languages}"]),
         *(["--output-layerstats"] if layer_stats else []),
         *([] if http_timeout_seconds is None else [f"--http-timeout={http_timeout_seconds}s"]),
+        *([] if sources_dir is None else planetiler_args(sources_dir)),
         "--download",
         "--force",
     ]
@@ -380,6 +392,10 @@ def main(args: argparse.Namespace):
         tmp_dir,
         exclude_layers=UNRENDERED_LAYERS,
         languages=BUILD_LANGUAGES,
+        # The files build-basemap.yml's "Fetch Planetiler's profile sources"
+        # step put in place (#1970). Run by hand without that step, Planetiler
+        # still fetches any that are missing, as it always did.
+        sources_dir=SOURCES_DIR,
     )
     print(f"  {' '.join(cmd)}")
     subprocess.run(cmd, check=True)

@@ -289,7 +289,7 @@ being `ClosureSummary[] | null` and become three distinguishable states:
 
 | State | Meaning | What a hiker sees |
 | --- | --- | --- |
-| `live` | fetched from the backend just now | closures, no staleness note |
+| `live` | fetched from the backend just now — and once LAUNCH_CHECKLIST.md §6 step 5's cache rule is on, through Cloudflare's edge, which may answer with a copy up to `EDGE_TTL_SECONDS` (300 s) old (`backend/app/core/edge_cache.py`, on `main` since 2026-11-02 with #1907 — Let Cloudflare cache GET /closures, /reports and /disputes in front of the API, and write the click-path that stands it up; LAUNCH_CHECKLIST.md's "not done" register still lists step 5 (read 2026-11-04), and no build reaches `live` until one has an `API_BASE_URL`, because `useConditions.ts` returns early without `API_CONFIGURED`); the hook stamps `lastSyncedAt` on arrival and reads no `Age` header, so "just now" can be five minutes old, which sits inside the day's tolerance the comment above `EDGE_TTL_SECONDS` reasons from | closures, no staleness note |
 | `baseline` | from the published artifact | closures, **"as of <date>"** |
 | `unavailable` | neither reachable | an explicit "conditions unavailable" |
 

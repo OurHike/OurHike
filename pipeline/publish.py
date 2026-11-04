@@ -2160,14 +2160,23 @@ def verify_hashes(entries: dict[str, dict]) -> None:
         )
 
 
-def r2_client(config: BotocoreConfig | None = None):
-    """An S3 client for the public R2 bucket, from R2_ENDPOINT_URL and its key pair."""
+def r2_client(config: BotocoreConfig | None = None, *, key_pair: tuple[str, str] | None = None):
+    """An S3 client at R2_ENDPOINT_URL: for the public bucket, from
+    R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY, unless `key_pair` passes
+    another bucket's key. fetch_planetiler_sources.py passes the raw store's
+    (R2_RAW_ACCESS_KEY_ID, R2_RAW_SECRET_ACCESS_KEY), the only pair its step
+    holds, so neither bucket's key is ever set under the other's names. A
+    caller whose step holds no public pair and passes none fails on the
+    missing name."""
+    access_key_id, secret_access_key = (
+        key_pair if key_pair is not None else (os.environ["R2_ACCESS_KEY_ID"], os.environ["R2_SECRET_ACCESS_KEY"])
+    )
     kwargs = {"config": config} if config is not None else {}
     return boto3.client(
         "s3",
         endpoint_url=os.environ["R2_ENDPOINT_URL"],
-        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
         **kwargs,
     )
 

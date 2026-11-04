@@ -148,22 +148,34 @@ HIKER_ORIGIN = "https://ourhike.org"
 # trails.geojson would make check 15 assert that the data agrees with itself.
 CORRIDOR_BBOX = (-85.0, 33.5, -66.5, 46.5)
 
-# What check 15 holds the `nearby_*` files to instead (#1873). Those carry
-# every registered organization's features nationwide, so the corridor box
-# flagged 27,694 `nearby_poi` and 216,898 `nearby_trails` features on
-# 2026-10-17-2 (counts from the issue, measured there, not re-measured here).
-# The weaker bound keeps the two failures the corridor box was written for:
-# coordinates outside longitude/latitude (projected metres) and a point within
-# NULL_ISLAND_DEGREES of (0, 0). The 1 degree is `@unvalidated`: picked, wide
-# enough to be unmistakably a failed projection and nowhere near any US
-# territory; what would settle it is the nearest real feature to (0, 0) in any
-# registered source, which nobody has looked for.
+# What check 15 holds the national files to instead: the `nearby_*` files
+# (#1873) and NATIONAL_KEYS below (#1981). They carry every registered
+# organization's features nationwide, so the corridor box flagged 27,694
+# `nearby_poi` and 216,898 `nearby_trails` features on 2026-10-17-2 (counts
+# from #1873, measured there, not re-measured here), and 48 of
+# `network_overview.geojson`'s 211 on 2026-11-04 (verify-release.yml run 21,
+# #1981). The weaker bound keeps the two failures the corridor box was written
+# for: coordinates outside longitude/latitude (projected metres) and a point
+# within NULL_ISLAND_DEGREES of (0, 0). The 1 degree is `@unvalidated`:
+# picked, wide enough to be unmistakably a failed projection and nowhere near
+# any US territory; what would settle it is the nearest real feature to (0, 0)
+# in any registered source, which nobody has looked for.
 GLOBE_BBOX = (-180.0, -90.0, 180.0, 90.0)
 NULL_ISLAND_DEGREES = 1.0
 
 
+# The national files not named `nearby_*`. network_overview.geojson is the
+# sketch export_nearby_trails.py draws from the same nationwide features as
+# nearby_trails.geojson (its OVERVIEW_ARTIFACT_NAME). Named here rather than
+# imported because verify-release.yml installs only requests, pyyaml and
+# pmtiles, and export_nearby_trails.py needs duckdb; tests/test_verify_release.py
+# fails if the two names part.
+NATIONAL_KEYS = frozenset({"network_overview.geojson"})
+
+
 def _is_national(key: str) -> bool:
-    return key.rsplit("/", 1)[-1].startswith("nearby_")
+    name = key.rsplit("/", 1)[-1]
+    return name.startswith("nearby_") or name in NATIONAL_KEYS
 
 
 # Sources this bound does not apply to - registered nationwide on purpose,
@@ -670,9 +682,10 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
         # bar NATIONWIDE_SOURCES above. A feature at (0, 0) is what a
         # projection bug looks like - empty geometry is held to that
         # regardless of source; only the bbox half is exempted.
-        # `nearby_*` are national by the maintainer's 2026-08-25 decision, so
-        # the corridor box is the wrong question for them (#1873): they get
-        # the bound that is still true of every real place, which still
+        # The national files (`nearby_*` and NATIONAL_KEYS) carry every
+        # organization by the maintainer's 2026-08-25 decision, so the
+        # corridor box is the wrong question for them (#1873, #1981): they
+        # get the bound that is still true of every real place, which still
         # catches projected metres and null island.
         west, south, east, north = GLOBE_BBOX if _is_national(key) else CORRIDOR_BBOX
         empty = 0

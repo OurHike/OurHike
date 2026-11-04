@@ -21,7 +21,8 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, seedHikerMode, bootFreshPage } from './support/seed'
-import { fakeSession, sent, stubBackend } from './support/backend'
+import { fakeSession, seedSession, sent, stubBackend } from './support/backend'
+import { writeIDBEntries } from './support/idb'
 
 /** More → You, which is where identity lives on this build. The row is
  *  matched by its text rather than by a role name, because the row's
@@ -349,6 +350,106 @@ test.describe('signing in with an emailed code', { tag: '@backend' }, () => {
     await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(
       0,
     )
+  })
+})
+
+// A SIGNED-IN PHONE'S READS, AS SENT (#1916 - A signed-in hiker's app sends
+// its token on the three edge-cached reads, so they either skip the cache or
+// hide the hiker's own queued report). lib/api.ts's THE SHARED READS:
+// `/closures`, `/reports` and `/disputes` are the reads a cache in front of the
+// API keeps one copy of for everybody (#1907 - Let Cloudflare cache GET
+// /closures, /reports and /disputes in front of the API, and write the
+// click-path that stands it up), so they go with no token even
+// when there is one, and the hiker's own reports at any status come from
+// `GET /reports/mine` instead, merged in by lib/useConditions.ts. api.test.ts
+// holds each fetch's headers with `fetch` mocked; what it cannot see is the
+// built app restoring a real session and making all four reads at launch,
+// and the merge reaching "Your reports".
+test.describe('the shared reads, signed in', { tag: '@backend' }, () => {
+  test('a signed-in phone sends no Authorization on GET /closures, /reports and /disputes, and shows its own waiting report from GET /reports/mine', async ({
+    page,
+  }) => {
+    // One report this phone sent two hours ago and nobody has moderated: in
+    // the hiker's own list, and - as on the real server, which shows a
+    // `submitted` report to nobody but its reporter - not in the shared one.
+    const OWN = '00000000-0000-4000-8000-0000000e2e01'
+    const authoredAt = new Date(Date.now() - 2 * 3_600_000).toISOString()
+    const own = {
+      id: OWN,
+      type: 'blowdown',
+      reporter_type: 'day',
+      status: 'submitted',
+      severity: 'normal',
+      lat: null,
+      lon: null,
+      mile: null,
+      poi_id: null,
+      note: null,
+      timestamp: authoredAt,
+      verified_at: null,
+    }
+    const backend = await stubBackend(page, {
+      'GET /closures': { status: 200, body: [] },
+      'GET /reports': { status: 200, body: [] },
+      'GET /disputes': { status: 200, body: [] },
+      'GET /field-notes': { status: 200, body: [] },
+      'GET /reports/mine': { status: 200, body: [own] },
+    })
+    // The Authorization header each GET of exactly `path` arrived with, in
+    // order - exactly, because `/reports` is a prefix of `/reports/mine`.
+    const authorization = (path: string) =>
+      backend.seen
+        .filter((entry) => entry.method === 'GET' && entry.path.split('?')[0] === path)
+        .map((entry) => entry.authorization)
+    await seedSession(page)
+    await seedPreferences(page)
+    // lib/sentReports.ts's ledger, as the outbox leaves it after a send: the
+    // phone's memory that this id is its own, which "Your reports" lists.
+    await writeIDBEntries(page, [
+      [
+        'ourhike:sent-reports',
+        [
+          {
+            id: OWN,
+            type: 'blowdown',
+            poiId: null,
+            mile: null,
+            authoredAt,
+            sentAt: authoredAt,
+          },
+        ],
+      ],
+    ])
+    await page.goto('/')
+    await expect(
+      page.getByRole('button', { name: 'Account, signed in as hiker@example.org' }),
+    ).toBeVisible()
+
+    // ALL FOUR READS MADE, and the three shared ones carried no token from a
+    // phone that holds one - the token `/reports/mine` shows it had.
+    const reads = ['/closures', '/reports', '/disputes', '/reports/mine']
+    await expect
+      .poll(() => reads.filter((path) => authorization(path).length > 0))
+      .toEqual(reads)
+    for (const path of ['/closures', '/reports', '/disputes']) {
+      expect(authorization(path), `GET ${path}`).toEqual(
+        authorization(path).map(() => undefined),
+      )
+    }
+    for (const token of authorization('/reports/mine')) {
+      expect(token).toMatch(/^Bearer /)
+    }
+
+    // AND THE OWN READ IS WHAT MOVES THE SCREEN: the shared list does not
+    // hold this report, so "Waiting" beside it can only have come from
+    // `/reports/mine`.
+    await page.getByRole('tab', { name: 'More' }).click()
+    await page.getByRole('button', { name: /^Volunteer & report/ }).click()
+    await page.getByRole('button', { name: 'Your reports' }).click()
+    const sentShelf = page.getByRole('region', { name: 'Sent from this phone' })
+    await expect(sentShelf).toContainText('Sent from this phone · 1')
+    await expect(sentShelf).toContainText('Waiting')
+    await expect(sentShelf).not.toContainText(/carry no status/)
   })
 })
 

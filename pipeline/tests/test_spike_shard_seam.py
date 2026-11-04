@@ -18,13 +18,15 @@ from pathlib import Path
 import pytest
 from shapely.geometry import box
 
+import spike_shard_seam
+from lib.planetiler_sources import SOURCES, SOURCES_DIR, Outcome, SourceUnavailable
 from spike_shard_seam import (
     HTTP_TIMEOUT_SECONDS,
     BuildResult,
     PeakDiskSampler,
     directory_apparent_bytes,
     directory_bytes,
-    download_sources_cmd,
+    fetch_profile_sources,
     fit_fixed_and_marginal,
     run_planetiler,
     seam_between,
@@ -227,27 +229,50 @@ def test_the_retry_backs_off_rather_than_hammering_a_struggling_host():
     assert delays == sorted(delays) and delays[0] < delays[-1]
 
 
-def test_the_sources_are_fetched_by_a_step_that_builds_nothing():
-    """--only-download is Planetiler's own 'download source data then exit'.
-    Pulling the third-party sources before any timing starts means the flaky
-    part happens once, where CI can cache it and where a failure is
-    unambiguously about the network rather than about sharding."""
-    cmd = download_sources_cmd(Path("p.jar"), Path("in.pbf"), Path("tmp"))
+def test_the_sources_are_put_in_place_before_any_build_by_lib_planetiler_sources():
+    """#1970: Planetiler's own --only-download waited 10 s on
+    osmdata.openstreetmap.de and failed all three attempts on PR #1978's run
+    (2026-11-04). fetch_profile_sources() hands the job to
+    lib/planetiler_sources.py, against the directory every build reads."""
+    asked = []
 
-    assert "--only-download" in cmd
-    assert "--download" in cmd
-    assert not any(arg.startswith("--output=") for arg in cmd)
-    assert not any(arg.startswith("--maxzoom") for arg in cmd)
+    def ensure(sources_dir, *, today):
+        asked.append(sources_dir)
+        return [Outcome("water_polygons", "fetched", "931M"), Outcome("natural_earth", "kept", "3 days ago")]
+
+    fetch_profile_sources(ensure=ensure)
+
+    assert asked == [SOURCES_DIR]
 
 
-def test_the_download_step_waits_far_longer_than_planetilers_default():
-    """The failure was `Error getting size of ... TimeoutException` - the 30s
-    default expiring on a slow host, twice, on a file that had served fine
-    minutes earlier."""
-    cmd = download_sources_cmd(Path("p.jar"), Path("in.pbf"), Path("tmp"))
+def test_a_source_that_cannot_be_had_stops_the_spike_before_it_measures_anything():
+    def unavailable(sources_dir, *, today):
+        raise SourceUnavailable("water_polygons: https://osmdata.openstreetmap.de/... could not be fetched")
 
-    assert f"--http-timeout={HTTP_TIMEOUT_SECONDS}s" in cmd
-    assert HTTP_TIMEOUT_SECONDS > 30
+    with pytest.raises(SystemExit, match="nothing was measured: water_polygons"):
+        fetch_profile_sources(ensure=unavailable)
+
+
+def test_every_build_reads_the_sources_put_in_place_and_queues_none(tmp_path, monkeypatch):
+    """With every source's --<name>_path pointing at a file that exists,
+    Planetiler queues nothing to download, which is the whole fix."""
+    ran = []
+
+    class Stop(Exception):
+        pass
+
+    def capture(cmd, **_kwargs):
+        ran.append(cmd)
+        raise Stop
+
+    monkeypatch.setattr(spike_shard_seam, "run_planetiler", capture)
+
+    with pytest.raises(Stop):
+        spike_shard_seam.run_build("control", tmp_path, Path("p.jar"), Path("in.pbf"), None, 14)
+
+    for source in SOURCES:
+        assert f"--{source.name}_path={SOURCES_DIR / source.filename}" in ran[0]
+    assert f"--http-timeout={HTTP_TIMEOUT_SECONDS}s" in ran[0]
 
 
 def test_shards_that_overlap_report_the_overlapping_band_as_the_seam():

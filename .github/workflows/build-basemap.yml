@@ -16,10 +16,22 @@
 #
 # Publishing is opt-in and twice-guarded, the same posture as
 # publish-vector-data.yml and build-raster.yml: the `publish` input defaults
-# to false, only the publish job holds R2 credentials, and it refuses any
-# run that is not the full corridor build - a states-subset shakedown or a
-# shallower pyramid stays a spike, and a spike that can accidentally ship is
-# not a spike. What publishes is the AT package cut, never the source build.
+# to false, only the publish job holds the public bucket's credentials, and
+# it refuses any run that is not the full corridor build - a states-subset
+# shakedown or a shallower pyramid stays a spike, and a spike that can
+# accidentally ship is not a spike. What publishes is the AT package cut,
+# never the source build.
+#
+# TWO JOBS, EACH HOLDING ONLY ITS OWN BUCKET'S KEY (build-reference.yml's
+# rule; .github/tests/test_basemap_planetiler_sources.py holds it):
+#   build    the raw store's R2_RAW_* and R2_ENDPOINT_URL, on one step, "Fetch
+#            Planetiler's profile sources that are missing or stale", whose
+#            code reads and writes only under planetiler_sources/ in
+#            our-hike-raw (#1970). The key opens the whole private bucket, so
+#            it sits on that step and not the job: Planetiler, osmium and the
+#            state extracts never hold it.
+#   publish  the public bucket's R2_* only: publish.py.
+#
 # This is today's flat-key publish mechanism (publish.py + latest.json);
 # DATA_RELEASES.md's immutable release folders remain the destination once
 # that machinery exists, exactly as for every other artifact.
@@ -164,6 +176,59 @@ jobs:
           curl -sSL -o planetiler.jar "$JAR_URL"
           echo "$JAR_SHA256  planetiler.jar" | sha256sum -c -
           ls -la planetiler.jar
+
+      # PLANETILER'S PROFILE SOURCES, FETCHED HERE AND KEPT (#1970). Left to
+      # itself, Planetiler fetches its three non-OSM sources (water polygons,
+      # Natural Earth, lake centerlines, about 1.4 GB) whenever they are
+      # missing, and first waits a fixed 10 s for each one's size, a wait
+      # --http-timeout does not reach. Runs 57 and 58 (2026-11-03) both died
+      # in it on osmdata.openstreetmap.de, 12 to 19 minutes in, after the
+      # state extracts. So fetch_planetiler_sources.py puts all three in
+      # place about two minutes into the job (after the ArcGIS fetch and the
+      # jar), each from the first of these younger than
+      # lib/planetiler_sources.py's MAX_AGE_DAYS: the cache restored below;
+      # the raw bucket's copy under planetiler_sources/, which outlives the
+      # cache's 7-day eviction; and its host, with lib/http_retry.py's
+      # retries. When the host fails too, an older copy stands. With all
+      # three present Planetiler sends their hosts nothing.
+      #
+      # The primary key never matches (one per run), so restore-keys hands
+      # back the newest saved set.
+      - name: Restore Planetiler's profile sources
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/data/sources
+          key: basemap-planetiler-sources-v1-${{ github.run_id }}
+          restore-keys: basemap-planetiler-sources-v1-
+
+      # The raw store's key, on this step and no other (the header says why).
+      # It reads the bucket's copy for a source the cache lacks, and uploads
+      # what this run has that the bucket lacks or holds an older copy of.
+      - name: Fetch Planetiler's profile sources that are missing or stale
+        id: planetiler_sources
+        env:
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_RAW_BUCKET: ${{ secrets.R2_RAW_BUCKET }}
+          R2_RAW_ACCESS_KEY_ID: ${{ secrets.R2_RAW_ACCESS_KEY_ID }}
+          R2_RAW_SECRET_ACCESS_KEY: ${{ secrets.R2_RAW_SECRET_ACCESS_KEY }}
+        run: python fetch_planetiler_sources.py
+
+      # Saved only when this run fetched something, so an unchanged set adds
+      # no new ~1.4 GB entry; and saved even when the fetch step failed part
+      # way (always()), so the files that did arrive are not fetched again.
+      # Keyed on the hash of the manifest beside the files, which records
+      # each source's URL, size and fetch date, so the key changes exactly
+      # when the contents do (test_cache_keys_are_content_addressed.py's
+      # rule) without hashing 1.4 GB. Before the build, because nothing the
+      # build does changes them. continue-on-error: the cache service having
+      # a moment must not fail a run that already has its files.
+      - name: Save Planetiler's profile sources
+        if: always() && steps.planetiler_sources.outputs.fetched == 'true' && hashFiles('pipeline/data/sources/planetiler_sources.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/data/sources
+          key: basemap-planetiler-sources-v1-${{ hashFiles('pipeline/data/sources/planetiler_sources.json') }}
 
       # Through env, never pasted into the script: a free-text dispatch input
       # interpolated into `run:` is shell the dispatcher wrote (#660's rule,

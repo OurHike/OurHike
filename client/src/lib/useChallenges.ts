@@ -48,6 +48,7 @@ import {
   type TagHow,
 } from './challengeProgress'
 import type { ChallengeEntryDraft } from './challengeDrafts'
+import type { TagPlace } from './tagPlace'
 import {
   enqueueChallengeEntry,
   enqueueChallengeTag,
@@ -68,7 +69,15 @@ export interface ChallengesApi {
   state: ChallengeState
   join: (challengeId: string) => void
   leave: (challengeId: string) => void
-  tagItem: (challenge: Challenge, item: ChallengeItem, how: TagHow, poi?: string) => void
+  /** `place` is where the hiker said it happened (lib/wherePlace.ts) -
+   *  kept on the phone beside the tag, never in what is queued. */
+  tagItem: (
+    challenge: Challenge,
+    item: ChallengeItem,
+    how: TagHow,
+    poi?: string,
+    place?: TagPlace,
+  ) => void
   untagItem: (challenge: Challenge, item: ChallengeItem, poi?: string) => void
   /** Takes a tag back however it was made - the tagged-place sheet's
    *  "Remove this tag". */
@@ -204,9 +213,17 @@ export function useChallenges(
   )
 
   const tagItem = useCallback(
-    (challenge: Challenge, item: ChallengeItem, how: TagHow, poi?: string) => {
+    (
+      challenge: Challenge,
+      item: ChallengeItem,
+      how: TagHow,
+      poi?: string,
+      place?: TagPlace,
+    ) => {
       const at = new Date()
-      const result = tag(stateRef.current, challenge, item, { poi, at, how })
+      // The place stays in the phone's record; what is enqueued below is the
+      // same three fields it always was (lib/challengeDrafts.ts).
+      const result = tag(stateRef.current, challenge, item, { poi, at, how, place })
       commit(result.state)
       // A double tap that changes nothing completes nothing, so cannot queue.
       if (result.completed)

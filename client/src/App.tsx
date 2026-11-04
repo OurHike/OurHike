@@ -9000,8 +9000,17 @@ function App() {
         defaultName={preferences.trail_name ?? undefined}
         onJoin={() => challenges.join(openChallengeRecord.id)}
         onLeave={() => challenges.leave(openChallengeRecord.id)}
-        onTag={(item, poi) => challenges.tagItem(openChallengeRecord, item, 'hand', poi)}
+        onTag={(item, poi, place) =>
+          challenges.tagItem(openChallengeRecord, item, 'hand', poi, place)
+        }
         onUntag={(item, poi) => challenges.untagItem(openChallengeRecord, item, poi)}
+        // For "Where did it happen?" and "Near you" (#1963): the fix snapped
+        // to the trail, today's walked miles and the phone's own waypoints.
+        // Nothing here asks for location; a null fix is simply no Here card.
+        fixMile={currentFix?.mile ?? null}
+        todayRanges={passedToday.ranges}
+        units={units}
+        places={searchablePois}
         onRemoveTag={(item, poi) => challenges.removeTag(openChallengeRecord, item, poi)}
         entryState={openChallengeEntryState}
         onForgetEntry={() => challenges.forgetEntry(openChallengeRecord.id)}

@@ -174,7 +174,7 @@ describe('the blaze card in the header (#1962)', () => {
     )
   })
 
-  it('makes the tiles buttons only when made bigger, and a tile opens its own row', async () => {
+  it('makes the tiles buttons only when made bigger, and a tile opens its own sheet', async () => {
     const { container } = detail()
     await userEvent.click(screen.getByRole('button', { name: 'Bigger tiles' }))
     expect(container.querySelector('.blaze-card--expanded')).not.toBeNull()
@@ -184,13 +184,85 @@ describe('the blaze card in the header (#1962)', () => {
     await userEvent.click(
       screen.getByRole('button', { name: /^Take the McAfee Knob shuttle/ }),
     )
-    expect(screen.getByRole('button', { name: 'Experience' })).toHaveAttribute(
+    expect(
+      screen.getByRole('dialog', { name: /Take the McAfee Knob shuttle/ }),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Smaller tiles' }))
+    expect(container.querySelectorAll('button.blaze-tile')).toHaveLength(0)
+  })
+})
+
+describe('earning from the list asks where only when it can mean something (#1963)', () => {
+  const blazePhoto = () => item(ATC_CHALLENGE, 'white-blaze-photo')
+
+  it('earns a couch item with one tap and no question', async () => {
+    const { props } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Learn' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: /Earn it: Take our A\.T\. trivia/ }),
+    )
+    expect(props.onTag).toHaveBeenCalledWith(
+      item(ATC_CHALLENGE, 'trivia-quiz'),
+      undefined,
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('asks where for an on-trail at-home item, opening on "On the trail, somewhere" with no fix', async () => {
+    const { props } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: /Earn it: Take a photo of a white blaze/ }),
+    )
+    expect(props.onTag).not.toHaveBeenCalled()
+    const sheet = screen.getByRole('dialog', { name: 'Where did it happen?' })
+    expect(within(sheet).queryByRole('button', { name: /^Here/ })).toBeNull()
+    expect(sheet.textContent).not.toMatch(/location/i)
+    await userEvent.selectOptions(
+      within(sheet).getByRole('combobox', { name: 'Which state' }),
+      'VA',
+    )
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Earn it here' }))
+    expect(props.onTag).toHaveBeenCalledWith(blazePhoto(), undefined, {
+      kind: 'state',
+      state: 'VA',
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('offers Here when the shell has a fix inside the corridor, and hands its mile back', async () => {
+    const { props } = detail({ fixMile: 714.9 })
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: /Earn it: Take a photo of a white blaze/ }),
+    )
+    const sheet = screen.getByRole('dialog', { name: 'Where did it happen?' })
+    expect(within(sheet).getByRole('button', { name: /^Here/ })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
-    expect(document.getElementById('challenge-item-mcafee-knob')).toHaveFocus()
-    await userEvent.click(screen.getByRole('button', { name: 'Smaller tiles' }))
-    expect(container.querySelectorAll('button.blaze-tile')).toHaveLength(0)
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Earn it here' }))
+    expect(props.onTag).toHaveBeenCalledWith(blazePhoto(), undefined, {
+      kind: 'here',
+      mile: 714.9,
+    })
+  })
+
+  it('earns from the tile through the same question, and Back leaves nothing earned', async () => {
+    const { props } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
+    const row = screen
+      .getAllByRole('button', { name: /Take a photo of a white blaze/ })
+      .find((button) => button.classList.contains('challenge-row__open'))!
+    await userEvent.click(row)
+    await userEvent.click(screen.getByRole('button', { name: 'Earn some karma' }))
+    const sheet = screen.getByRole('dialog', { name: 'Where did it happen?' })
+    await userEvent.click(within(sheet).getByRole('button', { name: '‹ Back' }))
+    expect(props.onTag).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('dialog', { name: /Take a photo of a white blaze/ }),
+    ).toBeInTheDocument()
   })
 })
 
@@ -428,9 +500,10 @@ describe('the window, Triple Crown peaks, the earned-place sheet and a closed li
     )
   })
 
-  it('puts focus on the title when Remove takes the row it came from away', async () => {
-    // The removal re-renders the row as text, so the button that opened the
-    // sheet is gone; focus must not fall to <body>.
+  it('gives focus back to the row after Take it back, which stays a button (#1963)', async () => {
+    // Every row opens its tile now, earned or not, so the button that opened
+    // the sheet is still there after the earned item is taken back and focus goes
+    // back to it - never to <body>.
     const start = tag(
       join(EMPTY_CHALLENGE_STATE, ATC_CHALLENGE.id, new Date('2027-06-01T12:00:00Z')),
       ATC_CHALLENGE,
@@ -464,9 +537,11 @@ describe('the window, Triple Crown peaks, the earned-place sheet and a closed li
       screen.getByRole('button', { name: /Take the McAfee Knob shuttle/ }),
     )
     await userEvent.click(screen.getByRole('button', { name: 'Take it back' }))
-    expect(
-      screen.getByRole('heading', { level: 1, name: ATC_CHALLENGE.name }),
-    ).toHaveFocus()
+    const row = screen
+      .getAllByRole('button', { name: /Take the McAfee Knob shuttle/ })
+      .find((button) => button.classList.contains('challenge-row__open'))!
+    expect(row).toHaveFocus()
+    expect(document.activeElement).not.toBe(document.body)
   })
 
   it('says why a record cannot tell its club after the window closed, rather than going quiet', async () => {

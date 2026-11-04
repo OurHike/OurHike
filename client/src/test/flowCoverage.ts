@@ -686,6 +686,11 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // under 44 px); the flow that reaches the header is challenges.spec.ts's,
   // which does not yet assert on the card.
   'chrome/BlazeCard.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // The tile sheet and "Where did it happen?" (#1963): earning from a tile,
+  // and the five answers to where. Unit tests hold each availability branch
+  // of the Where sheet and the cargo's identity; a flow is still to come.
+  'chrome/TileSheet.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'chrome/WhereSheet.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'chrome/BlazeTile.tsx': {
     step: 'F13 More',
     flow: {

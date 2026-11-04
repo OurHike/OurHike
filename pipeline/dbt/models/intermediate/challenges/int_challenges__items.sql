@@ -117,6 +117,7 @@ fields as (
         json_extract(item_json, '$.match.pois') as pois_json,
         json_extract(item_json, '$.match.type') as poi_type_json,
         json_extract(item_json, '$.match.off_trail') as off_trail_json,
+        json_extract(item_json, '$.match.on_trail') as on_trail_json,
         json_extract(item_json, '$.match.value') as value_json,
         json_extract(item_json, '$.match.min_fraction') as fraction_json,
         json_extract(item_json, '$.match.org') as workday_org_json,
@@ -170,6 +171,14 @@ typed as (
         coalesce(json_type(pois_json), 'NULL') = 'ARRAY'
         and json_array_length(pois_json) >= 2 as names_two_pois,
         coalesce(json_type(off_trail_json), 'NULL') as off_trail_type,
+        -- A self_report item's "Where did it happen?" switch (#1963): JSON
+        -- true, false, or absent (false); anything else is refused below.
+        coalesce(json_type(on_trail_json), 'NULL') as on_trail_type,
+        coalesce(
+            json_type(on_trail_json) = 'BOOLEAN'
+            and json_extract_string(on_trail_json, '$') = 'true',
+            false
+        ) as self_on_trail,
         -- A place kind's, and poi_type's, `off_trail` is true only when it
         -- is JSON true.
         coalesce(
@@ -678,20 +687,25 @@ match_checked as (
                             then 'min_fraction must be in (0, 1]'
                     end
                 )
-            when checked.kind = 'workday' then case
-                when
-                    checked.workday_org_json is not null
-                    and json_type(checked.workday_org_json) != 'NULL'
-                    and not coalesce(
-                        list_contains(
-                            known_orgs.orgs, checked.workday_org_text
-                        ),
-                        false
-                    )
-                    then
-                        'workday org ' || checked.workday_org_repr
-                        || ' is not a known organization'
-            end
+            when checked.kind = 'workday'
+                then case
+                    when
+                        checked.workday_org_json is not null
+                        and json_type(checked.workday_org_json) != 'NULL'
+                        and not coalesce(
+                            list_contains(
+                                known_orgs.orgs, checked.workday_org_text
+                            ),
+                            false
+                        )
+                        then
+                            'workday org ' || checked.workday_org_repr
+                            || ' is not a known organization'
+                end
+            when
+                checked.kind = 'self_report'
+                and checked.on_trail_type not in ('NULL', 'BOOLEAN')
+                then 'on_trail must be true or false'
         end as match_problem,
         -- What the match publishes as, by kind.
         case checked.kind
@@ -737,7 +751,11 @@ match_checked as (
                     'org', checked.workday_org_text,
                     'trail', checked.trail
                 )
-            when 'self_report' then json_object('kind', checked.kind)
+            when 'self_report'
+                then json_object(
+                    'kind', checked.kind,
+                    'on_trail', checked.self_on_trail
+                )
         end as published_match
     from checked
     cross join published_types

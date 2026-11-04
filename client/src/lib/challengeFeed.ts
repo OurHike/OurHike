@@ -128,7 +128,8 @@ function parseMatch(value: unknown): ChallengeMatch | null {
       return trail === null ? null : { kind, org: text(value.org), trail }
     }
     case 'self_report':
-      return { kind }
+      // Absent reads false: an at-home item nobody judged asks nothing.
+      return { kind, onTrail: value.on_trail === true }
   }
 }
 

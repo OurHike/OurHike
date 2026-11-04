@@ -369,12 +369,29 @@ class TestTheOtherMatchKinds:
         # clicks" - carry no place and nothing to check.
         published, why = one_item({"kind": "self_report", "poi": "ignored"})
         assert why == ""
-        assert published["match"] == {"kind": "self_report"}
+        assert published["match"] == {"kind": "self_report", "on_trail": False}
 
     @pytest.mark.parametrize("match", [{"kind": "tap_a_button"}, {}, "place", None])
     def test_an_unknown_kind_is_refused(self, match):
         _, why = one_item(item(match=match))
         assert "match" in why
+
+
+class TestSelfReportOnTrail:
+    """Whether an at-home item asks where it happened when earned by hand
+    (#1963): a reviewer's boolean, false when absent, refused when it is
+    anything but a boolean."""
+
+    def test_on_trail_publishes_as_given_and_false_when_absent(self):
+        on_trail, _ = one_item({"kind": "self_report", "on_trail": True})
+        assert on_trail["match"] == {"kind": "self_report", "on_trail": True}
+        absent, _ = one_item({"kind": "self_report"})
+        assert absent["match"] == {"kind": "self_report", "on_trail": False}
+
+    @pytest.mark.parametrize("value", ["yes", 1, 0, None, [True]])
+    def test_anything_but_a_boolean_is_refused(self, value):
+        _, why = one_item({"kind": "self_report", "on_trail": value})
+        assert why == "on_trail must be true or false"
 
 
 class TestItems:

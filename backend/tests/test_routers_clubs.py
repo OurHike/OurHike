@@ -992,6 +992,37 @@ def test_a_challenge_publishers_org_id_is_not_a_slug_a_stranger_may_register(cli
     assert db_session.query(Club).filter(Club.slug == "atc").one_or_none() is None
 
 
+def test_listing_orgs_reads_every_orgs_seats_in_one_query(client, db_session):
+    """#1758: `GET /clubs` used to run one `club_admins` SELECT per org.
+
+    Counted on the three orgs this test builds, so it says the number of seat
+    queries does not grow with the number of orgs - not what production's
+    club count does to latency, which nobody has measured.
+    """
+    from sqlalchemy import event
+
+    for n in range(3):
+        club = make_org(db_session, slug=f"club-{n}", state=OrgState.claimed)
+        make_admin(db_session, club, make_profile(db_session))
+    db_session.commit()
+
+    seat_selects = []
+
+    def count(conn, cursor, statement, *args):
+        if statement.lstrip().upper().startswith("SELECT") and "FROM club_admins" in statement:
+            seat_selects.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", count)
+    try:
+        listed = client.get("/clubs").json()
+    finally:
+        event.remove(engine, "before_cursor_execute", count)
+
+    assert [len(org["admins"]) for org in listed] == [1, 1, 1]
+    assert len(seat_selects) == 1
+
+
 # --- whose seat it is, and why they declined (#1914) ---------------------------
 
 
@@ -1132,3 +1163,23 @@ def test_declining_answers_the_decliner_with_only_their_own_seat(client):
     assert {seat["person_id"] for seat in seats} == {colleague, None}
     assert founder not in {seat["person_id"] for seat in seats}
     assert "stepping back" in next(seat["decline_reason"] for seat in seats if seat["person_id"] == colleague)
+
+
+def test_listing_orgs_withholds_exactly_what_reading_each_org_withholds(client, db_session):
+    """Where the one-query listing (#1758) meets #1914's rule on who reads a
+    seat's holder, decline reason and dates: every org in `GET /clubs` reads
+    exactly as `GET /clubs/{slug}` reads it, to the same viewer. A listing
+    that dropped the viewer, or skipped the rule, would differ for one of
+    these five."""
+    founder, colleague, _ = _a_seat_declined_with_a_reason(client)
+    another = make_org(db_session, slug="another-org", state=OrgState.claimed)
+    make_admin(db_session, another, make_profile(db_session))
+    db_session.commit()
+    moderator = make_profile(db_session, Role.maintainer).id
+
+    for viewer in (None, str(uuid.uuid4()), founder, colleague, moderator):
+        headers = auth_headers(viewer) if viewer else {}
+        listed = client.get("/clubs", headers=headers).json()
+        assert len(listed) == 2
+        for org in listed:
+            assert org == client.get(f"/clubs/{org['slug']}", headers=headers).json(), (viewer, org["slug"])

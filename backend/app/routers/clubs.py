@@ -83,6 +83,27 @@ def _with_admins(db: Session, club: Club, viewer: Profile | None) -> OrgOut:
     which console screens need that.
     """
     admins = db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).order_by(OrgAdmin.invited_at).all()
+    return _as_viewer_reads_it(club, admins, viewer)
+
+
+def _with_admins_for_all(db: Session, clubs: list[Club], viewer: Profile | None) -> list[OrgOut]:
+    """`_with_admins` for a whole list, in one seat query rather than one per club (#1758).
+
+    Same rows in the same order as calling `_with_admins` per club, and the
+    same fields withheld from the same viewer: seats are read once, ordered by
+    `invited_at` as before, dealt out by `club_id`, and each club's seats go
+    through `_as_viewer_reads_it`, the one place that rule is applied.
+    """
+    seats: dict[str, list[OrgAdmin]] = {}
+    if clubs:
+        rows = db.query(OrgAdmin).filter(OrgAdmin.club_id.in_([club.id for club in clubs])).order_by(OrgAdmin.invited_at)
+        for seat in rows:
+            seats.setdefault(seat.club_id, []).append(seat)
+    return [_as_viewer_reads_it(club, seats.get(club.id, []), viewer) for club in clubs]
+
+
+def _as_viewer_reads_it(club: Club, admins: list[OrgAdmin], viewer: Profile | None) -> OrgOut:
+    """`club` with its seats, already loaded, as `_with_admins`'s docstring says `viewer` may read them."""
     is_moderator = viewer is not None and viewer.role in MODERATOR_ROLES
     own_seat = next((admin for admin in admins if viewer is not None and admin.person_id == viewer.id), None)
     sees_every_holder = is_moderator or (
@@ -197,7 +218,7 @@ def list_orgs(
     # stranger typed. `unclaimed` stays - see `OrgState`, where the two are
     # distinguished.
     clubs = db.query(Club).filter(Club.state.notin_([OrgState.deleted, OrgState.pending])).order_by(Club.name).all()
-    return [_with_admins(db, club, viewer) for club in clubs]
+    return _with_admins_for_all(db, clubs, viewer)
 
 
 @router.get("/{slug}", response_model=OrgOut)

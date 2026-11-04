@@ -120,7 +120,7 @@ describe('the blaze card (#1962)', () => {
       />,
     )
     const summary = container.querySelector('.visually-hidden')?.textContent ?? ''
-    expect(summary).toBe('3 blazes earned: 1 Learn, 2 Experience.')
+    expect(summary).toBe('3 trail karma earned: 1 Learn, 2 Experience.')
     expect(container.textContent).not.toMatch(
       /other hikers|behind|streak|\brank|leaderboard|you haven[’']t|left to go|remaining/i,
     )

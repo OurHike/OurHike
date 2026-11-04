@@ -102,15 +102,15 @@ describe('the blaze card’s one sentence (#1962)', () => {
         ATC_CHALLENGE,
         earned('trivia-quiz', 'mcafee-knob', 'springer-mountain'),
       ),
-    ).toBe('3 blazes earned: 1 Learn, 2 Experience.')
+    ).toBe('3 trail karma earned: 1 Learn, 2 Experience.')
     expect(cardSummary(ATC_CHALLENGE, earned('katahdin'))).toBe(
-      '1 blaze earned: 1 Experience.',
+      '1 trail karma earned: 1 Experience.',
     )
   })
 
   it('says in four words that nothing is earned yet, with no hundred and no zero', () => {
     const line = cardSummary(ATC_CHALLENGE, earned())
-    expect(line).toBe('Blazes you earn appear here.')
+    expect(line).toBe('Trail karma you earn appears here.')
     expect(line).not.toMatch(/\d/)
     expect(line).not.toMatch(FORBIDDEN)
   })

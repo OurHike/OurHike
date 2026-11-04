@@ -89,8 +89,20 @@ For each stale dispatchable path (`publish-vector-data.yml`,
 maintainer says otherwise.
 
 After each publish completes, dispatch `verify-release.yml` against the
-environment just written (gate 6) - its `base` input for UA, its default for
-production - and read the battery's summary rather than assuming green.
+environment just written (gate 6) and read the battery's summary rather than
+assuming green. For UA, its `base` input. For production, its default `base`
+**and `release=<id>`, naming the `releases/<id>/` folder to verify**: the one
+the publish just wrote, and, once the promotion below has moved the pointer,
+the one production's `channels.json` names
+(`curl -s "$DATA_BASE_URL/channels.json" | jq -r .production.v1`), which is
+the folder phones read - because since promotion production's `latest.json`
+lists only the conditions files (#1873 — verify-release.yml cannot verify a
+promoted release, and three of its checks are out of date with the national
+network and the v2 files), so a dispatch without `release` verifies that
+file and not a release. Not `release=pointer`: the workflow
+passes no `--env`, and `pipeline/lib/data_env.py`'s `resolve` refuses to guess
+an environment, so that word fails before any check runs (a follow-up for the
+workflow, not for this train).
 
 **Then point production's phones at it.** What a phone reads is its
 environment's `channels.json` in the bucket, and since 2026-10-16 nothing in

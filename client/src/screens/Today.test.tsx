@@ -1525,10 +1525,14 @@ describe('the season slot', () => {
         Boolean(node.compareDocumentPosition(season) & Node.DOCUMENT_POSITION_FOLLOWING)
       expect(follows(screen.getByTestId('camp'))).toBe(true)
       expect(follows(container.querySelector('.today__doors')!)).toBe(true)
-      // Nothing but the closing footer line comes after it.
-      const after = [...container.querySelectorAll('.today > *')].filter((node) =>
+      // Nothing but the closing footer line comes after it. The season and
+      // the footer are both inside the paper: `.today > *` held only the
+      // chrome and the paper, so this checked nothing (review of #2020), and
+      // the footer being found is what says the query reaches them.
+      const after = [...container.querySelectorAll('.today__paper > *')].filter((node) =>
         Boolean(season.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING),
       )
+      expect(after.some((node) => node.classList.contains('today__footer'))).toBe(true)
       expect(after.filter((node) => !node.classList.contains('today__footer'))).toEqual(
         [],
       )

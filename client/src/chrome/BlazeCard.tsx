@@ -67,9 +67,13 @@ export function BlazeCard({
   const done = (item: ChallengeItem) => isItemDone(item, challenge.id, tags)
   const mini = size === 'mini'
   const expanded = size === 'expanded'
+  // The mini card sits inside the season strip's <button>, where only
+  // phrasing content is valid: spans there, divs elsewhere (review of #2020).
+  // Both carry display: flex in challenges.css, so nothing moves.
+  const Box = mini ? 'span' : 'div'
 
   return (
-    <div
+    <Box
       className={`blaze-card blaze-card--${size}`}
       aria-hidden={mini ? true : undefined}
       data-testid="blaze-card"
@@ -124,7 +128,7 @@ export function BlazeCard({
           )
         }
         return (
-          <div
+          <Box
             key={section.id}
             className="blaze-card__section"
             role={expanded ? 'group' : undefined}
@@ -132,9 +136,9 @@ export function BlazeCard({
           >
             {label}
             {tiles}
-          </div>
+          </Box>
         )
       })}
-    </div>
+    </Box>
   )
 }

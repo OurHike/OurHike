@@ -296,9 +296,33 @@ describe('earning from the list asks where only when it can mean something (#196
 })
 
 describe('the entry from day one (#1964)', () => {
-  it('opens Your entry at 1 of 25 with what the club receives, the one-entry rule and when it opens, and no form', async () => {
+  it('opens Your entry at 1 of 5 on a list its club collects itself, pointing at the club rather than listing what it would receive', async () => {
+    // The ATC fixture is a draft with no takes_entries, as the reviewed file
+    // is until the ATC confirms (review of #2020; the maintainer's poll of
+    // 2026-11-04: point to the club's form).
     const { props } = detail()
     await userEvent.click(screen.getByRole('button', { name: 'Your entry' }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Your entry')
+    expect(screen.getByText(/The ATC collects entries itself/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Its finish line is 5 for the drawing - the ATC’s rule/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/What the ATC receives/)).toBeNull()
+    expect(screen.queryByText(/use the email you signed up with/)).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(props.onSendEntry).not.toHaveBeenCalled()
+    expect(document.body.textContent).not.toMatch(FORBIDDEN)
+  })
+
+  it('opens Your entry at 1 of 5 on a list OurHike sends for, with what the club receives, the one-entry rule and when it opens, and no form', async () => {
+    const published = {
+      ...ATC_CHALLENGE,
+      status: 'published' as const,
+      takesEntries: true,
+    }
+    const { props } = detail({ challenge: published })
+    await userEvent.click(screen.getByRole('button', { name: 'Your entry' }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Your entry')
     expect(screen.getByText(/What the ATC receives/)).toBeInTheDocument()
     expect(
       screen.getByText(/One entry per person — use the email you signed up with/),
@@ -312,6 +336,42 @@ describe('the entry from day one (#1964)', () => {
     expect(screen.queryByRole('button', { name: /Enter the drawing/ })).toBeNull()
     expect(props.onSendEntry).not.toHaveBeenCalled()
     expect(document.body.textContent).not.toMatch(FORBIDDEN)
+  })
+
+  it('never says the list was walked before the finish line, and says no "entry opens" once it closed', async () => {
+    const published = {
+      ...ATC_CHALLENGE,
+      status: 'published' as const,
+      takesEntries: true,
+    }
+    detail({ challenge: published, today: '2027-09-10' })
+    await userEvent.click(screen.getByRole('button', { name: 'Your entry' }))
+    expect(document.body.textContent).not.toMatch(/You walked/)
+    expect(screen.getByText(/Entries closed on Sep 7/)).toBeInTheDocument()
+    expect(screen.queryByText(/The entry opens at/)).toBeNull()
+  })
+
+  it('lets a reward-less list tell its club only at the finish line, never at 0 (review of #2020)', async () => {
+    const lined = {
+      ...RECORD_CHALLENGE,
+      status: 'published' as const,
+      finish: { count: 3, label: 'peaks' },
+    }
+    const { props } = detail({
+      challenge: lined,
+      state: join(EMPTY_CHALLENGE_STATE, lined.id, new Date('2027-06-01T12:00:00Z')),
+      signedIn: true,
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Your finish line' }))
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Your finish line',
+    )
+    expect(document.body.textContent).not.toMatch(/You walked|record of the trip/)
+    expect(screen.getByText(/The finish line is 3 peaks/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Let the club know you finished/ }),
+    ).toBeNull()
+    expect(props.onSendEntry).not.toHaveBeenCalled()
   })
 
   it('shows a sealed mystery item’s teaser under its sealed line, never its title', async () => {

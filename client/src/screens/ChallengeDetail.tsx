@@ -681,6 +681,12 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
   const { finish: finishCount, eligible } = progress(challenge, state)
   // The ATC's own rules, said as rules: one entry per person, and each
   // mystery item with a drawing of its own (features/CHALLENGES_BLAZE_CARD.md).
+  // Said only where OurHike sends the entry - "the email you signed up with"
+  // means nothing for a club that collects its own. Keyed on a drawing
+  // because the reviewed file has no field for a club's entry rules: they are
+  // the ATC's, and whether any other club's drawing shares them is
+  // @unvalidated (review of #2020) - the second club with a drawing needs
+  // them carried in its own file.
   const hasMystery = challenge.items.some((item) => item.mystery !== null)
   // The hiker's own days: a tag at 9 pm and one at 7 am the next morning are
   // two days on the trail, which their UTC dates were not.
@@ -707,15 +713,30 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
   const summary = `${done.length} ${CHALLENGE_WORDS.past} over ${days} ${days === 1 ? 'day' : 'days'}.`
   const orgDomain = challenge.orgDomain
 
+  // "You walked" only once it is true: this screen opens from the day of
+  // joining (#1964), and at 0 of 25 the first thing a screen reader heard was
+  // that the hiker had walked the list (review of #2020).
+  const title = eligible
+    ? `You walked ${challenge.name}`
+    : reward === null
+      ? 'Your finish line'
+      : 'Your entry'
   const header = (
     <header className="challenge-head">
-      <p className="challenges__eyebrow">{challenge.orgName}</p>
+      <p className="challenges__eyebrow">
+        {eligible ? challenge.orgName : `${challenge.orgShort} · ${challenge.name}`}
+      </p>
       <h1 className="challenges__title" ref={heading} tabIndex={-1}>
-        You walked {challenge.name}
+        {title}
       </h1>
       <DraftLabel challenge={challenge} />
     </header>
   )
+  // The club's own finish line, before it is reached - never what is left.
+  const finishRule =
+    finishCount === null
+      ? null
+      : `${finishCount}${challenge.finish?.label ? ` ${challenge.finish.label}` : ''}`
 
   // Why nothing can be sent, in one sentence, or null when it can.
   const refusal = draft
@@ -760,7 +781,7 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
 
   if (reward === null || words === null) {
     return (
-      <section className="challenges" aria-label={`You walked ${challenge.name}`}>
+      <section className="challenges" aria-label={title}>
         {header}
         <ul className="challenge-rows">
           {done.map(({ item, tag }) => (
@@ -775,11 +796,25 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
             </li>
           ))}
         </ul>
-        <p className="challenges__note">
-          {summary} It stays here as a record of the trip.
-        </p>
+        {eligible ? (
+          <p className="challenges__note">
+            {summary} It stays here as a record of the trip.
+          </p>
+        ) : (
+          // Before the finish line nothing is said to the club and nothing
+          // offers to: a reward-less list could tell its club "finished" at 0
+          // (review of #2020), and the server does not count.
+          <>
+            {done.length > 0 && <p className="challenges__note">{summary}</p>}
+            {finishRule !== null && (
+              <p className="challenges__note">
+                The finish line is {finishRule} - the {challenge.orgShort}’s rule.
+              </p>
+            )}
+          </>
+        )}
         {sentLine}
-        {sent === null && refusal !== null && (
+        {eligible && sent === null && refusal !== null && (
           // Said, rather than the button silently vanishing.
           <p className="challenges__note">{refusal}</p>
         )}
@@ -787,7 +822,8 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
           <button type="button" className="challenge-button" onClick={props.onDone}>
             Done
           </button>
-          {refusal === null &&
+          {eligible &&
+            refusal === null &&
             sent === null &&
             (!props.signedIn ? (
               props.onSignIn !== undefined && (
@@ -810,6 +846,7 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
             ) : null)}
         </div>
         {telling &&
+          eligible &&
           sent === null &&
           refusal === null &&
           props.signedIn &&
@@ -865,9 +902,9 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
   const ready = name.trim() !== '' && contactOk && consented
 
   return (
-    <section className="challenges" aria-label={`You walked ${challenge.name}`}>
+    <section className="challenges" aria-label={title}>
       {header}
-      <p className="challenges__note">{summary}</p>
+      {(eligible || done.length > 0) && <p className="challenges__note">{summary}</p>}
       <div className="challenge-grid" aria-hidden="true">
         {tiles.map(({ item }) => (
           <span
@@ -905,7 +942,7 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
         </span>
       </div>
 
-      {reward.kind === 'drawing' && (
+      {reward.kind === 'drawing' && challenge.takesEntries && (
         <p className="challenges__note">
           One entry per person — use the email you signed up with.
           {hasMystery ? ' Each mystery item has a drawing of its own.' : ''}
@@ -913,6 +950,30 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
       )}
       {sent !== null ? (
         sentLine
+      ) : !challenge.takesEntries ? (
+        // The club runs its own entries, from day one as at the line (review
+        // of #2020; the maintainer's poll of 2026-11-04 chose pointing at the
+        // club's form over listing what it would receive). Asking for a name
+        // and an address here would only queue something its server refuses,
+        // and listing them promised a handoff that never happens.
+        <>
+          <p className="challenges__note">
+            The {challenge.orgShort} collects entries itself
+            {reward.rulesUrl !== null ? ' - its rules above say how' : ''}. OurHike sends
+            nothing for this one.
+          </p>
+          {!eligible && finishRule !== null && !closed && (
+            <p className="challenges__note">
+              Its finish line is {finishRule} - the {challenge.orgShort}’s rule.
+            </p>
+          )}
+          {/* A draft still says nobody has confirmed it (2026-09-30), and a
+              closed list when it closed; the other refusals are about what
+              OurHike would send, and it sends nothing here. */}
+          {(draft || closed) && refusal !== null && (
+            <p className="challenges__empty">{refusal}</p>
+          )}
+        </>
       ) : !eligible && finishCount !== null ? (
         // Day one (#1964): what the club will receive, before anything can
         // be sent. The count is the club's rule, the finish line it set. A
@@ -938,22 +999,15 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
               No GPS track, no photos, no register lines. Nothing has been sent.
             </span>
           </div>
-          <p className="challenges__note">
-            The entry opens at {finishCount} {challenge.finish?.label ?? ''} — the{' '}
-            {challenge.orgShort}’s rule.
-          </p>
+          {!closed && (
+            <p className="challenges__note">
+              The entry opens at {finishRule} — the {challenge.orgShort}’s rule.
+            </p>
+          )}
           {refusal !== null && <p className="challenges__empty">{refusal}</p>}
         </>
       ) : refusal !== null ? (
         <p className="challenges__empty">{refusal}</p>
-      ) : !challenge.takesEntries ? (
-        // The club runs its own entries. Asking for a name and an address
-        // here would only queue something its server refuses.
-        <p className="challenges__note">
-          The {challenge.orgShort} collects entries itself
-          {reward.rulesUrl !== null ? ' - its rules above say how' : ''}. OurHike sends
-          nothing for this one.
-        </p>
       ) : !props.signedIn ? (
         props.onSignIn !== undefined && (
           <div className="challenge-actions">

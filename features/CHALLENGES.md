@@ -217,7 +217,9 @@ midnight UTC on the day is still the evening before on the A.T., and the phone o
 sealed copy on the hiker's own date anyway. The ATC's 2025 list
 announced its three mystery items only on social media, so the transcription carries them with
 no title and no date. They show as "Sealed · announced by the ATC", and the ATC reveals one by
-republishing.
+republishing. A mystery may also carry `"teaser"`, the club's own line for a sealed item
+("Something to do before the sun is up."), published in the clear because it is a hint and not
+the title; the phone shows it under "Sealed until …" and drops it once the title opens.
 
 ### The published artifact
 
@@ -318,7 +320,7 @@ says so.
 | #2, #2c Place card | "On your challenges" above "About this place", one row per item, **Earn it** inside the window and the window's date ("opens May 13") outside it |
 | #3 Today | "From today's walk", once, after the day's walk ends, only when something was passed — and, last of everything on Today in every mode, the season strip (`chrome/ChallengeSeasonStrip.tsx`, CHALLENGES_BLAZE_CARD.md slice 4): the mini card, trail karma earned, the states it landed in and how many at home, the club's finish line in the club's words; never a numeral for what is missing |
 | #6, #6b Plan | the places on this route by day; when no joined challenge touches the route, the one best match, dashed, with Join and Hide |
-| #8b, #8c Finish | with a reward, the entry; with none, "You walked …" and Done. Reachable from the day of joining (slice 4): before the finish line it shows what the club receives, "One entry per person — use the email you signed up with", each mystery item's own drawing, and when the entry opens; the form itself only once the finish line is reached. A sealed mystery item shows the club's `teaser` under "Sealed until …" |
+| #8b, #8c Finish | with a reward, the entry; with none, "You walked …" and Done. Reachable from the day of joining (slice 4), headed "Your entry" or "Your finish line" until the line is reached, and "You walked …" only after. For a club that collects its own entries (`takes_entries` false, the ATC until it confirms) it points at the club's rules from day one and says OurHike sends nothing (maintainer, poll 2026-11-04, after the review of #2020). Where OurHike sends the entry, before the line it shows what the club receives, "One entry per person — use the email you signed up with", each mystery item's own drawing (the ATC's rules; `@unvalidated` for any other club's drawing), and when the entry opens; the form itself only once the line is reached. A reward-less list tells its club only at the line. A sealed mystery item shows the club's `teaser` under "Sealed until …" |
 | #2a Org console | Org home → **Challenges**, and its **Finishers** sub-page |
 
 ## What proves it

@@ -8,6 +8,7 @@ import { defineConfig } from '@playwright/test'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { BACKEND_BUILD_ENV, BACKEND_ORIGIN, BACKEND_PORT } from './e2e/support/backend'
+import { BUCKET_BUILD_ENV, BUCKET_ORIGIN, BUCKET_PORT } from './e2e/support/bucket'
 
 /**
  * Lifted from client/scripts/screenshot.mjs's launchChromium(): the agent
@@ -174,6 +175,44 @@ const BACKEND_COMMAND = [
   `npx vite preview --outDir dist-e2e-backend --port ${BACKEND_PORT} --strictPort`,
 ].join(' && ')
 
+/**
+ * THE BUCKET-SHAPED BUILD, for the `@bucket` tests.
+ *
+ * The hermetic build sets no `VITE_DATA_BASE_URL`, so in it
+ * lib/publishedConditions.ts's `readPublished` returns before any request and
+ * the conditions files the cutover (#1880) publishes - notices.json,
+ * hazard_areas.json, trail_closures.json - are never asked for. The surfaces
+ * drawn from them (the planned-hike notices, a hazard area's sheet, a club
+ * closure's sheet) are RELEASING.md §8b's safety set, and nothing in `e2e/`
+ * could reach them: a `page.route` on a file the app never requests answers
+ * nothing. So this is the same app built a third time with a bucket pointing
+ * at its own origin, where `e2e/support/bucket.ts` answers every artifact
+ * with `page.route` - 404 unless a test says otherwise. No bucket is read;
+ * nothing leaves the browser. The same shape, and the same reasoning, as the
+ * backend build above (#1643).
+ *
+ * ALWAYS BUILT AND PREVIEWED, never the dev server, for BACKEND_COMMAND's
+ * reason (two dev servers share one dependency cache). CHROMIUM ONLY, at
+ * phone width, like the backend build - and here the data half's finding
+ * stands too: WebKit in this sandbox draws no mark on the map where Chromium
+ * does (#1467), and these tests tap marks. A WebKit leg is worth adding when
+ * somebody has run it and fixed what it turns up.
+ *
+ * A LONGER BUDGET THAN THE HERMETIC HALF'S, and why it is not the data
+ * half's. What these tests wait on is not a network: the map's lazily
+ * fetched closure and hazard chunks, the trail index built from a seeded
+ * release, and a tap loop that keeps tapping until the mark has drawn (the
+ * recipes' own door, preview-shots/fixtures/clubClosures.mjs). Measured
+ * 2026-11-04 in the agent sandbox: the slowest of the four tests finished in
+ * well under half of this; the budget is headroom for a loaded CI runner, not
+ * an expectation.
+ */
+const BUCKET_MODE_AVAILABLE = BACKEND_MODE_AVAILABLE
+const BUCKET_COMMAND = [
+  `npx vite build --outDir dist-e2e-bucket --emptyOutDir`,
+  `npx vite preview --outDir dist-e2e-bucket --port ${BUCKET_PORT} --strictPort`,
+].join(' && ')
+
 export default defineConfig({
   // The hermetic half by default; `e2e/data/` only in FLOW_DATA mode, and
   // never both, for the CORS reason above.
@@ -232,7 +271,7 @@ export default defineConfig({
   projects: [
     {
       name: 'phone',
-      grepInvert: /@desktop|@backend/,
+      grepInvert: /@desktop|@backend|@bucket/,
       use: {
         viewport: { width: PHONE.width, height: PHONE.height },
         isMobile: PHONE.isMobile,
@@ -243,7 +282,7 @@ export default defineConfig({
     {
       name: 'desktop',
       grep: /@desktop/,
-      grepInvert: /@backend/,
+      grepInvert: /@backend|@bucket/,
       use: {
         viewport: { width: DESKTOP.width, height: DESKTOP.height },
         isMobile: DESKTOP.isMobile,
@@ -315,12 +354,33 @@ export default defineConfig({
           },
         ]
       : []),
+    // The `@bucket` tests, against the bucket-shaped build (see
+    // BUCKET_COMMAND above). Service workers blocked, for the backend
+    // project's reason: every request reaches `page.route`.
+    ...(BUCKET_MODE_AVAILABLE
+      ? [
+          {
+            name: 'phone-bucket',
+            grep: /@bucket/,
+            timeout: 90_000,
+            expect: { timeout: 10_000 },
+            use: {
+              baseURL: BUCKET_ORIGIN,
+              serviceWorkers: 'block' as const,
+              viewport: { width: PHONE.width, height: PHONE.height },
+              isMobile: PHONE.isMobile,
+              hasTouch: PHONE.hasTouch,
+              deviceScaleFactor: PHONE.deviceScaleFactor,
+            },
+          },
+        ]
+      : []),
     ...(DATA_MODE || SKIP_WEBKIT
       ? []
       : [
           {
             name: 'phone-webkit',
-            grepInvert: /@desktop|@backend/,
+            grepInvert: /@desktop|@backend|@bucket/,
             use: {
               browserName: 'webkit' as const,
               launchOptions: {},
@@ -360,6 +420,21 @@ export default defineConfig({
                   env: {
                     ...(process.env as Record<string, string>),
                     ...BACKEND_BUILD_ENV,
+                  },
+                },
+              ]
+            : []),
+          // And the bucket-shaped build, on a port of its own.
+          ...(BUCKET_MODE_AVAILABLE
+            ? [
+                {
+                  command: BUCKET_COMMAND,
+                  url: `${BUCKET_ORIGIN}/`,
+                  reuseExistingServer: !process.env.CI,
+                  timeout: 120_000,
+                  env: {
+                    ...(process.env as Record<string, string>),
+                    ...BUCKET_BUILD_ENV,
                   },
                 },
               ]

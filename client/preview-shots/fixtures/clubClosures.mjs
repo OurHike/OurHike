@@ -316,12 +316,19 @@ export function clubClosureStewards() {
  *  (nobody has timed it on a preview). */
 const TAP_FOR_MS = 45_000
 
-/** A lon/lat as a point on the map canvas at TRAIL_CLOSURES_CAMERA:
- *  MapLibre's world is 512 px a tile, so at zoom z a degree of longitude is
- *  512 * 2^z / 360 px, and with no map padding the camera's centre is the
- *  canvas's centre (hazard-area-no-plan.mjs's canvasPoint). */
-function canvasPoint([lon, lat], box) {
-  const { center, zoom } = TRAIL_CLOSURES_CAMERA
+/**
+ * A lon/lat as a point on the map canvas at `camera` ({ center, zoom }):
+ * MapLibre's world is 512 px a tile, so at zoom z a degree of longitude is
+ * 512 * 2^z / 360 px, and with no map padding the camera's centre is the
+ * canvas's centre (hazard-area-no-plan.mjs's canvasPoint). Exported for
+ * e2e/closureSurfaces.spec.ts, which taps a hazard area at a camera of its
+ * own, so the arithmetic has one home.
+ *
+ * @param {[number, number]} lonLat
+ * @param {{ width: number, height: number }} box
+ * @param {{ center: number[], zoom: number }} camera
+ */
+export function canvasPointAt([lon, lat], box, { center, zoom }) {
   const pxPerDegree = (512 * 2 ** zoom) / 360
   const mercator = (degrees) =>
     (Math.log(Math.tan(Math.PI / 4 + (degrees * Math.PI) / 360)) * 180) / Math.PI
@@ -329,6 +336,11 @@ function canvasPoint([lon, lat], box) {
     x: box.width / 2 + (lon - center[0]) * pxPerDegree,
     y: box.height / 2 - (mercator(lat) - mercator(center[1])) * pxPerDegree,
   }
+}
+
+/** `canvasPointAt`, at TRAIL_CLOSURES_CAMERA. */
+function canvasPoint(lonLat, box) {
+  return canvasPointAt(lonLat, box, TRAIL_CLOSURES_CAMERA)
 }
 
 /**

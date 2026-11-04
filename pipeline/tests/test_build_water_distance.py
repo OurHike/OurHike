@@ -13,7 +13,10 @@ keeps user-created sites from ever being requested.
 
 from __future__ import annotations
 
+import json
+
 import build_water_distance as bwd
+import export_poi
 
 
 def csi_row(location, lat, lon, distance=100.0, provenance="NHDP_HR_Stream", rims="R1", site_type="Shelter"):
@@ -322,3 +325,95 @@ def test_a_negative_distance_publishes_nothing_and_keeps_the_evidence():
     assert record["listed_distance_ft"] == -999
     assert "sentinel" in record["unresolved"]
     assert record["match"] == "name"
+
+
+# --- the ledger holds the file's ids ------------------------------------------
+
+
+def test_a_water_distance_whose_poi_id_is_retired_is_dropped_not_rejoined(tmp_path):
+    """The export joins the file on the id it publishes under, and nothing
+    follows a retired id to its live successor: a file row keyed by a ledger
+    id the ledger has since retired attaches to no record, and the shelter
+    ships with no distance. load_water_distances() keys the row as the file
+    wrote it, apply_ledger_ids() keeps the record on the live row's id
+    (live_ledger_ids() reads no retired row, so a retired id is never one a
+    record takes), and attach_water_distance() finds nothing under the file's
+    key. The live-keyed row beside it attaches, so the drop is the id's.
+
+    The drop is silent by design here - the export's job is to ship what
+    joins - which is why it needs a loud check elsewhere: the dbt singular
+    test assert_every_water_distance_in_the_file_lands_on_one_live_poi.sql on
+    a build, and test_the_checked_in_file_names_only_live_ledger_ids below on
+    the committed files, in the pytest job."""
+    ledger = tmp_path / "poi_identity.json"
+    ledger.write_text(
+        json.dumps(
+            {
+                "pois": {
+                    # The live row before the retired one on purpose: a ledger read
+                    # that forgot to skip retired rows would take the later one and
+                    # re-key the record onto the retired id, which is the rejoin this
+                    # test refuses (shown red that way on 2026-11-04).
+                    "atc_shelters:g1": {"source": "atc_shelters", "source_feature_id": "g1"},
+                    "atc_shelters:g1-retired": {"source": "atc_shelters", "source_feature_id": "g1", "retired": "2026-08-19"},
+                    "atc_shelters:g2": {"source": "atc_shelters", "source_feature_id": "g2"},
+                }
+            }
+        )
+    )
+    distances = tmp_path / "water_distance.json"
+    distances.write_text(
+        json.dumps(
+            {
+                "sites": [
+                    {"layer": "shelters", "poi_id": "atc_shelters:g1-retired", "distance_ft": 120, "provenance": "FarOut"},
+                    {"layer": "shelters", "poi_id": "atc_shelters:g2", "distance_ft": 130, "provenance": "FarOut"},
+                ]
+            }
+        )
+    )
+    records = [
+        {"id": "atc_shelters:g1", "source": "atc_shelters", "source_feature_id": "g1", "poi_type": "shelter"},
+        {"id": "atc_shelters:g2", "source": "atc_shelters", "source_feature_id": "g2", "poi_type": "shelter"},
+    ]
+
+    assert export_poi.apply_ledger_ids(records, ledger) == 0, "the live rows carry the ids the records already have"
+    loaded = export_poi.load_water_distances(distances)
+    assert set(loaded) == {"atc_shelters:g1-retired", "atc_shelters:g2"}, "the file's keys, as written"
+    assert export_poi.attach_water_distance(records, loaded) == 1
+
+    dropped, kept = records
+    assert dropped["id"] == "atc_shelters:g1" and "water_distance_ft" not in dropped
+    assert kept["water_distance_ft"] == 130
+
+
+def test_the_checked_in_file_names_only_live_ledger_ids():
+    """The committed reference/water_distance.json against the committed
+    reference/poi_identity.json, with no warehouse: every record's poi_id is
+    a LIVE ledger row whose source is the record's layer's. A retired id, or
+    one the ledger never minted, is a regeneration made before the ledger was
+    reconciled (build_water_distance.py's docstring on the order), and it
+    drops that site's distance on every phone without a log line - the test
+    above shows how. This goes red in the pytest job on the pull request that
+    commits it, before any build.
+
+    Measured 2026-11-04: 512 records, 305 with a distance, every one a live
+    row - which is the whole claim, not a count to pin; the count below only
+    refuses an empty file."""
+    ledger = json.loads(export_poi.LEDGER_PATH.read_text(encoding="utf-8"))["pois"]
+    records = json.loads(bwd.OUT_PATH.read_text(encoding="utf-8"))["sites"]
+    assert records, "an empty file would hold nothing to the ledger"
+
+    not_live = {}
+    wrong_source = {}
+    for record in records:
+        row = ledger.get(record["poi_id"])
+        if row is None:
+            not_live[record["poi_id"]] = "not in the ledger"
+        elif "retired" in row:
+            not_live[record["poi_id"]] = f"retired {row['retired']}"
+        elif row["source"] != export_poi.WATER_DISTANCE_SOURCES[record["layer"]]:
+            wrong_source[record["poi_id"]] = f"{row['source']} for a {record['layer']} row"
+
+    assert not_live == {}, "reconcile the ledger, then re-run build_water_distance.py and review the diff"
+    assert wrong_source == {}

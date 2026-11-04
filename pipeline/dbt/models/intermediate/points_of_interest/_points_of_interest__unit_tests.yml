@@ -1900,6 +1900,52 @@ unit_tests:
         - {poi_id: 'atc_csi:H5', poi_type: 'water', source: 'atc_csi', source_feature_id: 'H5', name: 'Water near Fixture Shelter Five', confidence: 'low', site_id: 'atc_shelters:H5', site_role: 'member', site_name: 'Fixture Shelter Five', water_distance_ft: 220, water_distance_source: 'FarOut', synthesized_description: 'ATC measured how far the nearest water waypoint in FarOut is from Fixture Shelter Five; the spot itself is not mapped, so this point sits on the shelter.', held_csi_water_id: null}
         - {poi_id: 'atc_csi:H6', poi_type: 'water', source: 'atc_csi', source_feature_id: 'H6', name: 'Water near Fixture Shelter Six', confidence: 'low', site_id: 'atc_shelters:H6', site_role: 'member', site_name: 'Fixture Shelter Six', water_distance_ft: 230, water_distance_source: 'FarOut', synthesized_description: 'ATC measured how far the nearest water waypoint in FarOut is from Fixture Shelter Six; the spot itself is not mapped, so this point sits on the shelter.', held_csi_water_id: null}
 
+  - name: int_points_of_interest__water_drops_a_distance_whose_poi_id_the_ledger_retired
+    description: >
+      The silent drop that
+      tests/singular/assert_every_water_distance_in_the_file_lands_on_one_live_poi.sql
+      turns loud, pinned so the model's own behaviour is on record:
+      reference/water_distance.json keys a shelter's distance by a ledger id
+      the ledger has since retired (D1's 120 ft under atc_shelters:D1-retired,
+      whose live row for the same GlobalID is atc_shelters:D1), and the
+      shelter publishes with no distance and no source, in no site, with no
+      water point synthesized for it and nothing held: the join is on the
+      published id (the model's header) and nothing follows a retired id to
+      its live successor. Beside it, a shelter whose file row names its live
+      id keeps its distance and gets its point (D2), so what drops is the
+      id's doing and not the fixture's.
+      tests/test_dbt_points_of_interest_parity.py runs attach_water_distance(),
+      synthesize_csi_water() and apply_ledger_ids() over these rows:
+      load_water_distances() keys D1's distance by the retired id, which no
+      record is published under, so the Python drops it too.
+    model: int_points_of_interest__water
+    given:
+      - input: ref('int_points_of_interest__sites')
+        rows:
+          - {poi_id: 'atc_shelters:D1', poi_key: 'key-atc_shelters:D1', source_key: 'atc_shelters', file_order: 1, source_row: 0, source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', source_feature_id: 'D1', name: 'Fixture Dropped Shelter', poi_type: 'shelter', confidence: 'high', lon: -74.5, lat: 41.1, properties: '{}', site_id: null, site_role: null, site_name: null}
+          - {poi_id: 'atc_shelters:D2', poi_key: 'key-atc_shelters:D2', source_key: 'atc_shelters', file_order: 1, source_row: 1, source: 'atc_shelters', phone_files: 'poi_by_type', trail_id: 'AT', source_feature_id: 'D2', name: 'Fixture Kept Shelter', poi_type: 'shelter', confidence: 'high', lon: -74.5, lat: 41.2, properties: '{}', site_id: null, site_role: null, site_name: null}
+      - input: ref('base_atc__water_distance')
+        rows:
+          - {layer: 'shelters', poi_id: 'atc_shelters:D1-retired', distance_ft: 120, provenance: 'FarOut'}
+          - {layer: 'shelters', poi_id: 'atc_shelters:D2', distance_ft: 130, provenance: 'FarOut'}
+      - input: ref('poi_water_claims')
+        rows:
+          - {provenance: 'FarOut', claim: 'ATC measured how far the nearest water waypoint in FarOut is from {placed_on}'}
+          - {provenance: 'NHDP_HR_Stream', claim: 'ATC measured how far the nearest USGS-mapped stream is from {placed_on}'}
+          - {provenance: 'NHDP_HR_Pond', claim: 'ATC measured how far the nearest USGS-mapped pond is from {placed_on}'}
+          - {provenance: 'OSA_Field_Estimate', claim: 'An ATC steward estimated how far water is from {placed_on}'}
+          - {provenance: '*', claim: 'ATC''s index gives how far water is from {placed_on}'}
+      - input: ref('base_ourhike__poi_identity')
+        rows:
+          - {poi_id: 'atc_shelters:D1-retired', poi_identity_key: 'key-atc_shelters:D1-retired', source: 'atc_shelters', source_feature_id: 'D1', retired: '2026-08-19', superseded_by: null}
+          - {poi_id: 'atc_shelters:D1', poi_identity_key: 'key-atc_shelters:D1', source: 'atc_shelters', source_feature_id: 'D1', retired: null, superseded_by: null}
+          - {poi_id: 'atc_shelters:D2', poi_identity_key: 'key-atc_shelters:D2', source: 'atc_shelters', source_feature_id: 'D2', retired: null, superseded_by: null}
+    expect:
+      rows:
+        - {poi_id: 'atc_shelters:D1', poi_type: 'shelter', source: 'atc_shelters', source_feature_id: 'D1', name: 'Fixture Dropped Shelter', confidence: 'high', site_id: null, site_role: null, site_name: null, water_distance_ft: null, water_distance_source: null, synthesized_description: null, held_csi_water_id: null}
+        - {poi_id: 'atc_shelters:D2', poi_type: 'shelter', source: 'atc_shelters', source_feature_id: 'D2', name: 'Fixture Kept Shelter', confidence: 'high', site_id: 'atc_shelters:D2', site_role: 'anchor', site_name: 'Fixture Kept Shelter', water_distance_ft: 130, water_distance_source: 'FarOut', synthesized_description: null, held_csi_water_id: null}
+        - {poi_id: 'atc_csi:D2', poi_type: 'water', source: 'atc_csi', source_feature_id: 'D2', name: 'Water near Fixture Kept Shelter', confidence: 'low', site_id: 'atc_shelters:D2', site_role: 'member', site_name: 'Fixture Kept Shelter', water_distance_ft: 130, water_distance_source: 'FarOut', synthesized_description: 'ATC measured how far the nearest water waypoint in FarOut is from Fixture Kept Shelter; the spot itself is not mapped, so this point sits on the shelter.', held_csi_water_id: null}
+
   - name: int_points_of_interest__enriched_attaches_capacity_and_nearby_like_export_poi
     description: >
       Capacity: a shelter the file gives a number sleeps that

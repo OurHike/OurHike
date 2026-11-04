@@ -44,6 +44,7 @@ import {
   type ChallengeState,
   type ChallengeTag,
 } from '../lib/challengeProgress'
+import type { UnitSystem } from '../lib/units'
 import type { MileRange } from '../lib/walkedMiles'
 import { localDay } from '../lib/passedToday'
 import { Diamond, DraftLabel, FinishBar, TagPill } from '../chrome/ChallengeParts'
@@ -90,6 +91,9 @@ export interface ChallengeDetailProps {
   /** Today's walked miles (lib/passedToday.ts), for "Somewhere I walked
    *  today" and "Near you". */
   todayRanges?: readonly MileRange[]
+  /** The hiker's unit system (Settings), for a distance the tile sheet
+   *  states. Absent reads as imperial, the app's default. */
+  units?: UnitSystem
   /** The phone's own waypoints by name, for "Pick a place". */
   places?: readonly SearchablePoi[]
   onUntag: (item: ChallengeItem, poi?: string) => void
@@ -397,6 +401,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           }
           todayRanges={props.todayRanges}
           fixMile={props.fixMile}
+          units={props.units}
           onEarn={() => requestEarn(sheet)}
           onTakeBack={
             props.onRemoveTag === undefined

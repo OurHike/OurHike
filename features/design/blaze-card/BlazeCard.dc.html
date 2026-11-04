@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Blaze card — the 100 items as tiles</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Mono',monospace;color:#fdfaf2}
+a{color:#96b98c}a:hover{color:#c7dabd}
+.bc-tile{display:flex;align-items:center;justify-content:center;border-radius:3px;background:#284029;box-sizing:border-box}
+.bc-tile svg{width:62%;height:62%;stroke:#96b98c;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bc-tile.done{background:#fdfaf2;box-shadow:0 1px 0 rgba(0,0,0,0.35)}
+.bc-tile.done svg{stroke:#122016;stroke-width:2}
+.bc-tile.mystery{background:transparent;border:1.5px dashed #47784b}
+.bc-tile.mystery svg{stroke:#6b9463}
+</style>
+</helmet>
+<div style="display: flex; flex-direction: column; gap: 8px; background: #122016; padding: 2px; border-radius: 6px">
+  <sc-for list="{{sections}}" as="s" hint-placeholder-count="4">
+    <div style="display: flex; flex-direction: column; gap: 4px">
+      <sc-if value="{{labels}}" hint-placeholder-val="{{true}}">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 1px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: #96b98c; line-height: 1">
+          <span>{{s.name}}</span>
+          <span style="color: #6b9463">{{s.count}}</span>
+        </div>
+      </sc-if>
+      <div style="display: flex; flex-wrap: wrap; gap: {{gapPx}}">
+        <sc-for list="{{s.tiles}}" as="t" hint-placeholder-count="10">
+          <div class="bc-tile {{t.cls}}" style="width: {{tilePx}}; height: {{tallPx}}" title="{{t.title}}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{t.d}}"></path></svg>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"tile":{"editor":"int","default":30,"min":10,"max":120,"unit":"px","section":"Card"},"gap":{"editor":"int","default":5,"min":1,"max":16,"unit":"px","section":"Card"},"labels":{"editor":"boolean","default":true,"section":"Card"},"done":{"editor":null},"$preview":{"width":420,"height":640}}'>
+const ITEMS=[
+["L","map","Plan an adventure with the Appalachian Trail Conservancy's Hiker Resource Library."],
+["L","book","Check out a book about the Appalachian Trail from your local library."],
+["L","map","Plan a trip with a map or guidebook from the ATC Trail Store."],
+["L","quiz","Take our A.T. trivia quiz."],
+["L","film","Watch one of the ATC's short films about conservation."],
+["L","leaf","Download the iNaturalist Seek app and catalogue species you find on the Trail."],
+["L","museum","Visit the Harpers Ferry Visitor Center."],
+["L","museum","Visit the Damascus Trail Center."],
+["L","museum","Visit the Monson Visitor Center."],
+["L","museum","Learn about the history of the Trail at the Appalachian Trail Museum in Pennsylvania."],
+["L","water","Learn to purify water using a filter or chemical treatment."],
+["L","tent","Learn how to do a PCT hang."],
+["L","tent","Learn how to use a bear canister."],
+["L","learn","Get WFA/WFR certified."],
+["L","megaphone","Follow the ATC on social media."],
+["L","podcast","Listen to an episode of the Green Tunnel podcast about A.T. history."],
+["L","book","Read The Appalachian Trail: A Biography."],
+["L","book","Read The Appalachian Trail Thru-Hiker's Companion."],
+["L","museum","Stop by a national park visitor center to learn about the local landscape."],
+["L","museum","Stop by the Roan Mountain State Park Visitor Center for high-elevation ecology."],
+["L","museum","Check out the Virginia Creeper Trail exhibits on rail-to-trail history."],
+["L","leaf","Take a birdwatching hike with a local Audubon chapter or an ATC Visitor Center."],
+["L","museum","Follow the footsteps of history—visit sections of the Trail that cross Civil War battlefields."],
+["L","book","Read Benton MacKaye's original Appalachian Trail proposal."],
+["L","leaf","Identify 5 different species on a hike."],
+["L","people","Have a conversation with a Trail maintainer or Trail Crew member."],
+["L","food","Share a meal with someone who has completed a thru-hike and hear their story."],
+["L","leaf","Learn about the native lands the A.T. passes through."],
+["L","book","Learn about A.T. history at keepthetrailalive.org."],
+["L","leaf","Visit USGS.gov to learn about the geology of the Appalachian Mountains."],
+["L","blaze","Find a USGS A.T. survey marker."],
+["E","blaze","Take a photo of a white blaze."],
+["E","shelter","Hike to an A.T. shelter and sign the shelter logbook."],
+["E","mountain","Use the A.T. Vistas layer of the ATC's interactive map to find one of the Trail's stunning vistas."],
+["E","sunrise","Watch the sunrise from the Trail. Don't forget to take a photo!"],
+["E","people","Take a partner, friend, or family member with you on a hike to experience the Trail together."],
+["E","mountain","Take the McAfee Knob shuttle to hike to one of the most photographed spots on the A.T."],
+["E","mountain","Visit the A.T.'s southern terminus at Springer Mountain."],
+["E","museum","Visit the stone arch at Amicalola Falls State Park."],
+["E","mountain","Hike to the A.T.'s northern terminus at Katahdin."],
+["E","blaze","Visit the A.T.'s psychological halfway point at Harpers Ferry."],
+["E","pen","Send a postcard with an A.T. stamp."],
+["E","mountain","Summit a 4,000+ foot peak."],
+["E","food","Visit an A.T. Community and have a meal at a local restaurant."],
+["E","pen","Write your own trail story or poem."],
+["E","boots","Hike a full state section of the Trail."],
+["E","map","Hike in all 14 Trail states."],
+["E","shelter","Write a confession in the logbook at the Priest Shelter."],
+["E","boots","Cover distance in a new way by trail running or aqua blazing."],
+["E","people","Say hello to a Ridgerunner."],
+["E","museum","Visit one of the six National Park Service units along the A.T."],
+["E","learn","Become a Junior Ranger (open to all ages)."],
+["E","pen","Make a piece of art inspired by the A.T. and share it on social media."],
+["E","blaze","Follow a blue blaze trail."],
+["E","town","Take public transportation to the Trail."],
+["E","podcast","Make a playlist inspired by the Trail."],
+["E","bridge","Cross the James River Footbridge—the longest footbridge on the A.T."],
+["E","blaze","Collect A.T. passport stamps along the Trail."],
+["E","tent","Stay in a hiker hostel or A.T.-friendly accommodation."],
+["E","town","Attend an Appalachian Trail festival in a Trail town."],
+["E","boots","Hike a portion of the Trail completely solo."],
+["E","podcast","Listen to live music in an A.T. Community."],
+["E","tower","Visit an old fire tower along the Trail and learn about its history."],
+["E","mountain","Hike the Triple Crown of Virginia: McAfee Knob, Tinker Cliffs, and Dragon's Tooth."],
+["E","food","Eat all (or some) of a half-gallon of ice cream at Pine Grove Furnace State Park."],
+["E","town","Mail yourself a care package to an A.T. post office and pick it up mid-hike."],
+["E","pen","Write a journal entry from the Trail."],
+["E","pen","Find your Trail name."],
+["E","blaze","Spot an original Trail marker: a metal diamond with the A.T. symbol."],
+["E","water","Ride the Kennebec River ferry."],
+["E","mountain","Hike to the summit of Kuwohi, the highest point on the A.T."],
+["E","water","Hike to a waterfall."],
+["E","camera","Take photos of your adventure with a disposable or film camera."],
+["E","food","Cook a meal on a camp stove."],
+["E","leaf","Hike in silence to truly listen to nature."],
+["P","people","Identify and learn about your local Trail Club."],
+["P","tools","Sign up for a volunteer event and spend a day doing essential Trail maintenance."],
+["P","learn","Brush up on your Leave No Trace knowledge with the ATC's online resources."],
+["P","heart","Become a member of the ATC to support ongoing conservation work."],
+["P","trash","Pick up litter on a hike."],
+["P","heart","Gift a membership to a friend or family member."],
+["P","heart","Leave a legacy gift to the A.T. in your will."],
+["P","megaphone","Advocate for the Trail with your members of Congress."],
+["P","heart","Become an A.T. Hero."],
+["P","heart","Donate to the ATC to help protect the Trail experience for future generations."],
+["P","heart","Ask your employer to match your donation to the ATC."],
+["P","megaphone","Organize a fundraiser on Facebook or Instagram for the ATC."],
+["P","tools","Join a Trail Crew."],
+["P","trash","Participate in an invasive species removal workday."],
+["P","learn","Take a Leave No Trace training course."],
+["P","map","Register your upcoming A.T. trips on ATCamp.org to help reduce crowding."],
+["P","tools","Contribute to the Hurricane Helene recovery effort."],
+["P","tools","Participate in National Trails Day activities."],
+["P","megaphone","Report graffiti, vandalism, or dumping via the ATC's incident report form."],
+["P","water","Remove litter from A.T. waterways."],
+["P","heart","Take the long-distance hiker pledge."],
+["P","people","Tell a partner, friend, or family member about why the A.T. is meaningful to you."],
+["M","mystery","Mystery item #1 — revealed by the ATC this summer"],
+["M","mystery","Mystery item #2 — revealed by the ATC this summer"],
+["M","mystery","Mystery item #3 — revealed by the ATC this summer"]
+];
+const ICONS={
+map:"M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z M9 3v15 M15 6v15",
+book:"M4 19.5A2.5 2.5 0 0 1 6.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z",
+quiz:"M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7 M12 17h.01",
+film:"M4 4h16v16H4z M4 8h16 M4 16h16 M8 4v16 M16 4v16",
+leaf:"M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10z M2 21c0-3 1.9-5.5 5-6.5",
+museum:"M3 21h18 M4 21V10 M20 21V10 M2 10l10-7 10 7H2z M8 21v-6 M12 21v-6 M16 21v-6",
+water:"M12 2.7c4 4.5 6 7.9 6 11a6 6 0 0 1-12 0c0-3.1 2-6.5 6-11z",
+tent:"M3.5 21 14 3 M20.5 21 10 3 M2 21h20 M12 21v-6",
+learn:"M22 10 12 5 2 10l10 5 10-5z M6 12v5c3 3 9 3 12 0v-5",
+megaphone:"M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z M15.5 8.5a5 5 0 0 1 0 7 M18.5 5.5a9 9 0 0 1 0 13",
+podcast:"M3 18v-6a9 9 0 0 1 18 0v6 M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3z M3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z",
+mountain:"M8 3l4 8 5-5 5 15H2L8 3z",
+food:"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2 M7 2v20 M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3z M21 15v7",
+tools:"M2 22l10-10 M11 7c3-3 7-3 10 0 M13 9l-2-2 M17 13l-2-2 M12 12l4-4",
+heart:"M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z",
+blaze:"M9 3h6v18H9z",
+people:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M22 21v-2a4 4 0 0 0-3-3.9 M16 3.1a4 4 0 0 1 0 7.8",
+town:"M3 21h18 M5 21V7l7-4 7 4v14 M9 10h2 M13 10h2 M9 14h2 M13 14h2 M10 21v-4h4v4",
+boots:"M7 14c-2 0-3-2-3-4.5S5 4 7 4s3 3 3 5.5S9 14 7 14z M5 16h4v3a2 2 0 0 1-4 0z M17 18c-2 0-3-2-3-4.5S15 8 17 8s3 3 3 5.5-1 4.5-3 4.5z M15 20h4v1a2 2 0 0 1-4 0z",
+shelter:"M3 21h18 M4 21V9l8-6 8 6v12 M4 9h16 M8 21v-8h8v8",
+trash:"M3 6h18 M8 6V4h8v2 M19 6l-1 14H6L5 6 M10 11v5 M14 11v5",
+camera:"M4 8h3l2-3h6l2 3h3v12H4z M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z",
+sunrise:"M12 2v3 M4.2 7.2l2.1 2.1 M19.8 7.2l-2.1 2.1 M2 16h20 M6 16a6 6 0 0 1 12 0 M4 20h16",
+bridge:"M2 20V9 M22 20V9 M2 14h20 M6 14v6 M12 14v6 M18 14v6 M2 9c4-5 16-5 20 0",
+tower:"M8 21l2-14h4l2 14 M6 7h12 M7 4h10v3H7z M9 14h6 M8 21h8",
+mystery:"M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.7 M12 17h.01"
+};
+const SECTIONS=[["L","Learn about the A.T."],["E","Experience the A.T."],["P","Protect the A.T."],["M","Mystery items"]];
+class Component extends DCLogic {
+  renderVals() {
+    const tile = this.props.tile ?? 30;
+    const gap = this.props.gap ?? 5;
+    const labels = this.props.labels ?? true;
+    const done = new Set(Array.isArray(this.props.done) ? this.props.done : []);
+    const sections = SECTIONS.map(([key, name]) => {
+      const tiles = [];
+      ITEMS.forEach((it, i) => {
+        if (it[0] !== key) return;
+        const isDone = done.has(i);
+        tiles.push({
+          cls: isDone ? 'done' : (it[1] === 'mystery' ? 'mystery' : ''),
+          d: ICONS[it[1]] || ICONS.learn,
+          title: it[2],
+        });
+      });
+      return { name, count: String(tiles.length), tiles };
+    });
+    return {
+      sections,
+      labels,
+      gapPx: gap + 'px',
+      tilePx: tile + 'px',
+      tallPx: Math.round(tile * 1.3) + 'px',
+    };
+  }
+}
+</script>
+</body>
+</html>

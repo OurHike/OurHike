@@ -79,7 +79,7 @@ describe('the camp card', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('answers with Tag all or Not tonight', async () => {
+  it('answers with Earn all or Not tonight', async () => {
     const onTagAll = vi.fn()
     const onNotTonight = vi.fn()
     render(
@@ -90,7 +90,7 @@ describe('the camp card', () => {
         onNotTonight={onNotTonight}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Tag all' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Earn all' }))
     await userEvent.click(screen.getByRole('button', { name: 'Not tonight' }))
     expect(onTagAll).toHaveBeenCalledOnce()
     expect(onNotTonight).toHaveBeenCalledOnce()
@@ -158,8 +158,9 @@ describe('the camp card, read aloud', () => {
       />,
     )
     expect(screen.getByRole('heading', { name: /You passed places/ })).toBeInTheDocument()
-    expect(
-      screen.getAllByText('Draft · not yet confirmed by the ATC').length,
-    ).toBeGreaterThan(0)
+    // One banner for the draft list, however many of its rows the day passed
+    // (#1961) - the old card printed one per row.
+    expect(screen.getAllByText('Draft · not yet confirmed by the ATC')).toHaveLength(1)
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThan(1)
   })
 })

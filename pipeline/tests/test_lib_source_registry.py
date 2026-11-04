@@ -309,6 +309,23 @@ def test_the_registry_still_records_the_atc_licence_block():
     assert registry["atc_licence"]["recorded_date"] == "2026-08-13"
 
 
+def test_the_registry_records_the_atc_bucket_list_licence_block():
+    """The basis on which the ATC's Bucket List TEXT is carried in
+    reference/challenges/atc/ and shown to hikers (features/CHALLENGES.md's
+    open question, closed by features/CHALLENGES_BLAZE_CARD.md slice 1): the
+    maintainer's authorisation of 2026-11-03, on the ATC's agreement to run
+    the list on OurHike - not a written grant, and the block says so. A
+    document, so atc_licence's 'facts ATC publishes' scope does not reach it
+    and it has its own pin, with the same discovery-run survival concern."""
+    registry = load_registry(REAL_REGISTRY)
+
+    block = registry["atc_bucket_list_licence"]
+    assert block["author"] == "Appalachian Trail Conservancy"
+    assert block["basis"].startswith("Maintainer authorisation")
+    assert block["recorded_date"] == "2026-11-03"
+    assert "NOT A WRITTEN GRANT" in block["_comment"]
+
+
 def test_the_registry_is_still_parseable_as_plain_json():
     """Cheap, and the thing a hand-edited entry breaks first."""
     json.loads(REAL_REGISTRY.read_text())

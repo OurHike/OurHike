@@ -13,9 +13,19 @@
     "protect'). Section order and item order are the PDF's. Nothing is paraphrased,",
     "because a hiker comparing this list with the ATC's must find the same lines.",
     "",
-    "THE DATES ARE PLACEHOLDERS. 2027-05-15 to 2027-09-01 come from the design handoff;",
-    "the 2025 PDF gives only the close ('by September 1'). @unvalidated until the ATC",
-    "publishes 2027's.",
+    "THE DATES ARE PLACEHOLDERS. 2027-05-13 to 2027-09-07 are the 2026 season's days (the",
+    "ATC ran the 2026 list May 13 - Sep 7) carried onto 2027's calendar - the blaze card",
+    "brief, features/CHALLENGES_BLAZE_CARD.md, and the maintainer's choice by poll on",
+    "2026-11-04 over the 2026 dates themselves, which would have read 'Closed Sep 7' on",
+    "every phone until the 2027 list lands. The 2025 PDF gives only the close ('by",
+    "September 1'); the design handoff's placeholders were 2027-05-15 to 2027-09-01.",
+    "@unvalidated until the ATC publishes 2027's, expected in May 2027; until then the",
+    "card runs on this 2025 transcription as a labelled preview.",
+    "",
+    "ONE WORD IN THE SUMMARY IS NOT THE PDF'S. The 2025 PDF says 'by September 1'; the",
+    "summary here says 'by September 7', so it agrees with the window above rather than",
+    "telling a hiker one date in the header and another under it (maintainer, poll",
+    "2026-11-04). Every other word of every line is the PDF's.",
     "",
     "WHICH LINES ARE PLACES. 14 items name a place the ATC's own layers carry, by",
     "published POI id - the anchors block repeats each name so a reviewer can read",
@@ -41,10 +51,10 @@
   "trail": "AT",
   "name": "A.T. Summer Bucket List",
   "status": "draft",
-  "summary": "Complete at least 25 items by September 1 to be eligible for the grand prize drawing.",
+  "summary": "Complete at least 25 items by September 7 to be eligible for the grand prize drawing.",
   "window": {
-    "opens": "2027-05-15",
-    "closes": "2027-09-01"
+    "opens": "2027-05-13",
+    "closes": "2027-09-07"
   },
   "finish": {
     "count": 25,
@@ -63,7 +73,7 @@
     {
       "id": "experience",
       "title": "Experience the A.T.",
-      "short": "Anywhere"
+      "short": "Experience"
     },
     {
       "id": "protect",

@@ -1882,7 +1882,7 @@ describe('the Challenge places switch (#1780)', () => {
     )
 
     const row = container.querySelector('.legend__challenges')!
-    expect(row).toHaveTextContent('Places on your challenges, hollow until tagged.')
+    expect(row).toHaveTextContent('Places on your challenges, hollow until earned.')
     expect(row.textContent).not.toMatch(/\d/)
   })
 

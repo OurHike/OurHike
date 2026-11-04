@@ -460,7 +460,8 @@ export function Challenges({
         sub={
           <>
             Places on your trails, a window of dates, and what counts as finished. Hikers
-            opt in; {CHALLENGE_WORDS.nounPlural} arrive here as a list you can export.
+            opt in; what they {CHALLENGE_WORDS.past} arrives here as a list you can
+            export.
           </>
         }
         actions={

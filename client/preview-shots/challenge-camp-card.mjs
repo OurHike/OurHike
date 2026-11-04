@@ -2,7 +2,7 @@
 //
 // WHAT THIS SHOT IS EVIDENCE FOR. The one question a challenge asks, at the
 // top of Today once the day is over: the places the day's walked miles
-// passed and the hiker has not tagged, each with its mile, then Tag all and
+// passed and the hiker has not earned, each with its mile, then Earn all and
 // Not tonight. Here that is McAfee Knob Summit as a peak of Virginia's
 // Triple Crown - the seeded hiker already tagged the shuttle item there -
 // and, with waypoint data under it, Campbell Shelter for "any shelter".
@@ -17,9 +17,9 @@
 import { EVENING, PASSED_MCAFEE, seedChallenges } from './fixtures/challenges.mjs'
 
 export const caption =
-  'Today’s camp card: what the day’s walk passed, Tag all or Not tonight (#1780, seeded day)'
+  'Today’s camp card: what the day’s walk passed, Earn all or Not tonight (#1780, #1961, seeded day)'
 export const alt =
-  'The Today screen with a dark green card at the top reading From today’s walk, You passed places on your challenges. Tag them?, a row for the McAfee Knob item with its mile marker, and Tag all and Not tonight buttons'
+  'The Today screen with a dark green card at the top reading From today’s walk, You passed places on your challenges. Earn them?, a row for the McAfee Knob item with its mile marker, and Earn all and Not tonight buttons'
 
 export async function before(page) {
   await page.clock.setFixedTime(EVENING)

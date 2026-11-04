@@ -218,7 +218,7 @@ export function ChallengeFinishers({
         <div className="org-callout" data-tone="info">
           <span>
             <strong>A draft takes no entries.</strong> Hikers can join it, walk it and{' '}
-            {CHALLENGE_WORDS.noun} its places; the finish screen tells them your club has
+            {CHALLENGE_WORDS.verb} its places; the finish screen tells them your club has
             not confirmed the list yet, rather than collecting an entry nobody agreed to
             run.
           </span>
@@ -250,8 +250,8 @@ export function ChallengeFinishers({
         <p className="org-panel__note">
           An entry carries what the finisher chose to send — a name, and an email or a
           mailing address — and the places they {CHALLENGE_WORDS.past}, each marked as
-          found by GPS or {CHALLENGE_WORDS.past} by hand. What a hand{' '}
-          {CHALLENGE_WORDS.noun} is worth is yours to decide.
+          found by GPS or {CHALLENGE_WORDS.past} by hand. What an item{' '}
+          {CHALLENGE_WORDS.past} by hand is worth is yours to decide.
         </p>
         <div className="org-inline">
           <button

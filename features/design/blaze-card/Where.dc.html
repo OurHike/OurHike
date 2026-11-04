@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Where did it happen?</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@400;700&amp;family=Public+Sans:wght@400;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:'Public Sans',system-ui,sans-serif;color:#2b2620}
+a{color:#355c3a}a:hover{color:#284029}
+.wh-opt{display:flex;align-items:center;gap:12px;margin:0 16px 8px;background:#fffdf7;border:1.5px solid #e4ddca;border-radius:16px;padding:12px 14px;text-align:left;width:calc(100% - 32px);font:inherit;color:inherit;cursor:pointer}
+.wh-opt.on{border-color:#122016;background:#fdfaf2;box-shadow:0 0 0 2px #122016 inset}
+.wh-ic{flex:0 0 36px;height:36px;border-radius:10px;background:#e3ecda;display:flex;align-items:center;justify-content:center}
+.wh-ic svg{width:20px;height:20px;stroke:#284029;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.wh-t{flex:1;min-width:0}
+.wh-h{font-weight:700;font-size:15px;line-height:1.3}
+.wh-s{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#5a5346;margin-top:2px}
+</style>
+</helmet>
+<div style="width: 390px; height: 990px; box-sizing: border-box; background: #f7f3e9; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="background: #122016; color: #fdfaf2; padding: 18px 20px 22px; border-radius: 0 0 28px 28px">
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <a href="Tile.dc.html" style="text-decoration: none; font-weight: 700; font-size: 17px; color: #c7dabd">‹ Back</a>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #96b98c">Earning a blaze · 2 of 2</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 14px; margin-top: 16px">
+      <span style="flex: 0 0 44px; height: 58px; border-radius: 5px; background: #fdfaf2; box-shadow: 0 1px 0 rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" style="stroke: #122016; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M8 3l4 8 5-5 5 15H2L8 3z"></path></svg></span>
+      <div>
+        <h1 style="margin: 0; font-family: 'Bitter', Georgia, serif; font-weight: 700; font-size: 28px; line-height: 1.1; color: #fdfaf2">Where did it happen?</h1>
+        <p style="margin: 6px 0 0; font-size: 14px; line-height: 1.4; color: #c7dabd">Take the McAfee Knob shuttle to hike to one of the most photographed spots on the A.T.</p>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding: 18px 0 0">
+    <button type="button" class="wh-opt on">
+      <span class="wh-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path></svg></span>
+      <span class="wh-t"><span class="wh-h">Here · McAfee Knob Summit</span><span class="wh-s">mi 714.9 · your position right now</span></span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #355c3a; letter-spacing: 0.08em; text-transform: uppercase">Chosen</span>
+    </button>
+    <button type="button" class="wh-opt">
+      <span class="wh-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 14c-2 0-3-2-3-4.5S5 4 7 4s3 3 3 5.5S9 14 7 14z M5 16h4v3a2 2 0 0 1-4 0z M17 18c-2 0-3-2-3-4.5S15 8 17 8s3 3 3 5.5-1 4.5-3 4.5z M15 20h4v1a2 2 0 0 1-4 0z"></path></svg></span>
+      <span class="wh-t"><span class="wh-h">Somewhere I walked today</span><span class="wh-s">mi 710 – 716 · Campbell Shelter, McAfee Knob</span></span>
+    </button>
+    <button type="button" class="wh-opt">
+      <span class="wh-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z M9 3v15 M15 6v15"></path></svg></span>
+      <span class="wh-t"><span class="wh-h">Pick a place on the map</span><span class="wh-s">any shelter, summit or town on the A.T.</span></span>
+    </button>
+    <button type="button" class="wh-opt">
+      <span class="wh-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7 M5 10v10h14V10 M10 20v-6h4v6"></path></svg></span>
+      <span class="wh-t"><span class="wh-h">Not on the trail</span><span class="wh-s">at home, in town, on another trail</span></span>
+    </button>
+  </div>
+
+  <div style="margin: 14px 16px 0; background: #fffdf7; border: 1px solid #e4ddca; border-radius: 16px; overflow: hidden">
+    <div style="padding: 10px 14px 6px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5a5346">Where it lands on the map</div>
+    <img src="./map-where.svg" alt="Map of the Appalachian Trail with McAfee Knob, Virginia, ringed in orange as where this blaze will land; your other earned blazes in white; the stretch you walked in yellow" style="display: block; width: 358px; height: 360px">
+  </div>
+
+  <p style="margin: 14px 20px 0; font-size: 13px; line-height: 1.45; color: #706859">Where stays on this phone. The ATC gets the item and the day, never the place or a track.</p>
+
+  <div style="margin-top: auto; padding: 0 20px 20px">
+    <a href="Line.dc.html" style="display: block; text-align: center; text-decoration: none; background: #c1611a; color: #fffdf7; font-weight: 700; font-size: 18px; padding: 15px; border-radius: 999px">Earn it here</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":990}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const blazes = [
+      { mile: 0.0, done: true }, { mile: 703.1, done: true }, { mile: 713.0, done: true },
+      { mile: 714.9, done: true }, { mile: 719.6, done: true }, { mile: 787.9, done: true },
+      { mile: 1026.5, done: true }, { mile: 714.9, done: false },
+    ];
+    const walked = [[0, 2], [700, 725], [785, 790], [1024, 1028]];
+    return { size: 22, blazes, walked };
+  }
+}
+</script>
+</body>
+</html>

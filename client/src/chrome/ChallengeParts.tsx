@@ -1,5 +1,5 @@
 // Small pieces every challenge surface shares (#1780): the diamond, the draft
-// label, the finish bar, the Tag it pill and an organization's mark. One copy
+// banner, the finish bar, the Earn it pill and an organization's mark. One copy
 // of each, so the list, a challenge's own page, the place card, Today's camp
 // card and Plan's card cannot drift into five spellings of the same thing.
 // Components only: the words a row prints are lib/challengeText.ts's.
@@ -17,10 +17,17 @@ export function Diamond({ done, big = false }: { done: boolean; big?: boolean })
 }
 
 /** The maintainer's condition for publishing a draft at all (poll,
- *  2026-09-30): wherever the challenge is named, so is this. */
+ *  2026-09-30): wherever the challenge is named, so is this. One banner
+ *  rather than a chip (#1961): a full-width line a reader can read, once per
+ *  surface, in place of an uppercase tag that read as a badge. A span, so
+ *  it can sit inside a card that is a button. */
 export function DraftLabel({ challenge }: { challenge: Challenge }) {
   const label = draftLabel(challenge)
-  return label === null ? null : <span className="challenge-draft">{label}</span>
+  return label === null ? null : (
+    <span className="challenge-draft" role="note">
+      {label}
+    </span>
+  )
 }
 
 /** The finish bar - drawn only where a finish line exists, and only on the
@@ -38,7 +45,7 @@ export function FinishBar({ tagged, finish }: { tagged: number; finish: number }
   )
 }
 
-/** "Tag it" / "Tagged" - toggles at once (optimistic); the outbox handles
+/** "Earn it" / "Earned" - toggles at once (optimistic); the outbox handles
  *  delivery. */
 export function TagPill({
   tagged,

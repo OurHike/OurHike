@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bucket List — welcome</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@400;700&amp;family=Public+Sans:wght@400;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:'Public Sans',system-ui,sans-serif;color:#2b2620}
+a{color:#355c3a}a:hover{color:#284029}
+.hw-tile{width:64px;height:84px;border-radius:7px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;flex:0 0 64px}
+.hw-tile svg{width:34px;height:34px;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.hw-tile.todo{background:#284029}.hw-tile.todo svg{stroke:#96b98c}
+.hw-tile.done{background:#fdfaf2;box-shadow:0 1px 0 rgba(0,0,0,0.35)}.hw-tile.done svg{stroke:#122016;stroke-width:2.2}
+.hw-tile.count{background:#284029;color:#d69a2d;font-family:'Bitter',Georgia,serif;font-weight:700;font-size:30px}
+.hw-tile.ring{background:#284029;position:relative}
+.hw-tile.ring::after{content:'';position:absolute;width:30px;height:30px;border:2px solid #c1611a;border-radius:50%}
+.hw-tile.ring svg{stroke:#fdfaf2}
+.hw-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.28)}
+.hw-dot.on{background:#d69a2d}
+</style>
+</helmet>
+<div style="width: 390px; height: 1260px; box-sizing: border-box; background: #f7f3e9; display: flex; flex-direction: column; overflow: hidden; position: relative">
+
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 18px 20px 0">
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5a5346">Appalachian Trail Conservancy</span>
+    <span style="display: inline-flex; align-items: center; gap: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #5a5346"><span style="display: inline-block; width: 7px; height: 16px; background: #122016; border-radius: 1px"></span>OurHike</span>
+  </div>
+
+  <div style="padding: 18px 20px 0">
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #c1611a">The A.T. Summer Bucket List</div>
+    <h1 style="margin: 6px 0 0; font-family: 'Bitter', Georgia, serif; font-weight: 700; font-size: 34px; line-height: 1.04; letter-spacing: -0.01em; color: #122016">100 things to do on and around the Appalachian Trail this summer.</h1>
+  </div>
+
+  <!-- HOW IT WORKS: four beats, auto-advancing, tap to step. Explains by showing; no hover on a phone. -->
+  <button type="button" onClick="{{next}}" aria-label="How it works, step {{stepLabel}} of 4. Tap for the next step." style="margin: 16px 16px 0; width: calc(100% - 32px); box-sizing: border-box; border: 0; text-align: left; font: inherit; color: #fdfaf2; background: #1c2f1f; border-radius: 18px; padding: 14px 16px; display: flex; align-items: center; gap: 16px; cursor: pointer">
+    <span class="hw-tile {{beat.cls}}" aria-hidden="true">
+      <sc-if value="{{beat.isCount}}" hint-placeholder-val="{{false}}"><span>25</span></sc-if>
+      <sc-if value="{{beat.hasIcon}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 24 24"><path d="{{beat.d}}"></path></svg></sc-if>
+    </span>
+    <span style="flex: 1; min-width: 0">
+      <span style="display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #96b98c">How it works · {{stepLabel}} of 4</span>
+      <span style="display: block; font-size: 16px; line-height: 1.35; margin-top: 4px">{{beat.text}}</span>
+      <span style="display: flex; gap: 5px; margin-top: 10px" aria-hidden="true">
+        <sc-for list="{{dots}}" as="dot" hint-placeholder-count="4"><span class="hw-dot {{dot.cls}}"></span></sc-for>
+      </span>
+    </span>
+  </button>
+
+  <div style="display: flex; gap: 10px; padding: 14px 20px 0">
+    <a href="Card.dc.html" style="flex: 1; text-align: center; text-decoration: none; background: #c1611a; color: #fffdf7; font-weight: 700; font-size: 17px; padding: 14px 12px; border-radius: 999px">Start my card</a>
+    <a href="Home.dc.html" style="flex: 1; text-align: center; text-decoration: none; border: 2px solid #c3baa4; color: #284029; font-weight: 700; font-size: 16px; padding: 12px 12px; border-radius: 999px">I have the app</a>
+  </div>
+
+
+  <!-- WHAT YOU GET, below the fold: the places with their mile markers, then the card itself. -->
+  <div style="padding: 22px 20px 0">
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5a5346">Where the trail items are</div>
+    <div style="font-family: 'Bitter', Georgia, serif; font-weight: 700; font-size: 20px; line-height: 1.2; color: #122016; margin-top: 4px">21 of the 100 are places on the A.T. — here they are, with their mile markers.</div>
+  </div>
+  <div style="margin: 12px 16px 0; background: #fffdf7; border: 1px solid #e4ddca; border-radius: 18px; overflow: hidden">
+    <img src="./map-welcome.svg" alt="Map of the Appalachian Trail from Springer Mountain to Katahdin, with the Bucket List's places marked along it and their mile markers" style="display: block; width: 358px; height: 330px">
+  </div>
+  <p style="margin: 10px 20px 0; font-size: 13px; line-height: 1.45; color: #706859">The other 79 happen anywhere — a library, a trail town, your kitchen. No GPS needed for any of it.</p>
+
+  <div style="padding: 22px 20px 0">
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5a5346">Your card</div>
+    <div style="font-family: 'Bitter', Georgia, serif; font-weight: 700; font-size: 20px; line-height: 1.2; color: #122016; margin-top: 4px">All 100, in the ATC's four sections. Each one you do becomes a white blaze.</div>
+  </div>
+  <div style="margin: 12px 16px 0; background: #122016; border-radius: 22px; padding: 12px 12px 10px; box-shadow: 0 10px 30px rgba(18,32,22,0.25)">
+    <dc-import name="BlazeCard" tile="{{tile}}" gap="{{gap}}" done="{{done}}" labels="{{true}}" hint-size="334px,260px"></dc-import>
+  </div>
+
+  <p style="margin: 14px 20px 0; font-size: 13px; line-height: 1.45; color: #706859">No account needed. Works with no signal. Nothing leaves your phone until you choose to enter.</p>
+
+  <div style="margin-top: 20px; padding: 0 20px 16px; display: flex; justify-content: space-between; align-items: baseline; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #8a8271">
+    <span>#ATBucketList27</span>
+    <span>Appalachian Trail Conservancy</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"painted":{"editor":"int","default":9,"min":0,"max":100,"section":"Card"},"seconds":{"editor":"float","default":3.5,"min":1,"max":10,"step":0.5,"unit":"s","section":"How it works"},"$preview":{"width":390,"height":1260}}'>
+const MOUNTAIN = "M8 3l4 8 5-5 5 15H2L8 3z";
+const PIN = "M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z";
+const BEATS = [
+  { cls: 'todo', d: MOUNTAIN, text: "Summits, shelters, trail towns, a trivia quiz from the couch. Each one is a tile on your card." },
+  { cls: 'done', d: MOUNTAIN, text: "Do one and tap it. The tile becomes a white blaze, like the ones on the trees. Honor system, no photo needed." },
+  { cls: 'count', isCount: true, text: "Earn any 25 by Sep 7 and you're in the ATC's drawing for one of ten prize packages." },
+  { cls: 'ring', d: PIN, text: "Each blaze remembers where it happened, on a map of your summer. That part stays on your phone, and GPS is never required." },
+];
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 0 };
+    this.timer = null;
+  }
+  componentDidMount() {
+    const reduce = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+    const ms = Math.max(1000, (this.props.seconds ?? 3.5) * 1000);
+    // One pass through the four beats, then rest: a card that never stops moving
+    // is the thing people who dislike moving screens dislike most. A tap always steps.
+    this.timer = setInterval(() => {
+      if (this.state.step >= BEATS.length - 1) { clearInterval(this.timer); this.timer = null; return; }
+      this.setState({ step: this.state.step + 1 });
+    }, ms);
+  }
+  componentWillUnmount() {
+    if (this.timer) clearInterval(this.timer);
+  }
+  renderVals() {
+    const n = this.props.painted ?? 9;
+    const seed = [3, 7, 12, 31, 34, 38, 45, 62, 77, 80, 84, 91, 1, 19, 50, 55, 68, 73, 88, 96, 9, 24, 41, 59, 66];
+    const step = this.state.step;
+    const beat = BEATS[step];
+    return {
+      tile: 17, gap: 3, done: seed.slice(0, Math.min(n, seed.length)),
+      beat: { cls: beat.cls, d: beat.d || '', text: beat.text, isCount: !!beat.isCount, hasIcon: !beat.isCount },
+      stepLabel: String(step + 1),
+      dots: BEATS.map((b, i) => ({ cls: i === step ? 'on' : '' })),
+      next: () => this.setState({ step: (step + 1) % BEATS.length }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -4,7 +4,7 @@
 // joined challenge is on the chosen trail - here the A.T., taken from the map
 // - with its detail line and its switch on, and (with real data under it)
 // the blaze-yellow diamonds at the list's places around McAfee Knob, hollow
-// until tagged. The plate is unchanged: no count, no banner. The trail line
+// until earned (#1961's word). The plate is unchanged: no count, no banner. The trail line
 // keeps its own colour.
 //
 // WHEN IT SHOWS LESS. The canvas is paper in a sandbox with no downloaded

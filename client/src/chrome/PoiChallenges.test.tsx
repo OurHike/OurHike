@@ -45,7 +45,7 @@ describe('a place card’s challenges', () => {
   it('tags the place it is on - for a Triple Crown, this peak', async () => {
     const { onTag } = card()
     await userEvent.click(
-      screen.getByRole('button', { name: /Tag it: Hike the “Triple Crown”/ }),
+      screen.getByRole('button', { name: /Earn it: Hike the “Triple Crown”/ }),
     )
     expect(onTag).toHaveBeenCalledWith(
       ATC_CHALLENGE,
@@ -80,7 +80,7 @@ describe('a place card’s challenges', () => {
         onJoin={vi.fn()}
       />,
     )
-    expect(screen.queryByRole('button', { name: /^Tag it/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Earn it/ })).not.toBeInTheDocument()
     expect(
       screen.getAllByText(`opens ${shortDate(ATC_CHALLENGE.window.opens!)}`),
     ).toHaveLength(2)
@@ -107,6 +107,16 @@ describe('a place card’s challenges', () => {
       />,
     )
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('a place card’s draft banner and status line (#1961)', () => {
+  it('names a draft list once above its rows, and promises the club a count and never a name', () => {
+    card()
+    expect(screen.getAllByText('Draft · not yet confirmed by the ATC')).toHaveLength(1)
+    const status = document.querySelector('.challenge-status')
+    expect(status?.textContent).toMatch(/^Saved on this phone/)
+    expect(status?.textContent).toMatch(/never by name/)
   })
 })
 

@@ -630,6 +630,27 @@ def test_when_stripe_cannot_be_reached_the_founder_is_asked_instead(client, conf
     assert "Cancel at end of period" in _text(notice)
 
 
+@pytest.mark.parametrize("ref", ["sub_123\n", "sub_123/x"], ids=["trailing-newline", "path-after-it"])
+def test_a_subscription_id_that_is_not_whole_never_reaches_stripes_url_and_the_founder_is_asked(
+    client, configured, db_session, ref
+):
+    """`request_cancel` puts the id in the path of `{API}/v1/subscriptions/{ref}`,
+    and `_ref` keeps any webhook string of 100 characters or fewer, so
+    `_SUBSCRIPTION_ID.fullmatch` is all that stands between a webhook's
+    `subscription` field and that path. The pattern has no anchors, so with
+    `.match` at this site `sub_123` off the front of either of these passed
+    and Stripe was called on the whole string."""
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id)
+    db_session.query(SupportChoice).update({SupportChoice.provider_ref: ref})
+    db_session.commit()
+
+    assert _stop(client, user_id).json()["status"] == "stop_requested"
+
+    assert configured.api.calls == []
+    assert len(configured.to("founder@ourhike.org", about="Stop requested")) == 1
+
+
 def _tried_long_ago(db_session):
     """Move every Stop's last try back past `RETRY_EVERY`."""
     db_session.query(SupportChoice).update(
@@ -986,6 +1007,18 @@ def test_a_choice_id_with_a_trailing_newline_attaches_to_no_choice(client, confi
     assert (mine.status, mine.provider_ref) == (SupportStatus.pending, None)
     apart = db_session.query(SupportChoice).filter(SupportChoice.profile_id.is_(None)).one()
     assert apart.provider_ref == "sub_777"
+
+
+def test_a_choice_id_with_a_trailing_newline_gets_no_checkout_link(configured):
+    """`checkout_url` writes the choice's id into the Payment Link as its
+    `client_reference_id`, after `_CHOICE_ID.fullmatch`. The pattern has no
+    anchors, so with `.match` at this site "<id>\\n" passed and the link
+    carried the newline. The same id without it gets the tier's link, so the
+    None is the id's doing."""
+    stripe = PROVIDERS["stripe"]
+
+    assert stripe.checkout_url(SupportChoice(id="abc\n", amount_cents=6000, email=None)) is None
+    assert stripe.checkout_url(SupportChoice(id="abc", amount_cents=6000, email=None)).startswith(LINKS[6000])
 
 
 def test_a_stranger_who_types_a_hikers_address_can_neither_block_nor_be_stopped_by_them(client, configured, db_session):  # R3-B4

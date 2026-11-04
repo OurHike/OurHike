@@ -14,7 +14,9 @@ import { stateAtMile as approximateStateAtMile, type StateOfMile } from './seaso
 
 /** `ask: false` reads the kept copy only - for Today's strip, which must not
  *  download a map nobody opened. */
-export function useChallengeMap({ ask = true }: { ask?: boolean } = {}): ChallengeMap | null {
+export function useChallengeMap({
+  ask = true,
+}: { ask?: boolean } = {}): ChallengeMap | null {
   const [map, setMap] = useState<ChallengeMap | null>(null)
   useEffect(() => {
     let live = true

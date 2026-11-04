@@ -6704,7 +6704,10 @@
       "terms_verbatim": "Although a large portion of this data is highly accurate, the information depicted in this data set is for general reference purposes only and does not represent legal survey information. The National Park Service North Country Trail Office, North Country Trail Association, other partners (including other units of the National Park Service and the USDA Forest Service), and associated trail-maintaining affiliates shall not be held responsible for use or misuse of this data.",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's ncta points_of_interest row (AVAILABLE_NOT_LOADED in the coverage audit, 2026-10-01), read again live for decision 54's wave 1 on 2026-10-03: robots.txt first, lib/user_agent.py's agent, two seconds or more between requests to one host, and the layer's metadata, returnCountOnly count, item and per-value counts read. Registered by hand.",
       "discovered_date": "2026-10-03",
-      "id_field": "GlobalID",
+      "id_field": "waypointID",
+      "id_comment": "NCTA's own waypoint id, such as `nct_MI_parking_10103`. The layer was keyed by GlobalID until NCTA republished it without one on 2026-11-01 (#1975). Measured live 2026-11-04: `waypointID` is unique on 2,543 of 2,546 rows and null on 3, which `where` leaves out.",
+      "where": "waypointID IS NOT NULL",
+      "where_comment": "A POINT WITH NO ID OF NCTA'S OWN IS LEFT OUT (#1975): three Parking points, Buck Hill Rd and Latteiman Rd (NY) and MNA (MI), measured live 2026-11-04. A published id is `ncta_points:<waypointID>`, and a point with none could not keep one across a refresh; unify_poi() refuses such a point, and int_points_of_interest__classified's test holds the build on one.",
       "name_field": "waypointName",
       "type_field": "wptType",
       "person_fields": [

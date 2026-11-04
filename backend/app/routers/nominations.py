@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import timedelta
+from urllib.parse import SplitResult, urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -247,6 +248,11 @@ def nominate_read(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
+def _split(website: str) -> SplitResult:
+    """`website` as `urlsplit` reads it, with `https://` before one typed without a scheme."""
+    return urlsplit(website if "://" in website else f"https://{website}")
+
+
 def _domain_of(website: str) -> str:
     """The domain a nominated website is at: its host through `normalise_domain`, less a leading `www.`.
 
@@ -256,13 +262,28 @@ def _domain_of(website: str) -> str:
     A host it refuses comes back as `urlsplit` read it, so that the refusal
     can say what is wrong with it - and it does refuse every such host, so
     nothing unnormalised is stored as a club's domain.
-    """
-    from urllib.parse import urlsplit
 
-    raw = website if "://" in website else f"https://{website}"
-    host = urlsplit(raw).hostname or ""
+    **A USER PART OR A BACKSLASH BEFORE THE PATH COMES BACK WHOLE**, so that
+    `why_domain_proves_nothing` refuses it as not a bare domain name.
+    `urlsplit` reads the host after the last `@`, so
+    `https://evil.com\\@ramapotrails.org/` was `ramapotrails.org` to every
+    check here, while a browser's URL parser ends an `https:` authority at
+    the backslash and opens evil.com (the 2026-11-04 security review,
+    reasoned from the WHATWG URL Standard and not run in a browser) - and
+    `submit_nomination` stores the website as typed, as the `unclaimed`
+    club's `website`, which `GET /clubs` lists.
+    """
+    parts = _split(website)
+    if parts.username is not None or "\\" in parts.netloc:
+        return parts.netloc
+    host = parts.hostname or ""
     folded = normalise_domain(host)
     return host if folded is None else folded.removeprefix("www.")
+
+
+def _spelled_before_the_fold(website: str) -> str:
+    """The domain `_domain_of` returned for `website` before it folded: `urlsplit`'s lowercased host, less `www.`."""
+    return (_split(website).hostname or "").removeprefix("www.")
 
 
 def _slug_for(db: Session, name: str, domain: str) -> str:
@@ -370,7 +391,17 @@ def submit_nomination(
             detail=f"You can nominate {NOMINATIONS_PER_DAY} organizations a day. Thank you - try again tomorrow.",
         )
 
-    if domain and db.query(NominationRefusal).filter(NominationRefusal.domain == domain).first():
+    # A REFUSAL IS ASKED FOR UNDER BOTH SPELLINGS. `_domain_of` returned
+    # `urlsplit`'s lowercased host until it folded through `normalise_domain`,
+    # so a "never ask again" recorded before then is stored as that host
+    # (`bücher.de`, where the fold gives `xn--bcher-kva.de`), and nothing
+    # migrated those rows. It still misses a row stored under one spelling
+    # when the new website is typed in another (`bücher.de` stored,
+    # `xn--bcher-kva.de` typed). @unvalidated: whether production holds any
+    # such row; `select domain from nomination_refusals where domain !~
+    # '^[a-z0-9.-]+$'` settles it, and the same on `clubs.domain` for clubs.
+    spellings = {domain, _spelled_before_the_fold(payload.website)} - {""}
+    if spellings and db.query(NominationRefusal).filter(NominationRefusal.domain.in_(spellings)).first():
         # Before anything is written and before anybody there is emailed a
         # second time. A refusal is a promise about every future hiker.
         raise HTTPException(

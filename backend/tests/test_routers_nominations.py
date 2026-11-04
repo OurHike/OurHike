@@ -290,8 +290,10 @@ class TestSubmitting:
         /clubs. The website's domain becomes the club's, and claiming the club
         takes any verified address there as the proof of who runs it, so a
         webmail provider or a bare top-level domain would make that proof
-        anybody's. Every contact here is at the domain, so the contact gate
-        alone let every one of them through."""
+        anybody's. Every contact in the rows above the disguised three is at
+        the domain, so the contact gate alone let each of those through; the
+        contact gate refused the disguised three before `normalise_domain`,
+        for the wrong reason (the comment above them; replayed 2026-11-04)."""
         hiker = make_profile(db_session)
         contacts = [{"email": contact, "source_page": "x", "proposed_by": "hiker"}]
         response = client.post(
@@ -379,6 +381,67 @@ class TestSubmitting:
         response = client.post("/clubs/nominations", json=a_submission(), headers=auth_headers(hiker.id))
         assert response.status_code == 409
         assert db_session.query(OrgNomination).count() == 0
+
+    @pytest.mark.parametrize(
+        ("website", "stored", "contact"),
+        [
+            # Each `stored` is what `_domain_of` returned for `website` before it folded.
+            ("https://b\u00fccher.de", "b\u00fccher.de", "info@xn--bcher-kva.de"),
+            (
+                "https://\uff43\uff41\uff52\uff4f\uff4c\uff49\uff4e\uff41mountainclub.org",
+                "\uff43\uff41\uff52\uff4f\uff4c\uff49\uff4e\uff41mountainclub.org",
+                "volunteers@carolinamountainclub.org",
+            ),
+            ("https://carolinamountainclub.org\u200b", "carolinamountainclub.org\u200b", "volunteers@carolinamountainclub.org"),
+        ],
+        ids=["unicode-label", "fullwidth-letters", "zero-width-space"],
+    )
+    def test_a_refusal_stored_before_domains_were_folded_still_stops_a_nomination(
+        self, client, db_session, website, stored, contact
+    ):
+        """`_domain_of` returned `urlsplit`'s lowercased host until the
+        2026-11-04 security review folded it through `normalise_domain`, so a
+        "never ask again" recorded before then is stored under the host as
+        typed (`bücher.de`, not `xn--bcher-kva.de`), and nothing migrated
+        those rows. Matched against the folded domain alone, each of these let
+        a second nomination through and emailed the organization again.
+        Whether production holds such a row is @unvalidated; the query in
+        `submit_nomination`'s comment settles it."""
+        db_session.add(NominationRefusal(domain=stored))
+        db_session.commit()
+        hiker = make_profile(db_session)
+        contacts = [{"email": contact, "source_page": "x", "proposed_by": "hiker"}]
+
+        response = client.post(
+            "/clubs/nominations", json=a_submission(website=website, contacts=contacts), headers=auth_headers(hiker.id)
+        )
+
+        assert response.status_code == 409, response.text
+        assert db_session.query(OrgNomination).count() == 0
+
+    @pytest.mark.parametrize(
+        "website",
+        ["https://evil.com\\@carolinamountainclub.org/", "https://evil.com@carolinamountainclub.org/"],
+        ids=["backslash-before-at", "user-part"],
+    )
+    def test_a_website_with_a_user_part_or_a_backslash_in_its_host_is_refused_and_nothing_is_stored(
+        self, client, db_session, website
+    ):
+        """The 2026-11-04 security review: `urlsplit` reads the host after the
+        last `@`, so each of these was carolinamountainclub.org to the domain
+        rule, the contact gate and the refusal lookup, and was stored as the
+        club's `website` as typed. A browser's URL parser ends an `https:`
+        authority at a backslash, so it opens the first as evil.com (reasoned
+        from the WHATWG URL Standard's authority state; not run in a
+        browser), and the second hands a reader a link that starts with
+        another name. Both are refused before anything is written."""
+        hiker = make_profile(db_session)
+
+        response = client.post("/clubs/nominations", json=a_submission(website=website), headers=auth_headers(hiker.id))
+
+        assert response.status_code == 422, response.text
+        assert "is not a bare domain name" in response.json()["detail"]
+        assert db_session.query(Club).count() == 0
 
 
 def _contact_tokens(db_session, nomination) -> list[str]:

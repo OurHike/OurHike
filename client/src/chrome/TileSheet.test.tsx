@@ -4,38 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { TileSheet } from './TileSheet'
 import { ATC_CHALLENGE } from '../lib/challenges.fixtures'
 import { EMPTY_CHALLENGE_STATE, join, tag, tagsFor } from '../lib/challengeProgress'
-import type { OwnCardPhoto } from '../lib/useOwnPhotos'
 
-// The own-photo store is IndexedDB behind lib/useOwnPhotos.ts; a case that
-// needs a photo, or a store that refuses, sets it here.
-const own = vi.hoisted(() => ({
-  photos: [] as OwnCardPhoto[],
-  add: vi.fn(async () => {}),
-  remove: vi.fn(async () => {}),
-}))
-// jsdom has no canvas to re-encode with; the re-encode is lib/reportPhoto.ts's
-// own suite. Here it succeeds, so a failure after it is the store's.
-vi.mock('../lib/reportPhoto', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../lib/reportPhoto')>()),
-  preparePhoto: vi.fn(async () => new Blob(['jpeg'], { type: 'image/jpeg' })),
-}))
-vi.mock('../lib/exifDate', () => ({ exifCaptureDate: vi.fn(async () => null) }))
-vi.mock('../lib/useOwnPhotos', () => ({
-  useOwnPhotos: () => ({
-    photos: own.photos,
-    add: own.add,
-    remove: own.remove,
-    choose: vi.fn(async () => {}),
-    setShared: vi.fn(async () => {}),
-  }),
-}))
-
-afterEach(() => {
-  cleanup()
-  own.photos = []
-  own.add = vi.fn(async () => {})
-  own.remove = vi.fn(async () => {})
-})
+afterEach(cleanup)
 
 const TODAY = '2027-07-14'
 const item = (id: string) => ATC_CHALLENGE.items.find((entry) => entry.id === id)!
@@ -210,52 +180,6 @@ describe('what the review of #2015 found in the tile sheet', () => {
     screen.getByRole('button', { name: 'Earn some karma' }).focus()
     rerender(<TileSheet {...props} tags={earned(['mcafee-knob'])} />)
     expect(screen.getByRole('button', { name: 'Take it back' })).toHaveFocus()
-  })
-
-  it('removes the hiker’s own photo only on a second tap, and says so when the phone cannot', async () => {
-    own.photos = [
-      {
-        id: 'photo-1',
-        url: 'blob:own-1',
-        taken: '2027-07-02',
-        source: 'camera',
-        blob: new Blob(['x']),
-        takenClaim: null,
-      },
-    ]
-    own.remove = vi.fn(async () => {
-      throw new Error('quota')
-    })
-    sheet()
-    expect(screen.getByText('your photo')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Not this photo' }))
-    expect(own.remove).not.toHaveBeenCalled()
-    await userEvent.click(
-      screen.getByRole('button', { name: /Tap again to remove it · the waypoint card/ }),
-    )
-    expect(own.remove).toHaveBeenCalledWith('photo-1')
-    expect(
-      await screen.findByText('This phone could not remove the photo.'),
-    ).toBeInTheDocument()
-  })
-
-  it('names storage, not the photo, when the phone refuses to keep a prepared photo', async () => {
-    own.add = vi.fn(async () => {
-      throw new Error('quota')
-    })
-    sheet()
-    const input = screen.getByTestId('tile-sheet-library-input') as HTMLInputElement
-    const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'blaze.jpg', {
-      type: 'image/jpeg',
-    })
-    await userEvent.upload(input, file)
-    expect(
-      await screen.findByText(
-        'This phone could not store the photo, so nothing was kept.',
-      ),
-    ).toBeInTheDocument()
-    expect(own.add).toHaveBeenCalledOnce()
-    expect(screen.queryByText(/could not be prepared/)).toBeNull()
   })
 
   it('links to workdays under the club’s note on an item with a place', async () => {

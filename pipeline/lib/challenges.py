@@ -415,7 +415,15 @@ def _mystery(raw: object, today: date) -> tuple[dict | None, str]:
     reveal = raw.get("reveal_on")
     if reveal is not None and _date(reveal) is None:
         return None, "mystery reveal_on is not a YYYY-MM-DD date"
-    return {"number": number, "reveal_on": reveal}, ""
+    # A line the club may say about a sealed item before its day ("Something
+    # to do before the sun is up") - features/CHALLENGES_BLAZE_CARD.md slice
+    # 4. Text or absent; it never has to carry the title, and it ships in the
+    # clear, so it must not give the item away: that is the club's call when
+    # it writes one.
+    teaser = raw.get("teaser")
+    if teaser is not None and not isinstance(teaser, str):
+        return None, "mystery teaser must be text"
+    return {"number": number, "reveal_on": reveal, "teaser": _text(teaser) or None}, ""
 
 
 def resolve_item(

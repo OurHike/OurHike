@@ -266,6 +266,37 @@ describe('earning from the list asks where only when it can mean something (#196
   })
 })
 
+describe('the entry from day one (#1964)', () => {
+  it('opens Your entry at 1 of 25 with what the club receives, the one-entry rule and when it opens, and no form', async () => {
+    const { props } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Your entry' }))
+    expect(screen.getByText(/What the ATC receives/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/One entry per person — use the email you signed up with/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Each mystery item has a drawing of its own/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/The entry opens at 5 for the drawing/)).toBeInTheDocument()
+    expect(screen.getByText(/Nothing has been sent/)).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Enter the drawing/ })).toBeNull()
+    expect(props.onSendEntry).not.toHaveBeenCalled()
+    expect(document.body.textContent).not.toMatch(FORBIDDEN)
+  })
+
+  it('shows a sealed mystery item’s teaser under its sealed line, never its title', async () => {
+    detail({ today: '2027-07-19' })
+    await userEvent.click(screen.getByRole('button', { name: 'Mystery' }))
+    expect(screen.getByText('Something to do before the sun is up.')).toBeInTheDocument()
+    expect(screen.queryByText(/Jefferson Rock/)).toBeNull()
+    cleanup()
+    detail({ today: '2027-07-20' })
+    await userEvent.click(screen.getByRole('button', { name: 'Mystery' }))
+    expect(screen.queryByText('Something to do before the sun is up.')).toBeNull()
+  })
+})
+
 describe('the finish', () => {
   const finished = () =>
     joinedWith(

@@ -147,7 +147,11 @@ function parseItem(
   if (isRecord(value.mystery)) {
     const number = finite(value.mystery.number)
     if (number === null || number < 1) return null
-    mystery = { number, revealOn: day(value.mystery.reveal_on) }
+    mystery = {
+      number,
+      revealOn: day(value.mystery.reveal_on),
+      teaser: text(value.mystery.teaser),
+    }
   }
   const title = text(value.title)
   const sealedTitle = text(value.sealed_title)

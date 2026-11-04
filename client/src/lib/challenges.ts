@@ -102,7 +102,9 @@ export interface ChallengeItem {
    *  reviewer's judgement copied through the exporter; null draws `learn`. */
   icon: string | null
   match: ChallengeMatch
-  mystery: { number: number; revealOn: string | null } | null
+  /** `teaser` is the club's one line about a sealed item, shown before its
+   *  day (CHALLENGES_BLAZE_CARD.md slice 4); null where the club wrote none. */
+  mystery: { number: number; revealOn: string | null; teaser: string | null } | null
 }
 
 export interface ChallengeSection {

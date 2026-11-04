@@ -1503,3 +1503,41 @@ describe('the podcast episodes for today’s leg', () => {
     expect(screen.queryByText('This section')).not.toBeInTheDocument()
   })
 })
+
+// The season strip (#1964): the LAST thing on Today in every mode - after
+// the ordered record and after the doors - the maintainer's rule that the
+// season lives at the bottom of Today and never the top. Asserted as DOM
+// order against the camp card, the doors and the footer, in each mode, and
+// as absence when the shell passes nothing.
+describe('the season slot', () => {
+  it.each(['day', 'long', 'volunteer'] as const)(
+    'renders the season strip after everything else in %s mode',
+    (mode) => {
+      const { container } = render(
+        <Today
+          {...props({ mode })}
+          challengeCamp={<div data-testid="camp">camp</div>}
+          challengeSeason={<div data-testid="season">season</div>}
+        />,
+      )
+      const season = screen.getByTestId('season')
+      const follows = (node: Element) =>
+        Boolean(node.compareDocumentPosition(season) & Node.DOCUMENT_POSITION_FOLLOWING)
+      expect(follows(screen.getByTestId('camp'))).toBe(true)
+      expect(follows(container.querySelector('.today__doors')!)).toBe(true)
+      // Nothing but the closing footer line comes after it.
+      const after = [...container.querySelectorAll('.today > *')].filter((node) =>
+        Boolean(season.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING),
+      )
+      expect(after.filter((node) => !node.classList.contains('today__footer'))).toEqual(
+        [],
+      )
+    },
+  )
+
+  it('draws no season slot at all when the shell passes none', () => {
+    const { container } = render(<Today {...props()} />)
+    expect(screen.queryByTestId('season')).toBeNull()
+    expect(container.querySelector('.today__season')).toBeNull()
+  })
+})

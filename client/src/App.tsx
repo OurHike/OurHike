@@ -74,6 +74,7 @@ import {
   ChallengeCampCard,
   PlanChallenges,
   ChallengeDetail,
+  ChallengeSeasonStrip,
   Challenges,
   ClosureForm,
   Downloads,
@@ -9099,6 +9100,24 @@ function App() {
     />
   ) : null
 
+  // The season strip(s) at the bottom of Today (#1964): one per joined
+  // challenge with a finish line, last in every mode. Deferred with the card
+  // behind it (screens/deferred.ts), so Today's first frame does not carry it.
+  const challengeSeasonNode =
+    challenges.joined.filter((challenge) => challenge.finish !== null).length === 0
+      ? null
+      : challenges.joined
+          .filter((challenge) => challenge.finish !== null)
+          .map((challenge) => (
+            <ChallengeSeasonStrip
+              key={challenge.id}
+              challenge={challenge}
+              state={challenges.state}
+              today={challengeToday}
+              onOpen={() => openChallenge(challenge.id)}
+            />
+          ))
+
   // Plan's card (frames 6 and 6b): the joined challenges' places on this
   // route by day, or - when none touches it - the one best suggestion. The
   // hike key scopes "Hide" to this trip.
@@ -10512,6 +10531,7 @@ function App() {
   const todayScreen = (
     <Today
       challengeCamp={challengeCampNode}
+      challengeSeason={challengeSeasonNode}
       account={account}
       onOpenAccount={openSignIn}
       now={now}

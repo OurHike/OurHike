@@ -106,6 +106,7 @@ fields as (
         json_extract(item_json, '$.mystery') as mystery_json,
         json_extract(item_json, '$.mystery.number') as mystery_number_json,
         json_extract(item_json, '$.mystery.reveal_on') as reveal_on_json,
+        json_extract(item_json, '$.mystery.teaser') as teaser_json,
         json_extract(item_json, '$.title') as title_json,
         json_extract(item_json, '$.note') as note_json,
         json_extract(item_json, '$.note_by') as note_by_json,
@@ -202,6 +203,9 @@ typed as (
             cast({{ var('challenges_default_min_fraction') }} as double)
         ) as min_fraction,
         {{ challenges_text('title_json') }} as title,
+        -- A sealed item's one line (#1964): text or absent.
+        coalesce(json_type(teaser_json), 'NULL') as teaser_type,
+        {{ challenges_text('teaser_json') }} as teaser_text,
         {{ challenges_text('note_json') }} as note_text,
         {{ challenges_text('note_by_json') }} as note_by_text,
         {{ challenges_https_ok('photo_json') }} as photo_ok,
@@ -607,6 +611,8 @@ checked as (
                 then 'mystery needs a number from 1'
             when matches.reveal_on_given and not matches.reveal_on_ok
                 then 'mystery reveal_on is not a YYYY-MM-DD date'
+            when matches.teaser_type not in ('NULL', 'VARCHAR')
+                then 'mystery teaser must be text'
         end as mystery_problem
     from matches
     left join item_ends
@@ -837,7 +843,8 @@ select
                 'match', published_match,
                 'mystery', json_object(
                     'number', mystery_number,
-                    'reveal_on', reveal_on_text
+                    'reveal_on', reveal_on_text,
+                    'teaser', nullif(teaser_text, '')
                 ),
                 'sealed_title', to_base64(encode(title))
             )
@@ -852,7 +859,8 @@ select
             'match', published_match,
             'mystery', json_object(
                 'number', mystery_number,
-                'reveal_on', reveal_on_text
+                'reveal_on', reveal_on_text,
+                'teaser', nullif(teaser_text, '')
             )
         )
     end as published_item

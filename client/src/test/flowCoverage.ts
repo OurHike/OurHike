@@ -691,6 +691,9 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // of the Where sheet and the cargo's identity; a flow is still to come.
   'chrome/TileSheet.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'chrome/WhereSheet.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // The season strip at the bottom of Today (#1964): Today's (F2), driven
+  // by Today.test.tsx's ordered-record test and its own unit test; no flow yet.
+  'chrome/ChallengeSeasonStrip.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
   'chrome/BlazeTile.tsx': {
     step: 'F13 More',
     flow: {

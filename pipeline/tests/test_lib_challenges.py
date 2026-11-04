@@ -472,7 +472,7 @@ class TestSealedMysteryItems:
         published = record["items"][0]
         assert published["title"] is None
         assert unseal(published["sealed_title"]) == self.TITLE
-        assert published["mystery"] == {"number": 2, "reveal_on": "2027-07-20"}
+        assert published["mystery"] == {"number": 2, "reveal_on": "2027-07-20", "teaser": None}
 
     def test_on_its_date_the_title_is_still_sealed(self):
         # `today` is the build's UTC day. A release built after midnight UTC
@@ -499,7 +499,7 @@ class TestSealedMysteryItems:
         published = record["items"][0]
         assert published["title"] is None
         assert "sealed_title" not in published
-        assert published["mystery"] == {"number": 2, "reveal_on": None}
+        assert published["mystery"] == {"number": 2, "reveal_on": None, "teaser": None}
 
     @pytest.mark.parametrize(
         ("mystery", "because"),
@@ -513,6 +513,39 @@ class TestSealedMysteryItems:
     def test_a_malformed_mystery_is_refused(self, mystery, because):
         _, why = one_item(item(section="mystery", mystery=mystery, match={"kind": "self_report"}))
         assert because in why
+
+
+class TestMysteryTeasers:
+    """A sealed item's one line (#1964): text or absent, never the title."""
+
+    def test_a_teaser_publishes_beside_the_number_and_the_date(self):
+        published, _ = one_item(
+            {
+                "id": "m1",
+                "section": "mystery",
+                "mystery": {"number": 1, "reveal_on": "2027-07-20", "teaser": "Before sunrise."},
+                "match": {"kind": "self_report"},
+            }
+        )
+        assert published["mystery"] == {"number": 1, "reveal_on": "2027-07-20", "teaser": "Before sunrise."}
+
+    def test_no_teaser_publishes_null(self):
+        published, _ = one_item(
+            {"id": "m1", "section": "mystery", "mystery": {"number": 1, "reveal_on": None}, "match": {"kind": "self_report"}}
+        )
+        assert published["mystery"]["teaser"] is None
+
+    @pytest.mark.parametrize("teaser", [7, ["x"], True])
+    def test_anything_but_text_is_refused(self, teaser):
+        _, why = one_item(
+            {
+                "id": "m1",
+                "section": "mystery",
+                "mystery": {"number": 1, "reveal_on": None, "teaser": teaser},
+                "match": {"kind": "self_report"},
+            }
+        )
+        assert why == "mystery teaser must be text"
 
 
 class TestTheWholeChallenge:

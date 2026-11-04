@@ -1334,3 +1334,74 @@ div.challenge-row__open {
   margin-top: auto;
   padding: 16px 20px 20px;
 }
+
+/* ---- The season at the bottom of Today (#1964) ---- */
+
+.season {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.season__strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border-chrome);
+  border-radius: 20px;
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.season__card {
+  flex: none;
+  width: 100px;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--border-chrome);
+}
+
+.season__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.season__count {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.season__count strong {
+  color: var(--accent-chrome);
+}
+
+.season__where,
+.season__meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-chrome-2);
+}
+
+.season__meta {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.season__chevron {
+  flex: none;
+  color: var(--fg-chrome-3);
+  font-size: 20px;
+  font-weight: 700;
+}

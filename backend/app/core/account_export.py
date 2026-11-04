@@ -312,7 +312,9 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "organizations_you_help_run": _rows(db, OrgAdmin, OrgAdmin.person_id == profile_id),
         "workdays_you_signed_up_for": _rows(db, WorkProjectSignup, WorkProjectSignup.person_id == profile_id),
         "trail_monitor_commitments": _rows(db, RidgeRunnerCommitment, RidgeRunnerCommitment.person_id == profile_id),
-        # The structure survey (#1983, features/STRUCTURE_INVENTORY.md). The
+        # The structure survey (#1983 — The structure inventory's five tables
+        # land in one revision, locked by RLS, with every enum as VARCHAR +
+        # CHECK; the design is features/STRUCTURE_INVENTORY.md). The
         # waiver they signed, by version and typed name; the days they
         # claimed; the walks they recorded; every record they logged, with
         # every GPS reading the phone took, because the phone records what it

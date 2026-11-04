@@ -1,4 +1,7 @@
-"""Who may do what in a club's structure survey (#1984).
+"""Who may do what in a club's structure survey.
+
+#1984 — A club's enrolment, settings and waiver have endpoints, and an
+enrolled volunteer is a person `org_access` did not know about.
 
 features/STRUCTURE_INVENTORY.md's permissions table, on top of
 `app/core/org_access.py`. Two people are new to that module:
@@ -24,6 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.org_access import OrgAccess, org_access
@@ -41,16 +45,29 @@ def enrollment_of(db: Session, club_id: str, person_id: str) -> InventoryEnrollm
     )
 
 
+def _agreed(assignment: MaintainerAssignment) -> bool:
+    """Confirmed, or never a proposal: the only assignments that grant anything."""
+    return assignment.proposed_by is None or assignment.confirmed_at is not None
+
+
 def supervised_section_ids(db: Session, club_id: str, person_id: str) -> frozenset[str]:
     """The sections a supervisor reviews: their own, and those under their role.
 
     "Under their role" means a live assignment, at this club, on a role that
-    reports to a role this person holds. Holding a role counts only once the
-    assignment is confirmed or was never a proposal - `resolve_access`'s rule
-    (#1635), copied rather than re-derived so a proposed lead cannot review
-    either. A section a supervisor holds themselves is under their role too.
-    An assignment with no section reaches no section, and a retired role
-    supervises nobody.
+    reports to a role this person holds. A section a supervisor holds
+    themselves is under their role too. An assignment with no section reaches
+    no section, and a retired role supervises nobody.
+
+    **An assignment counts only once it is confirmed or was never a
+    proposal - on BOTH sides of the reporting line.** That is
+    `resolve_access`'s rule for the roles a person holds, from #1635 — The
+    organization console's new endpoints trust self-registered orgs with
+    maintainer powers, seats and mail: a supervisor could propose a friend
+    into a lead role and so make them a supervisor, with no admin having
+    agreed. It applies to the crews under
+    them for the same reason: a supervisor who proposes somebody onto a
+    section must not thereby reach that section's records before any admin
+    confirms the proposal.
     """
     live = (
         db.query(MaintainerAssignment)
@@ -61,7 +78,7 @@ def supervised_section_ids(db: Session, club_id: str, person_id: str) -> frozens
         )
         .all()
     )
-    held = [a for a in live if a.role_id is not None and (a.proposed_by is None or a.confirmed_at is not None)]
+    held = [a for a in live if a.role_id is not None and _agreed(a)]
     held_role_ids = {a.role_id for a in held}
     if not held_role_ids:
         return frozenset()
@@ -83,6 +100,7 @@ def supervised_section_ids(db: Session, club_id: str, person_id: str) -> frozens
                 MaintainerAssignment.role_id.in_(under_role_ids),
                 MaintainerAssignment.effective_to.is_(None),
                 MaintainerAssignment.section_id.is_not(None),
+                or_(MaintainerAssignment.proposed_by.is_(None), MaintainerAssignment.confirmed_at.is_not(None)),
             )
         }
     return frozenset(sections)

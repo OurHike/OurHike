@@ -132,7 +132,9 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # pair - so their RLS staying on is worth a read an hour.
     "field_notes",
     "hikes",
-    # The structure inventory (#1983, features/STRUCTURE_INVENTORY.md). A
+    # The structure inventory (#1983 — The structure inventory's five tables
+    # land in one revision, locked by RLS, with every enum as VARCHAR + CHECK;
+    # the design is features/STRUCTURE_INVENTORY.md). A
     # club's working record of what it has built and what shape it is in,
     # with every GPS reading a volunteer's phone took and the name they typed
     # on the club's waiver. Club-private by design: a readable one would

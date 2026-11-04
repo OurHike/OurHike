@@ -1,4 +1,7 @@
-"""A club's survey settings and a volunteer's enrolment (#1984).
+"""A club's survey settings and a volunteer's enrolment.
+
+#1984 — A club's enrolment, settings and waiver have endpoints, and an
+enrolled volunteer is a person `org_access` did not know about.
 
 Who may call each endpoint is test_org_permission_matrix.py's job. This file
 holds what each one does: the waiver a signature names, the enrolment a
@@ -203,3 +206,71 @@ def test_reading_your_own_enrolment_before_joining_answers_null(client, club, db
 
     assert response.status_code == 200
     assert response.json() is None
+
+
+def _signed_by_somebody(client, club, db_session):
+    _enrol(client, club, make_profile(db_session))
+
+
+def test_clearing_the_waiver_does_not_free_a_signed_version_for_new_words(client, club, db_session):
+    """The way round the same-version rule that the adversarial review found:
+    clear the waiver, then save different words under the version people
+    already signed. The cleared row keeps nothing to compare against, so a
+    signed version cannot come back with any words at all."""
+    _write_waiver(client, club)
+    _signed_by_somebody(client, club, db_session)
+
+    assert _write_waiver(client, club, waiver_text=None, waiver_version=None).status_code == 200
+    reused = _write_waiver(client, club, waiver_text="Different words entirely.")
+
+    assert reused.status_code == 409
+    assert db_session.get(InventoryClubSettings, club["org"].id).waiver_version is None
+
+
+def test_a_signed_version_cannot_come_back_after_it_was_replaced(client, club, db_session):
+    _write_waiver(client, club)
+    _signed_by_somebody(client, club, db_session)
+    _write_waiver(client, club, waiver_text="A revised waiver.", waiver_version="2026-2")
+
+    assert _write_waiver(client, club).status_code == 409
+
+
+def test_the_current_signed_version_can_be_saved_again_with_its_own_words(client, club, db_session):
+    """Changing a threshold re-sends the waiver as it stands; that is not a
+    new waiver and must not be refused."""
+    _write_waiver(client, club)
+    _signed_by_somebody(client, club, db_session)
+
+    assert _write_waiver(client, club, stale_days=400).status_code == 200
+
+
+def test_a_version_nobody_signed_can_be_reused_after_clearing(client, club, db_session):
+    _write_waiver(client, club)
+    _write_waiver(client, club, waiver_text=None, waiver_version=None)
+
+    assert _write_waiver(client, club, waiver_text="Better words, never signed.").status_code == 200
+
+
+def test_two_first_saves_at_once_answer_the_second_instead_of_failing(client, club, db_session, monkeypatch):
+    """Both find no row and both insert; the loser is run again against the
+    row the winner made. Simulated by making the router miss an existing row
+    once, which is exactly what the loser saw."""
+    from app.routers import inventory as inventory_router
+
+    db_session.add(InventoryClubSettings(club_id=club["org"].id, waiver_text="Words.", waiver_version="1"))
+    db_session.commit()
+    real = inventory_router._settings_row
+    misses = [True]
+
+    def first_read_misses(db, club_id):
+        if misses:
+            misses.pop()
+            return None
+        return real(db, club_id)
+
+    monkeypatch.setattr(inventory_router, "_settings_row", first_read_misses)
+
+    response = _write_waiver(client, club, waiver_text="Words.", waiver_version="1", stale_days=500)
+
+    assert response.status_code == 200
+    assert response.json()["stale_days"] == 500

@@ -736,7 +736,9 @@ def test_a_maintainer_can_read_the_roster_of_nothing_and_still_walk_their_miles(
 
 
 # ------------------------------------------------------------------ #
-# The structure survey (#1984, features/STRUCTURE_INVENTORY.md)
+# The structure survey: #1984 — A club's enrolment, settings and waiver have
+# endpoints, and an enrolled volunteer is a person `org_access` did not know
+# about (features/STRUCTURE_INVENTORY.md)
 # ------------------------------------------------------------------ #
 #
 # One more kind of person, and only for these rows: somebody enrolled in the

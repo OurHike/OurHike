@@ -1,0 +1,29 @@
+# Condition.dc.html — rendered text, captured 2026-11-04
+
+Bridge
+Save for later
+5 of 6
+Works offline
+What shape is it in?
+On a bridge, look at: abutments, bolts, beams, decking, railings, rot.
+Don't repair it, just log it.
+Bridge card
+Good
+Solid. Nothing to do.
+Fair
+Wear showing, fine to use.
+Poor
+Needs work soon. Still usable with care.
+Unsafe
+Don't use it. Alerts the Local Chair when it uploads.
+What's wrong? Tap all that apply
+Abutment eroded
+Loose bolts
+Cracked beam
+Spongy decking
+Damaged railing
+Rot
+Wobbles
+Debris upstream
+Other problem
+Next

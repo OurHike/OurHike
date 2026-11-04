@@ -22,7 +22,19 @@
 // screen ever asks to turn location on (the brief's "Second look").
 
 import type { ChallengeItem } from './challenges'
+import {
+  isTrailStateCode,
+  readTagPlace,
+  TRAIL_STATE_CODES,
+  type TagPlace,
+  type TrailStateCode,
+} from './tagPlace'
 import type { MileRange } from './walkedMiles'
+
+// The place type and its parser live in lib/tagPlace.ts, for the launch
+// budget; they are re-exported here so the challenge screens import one module.
+export { isTrailStateCode, readTagPlace, TRAIL_STATE_CODES }
+export type { TagPlace, TrailStateCode }
 
 /** The fourteen trail states, south to north - the order a thru-hiker
  *  meets them. Codes only: the mile each one starts at is a pipeline
@@ -45,63 +57,8 @@ export const TRAIL_STATES = [
   { code: 'ME', name: 'Maine' },
 ] as const
 
-export type TrailStateCode = (typeof TRAIL_STATES)[number]['code']
-
-export function isTrailStateCode(value: unknown): value is TrailStateCode {
-  return TRAIL_STATES.some((state) => state.code === value)
-}
-
 export function stateName(code: TrailStateCode): string {
   return TRAIL_STATES.find((state) => state.code === code)?.name ?? code
-}
-
-/** Where an earned item happened, as the hiker said. Device-only. */
-export type TagPlace =
-  /** The fix's snapped mile when it was earned. */
-  | { kind: 'here'; mile: number }
-  /** Somewhere in the miles walked today - the day's extent, no finer. */
-  | { kind: 'walked'; fromMile: number; toMile: number }
-  /** A place picked by name from the phone's own waypoints. */
-  | { kind: 'poi'; poi: string; name: string; mile: number | null }
-  /** On the trail, somewhere in one state. */
-  | { kind: 'state'; state: TrailStateCode }
-  /** At home, in town, on another trail. */
-  | { kind: 'off' }
-
-/** A stored place, or null for anything that is not one - a malformed
- *  place costs the place, never the tag (lib/challengeProgress.ts). */
-export function readTagPlace(value: unknown): TagPlace | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
-  const place = value as Record<string, unknown>
-  switch (place.kind) {
-    case 'here':
-      return Number.isFinite(place.mile)
-        ? { kind: 'here', mile: place.mile as number }
-        : null
-    case 'walked':
-      return Number.isFinite(place.fromMile) && Number.isFinite(place.toMile)
-        ? {
-            kind: 'walked',
-            fromMile: place.fromMile as number,
-            toMile: place.toMile as number,
-          }
-        : null
-    case 'poi':
-      return typeof place.poi === 'string' && typeof place.name === 'string'
-        ? {
-            kind: 'poi',
-            poi: place.poi,
-            name: place.name,
-            mile: Number.isFinite(place.mile) ? (place.mile as number) : null,
-          }
-        : null
-    case 'state':
-      return isTrailStateCode(place.state) ? { kind: 'state', state: place.state } : null
-    case 'off':
-      return { kind: 'off' }
-    default:
-      return null
-  }
 }
 
 /**

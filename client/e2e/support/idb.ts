@@ -98,3 +98,44 @@ export async function readIDBEntry(page: Page, key: string): Promise<unknown> {
     { database: DATABASE, store: STORE, wanted: key },
   )
 }
+
+/**
+ * Replace one key in idb-keyval's store as the page holds it NOW, but only
+ * if it still holds `expected`: compared as JSON inside the same readwrite
+ * transaction as the write, so nothing the app wrote since a caller's
+ * `readIDBEntry` is lost (lib/usageQueue.ts's `updateUsage` takes one
+ * transaction for the same reason). Answers whether it wrote; a caller that
+ * lost the race reads again and retries.
+ */
+export async function replaceIDBEntry(
+  page: Page,
+  key: string,
+  expected: unknown,
+  next: unknown,
+): Promise<boolean> {
+  return page.evaluate(
+    ({ database, store, wanted, before, after }) =>
+      new Promise<boolean>((done, fail) => {
+        const open = indexedDB.open(database)
+        open.onupgradeneeded = () => open.result.createObjectStore(store)
+        open.onerror = () => fail(open.error)
+        open.onsuccess = () => {
+          const objectStore = open.result
+            .transaction(store, 'readwrite')
+            .objectStore(store)
+          const read = objectStore.get(wanted)
+          read.onerror = () => fail(read.error)
+          read.onsuccess = () => {
+            if (JSON.stringify(read.result) !== JSON.stringify(before)) {
+              done(false)
+              return
+            }
+            const write = objectStore.put(after, wanted)
+            write.onsuccess = () => done(true)
+            write.onerror = () => fail(write.error)
+          }
+        }
+      }),
+    { database: DATABASE, store: STORE, wanted: key, before: expected, after: next },
+  )
+}

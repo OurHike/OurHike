@@ -13,10 +13,11 @@ to be got wrong:
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.models.club import OrgState
 from app.models.work_project import ProjectSource, SignupMode, SignupState, WorkProject, WorkProjectSignup
+from app.routers import work_projects
 from tests.factories import make_admin, make_assignment, make_org, make_profile, make_role, make_section, make_workday
 from tests.tokens import auth_headers
 
@@ -122,6 +123,47 @@ def test_the_window_is_capped_rather_than_trusted(client, db_session):
     )
 
     assert client.get("/workdays?days=99999").json() == []
+
+
+def test_get_workdays_bounds_both_ends_of_its_window_by_utc_date_at_eleven_pm_new_york_time(client, db_session, monkeypatch):
+    """#1939 — Take backend dates from UTC, and fix two stale comments: the
+    window `GET /workdays` lists is read against UTC's calendar, never the
+    machine's. A set clock (TESTING.md: a time boundary is tested with a set
+    clock, never two reads of the real one) at 04:00 UTC on 2026-11-05, which
+    is 23:00 on the 4th in New York, with both readings a listing could take
+    pinned: utc_now() says the 5th, and a `date.today()` would say the 4th,
+    through a stand-in for a New York machine's calendar in the router's
+    namespace - so the regression goes red on any runner at any hour, not
+    only between 19:00 and midnight Eastern.
+
+    The route reads the date twice, and each read has its own workday. One
+    that ended on the 4th is not listed, though New York's wall clock still
+    reads the 4th: `date.today()` back in the `ends_on` bound lists it. One
+    that starts on the last day of UTC's window (the 5th plus
+    UPCOMING_WINDOW_DAYS) is listed: `date.today()` back in the `starts_on`
+    bound ends the window a day early and drops it. Each was shown red on
+    2026-11-04 by putting `date.today()` back in that one bound. A workday
+    dated the 5th is listed either way. Whether a New Yorker should still
+    see the 4th's workday at 23:00 is #1939's call, made for every date this
+    API reads at once; this test holds the call, it does not make it."""
+    monkeypatch.setattr(work_projects, "utc_now", lambda: datetime(2026, 11, 5, 4, 0))
+
+    class NewYorkCalendar(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 11, 4)
+
+    monkeypatch.setattr(work_projects, "date", NewYorkCalendar, raising=False)
+    org, _ = _org_with_admin(db_session)
+    make_workday(db_session, org, title="Dated today, in UTC", starts_on=date(2026, 11, 5), ends_on=date(2026, 11, 5))
+    make_workday(db_session, org, title="Ended yesterday, in UTC", starts_on=date(2026, 11, 4), ends_on=date(2026, 11, 4))
+    last_day = date(2026, 11, 5) + timedelta(days=work_projects.UPCOMING_WINDOW_DAYS)
+    make_workday(db_session, org, title="Starts on the window's last day, in UTC", starts_on=last_day, ends_on=last_day)
+
+    assert [workday["title"] for workday in client.get("/workdays").json()] == [
+        "Dated today, in UTC",
+        "Starts on the window's last day, in UTC",
+    ]
 
 
 def test_a_held_registration_cannot_post_a_workday_and_the_public_list_shows_none(client, db_session):

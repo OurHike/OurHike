@@ -98,6 +98,35 @@ describe('every screen has a flow-coverage answer', () => {
     ).toEqual([])
   })
 
+  it('dates every planned row, or names the issue it waits on', () => {
+    // `planned` is a reason, and a reason goes stale without anything
+    // noticing: five rows sat `planned` on blockers that had already gone
+    // (flowCoverage.ts's header names them). A row carrying the day it was
+    // written, or the issue whose closing should move it, is one a reader
+    // can check - "is that still true?" needs a date or an issue to ask
+    // about. A `since` that is not a real YYYY-MM-DD day is refused too, so
+    // a typo cannot pass for a date.
+    const isDay = (text: string) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(text) &&
+      !Number.isNaN(Date.parse(`${text}T00:00:00Z`)) &&
+      new Date(`${text}T00:00:00Z`).toISOString().slice(0, 10) === text
+    const undated = listed.filter((module) => {
+      const { flow } = FLOW_COVERAGE[module]
+      if (flow.status !== 'planned') return false
+      if (flow.since !== undefined && !isDay(flow.since)) return true
+      const tracked =
+        flow.issue !== undefined && Number.isInteger(flow.issue) && flow.issue > 0
+      return flow.since === undefined && !tracked
+    })
+    expect(
+      undated,
+      'A `planned` row needs `since` (the day it was written, YYYY-MM-DD - ' +
+        '`git log -S "\'<module>\'" --format=%ad --date=short -- ' +
+        'client/src/test/flowCoverage.ts | tail -1` on a full clone) or ' +
+        '`issue` (the open issue it waits on), so a stale reason can be seen.',
+    ).toEqual([])
+  })
+
   it('gives a reason for every deliberate exemption', () => {
     const unreasoned = listed.filter((module) => {
       const entry = FLOW_COVERAGE[module]

@@ -365,6 +365,10 @@ models:
       gives one, plus the water point export_poi.py's synthesize_csi_water()
       makes where that distance is all anyone knows (#694), except where that
       point's id is a retired ledger row, which no release may publish live.
+      The join is on the file's poi_id, and a poi_id the ledger retired or
+      never minted joins nothing, dropping the distance silently:
+      assert_every_water_distance_in_the_file_lands_on_one_live_poi.sql lists
+      each such file row at error.
     data_tests:
       # A distance never travels without the provenance the phone prints its
       # tilde from: all 305 distances carry one (measured 2026-10-01).

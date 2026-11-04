@@ -22,7 +22,7 @@
         --sage-200: #c7dabd;
         --stone-900: #2b2620;
         --stone-700: #5a5346;
-        --stone-500: #8a8271;
+        --stone-600: #706859;
         --stone-150: #e4ddca;
         --paper-100: #f7f3e9;
         --paper-0: #fffdf7;
@@ -31,7 +31,12 @@
         --surface: var(--paper-0);
         --fg-1: var(--stone-900);
         --fg-2: var(--stone-700);
-        --fg-3: var(--stone-500);
+        /* stone-600, the site's and the app's --fg-3 since #1670 (--fg-3
+           text is under WCAG AA contrast on every light surface): the
+           stone-500 this page kept measured 3.44:1 on --bg for "Last
+           updated", against AA's 4.5:1 (client/e2e/sitePages.spec.ts,
+           2026-11-04). stone-600 is 4.97:1 there. */
+        --fg-3: var(--stone-600);
         --border: var(--stone-150);
         --accent: var(--forest-600);
         --accent-fg: var(--paper-0);
@@ -80,6 +85,27 @@
         max-width: 42rem;
         margin-inline: auto;
         padding-inline: 1.25rem;
+      }
+
+      /* The skip link, as site/src/layouts/Base.astro and site.css's .skip
+         draw it: first in the tab order, off-screen until it is focused. */
+      .skip {
+        position: absolute;
+        left: 12px;
+        top: -64px;
+        z-index: 100;
+        padding: 10px 16px;
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--fg-1);
+        border: 1px solid var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+        transition: top 120ms ease;
+      }
+
+      .skip:focus {
+        top: 12px;
       }
 
       header.top {
@@ -193,10 +219,27 @@
         color: var(--fg-3);
         font-size: 0.9rem;
       }
+
+      /* Phone targets: 44px for a link that is not a word inside a
+         sentence, site.css's rule for its own mark and its small buttons
+         (HANDOFF_README.md's "44-56px hit targets"). Measured before at
+         390px (2026-11-04): the mark 30px, "Back to OurHike" 17px. */
+      @media (max-width: 720px) {
+        .lockup {
+          min-height: 44px;
+        }
+
+        footer a {
+          display: inline-flex;
+          align-items: center;
+          min-height: 44px;
+        }
+      }
     </style>
   </head>
 
   <body>
+    <a class="skip" href="#main">Skip to content</a>
     <header class="top">
       <div class="wrap">
         <a class="lockup" href="../">
@@ -227,7 +270,7 @@
       </div>
     </header>
 
-    <main class="wrap">
+    <main class="wrap" id="main">
       <h1>Privacy Policy</h1>
       <p class="updated">Last updated November 4, 2026</p>
 

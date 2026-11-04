@@ -62,7 +62,21 @@ function sitePages(): string[] {
   )
 }
 
-const PAGES = sitePages()
+/**
+ * The pages the walk above cannot see: hand-written HTML copied from
+ * site/public/ as it is, served at the same path a built page would be. The
+ * Privacy Policy is one (site/public/Privacy/index.html, rewritten for the
+ * usage counts of #1902 - Count six usage events with a sealed account id
+ * and GPS fix, keep them six months, close each month into a table, and
+ * report them per club), and until it was listed here the audit that failed
+ * on #1663 - The /for-orgs/ pages are unreadable in dark mode and misaligned
+ * on a phone - had never read it. Checked to exist in `beforeAll`, so this
+ * list cannot name a page that has gone and pass on the fallback page
+ * instead.
+ */
+const STATIC_PAGES = ['/Privacy/'] as const
+
+const PAGES = [...sitePages(), ...STATIC_PAGES].sort()
 const SCHEMES = ['light', 'dark'] as const
 
 interface Variant {
@@ -142,6 +156,12 @@ test.beforeAll(() => {
     existsSync(join(SITE, 'dist', 'index.html')),
     'site/dist is not built - run `npm ci && npm run build` in site/ first (CI does, in the flow job)',
   ).toBe(true)
+  for (const path of STATIC_PAGES) {
+    expect(
+      existsSync(join(SITE, 'public', ...path.split('/').filter(Boolean), 'index.html')),
+      `${path} is listed in STATIC_PAGES but site/public holds no index.html for it`,
+    ).toBe(true)
+  }
 })
 
 async function open(page: Page, variant: Variant, scheme: (typeof SCHEMES)[number]) {

@@ -75,6 +75,7 @@ from app.config import settings
 from app.core.analytics_rollup import month_start, retention_start
 from app.core.analytics_seal import month_label, seal, user_key
 from app.core.analytics_storage import ROWS_HELD_SQL, ceiling_rows
+from app.core.analytics_support import heartbeat_stale
 from app.core.auth import get_current_user_optional
 from app.core.time import utc_now
 from app.db.session import get_db
@@ -181,7 +182,7 @@ def _gate_outcome(db: Session, now: datetime) -> IntakeOutcome | None:
     gate = db.execute(_INTAKE_GATE, {"today": now.date()}).one()
     if gate.stored_today >= settings.analytics_daily_row_budget or gate.rows_held >= ceiling_rows():
         return IntakeOutcome.over_budget
-    if gate.rollup_ran_at is None or gate.rollup_ran_at < now - timedelta(days=settings.analytics_rollup_stale_days):
+    if heartbeat_stale(gate.rollup_ran_at, now):
         return IntakeOutcome.paused
     return None
 

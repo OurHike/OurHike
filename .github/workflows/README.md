@@ -174,7 +174,7 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 | `analytics-rollup.yml` | tracking issue (production), failing the run | not only a watcher: the nightly usage job (#1902 — Count six usage events with a sealed account id and GPS fix, keep them six months, close each month into a table, and report them per club; [features/EVENTING.md](../../features/EVENTING.md)) moves closed months to each environment's private bucket, recomputes and closes months, deletes raw events past six months, then checks the numbers — names, slices and days in the issue, never a figure. One job per database; production from `main` only, UA from any ref |
 | `backup-database.yml` | tracking issue, failing the run | not only a watcher either: production's nightly dump (#1908 — Back production's database up nightly to a private R2 bucket, because Supabase Free keeps no backups), restored into a throwaway Postgres and compared table by table before it is encrypted with `age` and uploaded to its own private bucket; from `main` only, and the log names tables and never a row count |
 
-**All five share one routine** — `.github/scripts/tracking-issue.js`, required
+**All seven share one routine** — `.github/scripts/tracking-issue.js`, required
 from each monitor's `github-script` step. It owns finding the issue by label
 *and* title, opening, updating in place, commenting and closing, and the
 "first seen" map. What stays with each caller is the verdict — whether this run

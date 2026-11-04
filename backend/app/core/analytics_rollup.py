@@ -480,23 +480,15 @@ def run(db: Session, *, today: date | None = None, now: datetime | None = None) 
     for month in sorted(set(held_months) | open_months | {month_start(today)}):
         state = states.get(month)
         if state is not None and state.status == MonthStatus.closed:
-            # A month past retention keeps the late count it has. The archive
-            # step runs before this one (.github/workflows/analytics-rollup.yml)
-            # and retires that month first - its files and its
-            # `analytics_archived_daily` rows go - so `_count_late` would read
-            # its archived rows as 0 and write max(0, linked rows held - every
-            # row at close) - 0 for the test's month, and for any month whose
-            # archived rows outnumber the unlinked ones that arrived since - over
-            # the figure the month carried since its close; the loop below then
-            # set `raw_deleted_at` and froze that 0 for good (reproduced in
-            # tests/test_analytics_archive.py, the retention-night test). The
-            # figure it has is the one CLOSE_AFTER_DAYS's @unvalidated note
-            # above waits on, so its last night is the night it is finished,
-            # not the night to take it again. What this gives up: a row for
-            # that month arriving since last night's run goes uncounted, and
-            # `POST /usage-events` refuses rows dated before
-            # `retention_start(today)` (app/routers/analytics.py `_sort_rows`),
-            # so that is the hours between the UTC date change and this run.
+            # A month past retention keeps the late count it has: the archive
+            # step has already retired its rows (the module docstring's last
+            # bullet), so a count taken now would read them as 0 and the loop
+            # below would freeze that 0. Its last night is the night the figure
+            # is finished, not the night to take it again. What this gives up
+            # is a row for that month arriving since last night's run, bounded
+            # to the hours between the UTC date change and this run by
+            # `_sort_rows` refusing older rows (app/routers/analytics.py).
+            # tests/test_analytics_archive.py's retention-night test holds it.
             if state.raw_deleted_at is None and month >= cutoff:
                 _count_late(db, state)
                 result.late_counted.append(month)

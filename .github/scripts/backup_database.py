@@ -512,7 +512,11 @@ def _rows_by_catalog(reltuples: int) -> str:
     header gives for every other line here (the second security pass,
     2026-11-04). Whether the table holds rows is what the refusal needs.
     """
-    return "never counted by the catalog" if reltuples < 0 else "holds rows by the catalog"
+    if reltuples < 0:
+        return "never counted by the catalog"
+    if reltuples == 0:
+        return "no rows by the catalog, pages still on disk"
+    return "holds rows by the catalog"
 
 
 def _counting_sql(tables: list[list[str]]) -> str:

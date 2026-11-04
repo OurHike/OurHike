@@ -751,7 +751,7 @@ class Postgres:
 def postgres():
     """A source and a scratch database for the module, all dropped together at the end."""
     if not _reachable():
-        pytest.skip("no local Postgres with psql, pg_dump and pg_restore; CI's settings job has none")
+        _unavailable("no local Postgres with psql, pg_dump and pg_restore; CI's settings job has none")
     base = ADMIN_URL.rsplit("/", 1)[0]
     suffix = uuid.uuid4().hex[:8]
     made: list[str] = []
@@ -759,13 +759,37 @@ def postgres():
         for name in (f"backup_test_src_{suffix}", f"backup_test_scratch_{suffix}"):
             created = _psql(ADMIN_URL, f"create database {name}")
             if created.returncode != 0:
-                pytest.skip(f"this role cannot create databases: {created.stderr.strip()}")
+                _unavailable(f"this role cannot create databases: {created.stderr.strip()}")
             made.append(name)
         if _psql(f"{base}/{made[0]}?sslmode=require", "select 1").returncode != 0:
-            pytest.skip("this Postgres refuses TLS, and `dump` will not connect without it")
+            _unavailable("this Postgres refuses TLS, and `dump` will not connect without it")
         yield Postgres(base=base, source=f"{base}/{made[0]}", scratch=f"{base}/{made[1]}", made=made)
     finally:
         _drop_all(base, made)
+
+
+def _unavailable(reason: str) -> None:
+    """Skip locally, fail in CI.
+
+    With `ADMIN_URL_VARIABLE` set, the server was started for these tests on
+    purpose (backend-tests.yml), and a quiet skip there is finding 6 of the
+    2026-11-04 release review again: eleven tests that never ran and a green
+    step that said nothing. Unset, this is a laptop without the tools, where
+    skipping is the right answer.
+    """
+    if ADMIN_URL_VARIABLE in os.environ:
+        pytest.fail(f"{ADMIN_URL_VARIABLE} is set, so these tests were meant to run here, but: {reason}")
+    pytest.skip(reason)
+
+
+def test_with_the_admin_url_set_an_unavailable_server_fails_rather_than_skips(monkeypatch):
+    """CI set the server up on purpose, so "could not reach it" is a failure there and a skip on a laptop."""
+    monkeypatch.setenv(ADMIN_URL_VARIABLE, "postgresql://backup_tests:backup@localhost:5433/postgres")
+    with pytest.raises(pytest.fail.Exception, match="meant to run here"):
+        _unavailable("this Postgres refuses TLS")
+    monkeypatch.delenv(ADMIN_URL_VARIABLE)
+    with pytest.raises(pytest.skip.Exception):
+        _unavailable("this Postgres refuses TLS")
 
 
 def _tools(workdir: Path) -> backup.Tools:
@@ -815,10 +839,10 @@ def test_verify_full_reaches_the_server_from_inside_docker_with_the_named_certif
     """The review's `root certificate file ... does not exist`, end to end:
     psql 17 in the container checks the local server's own certificate."""
     if not _reachable():
-        pytest.skip("no local Postgres to connect to")
+        _unavailable("no local Postgres to connect to")
     served = Path(_psql(ADMIN_URL, "show ssl_cert_file").stdout.strip() or "/nonexistent")
     if not served.is_file():
-        pytest.skip("the local Postgres serves no certificate this test can read")
+        _unavailable("the local Postgres serves no certificate this test can read")
     # Copied to a path the image does not have and the workdir mount does not
     # cover, as a certificate on the runner would be.
     (tmp_path / "certs").mkdir()
@@ -826,7 +850,7 @@ def test_verify_full_reaches_the_server_from_inside_docker_with_the_named_certif
     shutil.copyfile(served, certificate)
     checked = f"{ADMIN_URL}?sslmode=verify-full&sslrootcert={certificate}"
     if _psql(checked, "select 1").returncode != 0:
-        pytest.skip("the local Postgres's certificate does not pass verify-full for its own host")
+        _unavailable("the local Postgres's certificate does not pass verify-full for its own host")
 
     (tmp_path / "work").mkdir()
     tools = backup.Tools(workdir=tmp_path / "work", image="postgres:17")

@@ -269,11 +269,14 @@ jobs:
           docker run --detach --name backup-postgres --publish 5433:5432 --env POSTGRES_PASSWORD=backup \
             --volume "$certs:$certs:ro" postgres:17 \
             -c ssl=on -c ssl_cert_file="$certs/server.crt" -c ssl_key_file="$certs/server.key"
+          # Over TCP (-h), not the socket: the image's entrypoint first runs a
+          # socket-only server for its init SQL, which pg_isready with no -h
+          # would call ready before the real server is listening on 5432.
           for _ in $(seq 30); do
-            docker exec backup-postgres pg_isready -U postgres -q && break
+            docker exec backup-postgres pg_isready -h localhost -U postgres -q && break
             sleep 1
           done
-          docker exec backup-postgres pg_isready -U postgres
+          docker exec backup-postgres pg_isready -h localhost -U postgres
           docker exec backup-postgres psql -U postgres -v ON_ERROR_STOP=1 \
             -c "create role backup_tests login createdb password 'backup'"
 

@@ -89,17 +89,25 @@ from app.models.support import SupportChoice
 _ROLLUP_RAN_AT = text("select max(computed_at) from analytics_months")
 
 
+def heartbeat_stale(ran_at: datetime | None, now: datetime) -> bool:
+    """The one rule for "the rollup is not running": no heartbeat, or one older than `analytics_rollup_stale_days`.
+
+    `POST /usage-events` reads the heartbeat inside its one intake query and
+    `rollup_paused` below reads it on its own, so the comparison lives here
+    and both call it; a change to the rule reaches both by construction.
+    """
+    return ran_at is None or ran_at < now - timedelta(days=settings.analytics_rollup_stale_days)
+
+
 def rollup_paused(db: Session, now: datetime) -> bool:
     """The nightly rollup has not run for `analytics_rollup_stale_days`, or never has.
 
-    The rule `POST /usage-events` turns a batch away by (`_gate_outcome` in
-    app/routers/analytics.py, which reads the same heartbeat inside its one
-    intake query), so the paid count keeps the Privacy Policy's "within
-    three days" too. The comparison is written twice, there and here; a
-    change to the rule has to reach both.
+    The rule `POST /usage-events` turns a batch away by (`heartbeat_stale`,
+    which `_gate_outcome` in app/routers/analytics.py applies to the same
+    heartbeat), so the paid count keeps the Privacy Policy's "within three
+    days" too.
     """
-    ran_at = db.execute(_ROLLUP_RAN_AT).scalar()
-    return ran_at is None or ran_at < now - timedelta(days=settings.analytics_rollup_stale_days)
+    return heartbeat_stale(db.execute(_ROLLUP_RAN_AT).scalar(), now)
 
 
 def _measurement_off(db: Session, profile_id: str | None) -> bool:

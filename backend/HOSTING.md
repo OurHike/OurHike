@@ -152,7 +152,7 @@ the follow-up that removes the trade: a stable photo route like reports already 
 list carries no signature, which is
 [#1905 — GET /field-notes embeds 5-minute signed photo links, so the edge cache cannot keep it and every hiker's app open still reaches the API](https://github.com/OurHike/OurHike/issues/1905).
 
-**Signed-in reads are the open question.** Since #1916 (2026-10-29; `client/src/lib/api.ts`,
+**Signed-in reads are the open question.** Since #1916 (9e5ccddb, merged 2026-11-02 in #1929; `client/src/lib/api.ts`,
 "THE SHARED READS") this app sends no token on the three shared reads and fetches a reporter's
 own rows from `GET /reports/mine`; a v1.3.5-or-earlier app still sends its token on them, and
 the API answers any request carrying one `private, no-store`. Cloudflare's docs say it does not store that answer. They

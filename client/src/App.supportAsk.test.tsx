@@ -166,7 +166,12 @@ const ASK = { name: 'Choose what you give' }
 
 /** The gate is up: it has read the stored session for itself, the second
  *  read this launch after lib/useAuth.ts's. Before the fourth #1885 review's
- *  fix it had decided by now, as a signed-out hiker. */
+ *  fix it had decided by now, as a signed-out hiker. A count, not a signal:
+ *  a third launch-time caller of currentAccount in App.tsx would make this
+ *  resolve before the gate has read, and the slow-restore tests below would
+ *  then release the restore too early and pass without proving anything -
+ *  the premise breaks, not the pass. If one is added, wait on the gate's own
+ *  read instead. */
 async function gateUp() {
   await waitFor(() => expect(currentAccount).toHaveBeenCalledTimes(2))
 }

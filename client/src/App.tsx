@@ -12317,7 +12317,11 @@ function App() {
           The failure still reaches console.error, from the boundary. The
           boundary has no resetKey: the ask is lost for this launch, and the
           next launch's mount imports again (deferredScreen forgets a failed
-          import). App.supportGateChunk.test.tsx is the guard. */}
+          import). The same null also swallows a render error inside the
+          gate or the ask itself, which main.tsx's boundary used to make
+          loud; the ask's own unit tests (SupportGate.test.tsx,
+          SupportAsk.test.tsx, lib/support.test.ts) are what catch those now.
+          App.supportGateChunk.test.tsx is the guard for the chunk. */}
       {API_CONFIGURED && afterFirstFrame && (
         <ErrorBoundary fallback={() => null}>
           <SupportGate

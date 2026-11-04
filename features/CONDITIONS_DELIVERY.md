@@ -289,7 +289,7 @@ being `ClosureSummary[] | null` and become three distinguishable states:
 
 | State | Meaning | What a hiker sees |
 | --- | --- | --- |
-| `live` | fetched from the backend just now — since 2026-10-27 through Cloudflare's edge, which may answer with a copy up to `EDGE_TTL_SECONDS` (300 s) old (`backend/app/core/edge_cache.py`); the hook stamps `lastSyncedAt` on arrival and reads no `Age` header, so "just now" can be five minutes old, which sits inside the day's tolerance that header reasons from | closures, no staleness note |
+| `live` | fetched from the backend just now — since 2026-10-27 through Cloudflare's edge, which may answer with a copy up to `EDGE_TTL_SECONDS` (300 s) old (`backend/app/core/edge_cache.py`); the hook stamps `lastSyncedAt` on arrival and reads no `Age` header, so "just now" can be five minutes old, which sits inside the day's tolerance `backend/app/core/edge_cache.py`'s docstring reasons from | closures, no staleness note |
 | `baseline` | from the published artifact | closures, **"as of <date>"** |
 | `unavailable` | neither reachable | an explicit "conditions unavailable" |
 

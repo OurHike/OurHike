@@ -103,6 +103,9 @@ test.describe('challenges', () => {
     await page.getByRole('button', { name: 'Challenges', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Your blazes' })).toBeVisible()
     await page.getByRole('button', { name: /A\.T\. Summer Bucket List/ }).click()
+    // The list opens on the ATC's first section (Learn); the earned item is
+    // an Experience item, and Done is the pill that lists what was earned.
+    await page.getByRole('button', { name: 'Done' }).click()
     const mcafee = page
       .locator('.challenge-row')
       .filter({ hasText: 'Take the McAfee Knob shuttle' })

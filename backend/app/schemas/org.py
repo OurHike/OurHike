@@ -143,21 +143,27 @@ def normalise_domain(value: str | None) -> str | None:
 
     ONE NORMALISER, BECAUSE FOUR DOORS HAD FOUR (the 2026-11-04 security
     review). `OrgCreate` refused only a missing dot and a space, so it stored
-    `ramapotrails.org/foo`, `ramapotrails.org:443` and `ramapotrails.org`
-    followed by a tab, and cut `https://ramapotrails.org/trails/` down to
+    `ramapotrails.org/foo`, `ramapotrails.org:443` and `ramapotrails.org`, a
+    tab and `foo` (a tab inside the name; its `strip` removed one at the
+    end), and cut `https://ramapotrails.org/trails/` down to
     `ramapotrails.org/trails`. `why_domain_proves_nothing` stripped and
     lowercased, so `gmail.com` followed by a zero-width space, or typed in
     fullwidth letters, was not `gmail.com` to it. The address checks in
     routers/clubs.py and routers/nominations.py each stripped, lowercased and
     compared on their own. Every one of them asks this now and refuses on
-    None, so a path, port, tab, scheme or zero-width character never reaches
-    a comparison.
+    None, so a path, port, scheme, tab inside the name or zero-width
+    character never reaches a comparison.
 
-    In order: stripped, lowercased, one trailing dot removed
+    In order: stripped, lowercased, one trailing ASCII dot removed
     (`ramapotrails.org.` is the same name written fully qualified; a second
     dot is not), folded with the `idna` package's UTS #46 mapping, and held to
-    `_BARE_DOMAIN`. What the fold does, measured against idna 3.18 (the
-    version requirements.txt pins) on 2026-11-04:
+    `_BARE_DOMAIN`. So whitespace at either end - a space, a tab, a newline,
+    U+2003 EM SPACE - is stripped, not refused, and the clean name is what
+    comes back. A trailing `。` or `．` is refused rather than dropped: UTS
+    #46 maps it to `.` only after the trailing ASCII dot has been looked
+    for, leaving an empty last label, which fails closed. What the fold
+    does, measured against idna 3.18 (the version requirements.txt pins) on
+    2026-11-04:
 
     - maps fullwidth and other compatibility letters (`ｇｍａｉｌ.com`,
       `ℊmail.com`) and the ideographic full stop (`gmail。com`) to ASCII;
@@ -165,8 +171,8 @@ def normalise_domain(value: str | None) -> str | None:
       SOFT HYPHEN, U+2060 WORD JOINER and U+FEFF among them, so
       `gmail.com` + U+200B is `gmail.com`;
     - refuses a zero-width joiner or non-joiner out of context, a `/`, `:`,
-      tab or `_`, an empty label, a label over 63 characters and a hyphen at
-      either end of one;
+      `_` or a tab inside the name, an empty label, a label over 63
+      characters and a hyphen at either end of one;
     - writes a real non-ASCII label as its `xn--` A-label (`bücher.de` is
       `xn--bcher-kva.de`), so a Unicode address and a stored domain meet in
       one spelling.
@@ -225,12 +231,14 @@ def why_domain_proves_nothing(domain: str | None) -> str | None:
     whatever domain the hiker's website named, and `claim_org` accepted
     whatever was stored. So this is the one rule, and all three ask it:
 
-    - **Blank**, once normalised: no address can be at it.
+    - **Blank** once stripped: no address can be at it. A lone `.` is not
+      blank by this test; it folds to nothing and is refused as not a
+      hostname, two bullets down.
     - **No dot.** A bare top-level domain: a website of `https://com` stored
       `com`, which every `.com` address holds.
-    - **Not a hostname** once `normalise_domain` has folded it: a path, a
-      port, a scheme or a tab in it, so no address could honestly be
-      compared with it.
+    - **Not a hostname** once folded as `normalise_domain` folds it: a
+      path, a port, a scheme or a tab inside it, so no address could
+      honestly be compared with it.
     - **A public mail provider** (`PUBLIC_EMAIL_DOMAINS` above): anybody can
       get an address there.
     - **A subdomain of one.** The claim takes an address at a subdomain of
@@ -244,15 +252,15 @@ def why_domain_proves_nothing(domain: str | None) -> str | None:
       and that is the cheaper of the two mistakes.
 
     **`domain` is normalised here rather than trusted to arrive that way**,
-    by `normalise_domain`, the fold every door uses. `claim_org` asks about a
-    STORED domain, and the rows this check exists for are the ones today's
-    validators did not write - by hand, or by an older version of a door. The
-    address check after it (`address_is_at_domain`) folds both sides the same
-    way before comparing, so a rule that read the row as stored passed
-    `GMAIL.COM` and `gmail.com ` while `mallory@gmail.com` still matched both
-    and was seated - and a rule that only stripped and lowercased passed
-    `gmail.com` followed by a zero-width space, which the address check now
-    reads as `gmail.com`.
+    by the fold `normalise_domain` applies, which every door uses.
+    `claim_org` asks about a STORED domain, and the rows this check exists
+    for are the ones today's validators did not write - by hand, or by an
+    older version of a door. The address check after it
+    (`address_is_at_domain`) folds both sides the same way before comparing,
+    so a rule that read the row as stored passed `GMAIL.COM` and `gmail.com `
+    while `mallory@gmail.com` still matched both and was seated - and a rule
+    that only stripped and lowercased passed `gmail.com` followed by a
+    zero-width space, which the address check now reads as `gmail.com`.
 
     A public suffix such as `co.uk` has a dot and passes. Closing that needs
     the Public Suffix List, a new dependency nobody has taken on yet.
@@ -260,11 +268,12 @@ def why_domain_proves_nothing(domain: str | None) -> str | None:
     cleaned = (domain or "").strip()
     if not cleaned:
         return "That domain is blank, so no address can be at it."
-    normalised = normalise_domain(cleaned)
-    if normalised is None:
-        folded = _folded(cleaned)
-        if folded is not None and _ONE_LABEL.fullmatch(folded):
-            return f"{folded} is a top-level domain, not an organization's own, so every address under it would count."
+    # Folded once, and read as `normalise_domain` reads it: one label is a
+    # top-level domain, anything else short of `_BARE_DOMAIN` is no hostname.
+    normalised = _folded(cleaned)
+    if normalised is not None and _ONE_LABEL.fullmatch(normalised):
+        return f"{normalised} is a top-level domain, not an organization's own, so every address under it would count."
+    if normalised is None or not _BARE_DOMAIN.fullmatch(normalised):
         return f"{cleaned!r} is not a bare domain name like ramapotrails.org, so no address can be compared with it."
     if normalised in PUBLIC_EMAIL_DOMAINS:
         return (

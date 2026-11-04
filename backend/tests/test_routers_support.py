@@ -389,14 +389,32 @@ def test_a_choice_keeps_the_consent_record_a_provider_move_needs(client, configu
 
 
 def test_the_email_is_the_tokens_never_one_the_request_carries(client, configured):
-    """A typed address could point a stranger's payment at this account."""
-    response = client.put(
+    """A typed address could point a stranger's payment at this account. One
+    sent anyway is refused, since `SupportChoiceIn` forbids fields it does
+    not declare, and the address recorded is the token's."""
+    headers = auth_headers(str(uuid.uuid4()), email="Hiker@Example.com ")
+    typed = client.put(
         "/support/me",
         json={"amount_cents": 6000, "delivery": "redirect", "email": "someone-else@example.com"},
-        headers=auth_headers(str(uuid.uuid4()), email="Hiker@Example.com "),
+        headers=headers,
     )
+    assert typed.status_code == 422
+
+    response = client.put("/support/me", json={"amount_cents": 6000, "delivery": "redirect"}, headers=headers)
 
     assert response.json()["support"]["email"] == "hiker@example.com"
+
+
+def test_a_choice_carrying_a_field_the_api_does_not_take_is_a_422_and_records_nothing(client, configured, db_session):
+    """`SupportChoiceIn` was the one write model in schemas/support.py without
+    `extra="forbid"`, so an undeclared field was dropped in silence and the
+    choice recorded as if it had not been sent (the 2026-11-04 security
+    review). `provider` is the server's to pick (`current_provider`)."""
+    response = _choose(client, str(uuid.uuid4()), provider="opencollective")
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"][0]["type"] == "extra_forbidden"
+    assert db_session.query(SupportChoice).count() == 0
 
 
 def test_a_sign_in_with_no_email_cannot_choose(client, configured):

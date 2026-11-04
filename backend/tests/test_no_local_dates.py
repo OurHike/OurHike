@@ -2,12 +2,13 @@
 
 #1939 — Take backend dates from UTC, and fix two stale comments: this API
 stores naive UTC (app/core/time.py's utc_now(); tests/test_column_conventions.py's
-header), and six routes read `date.today()`, the calendar of whatever machine
-runs the process - a laptop in New York, a container in Render's region, CI's
-runner - three different days for a few hours every night. #1939 moved each
-to `utc_now().date()` and landed with no test, so the next route written from
-an older route's shape brings `date.today()` straight back. This file is the
-test that stops it; test_routers_work_projects.py's
+header), and ten `date.today()` calls in four routers and two schemas read the
+calendar of whatever machine runs the process - a laptop in New York, a
+container in Render's region, CI's runner - three different days for a few
+hours every night. #1939 moved each to `utc_now().date()` and landed with no
+test, so the next route written from an older route's shape brings
+`date.today()` straight back. This file is the test that stops it;
+test_routers_work_projects.py's
 test_a_workday_dated_today_in_utc_is_listed_at_eleven_pm_new_york_time holds
 one route's behaviour with a set clock.
 
@@ -16,7 +17,9 @@ WHAT IS SCANNED: every call in every .py under backend/app, read as syntax
 this" does not count - two routers carry exactly that comment. Flagged: a
 `.today()` or `.utcnow()` on a name ending in `date` or `datetime` (so an
 alias such as `dt.date.today()` is caught), and a `datetime.now(...)` whose
-arguments name no UTC - `timezone.utc`, `UTC` or `tz=`. app/core/time.py is
+zone, first argument or `tz=`, is not `timezone.utc` or `UTC` under any
+module prefix - so `datetime.now()`, `datetime.now(tz=None)` and
+`datetime.now(ZoneInfo("America/New_York"))` are all flagged. app/core/time.py is
 the one module allowed, because its `datetime.now(timezone.utc)` is what
 utc_now() is made of; the five schemas that call `datetime.now(timezone.utc)`
 themselves (closure, field_note, report, trail_challenge, volunteer_hours,
@@ -39,7 +42,8 @@ from pathlib import Path
 APP = Path(__file__).resolve().parents[1] / "app"
 #: utc_now()'s own home - the one `datetime.now(timezone.utc)` every other module should read through.
 ALLOWED = (APP / "core" / "time.py",)
-UTC_ARGUMENTS = ("timezone.utc", "UTC", "tz=")
+#: The zones an aware now may name, as written: `timezone.utc`, `UTC`, or either under a module (`dt.timezone.utc`).
+UTC_ZONES = ("timezone.utc", "UTC")
 
 
 def _dotted(node: ast.expr) -> str | None:
@@ -54,8 +58,17 @@ def _dotted(node: ast.expr) -> str | None:
     return ".".join(reversed(parts))
 
 
+def _names_utc(call: ast.Call) -> bool:
+    """Whether a `datetime.now(...)` call's zone - its first argument, else its `tz=` - is UTC as written."""
+    zone = call.args[0] if call.args else next((keyword.value for keyword in call.keywords if keyword.arg == "tz"), None)
+    if zone is None:
+        return False
+    written = ast.unparse(zone)
+    return any(written == name or written.endswith(f".{name}") for name in UTC_ZONES)
+
+
 def local_reads(source: str) -> list[tuple[int, str]]:
-    """Every (line, call) in `source` that reads the machine's calendar or a naive now."""
+    """Every (line, call) in `source` that reads the machine's calendar or a naive now, in line order."""
     found = []
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, ast.Call):
@@ -69,12 +82,9 @@ def local_reads(source: str) -> list[tuple[int, str]]:
             continue
         if method in ("today", "utcnow"):
             found.append((node.lineno, ast.unparse(node)))
-        elif method == "now" and owner == "datetime":
-            arguments = [ast.unparse(argument) for argument in node.args]
-            arguments += [f"{keyword.arg}={ast.unparse(keyword.value)}" for keyword in node.keywords]
-            if not any(marker in argument for argument in arguments for marker in UTC_ARGUMENTS):
-                found.append((node.lineno, ast.unparse(node)))
-    return found
+        elif method == "now" and owner == "datetime" and not _names_utc(node):
+            found.append((node.lineno, ast.unparse(node)))
+    return sorted(found)
 
 
 def _modules() -> list[Path]:
@@ -103,6 +113,9 @@ def test_the_scan_catches_each_shape_and_lets_an_aware_now_through():
             "stamp = datetime.utcnow()",
             "stamp = datetime.now()",
             "stamp = dt.datetime.now(tz=None)",
+            "stamp = datetime.now(ZoneInfo('America/New_York'))",
+            "stamp = datetime.now(tz=eastern)",
+            "stamp = datetime.now(not_utc.timezone)",
         ]
     )
     assert [call for _, call in local_reads(flagged)] == [
@@ -112,12 +125,16 @@ def test_the_scan_catches_each_shape_and_lets_an_aware_now_through():
         "datetime.utcnow()",
         "datetime.now()",
         "dt.datetime.now(tz=None)",
+        "datetime.now(ZoneInfo('America/New_York'))",
+        "datetime.now(tz=eastern)",
+        "datetime.now(not_utc.timezone)",
     ]
     allowed = "\n".join(
         [
             "now = datetime.now(timezone.utc)",
             "now = datetime.now(tz=timezone.utc)",
             "now = datetime.now(UTC)",
+            "now = datetime.now(tz=datetime.UTC)",
             "now = dt.datetime.now(dt.timezone.utc)",
             "today = utc_now().date()",
             "# utc_now().date(), never date.today(): the comment two routers carry",

@@ -136,13 +136,16 @@ def test_a_workday_dated_today_in_utc_is_listed_at_eleven_pm_new_york_time(clien
     namespace - so the regression goes red on any runner at any hour, not
     only between 19:00 and midnight Eastern.
 
-    A workday dated the 5th is listed. A workday that ended on the 4th is
-    not, though New York's wall clock still reads the 4th - and that is the
-    assertion `date.today()` turns red (shown 2026-11-04 by putting it back),
-    because a workday dated today-in-UTC is listed either way. Whether a
-    New Yorker should still see the 4th's workday at 23:00 is #1939's call,
-    made for every date this API reads at once; this test holds the call,
-    it does not make it."""
+    The route reads the date twice, and each read has its own workday. One
+    that ended on the 4th is not listed, though New York's wall clock still
+    reads the 4th: `date.today()` back in the `ends_on` bound lists it. One
+    that starts on the last day of UTC's window (the 5th plus
+    UPCOMING_WINDOW_DAYS) is listed: `date.today()` back in the `starts_on`
+    bound ends the window a day early and drops it. Each was shown red on
+    2026-11-04 by putting `date.today()` back in that one bound. A workday
+    dated the 5th is listed either way. Whether a New Yorker should still
+    see the 4th's workday at 23:00 is #1939's call, made for every date this
+    API reads at once; this test holds the call, it does not make it."""
     monkeypatch.setattr(work_projects, "utc_now", lambda: datetime(2026, 11, 5, 4, 0))
 
     class NewYorkCalendar(date):
@@ -154,8 +157,13 @@ def test_a_workday_dated_today_in_utc_is_listed_at_eleven_pm_new_york_time(clien
     org, _ = _org_with_admin(db_session)
     make_workday(db_session, org, title="Dated today, in UTC", starts_on=date(2026, 11, 5), ends_on=date(2026, 11, 5))
     make_workday(db_session, org, title="Ended yesterday, in UTC", starts_on=date(2026, 11, 4), ends_on=date(2026, 11, 4))
+    last_day = date(2026, 11, 5) + timedelta(days=work_projects.UPCOMING_WINDOW_DAYS)
+    make_workday(db_session, org, title="Starts on the window's last day, in UTC", starts_on=last_day, ends_on=last_day)
 
-    assert [workday["title"] for workday in client.get("/workdays").json()] == ["Dated today, in UTC"]
+    assert [workday["title"] for workday in client.get("/workdays").json()] == [
+        "Dated today, in UTC",
+        "Starts on the window's last day, in UTC",
+    ]
 
 
 def test_a_held_registration_cannot_post_a_workday_and_the_public_list_shows_none(client, db_session):

@@ -9,7 +9,7 @@
 // module. What none of them can see is the launch: screens/SupportGate.tsx
 // loading after the first frame (screens/deferred.ts), reading the day count
 // lib/activeDays.ts kept in localStorage, waiting for the stored session and
-// the account's answer, and opening the window over the map within its
+// the account's answer, and opening the window over Today within its
 // fifteen-second window with nobody having tapped - or not opening it, a day
 // early. Nor what a paid choice does to the browser: `window.location.assign`
 // to a page that is not this app, with no field anywhere in the window a
@@ -130,29 +130,51 @@ function exactly(seen: readonly Recorded[], method: string, path: string): Recor
 
 const ask = (page: Page) => page.getByRole('dialog', { name: 'Choose what you give' })
 
+/** More's own row for the page. Matched from the start of its name, because
+ *  the row's accessible name carries its summary line ("Stopped", "$0 this
+ *  year") and that line is what the tests below change. */
+const supportRow = (page: Page) => page.getByRole('button', { name: /^Your support/ })
+
 /** More → Your support. */
 async function openYourSupport(page: Page): Promise<void> {
   await page.getByRole('tab', { name: 'More' }).click()
-  await page.locator('.more__row').filter({ hasText: 'Your support' }).first().click()
+  await supportRow(page).click()
   await expect(page.getByRole('heading', { name: 'Your support' })).toBeVisible()
 }
 
+/** The browser has the account's answer to `GET /support/me` - not merely
+ *  the stub has the request, which `backend.seen` records before it replies. */
+function supportAnswered(page: Page) {
+  return page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname.endsWith('/support/me'),
+  )
+}
+
 test.describe('the day-5 ask', { tag: '@backend' }, () => {
-  test('the ask opens on the fifth active day and not the fourth', async ({ page }) => {
+  test('the ask opens by itself on the fifth active day (ASK_ON_DAY) and not on the fourth', async ({
+    page,
+  }) => {
     const backend = await stubBackend(page, {
       'GET /support/me': { status: 200, body: summary() },
     })
     // Signed in, so the gate's decision has an observable it waits on: the
     // account's answer. The gate decides the first time that answer has
-    // settled (screens/SupportGate.tsx), so once the stub has answered
-    // `/support/me` the ask has either opened or will not.
+    // settled (screens/SupportGate.tsx), so once the browser has the answer
+    // to `/support/me` the ask has either opened or will not.
     await seedSession(page)
     await seedActiveDays(page, 3)
     await seedPreferences(page)
+    const answered = supportAnswered(page)
     await page.goto('/')
 
     // THE FOURTH DAY: the account answered, the app is up, and nothing asked.
-    await expect.poll(() => exactly(backend.seen, 'GET', '/support/me').length).toBe(1)
+    // Checked 2026-11-04 by setting lib/support.ts's ASK_ON_DAY to 4: this
+    // line went red on 4 of 4 runs, the window already open when it looked
+    // (and on 6 of 6 of a draft that did not yet wait for the answer).
+    await answered
+    expect(exactly(backend.seen, 'GET', '/support/me')).toHaveLength(1)
     await expect(
       page.getByRole('button', { name: 'Account, signed in as hiker@example.org' }),
     ).toBeVisible()
@@ -174,7 +196,9 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
     )
   })
 
-  test('$0 is a choice that sends no link and is counted', async ({ page }) => {
+  test('$0 is kept on the phone with no PUT /support/me, and queues one support_chosen row at 0 cents', async ({
+    page,
+  }) => {
     const backend = await stubBackend(page, {
       // Signed out, the gate asks the server whether it takes a paid choice
       // before it asks the hiker: a required question every answer to which
@@ -193,7 +217,9 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
     await seedPreferences(page)
     await page.goto('/')
     await expect(ask(page)).toBeVisible()
-    await expect(ask(page)).toContainText(/Payments happen on a payment page, never in the app/)
+    await expect(ask(page)).toContainText(
+      /Payments happen on a payment page, never in the app/,
+    )
 
     await ask(page).getByRole('radio', { name: /^\$0/ }).click()
     await ask(page).getByRole('button', { name: 'Continue' }).click()
@@ -207,7 +233,9 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
     await nudge.getByRole('button', { name: /keep it at \$0/i }).click()
 
     // ANSWERED: the window is gone, and the map was never left.
-    await expect(page.getByRole('dialog', { name: /Before you pick \$0|Choose what you give/ })).toHaveCount(0)
+    await expect(
+      page.getByRole('dialog', { name: /Before you pick \$0|Choose what you give/ }),
+    ).toHaveCount(0)
     expect(new URL(page.url()).origin).toBe(BACKEND_ORIGIN)
     // NO LINK, NO CALL: $0 stays on this phone and needs no account.
     expect(exactly(backend.seen, 'PUT', '/support/me')).toHaveLength(0)
@@ -224,16 +252,20 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
         (await queuedUsageRows(page)).filter((row) => row.event === 'support_chosen'),
       )
       .toHaveLength(1)
-    const [row] = (await queuedUsageRows(page)).filter((row) => row.event === 'support_chosen')
+    const [row] = (await queuedUsageRows(page)).filter(
+      (row) => row.event === 'support_chosen',
+    )
     expect(JSON.stringify(row)).toContain('"support_cents":0')
 
     // AND YOUR SUPPORT SAYS SO, in the year's own words.
     await openYourSupport(page)
-    await expect(page.getByText(`You chose $0 for ${year}.`, { exact: false })).toBeVisible()
+    await expect(
+      page.getByText(`You chose $0 for ${year}.`, { exact: false }),
+    ).toBeVisible()
     await expect(page.getByRole('button', { name: 'Choose an amount' })).toBeVisible()
   })
 
-  test('a paid choice hands the hiker to the website link and shows no card field', async ({
+  test('a paid choice sends PUT /support/me with delivery "redirect" and lands on its checkout_url, with no card field in the window', async ({
     page,
   }) => {
     // The payment page is not this app: an https page on another origin,
@@ -273,7 +305,9 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
     await page.goto('/')
     await expect(ask(page)).toBeVisible()
 
-    await ask(page).getByRole('radio', { name: /^\$12 a year/ }).click()
+    await ask(page)
+      .getByRole('radio', { name: /^\$12 a year/ })
+      .click()
     await ask(page).getByRole('button', { name: 'Continue' }).click()
 
     const confirm = page.getByRole('dialog', { name: 'Confirm your choice' })
@@ -290,7 +324,9 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
 
     // HANDED TO THE LINK THE SERVER GAVE, on its own origin.
     await page.waitForURL(CHECKOUT)
-    await expect(page.getByRole('heading', { name: 'Payment page (example)' })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: 'Payment page (example)' }),
+    ).toBeVisible()
     // What the server was told: the tier, the website's delivery, the usage
     // switch's state, and the account it is for.
     const [put] = exactly(backend.seen, 'PUT', '/support/me')
@@ -306,7 +342,9 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
 })
 
 test.describe('More → Your support', { tag: '@backend' }, () => {
-  test('Stop clears a pending choice and Your support says so', async ({ page }) => {
+  test('Stop on a pending choice reads "Stopped" on the page and on the More row, with no further GET /support/me', async ({
+    page,
+  }) => {
     const chosenAt = new Date(Date.now() - 86_400_000).toISOString()
     const pending = summary({
       status: 'pending',
@@ -347,11 +385,21 @@ test.describe('More → Your support', { tag: '@backend' }, () => {
       page.getByRole('button', { name: 'Account, signed in as hiker@example.org' }),
     ).toBeVisible()
 
-    await openYourSupport(page)
-    // THE PENDING CHOICE, as the server holds it: the amount, that it waits
-    // on the payment, and the provider named on the website.
+    // The More row reads the gate's copy of the account's answer before
+    // anything is stopped.
+    await page.getByRole('tab', { name: 'More' }).click()
+    await expect(supportRow(page)).toContainText('$12 a year, waiting to be confirmed')
+
+    await supportRow(page).click()
+    await expect(page.getByRole('heading', { name: 'Your support' })).toBeVisible()
+    // THE PENDING CHOICE, as the server holds it: the amount, and that it
+    // waits on the payment.
     await expect(page.getByText('$12 a year', { exact: true })).toBeVisible()
     await expect(page.getByText(/waiting for the payment to be confirmed/)).toBeVisible()
+    // Two reads so far, and both expected: the gate's at launch, and the
+    // page's own (screens/YourSupport.tsx's YourSupportPage holds a second
+    // lib/useSupport.ts, so the shell holds none of it).
+    await expect.poll(() => exactly(backend.seen, 'GET', '/support/me').length).toBe(2)
 
     // ONE TAP AND ONE CONFIRM, and the confirm says what stopping does.
     await page.getByRole('button', { name: 'Stop my support' }).click()
@@ -366,16 +414,18 @@ test.describe('More → Your support', { tag: '@backend' }, () => {
       page.getByText(/Nothing was paid, so nothing needed cancelling/),
     ).toBeVisible()
     await expect(page.getByRole('button', { name: 'Stop my support' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Choose an amount again' })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Choose an amount again' }),
+    ).toBeVisible()
     expect(exactly(backend.seen, 'POST', '/support/me/stop')).toHaveLength(1)
 
     // AND THE MORE ROW SAYS SO TOO, without a fetch: the page's answer
     // reaches the gate's own copy through lib/useSupport.ts's window event
     // (the fourth #1885 review found the row still reading the old amount).
+    // So no third GET - a row that only caught up by asking again would be
+    // the window event gone and a fetch hiding it.
     await page.getByRole('button', { name: 'More', exact: true }).click()
-    await expect(
-      page.locator('.more__row').filter({ hasText: 'Your support' }).first(),
-    ).toContainText('Stopped')
-    expect(exactly(backend.seen, 'GET', '/support/me')).toHaveLength(1)
+    await expect(supportRow(page)).toContainText('Stopped')
+    expect(exactly(backend.seen, 'GET', '/support/me')).toHaveLength(2)
   })
 })

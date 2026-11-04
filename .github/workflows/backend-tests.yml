@@ -239,6 +239,14 @@ jobs:
       # comes from Ubuntu's archive, which the pooler step has already scoped
       # apt to and refreshed (test_apt_update_is_not_fatal.py). 999 is the
       # image's postgres user, and the server refuses a key it does not own.
+      #
+      # The tests dump with the image's pg_dump, not the runner's: pg_dump
+      # refuses a server newer than itself, ubuntu-latest's client is 16, and
+      # this server is 17 (the first run of #1972, 2026-11-04: "server version:
+      # 17.11 ... pg_dump version: 16.15"). A 17 client cannot be installed
+      # here, since the pooler step strips the PGDG archive apt would fetch it
+      # from, and the image is what the backup job itself dumps with
+      # (backup-database.yml, PG_IMAGE), so this is the production path.
       - name: Install age and start a Postgres 17 that speaks TLS, for the backup's tests
         if: steps.scope.outputs.run == 'true'
         working-directory: .
@@ -264,4 +272,5 @@ jobs:
         working-directory: .github/tests
         env:
           OURHIKE_BACKUP_TEST_ADMIN_URL: postgresql://postgres:backup@localhost:5433/postgres
+          OURHIKE_BACKUP_TEST_PG_IMAGE: postgres:17
         run: python -m pytest -q -p no:cacheprovider test_backup_database.py

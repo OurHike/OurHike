@@ -50,6 +50,14 @@ SCRIPT = REPO_ROOT / ".github" / "scripts" / "backup_database.py"
 BACKEND_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backend-tests.yml"
 #: The variable the Postgres-backed tests read their server from; backend-tests.yml sets it.
 ADMIN_URL_VARIABLE = "OURHIKE_BACKUP_TEST_ADMIN_URL"
+#: The Docker image whose pg_dump the tests run, when PATH's cannot: pg_dump
+#: refuses a server newer than itself, ubuntu-latest's client is 16, and the
+#: server backend-tests.yml starts is postgres:17 (measured on #1972's first
+#: run, 2026-11-04: "server version: 17.11 ... pg_dump version: 16.15"). It is
+#: the same way the backup job itself gets Postgres 17's tools
+#: (backup-database.yml's PG_IMAGE, backup_database.py's Tools). Unset locally,
+#: where PATH's tools and the local server are the same major version.
+PG_IMAGE_VARIABLE = "OURHIKE_BACKUP_TEST_PG_IMAGE"
 
 POOLER = "postgresql://ourhike_backup.abcdefghijklmnopqrst:p%40ss%2Fw0rd@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
 
@@ -656,6 +664,8 @@ def test_backend_tests_yml_runs_this_file_against_a_postgres_that_speaks_tls():
     assert steps.index(server) < steps.index(tests)
     assert f"--publish {url.port}:5432" in server["run"], "the Postgres with TLS must be the one the URL names"
     assert "apt-get install -y -qq age" in server["run"]
+    image = tests["env"][PG_IMAGE_VARIABLE]
+    assert image in server["run"], "the tests must dump with the image the server runs, or pg_dump refuses it as newer"
     scope = next(step for step in steps if "changed-paths" in str(step.get("uses", "")))["with"]["paths"].split()
     for path in (SCRIPT, Path(__file__), WORKFLOW):
         assert path.relative_to(REPO_ROOT).as_posix() in scope, f"a change to {path.name} alone would not run the step"
@@ -758,19 +768,26 @@ def postgres():
         _drop_all(base, made)
 
 
+def _tools(workdir: Path) -> backup.Tools:
+    """The script's tools as the tests run them by hand: PATH's, or `PG_IMAGE_VARIABLE`'s image in CI."""
+    return backup.Tools(workdir=workdir, image=os.environ.get(PG_IMAGE_VARIABLE) or None)
+
+
 @pytest.fixture
 def run(postgres, tmp_path, monkeypatch):
     """`backup_database.main` as the workflow calls it, against the module's databases."""
     monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "github_output"))
     workdir = tmp_path / "backup"
+    # `--pg-image` as backup-database.yml passes it, so CI's pg_dump matches its server.
+    image = ["--pg-image", os.environ[PG_IMAGE_VARIABLE]] if os.environ.get(PG_IMAGE_VARIABLE) else []
 
     def stage(name: str, *, source: str | None = None) -> int:
         if name == "dump":
             monkeypatch.setenv("BACKUP_DATABASE_URL", f"{source or postgres.source}?sslmode=require")
-            return backup.main(["dump", "--workdir", str(workdir)])
+            return backup.main(["dump", "--workdir", str(workdir), *image])
         if name == "verify":
-            return backup.main(["verify", "--workdir", str(workdir), "--scratch-url", postgres.scratch])
-        return backup.main([name, "--workdir", str(workdir)])
+            return backup.main(["verify", "--workdir", str(workdir), "--scratch-url", postgres.scratch, *image])
+        return backup.main([name, "--workdir", str(workdir), *image])
 
     stage.workdir = workdir
     return stage
@@ -844,7 +861,7 @@ def test_no_row_count_reaches_the_log_on_a_good_night_or_a_bad_one(postgres, run
     # A restore one row short, which must be refused by name and direction, never by number.
     assert _psql(postgres.source, "delete from public.closures where id = 40").returncode == 0
     source_env = backup.libpq_environment(postgres.source, require_encryption=False)
-    backup.Tools(workdir=run.workdir).run(
+    _tools(run.workdir).run(
         "pg_dump", ["--format=custom", "--schema=public", f"--file={run.workdir / 'public.dump'}"], source_env
     )
     assert run("verify") == 1
@@ -924,7 +941,7 @@ def test_an_empty_dump_from_row_level_security_is_refused_by_the_restore(postgre
 
     # The trap: a dump made with --enable-row-security succeeds and holds no closures.
     source_env = backup.libpq_environment(postgres.source, require_encryption=False)
-    backup.Tools(workdir=run.workdir).run(
+    _tools(run.workdir).run(
         "pg_dump",
         ["--format=custom", "--enable-row-security", "--schema=public", f"--file={run.workdir / 'public.dump'}"],
         source_env,
@@ -943,7 +960,7 @@ def test_a_restore_one_row_short_is_refused(postgres, run, capsys):
     # An archive missing one row: the same table dumped again after a delete.
     assert _psql(postgres.source, "delete from public.closures where id = 40").returncode == 0
     source_env = backup.libpq_environment(postgres.source, require_encryption=False)
-    backup.Tools(workdir=run.workdir).run(
+    _tools(run.workdir).run(
         "pg_dump", ["--format=custom", "--schema=public", f"--file={run.workdir / 'public.dump'}"], source_env
     )
 
@@ -966,7 +983,7 @@ def test_the_counts_are_exact_when_the_database_has_lost_its_statistics(postgres
 
     # And the empty dump the statistics let through is refused.
     copy_env = backup.libpq_environment(copy, require_encryption=False)
-    backup.Tools(workdir=run.workdir).run(
+    _tools(run.workdir).run(
         "pg_dump", ["--format=custom", "--schema-only", "--schema=public", f"--file={run.workdir / 'public.dump'}"], copy_env
     )
     assert run("verify") == 1

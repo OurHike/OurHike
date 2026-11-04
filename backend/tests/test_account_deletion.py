@@ -231,7 +231,9 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
             updated_by=profile_id,
         )
     )
-    # The structure survey (#1983): a row in each of its five tables that
+    # The structure survey (#1983 — The structure inventory's five tables land
+    # in one revision, locked by RLS, with every enum as VARCHAR + CHECK): a row
+    # in each of its five tables that
     # names a person. The section and trail are the club's own registry,
     # which a claim and a walk hang off.
     park = OrgPark(id=f"park-{profile_id}", club_id=club.id, name="Fahnestock")
@@ -421,7 +423,10 @@ def test_the_summary_names_what_stayed(db_session, hiker):
 
 
 def test_a_volunteer_s_survey_standing_and_claims_go_and_what_they_logged_stays_with_the_club(db_session, hiker):
-    """The structure survey's line through this module's rule (#1983).
+    """The structure survey's line through this module's rule.
+
+    #1983 — The structure inventory's five tables land in one revision, locked
+    by RLS, with every enum as VARCHAR + CHECK.
 
     The enrolment is a standing and a waiver signature, and the claim is a
     heads-up about a day: both were only ever this volunteer's, so both go.
@@ -541,7 +546,9 @@ def test_every_table_that_names_a_profile_is_accounted_for(db_session, hiker):
 # this hiker's own. Listed rather than inferred so that a table joining this
 # set is a line somebody wrote on purpose.
 _TABLES_EMPTIED = {
-    # The structure survey (#1983). An enrolment is a standing and a waiver
+    # The structure survey (#1983 — The structure inventory's five tables land
+    # in one revision, locked by RLS, with every enum as VARCHAR + CHECK). An
+    # enrolment is a standing and a waiver
     # signature, and a signature cannot outlive its signer; a claim from an
     # account that is gone steers volunteers away from a section nobody will
     # walk. What a volunteer logged stays - see core/account_deletion.py.

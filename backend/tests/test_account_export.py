@@ -70,7 +70,8 @@ SECTION_FOR_TABLE = {
     "club_challenges": "challenges_you_saved_for_an_organization",
     # --- Supporting OurHike (#1876). ---
     "support_choices": "what_you_give_ourhike",
-    # --- The structure survey (#1983). ---
+    # --- The structure survey (#1983 — The structure inventory's five tables
+    # land in one revision, locked by RLS, with every enum as VARCHAR + CHECK). ---
     "inventory_enrollments": "structure_surveys_you_joined",
     "inventory_claims": "survey_days_you_claimed",
     "inventory_passes": "survey_walks_you_recorded",

@@ -4,7 +4,8 @@ Revision ID: f2b9d4c7e1a3
 Revises: e4b8d2a7c391
 Create Date: 2026-11-04 06:00:05.183354
 
-#1983: the structure inventory's six tables in one revision -
+#1983 — The structure inventory's five tables land in one revision, locked
+by RLS, with every enum as VARCHAR + CHECK: the six tables in one revision -
 `inventory_enrollments`, `inventory_structures`, `inventory_observations`,
 `inventory_passes`, `inventory_claims` and the one-row-per-club
 `inventory_club_settings`. app/models/inventory.py is the reasoning, and

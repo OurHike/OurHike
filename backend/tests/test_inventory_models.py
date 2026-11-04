@@ -1,4 +1,7 @@
-"""The structure inventory's tables hold the rules the design rests on (#1983).
+"""The structure inventory's tables hold the rules the design rests on.
+
+#1983 — The structure inventory's five tables land in one revision, locked by
+RLS, with every enum as VARCHAR + CHECK.
 
 features/STRUCTURE_INVENTORY.md's first rule is that nothing is overwritten:
 a visit is a new row, never an edit to the last one. The migration tests

@@ -1,4 +1,8 @@
-"""Request and response models for `/clubs/{slug}/inventory` (#1984).
+"""Request and response models for `/clubs/{slug}/inventory`.
+
+First written for #1984 — A club's enrolment, settings and waiver have
+endpoints, and an enrolled volunteer is a person `org_access` did not know
+about.
 
 features/STRUCTURE_INVENTORY.md is the design. Enrolment and the club's
 settings (#1984), an observation's upload (#1985) and its photos (#1986);

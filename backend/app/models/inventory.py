@@ -28,7 +28,9 @@ public schema had no CHECK constraints at all, and `field_notes.observation`
 is a plain VARCHAR(20), as `field_note.py` says. Values are validated by
 Pydantic at the edge and by the Enum in the session.
 `tests/test_column_conventions.py`'s header says "VARCHAR WITH A CHECK", and
-so did the issue title this module was written for (#1983); both describe
+so did the title of the issue this module was written for, #1983 — The
+structure inventory's five tables land in one revision, locked by RLS, with
+every enum as VARCHAR + CHECK. Both describe
 a constraint nobody creates.
 
 **Photos have no table.** The R2 object is derived and disposable, and the

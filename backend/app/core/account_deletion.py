@@ -133,7 +133,9 @@ class DeletionSummary:
     registry_signatures_withdrawn: int = 0
     workday_signups_released: int = 0
     commitments_deleted: int = 0
-    #: The structure survey (#1983): a standing in a club's programme, with its
+    #: The structure survey (#1983 — The structure inventory's five tables land
+    #: in one revision, locked by RLS, with every enum as VARCHAR + CHECK): a
+    #: standing in a club's programme, with its
     #: waiver signature, and the days they had claimed on a section. What they
     #: logged stays, and is counted in `contributions_kept`.
     survey_enrollments_deleted: int = 0
@@ -268,7 +270,9 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         db.query(RidgeRunnerCommitment).filter(RidgeRunnerCommitment.person_id == profile_id).delete(synchronize_session=False)
     )
 
-    # THE STRUCTURE SURVEY (#1983, features/STRUCTURE_INVENTORY.md).
+    # THE STRUCTURE SURVEY (#1983 — The structure inventory's five tables land in
+    # one revision, locked by RLS, with every enum as VARCHAR + CHECK; the design
+    # is features/STRUCTURE_INVENTORY.md).
     #
     # An enrolment is a standing in one club's programme and the volunteer's
     # signature on its waiver: a permission, like a seat above, and a
@@ -514,7 +518,9 @@ def _contributions_kept(db: Session, profile_id: str) -> dict[str, int]:
         # back below the three it needed, which is a decision about that
         # closure rather than about this account.
         "closures you helped confirm": db.query(ClosureApproval).filter(ClosureApproval.person_id == profile_id).count(),
-        # The structure survey (#1983): records a club is relying on from the
+        # The structure survey (#1983 — The structure inventory's five tables
+        # land in one revision, locked by RLS, with every enum as VARCHAR +
+        # CHECK): records a club is relying on from the
         # moment they upload - see `delete_account`.
         "structure records you logged for a club": db.query(InventoryObservation)
         .filter(InventoryObservation.volunteer_id == profile_id)

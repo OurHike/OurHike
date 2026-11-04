@@ -1,10 +1,20 @@
 """`/clubs/{slug}/inventory` - a club's structure survey (features/STRUCTURE_INVENTORY.md).
 
-#1984 lands the front of it: a club's survey settings, and a volunteer
-enrolling by signing the club's waiver and finishing the field guide. #1985
-lands the record itself: an observation's upload, and #1986 its photos. The
-review queue, areas, claims, walks and exports arrive with their own issues,
-on the access rules in `app/core/inventory_access.py`.
+Three issues land the front of it, on the access rules in
+`app/core/inventory_access.py`:
+
+- #1984 — A club's enrolment, settings and waiver have endpoints, and an
+  enrolled volunteer is a person `org_access` did not know about: a club's
+  survey settings, and a volunteer enrolling by signing the club's waiver
+  and finishing the field guide.
+- #1985 — An observation uploads once, idempotent on its id, creates its
+  structure when the structure is new, and keeps every GPS reading it was
+  given: the record itself.
+- #1986 — Observation photos use the report pipeline with a key of their own
+  and no table: the record's photos.
+
+The review queue, areas, claims, walks and exports arrive with their own
+issues.
 
 **Nothing here notifies anybody.** OurHike sends no notifications at all
 (client/src/test/noNotifications.test.ts); enrolling is a row, not an
@@ -112,40 +122,60 @@ def read_inventory_settings(access: OrgAccess = Depends(org_access), db: Session
     return _settings_out(db.get(InventoryClubSettings, access.club.id))
 
 
-@router.put("/clubs/{slug}/inventory/settings", response_model=InventorySettingsOut)
-def write_inventory_settings(
-    payload: InventorySettingsIn,
-    access: OrgAccess = Depends(require_org_admin),
-    db: Session = Depends(get_db),
-) -> InventorySettingsOut:
-    """A club admin sets the waiver and the thresholds.
+def _refuse_a_reused_version(db: Session, club_id: str, row: InventoryClubSettings | None, payload: InventorySettingsIn) -> None:
+    """A version names one text, for good, once anybody has signed it.
 
-    **A changed waiver needs a new version.** A signature records the version
-    it was given against, not the text; if the text could change under the
-    same version, a signature would no longer say which words were agreed
-    to. So the same version with different words is refused, and a new
-    version is how a club changes its waiver. Volunteers who signed an
-    earlier version stay enrolled - what a club should ask of them when its
-    waiver changes is not decided anywhere yet.
+    A signature records the version it was given against, not the words, so
+    the version is the only thing tying a signature to what was agreed. Two
+    cases would break that tie:
+
+    - **The same version with different words.** Refused outright, signed
+      or not: the version has to pin the words from the first save.
+    - **A version somebody signed, coming back after it was replaced or
+      cleared.** The settings row keeps only the current text, so once a
+      signed version stops being current there is nothing left to compare
+      its returning words against. Refused unless it is the current version
+      saved with its current words; a returning waiver takes a new version.
+      Clearing the waiver and re-saving different words under the old version
+      was the way round the first rule that this second one closes.
     """
-    if (payload.waiver_text is None) != (payload.waiver_version is None):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="A waiver needs both its text and its version, or neither",
+    if payload.waiver_version is None:
+        return
+    if row is not None and row.waiver_version == payload.waiver_version:
+        if row.waiver_text != payload.waiver_text:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The waiver's words changed but its version did not. Give the new text a new version.",
+            )
+        return
+    signed = (
+        db.query(InventoryEnrollment.id)
+        .filter(
+            InventoryEnrollment.club_id == club_id,
+            InventoryEnrollment.waiver_version == payload.waiver_version,
         )
-    row = db.get(InventoryClubSettings, access.club.id)
-    if (
-        row is not None
-        and row.waiver_version is not None
-        and payload.waiver_version == row.waiver_version
-        and payload.waiver_text != row.waiver_text
-    ):
+        .first()
+    )
+    if signed is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="The waiver's words changed but its version did not. Give the new text a new version.",
+            detail=(
+                f"Volunteers have already signed version {payload.waiver_version!r}, and its words are no longer "
+                "on file to compare against. Give this text a new version."
+            ),
         )
+
+
+def _settings_row(db: Session, club_id: str) -> InventoryClubSettings | None:
+    return db.get(InventoryClubSettings, club_id)
+
+
+def _write_settings(db: Session, club_id: str, payload: InventorySettingsIn) -> InventoryClubSettings:
+    """The checks and the write, against the row as it is now."""
+    row = _settings_row(db, club_id)
+    _refuse_a_reused_version(db, club_id, row, payload)
     if row is None:
-        row = InventoryClubSettings(club_id=access.club.id)
+        row = InventoryClubSettings(club_id=club_id)
         db.add(row)
     row.waiver_text = payload.waiver_text
     row.waiver_version = payload.waiver_version
@@ -154,7 +184,42 @@ def write_inventory_settings(
     row.coverage_min_records = payload.coverage_min_records
     row.stale_days = payload.stale_days
     row.updated_at = utc_now()
-    return _settings_out(commit_and_refresh(db, row))
+    db.commit()
+    return row
+
+
+@router.put("/clubs/{slug}/inventory/settings", response_model=InventorySettingsOut)
+def write_inventory_settings(
+    payload: InventorySettingsIn,
+    access: OrgAccess = Depends(require_org_admin),
+    db: Session = Depends(get_db),
+) -> InventorySettingsOut:
+    """A club admin sets the waiver and the thresholds.
+
+    **A version names one text** (`_refuse_a_reused_version`): the same
+    version with different words is refused, and so is a version somebody
+    has signed once it has stopped being current. A new version is how a
+    club changes its waiver. Volunteers who signed an earlier version stay
+    enrolled - what a club should ask of them when its waiver changes is not
+    decided anywhere yet.
+
+    **Two admins saving a club's first settings at once** both find no row
+    and both insert one; the primary key lets one through. The other is
+    rolled back and run again against the row that now exists, with every
+    check, so it answers as if it had arrived second rather than with a 500.
+    """
+    if (payload.waiver_text is None) != (payload.waiver_version is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A waiver needs both its text and its version, or neither",
+        )
+    try:
+        row = _write_settings(db, access.club.id, payload)
+    except IntegrityError:
+        db.rollback()
+        row = _write_settings(db, access.club.id, payload)
+    db.refresh(row)
+    return _settings_out(row)
 
 
 @router.post(

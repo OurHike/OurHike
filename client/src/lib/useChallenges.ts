@@ -48,7 +48,7 @@ import {
   type TagHow,
 } from './challengeProgress'
 import type { ChallengeEntryDraft } from './challengeDrafts'
-import type { TagPlace } from './wherePlace'
+import type { TagPlace } from './tagPlace'
 import {
   enqueueChallengeEntry,
   enqueueChallengeTag,

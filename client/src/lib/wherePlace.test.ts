@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { asksWhere, readTagPlace, whereOptions, TRAIL_STATES } from './wherePlace'
+import {
+  asksWhere,
+  readTagPlace,
+  whereOptions,
+  TRAIL_STATES,
+  TRAIL_STATE_CODES,
+} from './wherePlace'
 import { placeWords } from './challengeText'
 import { ATC_CHALLENGE } from './challenges.fixtures'
 
@@ -113,5 +119,11 @@ describe('a stored place', () => {
     ).toBe('Campbell Shelter · mi 713.0')
     expect(placeWords({ kind: 'state', state: 'VA' })).toBe('On the trail in Virginia')
     expect(placeWords({ kind: 'off' })).toBe('Not on the trail')
+  })
+})
+
+describe('the trail states (#1963)', () => {
+  it('names the same fourteen codes, in the same order, as the parser the launch reads (lib/tagPlace.ts)', () => {
+    expect(TRAIL_STATES.map((state) => state.code)).toEqual([...TRAIL_STATE_CODES])
   })
 })

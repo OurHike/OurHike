@@ -20,7 +20,7 @@
 
 import { localDay } from './passedToday'
 import type { MileRange } from './walkedMiles'
-import { readTagPlace, type TagPlace } from './wherePlace'
+import { readTagPlace, type TagPlace } from './tagPlace'
 import { mergeRange, walkedWithin } from './walkedMiles'
 import {
   isOpen,

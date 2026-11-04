@@ -42,6 +42,11 @@ WHY A MONTH-END SNAPSHOT IS HARDER HERE THAN IT LOOKS, and where each answer is:
   User table's `new_month`, set once, not `first_seen_on`, which late rows move.
 - A definition that changes -> `DEFINITION_VERSION` on every month, so a
   number is never restated under a definition it was not computed with.
+- The archive retires a month's daily counts the night it passes retention,
+  before this job runs -> that month's `events_after_close` is left as it
+  stands rather than counted again (`run`): the rows the count needs are
+  gone, and a count taken without them read 0 for every archived month
+  (the release review of 2026-11-04, finding 2).
 
 Exact, unmasked figures are written. The fewer-than-25 mask is applied when a
 report is built (app/core/analytics_report.py) - the maintainer's "a mask at
@@ -470,11 +475,29 @@ def run(db: Session, *, today: date | None = None, now: datetime | None = None) 
     # would otherwise hand back its own copies, as they were before the wait.
     states = {state.month: state for state in db.query(AnalyticsMonth).populate_existing().all()}
     open_months = {month for month, state in states.items() if state.status == MonthStatus.provisional}
+    cutoff = retention_start(today)
 
     for month in sorted(set(held_months) | open_months | {month_start(today)}):
         state = states.get(month)
         if state is not None and state.status == MonthStatus.closed:
-            if state.raw_deleted_at is None:
+            # A month past retention keeps the late count it has. The archive
+            # step runs before this one (.github/workflows/analytics-rollup.yml)
+            # and retires that month first - its files and its
+            # `analytics_archived_daily` rows go - so `_count_late` would read
+            # its archived rows as 0 and write max(0, linked rows held - every
+            # row at close) - 0 for the test's month, and for any month whose
+            # archived rows outnumber the unlinked ones that arrived since - over
+            # the figure the month carried since its close; the loop below then
+            # set `raw_deleted_at` and froze that 0 for good (reproduced in
+            # tests/test_analytics_archive.py, the retention-night test). The
+            # figure it has is the one CLOSE_AFTER_DAYS's @unvalidated note
+            # above waits on, so its last night is the night it is finished,
+            # not the night to take it again. What this gives up: a row for
+            # that month arriving since last night's run goes uncounted, and
+            # `POST /usage-events` refuses rows dated before
+            # `retention_start(today)` (app/routers/analytics.py `_sort_rows`),
+            # so that is the hours between the UTC date change and this run.
+            if state.raw_deleted_at is None and month >= cutoff:
                 _count_late(db, state)
                 result.late_counted.append(month)
             continue
@@ -492,7 +515,6 @@ def run(db: Session, *, today: date | None = None, now: datetime | None = None) 
             state.closed_at = now
             result.closed.append(month)
 
-    cutoff = retention_start(today)
     for month in held_months:
         if month >= cutoff:
             continue

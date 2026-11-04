@@ -52,7 +52,8 @@
 # hourly dbt path publishes from, and only reviewed, merged code may fill it.
 #
 # AND IT EXTRACTS ONLY WHILE PRODUCTION'S HOURLY LEG IS ON THE dbt PATH
-# (the maintainer, 2026-10-06: "UA on dbt, prod on exporters"). Until the cutover that leg runs the exporters, which read no
+# (the maintainer, 2026-10-06: "UA on dbt, prod on exporters"). Until the
+# cutover (#1880, 2026-10-23) that leg ran the exporters, which read no
 # notices store, so this leg asked every club's host and wrote a store and a
 # served copy every 4 hours for no reader: 521 s a leg run on average over
 # notices runs 1 to 10 (Measured from the Actions API), and at least 197

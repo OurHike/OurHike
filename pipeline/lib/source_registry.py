@@ -231,12 +231,13 @@ KNOWN_KINDS = frozenset(
     }
 )
 
-# WHAT TODAY'S EXPORTERS READ, until the cutover (the maintainer,
+# WHAT TODAY'S EXPORTERS READ, until the monthly cutover (the maintainer,
 # 2026-10-14). Production's phone
-# files come from the Python exporters until the cutover
-# (publish-vector-data.yml; dbt's monthly lane publishes to UA only, and
-# publish-conditions.yml's PRODUCTION_PHONE_FILES keeps production's hourly
-# leg on the exporters), and none of them reads
+# files come from the Python exporters until that cutover
+# (publish-vector-data.yml; dbt's monthly lane publishes to UA only - the
+# hourly leg is a different switch, and publish-conditions.yml's
+# PRODUCTION_PHONE_FILES has said `dbt` since #1880, 2026-10-23), and none
+# of them reads
 # CLUB_ARCGIS_LAYER or the five kinds registered after it for
 # pipeline/extract/ alone, nor a podcast feed or a club PDF: those reach a
 # phone only through dbt. So export_sources.py, on the exporters' path, names

@@ -28,8 +28,17 @@
     rows) and nyc_public_restrooms' 2 (4 rows) differ only in `_socrata_id`
     and `_dlt_id`. pipeline/spike_table_keys.py, which counted those copies
     on 2026-10-01, already treated `:id` as a row id; this list had not.
+
+    `part_columns` are, for a layer that serves one feature as several rows
+    (make_dbt_staging.py's `part_fields`), the raw shape and the columns
+    that differ per part. They are left out beside the row ids, so the parts
+    must still agree on everything else: BLM's national monuments split
+    into 1,078 rows of 57 names, and its parts differ only in GlobalID,
+    OBJECTID and the measured area and length (measured 2026-11-03, #1947).
 -#}
-{% test duplicates_are_exact(model, key_columns, row_id_columns=none) %}
+{% test duplicates_are_exact(
+    model, key_columns, row_id_columns=none, part_columns=none
+) %}
 
 {#- A raw table that does not exist in this warehouse has no rows to
     compare, and passes: a conditions leg withdraws an unreadable table and
@@ -37,6 +46,7 @@
     which), and a test that errored on the missing table would skip every
     model downstream of it, every club's closures among them. Its model reads
     the missing table as empty, and the gate holds that source back. -#}
+{%- set row_ids = row_id_columns or row_hash_row_ids() -%}
 {%- set can_look = execute is defined and execute -%}
 {%- set can_look = can_look and load_relation is defined -%}
 {%- if can_look and load_relation(model) is none %}
@@ -49,7 +59,7 @@ where false
 with keyed as (
     select
         {{ dbt_utils.generate_surrogate_key(key_columns) }} as key_value,
-        {{ row_hash(model, row_id_columns if row_id_columns is not none else row_hash_row_ids()) }}
+        {{ row_hash(model, row_ids + (part_columns or [])) }}
             as row_hash
     from {{ model }}
 )

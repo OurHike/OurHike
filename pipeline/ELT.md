@@ -131,7 +131,7 @@ Seeds hold every rule that is data rather than code: `notice_words.csv` (the clo
 
 ### One key per table
 
-Every model has one key column, unique and not null, tested at error. A key of several columns is built with `dbt_utils.generate_surrogate_key`. The key's inputs are the registry key, then the upstream's own id where it is unique (GlobalID, else the layer's object id), else the smallest set of current values measured unique. Never a row's position in the file. Two closures models that cut areas keep their key test at warn, a recorded exception. A publisher's reload can renumber an object id, so anything that joins across releases (the POI identity ledger, graph cells) checks the release too.
+Every model has one key column, unique and not null, tested at error. A key of several columns is built with `dbt_utils.generate_surrogate_key`. The key's inputs are the registry key, then the upstream's own id where it is unique (GlobalID, else the layer's object id), else the smallest set of current values measured unique. Never a row's position in the file. A layer that serves one feature as several polygon parts names the fields that differ per part (`part_fields` in `sources.json`), and its base model keeps one row per key carrying the union of the parts' shapes (#1947). Two closures models that cut areas keep their key test at warn, a recorded exception. A publisher's reload can renumber an object id, so anything that joins across releases (the POI identity ledger, graph cells) checks the release too.
 
 ### Python steps, outside dbt
 

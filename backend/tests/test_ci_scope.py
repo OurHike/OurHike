@@ -51,6 +51,7 @@ from tests.test_conditions_publisher_contract import PIPELINE_FILES_READ
 from tests.test_database_size_agrees import PIPELINE_FILES_READ as SIZE_FILES
 from tests.test_edge_cache import PIPELINE_FILES_READ as EDGE_CHECK_FILES
 from tests.test_preferences_contract import CLIENT_MODEL
+from tests.test_trail_axis import CLIENT_FILES_READ as TRAIL_AXIS_FILES
 from tests.test_usage_golden_batch import CLIENT_FILES_READ as GOLDEN_FILES
 from tests.test_usage_registry_contract import CLIENT_FILES_READ as USAGE_FILES
 
@@ -67,7 +68,8 @@ ACTION = ".github/actions/changed-paths"
 # client contract tests read client source, since 2026-10-28 the three
 # pipeline files test_database_size_agrees.py reads, and since 2026-10-29
 # pipeline/check_deployment.py, whose pinned copy of the shared reads'
-# Cache-Control test_edge_cache.py holds equal to app/core/edge_cache.py's.
+# Cache-Control test_edge_cache.py holds equal to app/core/edge_cache.py's,
+# and since #1987 the trail-axis golden test_trail_axis.py reads.
 CLIENT_FILES = {
     *REPORT_FILES,
     *RESPONSE_FILES,
@@ -77,6 +79,7 @@ CLIENT_FILES = {
     *EDGE_CHECK_FILES,
     *USAGE_FILES,
     *GOLDEN_FILES,
+    *TRAIL_AXIS_FILES,
     *ROLE_FILES,
 }
 

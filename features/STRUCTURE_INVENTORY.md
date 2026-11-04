@@ -167,18 +167,32 @@ The file references below were re-checked against `main` at ff829580 on 2026-11-
 - the trail is a published artifact the client and the pipeline share, not a table here"
 (`backend/app/models/report.py`).
 
-**Resolution.** A new `backend/app/core/trail_axis.py` projects a point onto the club's own
+**Resolution.** `backend/app/core/trail_axis.py` projects a point onto the club's own
 section line, `org_sections.geometry` (GeoJSON LineString as text, with `start_mile` and
 `end_mile` on the row, `backend/app/models/org_registry.py`), and returns the section, the
-mile and the distance off the line. Where a club has no section geometry it reads the
-pipeline's published `trails.geojson` and `trail_miles.json` from R2, cached in process.
-Pure Python, no PostGIS, by the repository's standing choice. The client never sends a
-mile; `mile` and `off_line_ft` are nullable server columns filled on accept.
+mile and the distance off the line. Pure Python, no PostGIS, by the repository's standing
+choice. The client never sends a mile; `mile` and `off_line_ft` are nullable server
+columns filled on accept, and by `backend/scripts/inventory_place.py` for records accepted
+before their club drew its sections.
+
+**A club that has drawn no sections gets no mile.** Decided 2026-11-04 by the maintainer by
+poll, over the handoff's fallback to the published `trails.geojson` and `trail_miles.json`.
+That file's only mile-bearing line is the A.T. centerline, and nothing in the registry says
+which of a club's trails is the A.T., so the fallback would have given an A.T. mile to a
+structure on any trail within 3 mi of it. The fallback is #2029 — A club that has drawn no
+sections gets no structure mile, until the registry can say which of its trails is the A.T.
+
+**A section's line is assumed to be drawn from its start anchor to its end anchor.**
+`@unvalidated`: the console stores the line as pasted text and nothing records its
+direction, so a line drawn the other way reads its miles mirrored inside the section. What
+would settle it: each club's drawn sections checked against the published axis.
 
 **The agreement tolerance is `@unvalidated`.** The handoff proposes that three fixture
 points agree with `client/src/lib/trailPosition.ts`'s `locateOnTrail` to within 0.05 mi.
-That figure is a pick. What would settle it: one real section's line, and the largest
-disagreement between the two projections along it.
+That figure is a pick. On `client/src/lib/trailAxis.golden.json`, a synthetic two-mile line
+whose calibration runs 3% long then 2% short, the largest disagreement measured 2026-11-04
+is 0.017 mi. What would settle it: one real section's line, and the largest disagreement
+between the two projections along it.
 
 ### 2. Priority areas need an "area", and the backend has only sections
 
@@ -463,6 +477,7 @@ cited in place above and not repeated.
 | Sampling stops after **40 s**, or at **3** consecutive readings within **20 m** | Location screen | `@unvalidated` | A real phone under canopy: the time at which more readings stop moving the median |
 | `gps_lock` is true at accuracy **≤ 20 m** for **3** consecutive readings | Location chips, the row | `@unvalidated` | The accuracy at which readings stop scattering on a real phone under canopy |
 | The server's mile agrees with the client's to **0.05 mi** | `trail_axis.py` tests | `@unvalidated` | One real section's line (conflict 1) |
+| A record more than **3 mi** from every drawn section gets no mile | `trail_axis.MAX_OFF_LINE_FT` | Reasoned: the client's `MAX_OFF_TRAIL_MILES`, so the server and the phone refuse the same points | None needed while the client's gate stands; it moves when that one does |
 | The outbox banner shows when anything has waited **more than a day** | Waiting to upload | Reasoned: the screen's own copy, "waits a day" | None needed; it is a wording decision, not a safety threshold |
 | **79** plates; **3** finished (Sign, Blaze, Steps) | Field cards | Measured: counted in `plates_manifest.json` and `plates/` on 2026-11-04 | |
 | **311** licensed-candidate rows across the 79 plates | The plate fetch | Measured: counted in `plates_manifest.json` on 2026-11-04 | The fetch re-checks every licence at the source before anything is used |

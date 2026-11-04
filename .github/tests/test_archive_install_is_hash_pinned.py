@@ -11,15 +11,22 @@ either alone fails open (test_dbt_install_is_hash_pinned.py has the measurement,
   checking on by itself only when a file lists some hash, so a recompile without the flag would install unchecked.
 - every step that installs the file passes --require-hashes, so a file that lost its hashes stops the install instead.
 
-No build environment to pin, as for the extract: `pip download --require-hashes --only-binary=:all:` for CPython 3.14
-on manylinux x86_64, the jobs' interpreter, fetched a wheel for each of the 42 pins whose markers apply there and built
-nothing from an sdist (measured 2026-11-04 with pip 24.0; colorama and tzdata are Windows-only).
+And a third, because --require-hashes checks only what pip downloads: every such step passes --only-binary=:all: too.
+The file lists sdist hashes beside the wheels', so a pin with no wheel for the job's interpreter - a bump that lands
+before its wheels, or a `python-version` that moves on - would build its sdist, and pip fills that build's environment
+(setuptools, Cython, maturin) with no pin and no hash, under --require-hashes as well (requirements-dbt-build.in has
+that measurement, on pip 24.0). With the flag, a missing wheel fails the install instead. Nothing is lost today:
+`pip download --require-hashes --only-binary=:all:` for CPython 3.14 on manylinux x86_64, the jobs' interpreter,
+fetched a wheel for each of the 42 pins whose markers apply there (measured 2026-11-04 with pip 24.0; colorama and
+tzdata are Windows-only).
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
+
+import hash_pins
 
 ROOT = Path(__file__).resolve().parents[2]
 REQUIREMENTS = ROOT / "backend" / "requirements-archive.txt"
@@ -34,32 +41,14 @@ INSTALL_SITES = {
     "workflows/analytics-rollup.yml": 2,
 }
 
-
-def _commands(text: str) -> list[str]:
-    """One string per shell command line, a backslash continuation joined to the line it continues."""
-    return re.sub(r"\\\n\s*", " ", text).splitlines()
-
-
-def _installs() -> dict[str, list[str]]:
-    github = ROOT / ".github"
-    found: dict[str, list[str]] = {}
-    for path in sorted([*github.glob("workflows/*.yml"), *github.glob("actions/*/action.yml")]):
-        commands = [command for command in _commands(path.read_text(encoding="utf-8")) if INSTALLS_ARCHIVE.search(command)]
-        if commands:
-            found[str(path.relative_to(github))] = commands
-    return found
-
-
-def _pins(text: str) -> list[str]:
-    """Each requirement of the compiled file, its continuation lines joined, comments and options dropped."""
-    lines = [line for line in _commands(text) if line.strip() and not line.lstrip().startswith(("#", "-"))]
-    return [line.strip() for line in lines]
+#: What every install of the file passes: the hash check, and wheels only, so no sdist build fetches unhashed tools.
+REQUIRED_FLAGS = ("--require-hashes", "--only-binary=:all:")
 
 
 def test_every_pin_in_requirements_archive_lists_a_sha256():
     text = REQUIREMENTS.read_text(encoding="utf-8")
     assert "--generate-hashes" in text.splitlines()[1], "the header's own command compiles with --generate-hashes"
-    pins = _pins(text)
+    pins = hash_pins.pins(text)
     assert len(pins) >= 40, "the file's pins were found"
     assert any(pin.startswith("pyarrow==") for pin in pins), "the one package only the archive needs is still in it"
     unhashed = [pin.split()[0] for pin in pins if not re.search(r"--hash=sha256:[0-9a-f]{64}\b", pin)]
@@ -69,12 +58,13 @@ def test_every_pin_in_requirements_archive_lists_a_sha256():
 
 
 def test_every_install_of_requirements_archive_requires_hashes():
-    installs = _installs()
+    installs = hash_pins.installs_of(INSTALLS_ARCHIVE)
     assert {site: len(commands) for site, commands in installs.items()} == INSTALL_SITES
     missing = [
-        (site, command.strip())
+        (site, flag, command.strip())
         for site, commands in installs.items()
         for command in commands
-        if "--require-hashes" not in command
+        for flag in REQUIRED_FLAGS
+        if flag not in command.split()
     ]
     assert missing == []

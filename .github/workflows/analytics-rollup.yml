@@ -159,10 +159,13 @@ jobs:
 
       # requirements.txt's own pins plus pyarrow, which only the archive
       # imports (backend/requirements-archive.in says why the API never does).
+      # Wheels only, so a pin with no wheel fails here rather than building
+      # an sdist with unhashed tools (test_archive_install_is_hash_pinned.py).
       - name: Install dependencies
         id: install
         if: steps.can.outputs.go == 'true'
-        run: pip install --require-hashes -r requirements-archive.txt
+        run: |
+          pip install --require-hashes --only-binary=:all: -r requirements-archive.txt
 
       # Its own timeout, so an archive that runs long fails here and leaves
       # the rollup its time. @unvalidated: nobody has archived a real month
@@ -290,10 +293,13 @@ jobs:
 
       # requirements.txt's own pins plus pyarrow, which only the archive
       # imports (backend/requirements-archive.in says why the API never does).
+      # Wheels only, so a pin with no wheel fails here rather than building
+      # an sdist with unhashed tools (test_archive_install_is_hash_pinned.py).
       - name: Install dependencies
         id: install
         if: steps.can.outputs.go == 'true'
-        run: pip install --require-hashes -r requirements-archive.txt
+        run: |
+          pip install --require-hashes --only-binary=:all: -r requirements-archive.txt
 
       # Its own timeout, so an archive that runs long fails here and leaves
       # the rollup its time. @unvalidated: nobody has archived a real month

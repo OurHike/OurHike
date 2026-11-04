@@ -23,7 +23,16 @@ shapely
 # Explicit rather than transitive: export_trails.py reprojects to EPSG:5070
 # to simplify in real metres. rasterio happens to pull pyproj in locally,
 # which is exactly why this was missing - it worked here and failed in CI.
-pyproj
+#
+# Below 3.8 because pyproj 3.8.0 bundles PROJ 9.8.1, whose transforms differ
+# from 3.7.2's PROJ 9.5.1 in the fourteenth decimal place (39.999999999999986
+# against ...964), and the dbt parity tests hold the Python path to exact
+# equality with the SQL one: test_dbt_trail_lines_parity.py and the two
+# trail-network parity files failed 7 tests with 3.8.0 (measured 2026-11-03).
+# That the SQL side's PROJ is DuckDB spatial's own, which moves only with the
+# duckdb pin above, is reasoned, not checked. Raise this with that pin, or
+# with a parity test that says how close is close enough.
+pyproj<3.8
 boto3
 
 # export_conditions.py alone, and the only reason this pipeline talks to

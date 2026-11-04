@@ -39,12 +39,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import tomllib
 from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 from types import ModuleType
-
-import tomllib
 
 from lib.freshness_state import Freshness
 

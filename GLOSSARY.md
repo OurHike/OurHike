@@ -87,6 +87,24 @@ once #558 ships and there is behaviour to measure, plus the duplication share th
 [costs]." Quoting 3 km here without that tag would be this file doing exactly what
 CLAUDE.md's *Never let a display outrun its source* forbids.
 
+### blaze
+
+**Three meanings, and the third is new.**
+
+1. **The paint on a tree** — the trail marking a hiker follows: white for the A.T., blue for a
+   side trail. `features/TRAIL_BLAZE_COLORS.md` is about this sense, and so is `lib/blaze.ts`.
+2. **A colour family and the logo** — `--blaze-white`, `--blaze-yellow`, `--blaze-orange` in
+   `design-system/tokens/colors.css`, and `trail-blaze-logo.svg`. Named for sense 1, used for
+   buttons and the taken-trail line.
+3. **One earned item on a challenge card**, drawn as a white blaze — "12 blazes earned", "Your
+   blazes", `CHALLENGE_WORDS.noun` in `lib/challengeWords.ts` since
+   `features/CHALLENGES_BLAZE_CARD.md` (2026-11-03). **Never the paint on a tree**: painting
+   blazes is maintainer work, and a hiker earns one, never paints one.
+
+**Say which on first use.** "A blaze on the card" and "a blaze on a tree" are one word apart
+and the app now shows both on one screen — the challenge list draws sense 3 under a title that
+may say "Take a photo of a white blaze" (sense 1).
+
 ### shelf
 
 1. **Where a generated file belongs** — `.github/tests/test_no_committed_data.py`: "The
@@ -284,8 +302,9 @@ promotion and belongs to the release train. See [RELEASING.md](RELEASING.md).
 
 ## Not in here on purpose
 
-**Ordinary domain words that mean what they say**: shelter, blaze, thru-hiker, blowdown,
-resupply, ford, trailhead. A hiker would recognise all of them and so would a reader.
+**Ordinary domain words that mean what they say**: shelter, thru-hiker, blowdown, resupply,
+ford, trailhead. A hiker would recognise all of them and so would a reader. (Blaze was on this
+list until the challenge card gave it a second thing to mean; it is in the dangerous list now.)
 
 **Words whose definition is one click away**: POI, DEM, pmtiles, R2, dbt. These are
 findable; the entries above are not.

@@ -4,12 +4,14 @@ import { join, resolve } from 'node:path'
 import { CHALLENGE_WORDS } from './challengeWords'
 
 // The maintainer's revision of 2026-09-30: never "passport" - the ATC's own
-// word for its stamp programme - and no digital stamp. The working word is
-// "tag", in lib/challengeWords.ts, so choosing the final word is an edit to
-// one file. This holds the challenge surfaces to that: none of them spells
-// either word in its own code. (A club's ITEM may - the ATC's 2025 list says
-// "Collect A.T. passport stamps along the Trail", about the ATC's real
-// programme - which is data, not the app's voice, so only code is scanned.)
+// word for its stamp programme - and no digital stamp. The blaze card
+// (2026-11-03, poll 2026-11-04) made the verb "earn" and ruled out "paint",
+// because painting blazes is maintainer work. The words are in
+// lib/challengeWords.ts, so choosing another is an edit to one file. This
+// holds the challenge surfaces to that: none of them spells any of the three
+// in its own code. (A club's ITEM may - the ATC's 2025 list says "Collect
+// A.T. passport stamps along the Trail", about the ATC's real programme -
+// which is data, not the app's voice, so only code is scanned.)
 
 const SRC = resolve(process.cwd(), 'src')
 const SURFACES = [
@@ -43,12 +45,26 @@ describe('the words a challenge surface uses', () => {
     )
   })
 
-  it.each(SURFACES)('%s never says "stamp" or "passport" in its own voice', (path) => {
-    expect(code(readFileSync(join(SRC, path), 'utf8'))).not.toMatch(/stamp|passport/i)
+  it.each(SURFACES)(
+    '%s never says "stamp", "passport" or "paint" in its own voice',
+    (path) => {
+      expect(code(readFileSync(join(SRC, path), 'utf8'))).not.toMatch(
+        /stamp|passport|paint/i,
+      )
+    },
+  )
+
+  it('names the act "earn", in one place', () => {
+    expect(CHALLENGE_WORDS.act).toBe('Earn it')
+    expect(CHALLENGE_WORDS.done).toBe('Earned')
+    expect(CHALLENGE_WORDS.verb).toBe('earn')
+    expect(CHALLENGE_WORDS.noun).toBe('blaze')
   })
 
-  it('names the act one way, in one place', () => {
-    expect(CHALLENGE_WORDS.act).toBe('Tag it')
-    expect(CHALLENGE_WORDS.done).toBe('Tagged')
+  it('never names the paint or a leaderboard in any of its words', () => {
+    for (const word of Object.values(CHALLENGE_WORDS)) {
+      expect(word).not.toMatch(/paint|stamp|passport/i)
+      expect(word).not.toMatch(/other hikers|behind|streak|rank|leaderboard/i)
+    }
   })
 })

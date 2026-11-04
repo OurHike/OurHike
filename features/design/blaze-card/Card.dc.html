@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Your card</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@400;700&amp;family=Public+Sans:wght@400;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:'Public Sans',system-ui,sans-serif;color:#2b2620}
+a{color:#355c3a}a:hover{color:#284029}
+</style>
+</helmet>
+<div style="width: 390px; height: 920px; box-sizing: border-box; background: #f7f3e9; display: flex; flex-direction: column; overflow: hidden">
+
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 0">
+    <a href="Home.dc.html" style="text-decoration: none; font-weight: 700; font-size: 17px; color: #355c3a">‹ Today</a>
+    <div style="display: flex; background: #e4ddca; border-radius: 999px; padding: 3px">
+      <span style="font-weight: 700; font-size: 14px; color: #fffdf7; background: #122016; padding: 6px 14px; border-radius: 999px">Card</span>
+      <a href="Line.dc.html" style="text-decoration: none; font-weight: 700; font-size: 14px; color: #5a5346; padding: 6px 14px; border-radius: 999px">Where</a>
+    </div>
+  </div>
+
+  <div style="padding: 14px 20px 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
+    <div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #5a5346">A.T. Summer Bucket List · ATC</div>
+      <div style="font-family: 'Bitter', Georgia, serif; font-weight: 700; font-size: 44px; line-height: 1; color: #122016; margin-top: 6px"><span style="color: #c1611a">12</span> blazes earned</div>
+    </div>
+  </div>
+  <div style="padding: 10px 20px 0; display: flex; align-items: center; gap: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #5a5346">
+    <div style="display: flex; gap: 2px" aria-hidden="true">
+      <span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #c1611a; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span><span style="width: 7px; height: 14px; background: #e4ddca; border-radius: 1px"></span>
+    </div>
+    <span>25 enters the drawing · Sep 7</span>
+  </div>
+
+  <div style="margin: 16px 16px 0; background: #122016; border-radius: 22px; padding: 14px 14px 12px">
+    <dc-import name="BlazeCard" tile="{{tile}}" gap="{{gap}}" done="{{done}}" labels="{{true}}" hint-size="330px,470px"></dc-import>
+  </div>
+
+  <a href="Tile.dc.html" style="text-decoration: none; color: inherit; margin: 14px 16px 0; display: flex; align-items: center; gap: 12px; background: #fffdf7; border: 1px solid #e4ddca; border-radius: 16px; padding: 12px 14px">
+    <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true" style="flex: 0 0 28px; stroke: #c1611a; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><path d="M8 3l4 8 5-5 5 15H2L8 3z"></path></svg>
+    <span style="flex: 1; font-size: 15px; line-height: 1.35"><strong>You passed McAfee Knob yesterday.</strong><br><span style="color: #5a5346">It's a tile on your card — earn it?</span></span>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #355c3a; font-weight: 500">Earn ›</span>
+  </a>
+
+  <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 20px 0">
+    <p style="margin: 0; flex: 1; font-size: 13px; line-height: 1.45; color: #706859">Tap any tile to read it and earn it. Your card stays on this phone; the ATC sees it only when you enter.</p>
+    <a href="Poster.dc.html" style="margin-left: 12px; text-decoration: none; font-weight: 700; font-size: 14px; color: #355c3a; white-space: nowrap">Share ›</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"painted":{"editor":"int","default":12,"min":0,"max":100,"section":"Card"},"$preview":{"width":390,"height":920}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const n = this.props.painted ?? 12;
+    const seed = [3, 7, 12, 31, 34, 38, 45, 62, 77, 80, 84, 91, 1, 19, 50, 55, 68, 73, 88, 96, 9, 24, 41, 59, 66, 15, 28, 47, 71, 93];
+    return { tile: 26, gap: 4, done: seed.slice(0, Math.min(n, seed.length)) };
+  }
+}
+</script>
+</body>
+</html>

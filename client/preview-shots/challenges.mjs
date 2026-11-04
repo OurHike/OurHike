@@ -16,7 +16,7 @@ import { openChallenges, seedChallenges } from './fixtures/challenges.mjs'
 export const caption =
   'More → Challenges: the ATC’s list, labelled draft, 3 of 25 (#1780, seeded hiker)'
 export const alt =
-  'The Your challenges screen: a dark green card reading ATC until Sep 1, A.T. Summer Bucket List, a Draft not yet confirmed by the ATC label, 3 of 25 for the drawing and an orange progress bar, then a dashed row reading 1 more on trails near you, Browse'
+  'The Your blazes screen: a dark green card reading ATC until Sep 7, A.T. Summer Bucket List, a Draft not yet confirmed by the ATC label, 3 of 25 for the drawing and an orange progress bar, then a dashed row reading 1 more on trails near you, Browse'
 
 export default async function drive(page) {
   await seedChallenges(page)

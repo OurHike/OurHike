@@ -2,9 +2,11 @@
 //
 // The pine header names it, its window and - only when the club set one - the
 // finish line; a strip lays its places along the trail in mile order. Filter
-// pills split the list the way the handoff draws it: "On the trail" for the
-// named places and walked sections, then each of the club's own sections for
-// the rest, then Mystery.
+// pills are the club's own sections, in the club's order - for the ATC, Learn
+// · Experience · Protect · Mystery - and then Done, the hiker's own (#1961,
+// the blaze card brief: the list in the ATC's sections is the accessible,
+// findable form of the card, and it is numbered 1-100 in the ATC's order so a
+// hiker holding the ATC's paper list finds the same line).
 //
 // WHAT A ROW NEVER SAYS: what the hiker has not done. No "you haven't", no
 // count of what is left, no days remaining - features/VOLUNTEERING.md §5 rule
@@ -49,6 +51,7 @@ import {
   itemMeta,
   itemTrailing,
   mileLabel,
+  statusLine,
   titleOrSealed,
   trailLabel,
 } from '../lib/challengeText'
@@ -111,35 +114,34 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   // (review, 2026-09-30: the ATC's 2027 draft is on phones in 2026).
   const open = isOpen(challenge, today)
 
+  // The club's sections in the club's order, each in the published item
+  // order, then Done - what this hiker has earned, in the same order. No
+  // "On the trail" filter any more (#1961): the ATC's four sections are the
+  // card's rows and the list's pills, so a tile and a row are found the same
+  // way. A pill with nothing under it is not drawn, which is why Done is
+  // absent until something is earned and never says "0".
   const filters = useMemo<Filter[]>(() => {
-    // South to north - the order a hiker meets them, and the strip's order.
-    const firstMile = (item: ChallengeItem) =>
-      isPlaceItem(item)
-        ? item.match.places[0].mile
-        : item.match.kind === 'section_walked'
-          ? item.match.fromMile
-          : 0
-    const onTrail = challenge.items
-      .filter(
-        (item) =>
-          item.mystery === null &&
-          (isPlaceItem(item) || item.match.kind === 'section_walked'),
-      )
-      .sort((a, b) => firstMile(a) - firstMile(b))
-    const out: Filter[] = [{ key: 'trail', label: 'On the trail', items: onTrail }]
-    for (const section of challenge.sections) {
-      out.push({
-        key: section.id,
-        label: section.short,
-        items: challenge.items.filter(
-          (item) => item.section === section.id && !onTrail.includes(item),
-        ),
-      })
-    }
+    const out: Filter[] = challenge.sections.map((section) => ({
+      key: section.id,
+      label: section.short,
+      items: challenge.items.filter((item) => item.section === section.id),
+    }))
+    out.push({
+      key: 'done',
+      label: 'Done',
+      items: challenge.items.filter((item) => isItemDone(item, challenge.id, tags)),
+    })
     return out.filter((filter) => filter.items.length > 0)
-  }, [challenge])
-  const [filterKey, setFilterKey] = useState<string>(() => filters[0]?.key ?? 'trail')
+  }, [challenge, tags])
+  const [filterKey, setFilterKey] = useState<string>(
+    () => challenge.sections[0]?.id ?? 'done',
+  )
   const shown = filters.find((filter) => filter.key === filterKey) ?? filters[0]
+  // 1-100 in the ATC's order: the number a hiker's paper list carries.
+  const numberOf = useMemo(
+    () => new Map(challenge.items.map((item, index) => [item.id, index + 1])),
+    [challenge],
+  )
 
   if (view === 'finish' && finish !== null) {
     return <Finish {...props} onDone={() => setView('list')} />
@@ -217,7 +219,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           </button>
           <p className="challenges__note">
             Joining keeps this list on your phone. Nothing is sent until you{' '}
-            {CHALLENGE_WORDS.noun} a place.
+            {CHALLENGE_WORDS.verb} a {CHALLENGE_WORDS.noun}.
           </p>
         </div>
       ) : (
@@ -254,6 +256,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
             key={item.id}
             challenge={challenge}
             item={item}
+            number={numberOf.get(item.id) ?? 0}
             tags={tags}
             today={today}
             joined={joined}
@@ -277,12 +280,13 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
 
       {joined && (
         <>
-          <p className="challenges__note">
-            {!API_CONFIGURED
-              ? `Saved on this phone. It waits here until OurHike’s server is running, then the ${challenge.orgShort} sees a count - never your name.`
-              : props.signedIn
-                ? `Saved on this phone. With signal, OurHike counts it for the ${challenge.orgShort} - they see a number, never your name.`
-                : `Saved on this phone. Once you sign in and have signal, OurHike counts it for the ${challenge.orgShort} - they see a number, never your name.`}
+          {/* One status line (#1961), in place of a paragraph that branched
+              three ways on the same facts. lib/challengeText.ts chooses it. */}
+          <p className="challenge-status" role="status">
+            {statusLine(challenge, {
+              apiConfigured: API_CONFIGURED,
+              signedIn: props.signedIn,
+            })}
           </p>
           <div className="challenge-actions">
             {confirmingLeave ? (
@@ -352,6 +356,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
 function ItemRow({
   challenge,
   item,
+  number,
   tags,
   today,
   joined,
@@ -362,6 +367,8 @@ function ItemRow({
 }: {
   challenge: Challenge
   item: ChallengeItem
+  /** Its place in the club's list, from 1 - the ATC's own numbering. */
+  number: number
   tags: readonly ChallengeTag[]
   today: string
   joined: boolean
@@ -403,8 +410,17 @@ function ItemRow({
   }
 
   const places = item.match.kind === 'places_all' ? item.match.places : []
+  // A place or a walk under the title, and the day it was earned; an at-home
+  // item has no sub-line at all (lib/challengeText.ts).
+  const meta = [
+    itemMeta(item),
+    doneTag !== null ? `${CHALLENGE_WORDS.past} ${formatDay(doneTag.at)}` : '',
+  ]
+    .filter((part) => part !== '')
+    .join(' · ')
   const text = (
     <>
+      <span className="challenge-row__number">{number}</span>
       {!sealed && <Diamond done={done} />}
       <span className="challenge-row__text">
         {revealed && (
@@ -416,14 +432,7 @@ function ItemRow({
           </span>
         )}
         <span className="challenge-row__title">{title}</span>
-        {!sealed && (
-          <span className="challenge-row__meta">
-            {itemMeta(item)}
-            {doneTag !== null
-              ? ` · ${CHALLENGE_WORDS.past} ${formatDay(doneTag.at)}`
-              : ''}
-          </span>
-        )}
+        {!sealed && meta !== '' && <span className="challenge-row__meta">{meta}</span>}
       </span>
       {trailing !== undefined && !sealed && (
         <span className="challenge-row__trailing">{trailing}</span>
@@ -723,7 +732,7 @@ function TaggedPlace({
                 )
               }
             >
-              Remove this {CHALLENGE_WORDS.noun}
+              {CHALLENGE_WORDS.takeBack}
             </button>
           )}
         </div>

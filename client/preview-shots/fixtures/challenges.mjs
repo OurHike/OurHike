@@ -29,8 +29,8 @@ export const ATC_CHALLENGE = {
   summary:
     'Complete at least 25 items by September 1 to be eligible for the grand prize drawing.',
   window: {
-    opens: '2027-05-15',
-    closes: '2027-09-01',
+    opens: '2027-05-13',
+    closes: '2027-09-07',
   },
   finish: {
     count: 25,
@@ -51,7 +51,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'experience',
       title: 'Experience the A.T.',
-      short: 'Anywhere',
+      short: 'Experience',
     },
     {
       id: 'protect',
@@ -901,5 +901,5 @@ export const UNJOINED_STATE = { ...SEEDED_STATE, joined: [], tags: [] }
 export async function openChallenges(page) {
   await page.getByRole('tab', { name: 'More' }).click()
   await page.getByRole('button', { name: /^Challenges/ }).click()
-  await page.getByRole('heading', { name: 'Your challenges' }).waitFor()
+  await page.getByRole('heading', { name: 'Your blazes' }).waitFor()
 }

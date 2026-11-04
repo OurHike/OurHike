@@ -54,7 +54,7 @@ async function arrive(page: Page): Promise<void> {
 async function openChallenges(page: Page): Promise<void> {
   await page.getByRole('tab', { name: 'More' }).click()
   await page.locator('.more__row').filter({ hasText: 'Challenges' }).first().click()
-  await expect(page.getByRole('heading', { name: 'Your challenges' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your blazes' })).toBeVisible()
 }
 
 test.describe('challenges', () => {
@@ -64,7 +64,7 @@ test.describe('challenges', () => {
     await arrive(page)
     await openChallenges(page)
     await page.getByRole('button', { name: 'More', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Your challenges' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Your blazes' })).toHaveCount(0)
   })
 
   test('join from Browse, be asked at camp about what the walk passed, tag it, find it done', async ({
@@ -91,7 +91,7 @@ test.describe('challenges', () => {
     await expect(card).toBeVisible()
     await expect(card).toContainText('Take the McAfee Knob shuttle')
     await expect(card).not.toContainText(/Katahdin|Springer|Monson/)
-    await card.getByRole('button', { name: 'Tag all' }).click()
+    await card.getByRole('button', { name: 'Earn all' }).click()
     await expect(page.locator('.challenge-camp')).toHaveCount(0)
 
     // The challenge's own page: tagged from the day's walk, so "done". More
@@ -101,7 +101,7 @@ test.describe('challenges', () => {
     await page.getByRole('tab', { name: 'More' }).click()
     await expect(page.getByRole('heading', { name: 'Browse challenges' })).toBeVisible()
     await page.getByRole('button', { name: 'Challenges', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Your challenges' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Your blazes' })).toBeVisible()
     await page.getByRole('button', { name: /A\.T\. Summer Bucket List/ }).click()
     const mcafee = page
       .locator('.challenge-row')

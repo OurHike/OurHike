@@ -276,7 +276,7 @@ describe('matchDay - the camp card lists what was passed and nothing else', () =
       todayRanges: [{ startMile: 710, endMile: 716 }],
       trail: 'AT',
       pois: SHELTERS,
-      today: '2027-05-14',
+      today: '2027-05-12',
     })
     expect(before).toEqual([])
   })
@@ -407,7 +407,7 @@ describe('autoTags - the items that tag themselves', () => {
     const early = autoTags(
       {
         ...base,
-        today: '2027-05-14',
+        today: '2027-05-12',
         maxElevationFt: () => 4_010,
         state: joinedAtc,
         todayRanges: [{ startMile: 1860, endMile: 1866 }],
@@ -556,7 +556,7 @@ describe('the edges of plan suggestions, Browse distance, workday stamps and rem
       state: EMPTY_CHALLENGE_STATE,
       days: [{ dayNumber: 1, startMile: 700, endMile: 725 }],
       hikeKey: 'hike',
-      today: '2027-09-02',
+      today: '2027-09-08',
       maintainedMiles: () => 0,
     })
     expect(picked).toBeNull()

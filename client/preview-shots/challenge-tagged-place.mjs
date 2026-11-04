@@ -9,7 +9,7 @@
 // line has a date and a time and no weather, which the phone never kept
 // against a tag.
 //
-// And "Remove this tag" beside Done, for the hiker who pressed Tag all after
+// And "Take it back" beside Done (#1961), for the hiker who pressed Earn all after
 // walking past the junction without going up (review, 2026-09-30).
 //
 // SEEDED, AND SAID SO: fixtures/challenges.mjs. No walked miles are seeded,
@@ -17,7 +17,7 @@
 import { openChallenges, seedChallenges } from './fixtures/challenges.mjs'
 
 export const caption =
-  'A tagged place: McAfee Knob, its moment, your line, a private register line (#1780, seeded)'
+  'An earned place: McAfee Knob, its moment, your line, a private register line, Take it back (#1780, #1961, seeded)'
 export const alt =
   'A full-screen sheet headed by a dark panel reading A.T. Summer Bucket List and McAfee Knob Summit with a date and time, then a Your line strip with yellow diamonds, a One line for the register field reading Stays on this phone, and Done and Remove this tag buttons'
 

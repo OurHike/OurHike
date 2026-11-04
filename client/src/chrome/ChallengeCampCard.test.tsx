@@ -79,7 +79,7 @@ describe('the camp card', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('answers with Tag all or Not tonight', async () => {
+  it('answers with Earn all or Not tonight', async () => {
     const onTagAll = vi.fn()
     const onNotTonight = vi.fn()
     render(
@@ -90,7 +90,7 @@ describe('the camp card', () => {
         onNotTonight={onNotTonight}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Tag all' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Earn all' }))
     await userEvent.click(screen.getByRole('button', { name: 'Not tonight' }))
     expect(onTagAll).toHaveBeenCalledOnce()
     expect(onNotTonight).toHaveBeenCalledOnce()

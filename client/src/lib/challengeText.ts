@@ -1,8 +1,14 @@
 // The words a challenge surface prints (#1780): a row's second line, a
-// place's mile, a date, the moment a tag was made, and the sealed line of a
-// mystery item. Sentences in a lib/*Text.ts module, the repository's habit
-// (lib/todayText.ts, lib/hikeText.ts), so chrome/ChallengeParts.tsx holds
-// components only and every screen spells these one way.
+// place's mile, a date, the moment a blaze was earned, the sealed line of a
+// mystery item, and the one status line under a joined list. Sentences in a
+// lib/*Text.ts module, the repository's habit (lib/todayText.ts,
+// lib/hikeText.ts), so chrome/ChallengeParts.tsx holds components only and
+// every screen spells these one way.
+//
+// A SUB-LINE NAMES A PLACE OR A WALK, OR IS ABSENT (#1961, the blaze card
+// brief): an at-home item gets no second line at all. "At home" under
+// seventy-six of a hundred rows said nothing a hiker did not know from the
+// title, and read as a grade.
 
 import {
   isPlaceItem,
@@ -27,8 +33,8 @@ export function trailLabel(trail: string): string {
 }
 
 /**
- * What a row says under an item's title: where it is, or how it is done.
- * Never what the hiker has not done.
+ * What a row says under an item's title: where it is, or how it is done -
+ * or nothing, for an item done anywhere. Never what the hiker has not done.
  */
 export function itemMeta(item: ChallengeItem): string {
   const match = item.match
@@ -50,7 +56,7 @@ export function itemMeta(item: ChallengeItem): string {
     case 'workday':
       return 'a workday you log in Volunteer'
     case 'self_report':
-      return 'at home'
+      return ''
   }
 }
 
@@ -82,6 +88,27 @@ export function titleOrSealed(
   if (item.mystery?.revealOn != null)
     return `Sealed until ${formatDay(item.mystery.revealOn)}`
   return `Sealed · announced by the ${challenge.orgShort}`
+}
+
+/**
+ * The one line under a joined list saying where the record is and what the
+ * club sees (#1961): one sentence, chosen from the three things that can be
+ * true, in place of the paragraph that used to branch on the same three.
+ * What it must say: the record stays on the phone, and the club sees a
+ * count and never a name. What it must not do: promise a server that is not
+ * running.
+ */
+export function statusLine(
+  /** The club it is counted for - a challenge, or `{ orgShort: 'club' }`
+   *  where a surface names more than one. */
+  club: Pick<Challenge, 'orgShort'>,
+  state: { apiConfigured: boolean; signedIn: boolean },
+): string {
+  if (!state.apiConfigured)
+    return `Saved on this phone until OurHike’s server is running.`
+  if (!state.signedIn)
+    return `Saved on this phone · counted for the ${club.orgShort} once you sign in, never by name.`
+  return `Saved on this phone · counted for the ${club.orgShort} with signal, never by name.`
 }
 
 const MONTHS = [

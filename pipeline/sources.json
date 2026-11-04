@@ -16,6 +16,14 @@
     "recorded_date": "2026-08-13",
     "open_question": "ATC's own written terms remain the ideal - SOURCE_SURVEY.md §10's combined ask (capacity, Helene status, CSI, half-mile points) is now a confirmation rather than a blocker, and its answer should replace this line, the same way photo_licence's open question reads."
   },
+  "atc_bucket_list_licence": {
+    "_comment": "The basis on which the ATC's A.T. Summer Bucket List - the item lines transcribed verbatim into reference/challenges/atc/ and published to hikers as a challenge (features/CHALLENGES.md, features/CHALLENGES_BLAZE_CARD.md) - may be carried in this tree and shown on a phone. photo_licence's sibling for a DOCUMENT rather than a layer: the list is the ATC's own text, not a fact the ATC publishes as data, so atc_licence's scope ('facts ATC itself publishes') does not reach it and it needs a line of its own, which CHALLENGES.md's open question on the list's licence asked for (maintainer, poll 2026-10-01: keep the text verbatim and ask the ATC). Recorded on the maintainer's statement of 2026-11-03 that the ATC relationship is settled and no letter is needed - the ATC has agreed to run the Bucket List on OurHike. IT IS NOT A WRITTEN GRANT FROM THE ATC and must not be rendered as one: what is recorded is the maintainer's authorisation, on the basis of that agreement, as the person who carries the consequence (licence_basis_comment below: `maintainer_authorisation`). What it does NOT cover, stated so nobody widens it by reading: the ATC's marks and its sponsors' names (the welcome footer carries the hashtag alone until the ATC's letter grants them), photographs (slice 7 of the brief records those per item, as photo_licence does), and sweepstakes entries - `takes_entries` on the reviewed file is a separate switch and stays false until the ATC confirms OurHike is its submission form for 2027.",
+    "author": "Appalachian Trail Conservancy",
+    "license": "© ATC, used with permission",
+    "basis": "Maintainer authorisation, on the basis of the ATC's agreement to run the Bucket List on OurHike",
+    "recorded_date": "2026-11-03",
+    "open_question": "The ATC's written terms for sweepstakes entries collected through OurHike, and who is the data controller for an entry - features/CHALLENGES.md, 'Open questions'. Until they exist the reviewed file stays `draft` and takes no entries; when they do, they should replace this line the way photo_licence's open question reads."
+  },
   "sources": [
     {
       "key": "communities",

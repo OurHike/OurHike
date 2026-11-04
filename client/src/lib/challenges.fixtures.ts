@@ -77,12 +77,12 @@ export const ATC_ARTIFACT = {
   status: 'draft',
   summary:
     'Complete at least 25 items by September 1 to be eligible for the grand prize drawing.',
-  window: { opens: '2027-05-15', closes: '2027-09-01' },
+  window: { opens: '2027-05-13', closes: '2027-09-07' },
   finish: { count: 5, label: 'for the drawing' },
   reward: { kind: 'drawing', rules_url: 'https://appalachiantrail.org/sweepstakes' },
   sections: [
     { id: 'learn', title: 'Learn about the A.T.', short: 'Learn' },
-    { id: 'experience', title: 'Experience the A.T.', short: 'Anywhere' },
+    { id: 'experience', title: 'Experience the A.T.', short: 'Experience' },
     { id: 'protect', title: 'Protect the A.T.', short: 'Protect' },
     { id: 'mystery', title: 'Mystery Items', short: 'Mystery' },
   ],

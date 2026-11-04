@@ -11,7 +11,9 @@ laid against), [POI_PHOTOS.md](POI_PHOTOS.md) (the hiker's own photo a tagged pl
 Tracked by [#1780 — Let a club publish a challenge — places on its own trails that hikers
 opt into and tag at camp — starting with the ATC's A.T. Summer Bucket
 List](https://github.com/OurHike/OurHike/issues/1780). Drawn in the design handoff *Trail
-Challenges*, five rounds, 2026-09-30.
+Challenges*, five rounds, 2026-09-30. Re-skinned as a card of 100 tiles by
+[CHALLENGES_BLAZE_CARD.md](CHALLENGES_BLAZE_CARD.md) (2026-11-03), which changes the words
+and the screens and leaves everything below about data, server and CSV as it is.
 
 ---
 
@@ -33,11 +35,24 @@ form.
 ## Decisions
 
 - **2026-09-30, maintainer (handoff revisions).** Never "passport" — that is the ATC's own word
-  for its stamp programme. The working term is **tag**: "Tag it", "Tagged", "Your challenges".
+  for its stamp programme. The working term was **tag**: "Tag it", "Tagged", "Your challenges".
   The final word is the maintainer's and is one constant, `CHALLENGE_WORDS` in
   `client/src/lib/challengeWords.ts`. No digital stamp and no stamp animation: a tagged place
   shows the hiker's own photo, the moment, and the club's note. Rewards are optional, and most
   challenges have none.
+- **2026-11-03, maintainer; confirmed by poll 2026-11-04 from the Card and Tile frames edited
+  both ways.** The verb is **earn**, not "tag" and never "paint": "Earn it", "12 blazes
+  earned", "Your blazes". Painting blazes is maintainer work and unauthorised blazing is a thing
+  clubs fight. Still one constant, `CHALLENGE_WORDS`; the comments and the prose below keep
+  "tag" where they describe the record (a `challengeTag` cargo is still what leaves the phone).
+- **2026-11-03, maintainer.** The ATC relationship is settled and no letter is needed; the
+  basis on which the list's text is carried is recorded as `atc_bucket_list_licence` in
+  `pipeline/sources.json` (see "Open questions"). `takes_entries` stays false until the ATC
+  confirms OurHike is its submission form for 2027.
+- **2026-11-04, maintainer (poll).** Until the ATC publishes 2027's dates, the reviewed file's
+  window is 2027-05-13 → 2027-09-07 — the 2026 season's days carried onto 2027's calendar —
+  over the 2026 dates themselves, which would read "Closed Sep 7" on every phone until the 2027
+  list lands. `@unvalidated`, and the file's `_README` says so.
 - **2026-09-30, maintainer (poll, with a scope page drawn from the handoff's own frames).**
   The whole handoff ships in one stacked pull request, over a foundation-plus-tag-by-hand
   slice and over a foundation-only slice.
@@ -284,11 +299,11 @@ says so.
 | Frame | Home |
 |---|---|
 | #2b Your challenges | More → **Challenges**, a destination after "Volunteer & report" |
-| #5 Challenge detail, #7 mystery | `screens/ChallengeDetail.tsx` — filters *On the trail · each section's short name · Mystery* |
+| #5 Challenge detail, #7 mystery | `screens/ChallengeDetail.tsx` — pills are the club's sections in the club's order (*Learn · Experience · Protect · Mystery* for the ATC) and then *Done*; rows numbered 1–100 in the club's order (CHALLENGES_BLAZE_CARD.md slice 1) |
 | #4b Tagged place | a sheet over the detail: the hiker's own photo (matched on the phone by time and place, never uploaded) or the club's photo labelled so, the moment, the club's note, the line walked, a private register line |
 | #5a Browse | `screens/ChallengeBrowse.tsx` — Trail, Club and Open-now filters; "On your plan" first, then the rest by distance from the plan. **No popularity sort and no hiker counts.** |
 | #1 Map layer | a Legend switch "Challenge places", **off by default**, listed only when a joined challenge is on the chosen trail and has a place to pin; a diamond pin from `map/poiIcons.ts`, hollow until tagged, drawn over the place's own waypoint pin at that pin's size at every zoom — the waypoint layer's own zoom ramp and quiet-type scale (maintainer poll, 2026-09-30, from frames at z7/z9/z11/z13; a fixed 36.8 px diamond was the first build). The trail line is never recoloured. |
-| #2, #2c Place card | "On your challenges" above "About this place", one row per item, **Tag it** inside the window and the window's date ("opens May 15") outside it |
+| #2, #2c Place card | "On your challenges" above "About this place", one row per item, **Earn it** inside the window and the window's date ("opens May 13") outside it |
 | #3 Today | "From today's walk", once, after the day's walk ends, only when something was passed |
 | #6, #6b Plan | the places on this route by day; when no joined challenge touches the route, the one best match, dashed, with Join and Hide |
 | #8b, #8c Finish | with a reward, the entry; with none, "You walked …" and Done |
@@ -349,12 +364,17 @@ maintainer as a picture first.
 
 ## Open questions
 
-- **The licence of the ATC's list.** `reference/challenges/atc/…json` carries the 2025 PDF's
-  item lines verbatim (co-branded "ATC × Altra"). CONTRIBUTING.md's "A note on data and
-  licences" says to establish a source's licence first and record it, and none is recorded.
-  The maintainer's decision (poll, 2026-10-01): keep the text verbatim and ask the ATC; the
-  pull request is not to merge until the ATC's written permission is recorded in
-  `sources.json`.
+- **The licence of the ATC's list — answered, on the maintainer's authorisation.**
+  `reference/challenges/atc/…json` carries the 2025 PDF's item lines verbatim (co-branded
+  "ATC × Altra"). CONTRIBUTING.md's "A note on data and licences" says to establish a source's
+  licence first and record it. The maintainer's decision (poll, 2026-10-01) was to keep the
+  text verbatim and ask the ATC; on 2026-11-03 the maintainer recorded that the ATC relationship
+  is settled and no letter is needed, and `pipeline/sources.json`'s `atc_bucket_list_licence`
+  block carries the basis the way `photo_licence` does — author "Appalachian Trail
+  Conservancy", basis "Maintainer authorisation, on the basis of the ATC's agreement to run the
+  Bucket List on OurHike", recorded 2026-11-03. It is the maintainer's authorisation and not a
+  written grant from the ATC, and it covers the list's text only: not the ATC's marks, not its
+  sponsors' names, not photographs, not entries.
 - **The ATC's written terms** for sweepstakes entries collected through OurHike, and who is
   the data controller for an entry. Until they exist, the ATC's list stays `draft` and takes
   no entries.

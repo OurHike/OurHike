@@ -1,6 +1,7 @@
-// The closure and notice surfaces the cutover (#1880) publishes for, driven
-// in a real browser from files answered on the wire (`@bucket`,
-// e2e/support/bucket.ts).
+// The closure and notice surfaces the cutover publishes for (#1880 -
+// Production still builds its notices, closures and hazard areas with the
+// exporters, so 78 organizations' notices reach UA only), driven in a real
+// browser from files answered on the wire (`@bucket`, e2e/support/bucket.ts).
 //
 // chrome/PlannedNoticeList.tsx, chrome/HazardAreaSheet.tsx and
 // chrome/ClubClosureSheet.tsx were `planned` in src/test/flowCoverage.ts on a
@@ -196,8 +197,11 @@ test.describe(
       page,
     }) => {
       // NAMED FOR WHAT THE SHEET SAYS. "The agency's layer" was on the card
-      // until the word-choice review of #1805 (2026-10-09) took "layer", a GIS
-      // word, off it: the sheet names the publisher, and this holds it to that.
+      // until the word-choice review of #1805 - dlt → dbt re-platform as one
+      // go/no-go change: every club through dlt, eleven contracted marts
+      // writing every phone file, and the hourly and monthly lanes - took
+      // "layer", a GIS word, off it on 2026-10-09: the sheet names the
+      // publisher, and this holds it to that.
       await stubBucket(page, { [HAZARD_AREAS]: hazardAreasDocument() })
       await seedPreferences(page)
       await seedCamera(page, HAZARD_CAMERA.center as [number, number], HAZARD_CAMERA.zoom)

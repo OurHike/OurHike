@@ -125,7 +125,7 @@ def test_the_window_is_capped_rather_than_trusted(client, db_session):
     assert client.get("/workdays?days=99999").json() == []
 
 
-def test_a_workday_dated_today_in_utc_is_listed_at_eleven_pm_new_york_time(client, db_session, monkeypatch):
+def test_get_workdays_bounds_both_ends_of_its_window_by_utc_date_at_eleven_pm_new_york_time(client, db_session, monkeypatch):
     """#1939 — Take backend dates from UTC, and fix two stale comments: the
     window `GET /workdays` lists is read against UTC's calendar, never the
     machine's. A set clock (TESTING.md: a time boundary is tested with a set

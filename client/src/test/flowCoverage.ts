@@ -18,16 +18,21 @@
  *   which. Claimed only where the spec actually asserts on the surface;
  *   passing through a screen on the way somewhere else is not coverage of it.
  * - `planned` - belongs in the battery and is not written. This is the work
- *   list, not an apology: #1386 opened the layer with four specs
+ *   list, not an apology: #1386 - Rendered is not findable: add Playwright
+ *   entrance/exit/state assertions per screen, checked first against
+ *   #1374's pathway rebuild - opened the layer with four specs
  *   deliberately, and the rest is scoped in features/FLOW_TESTING.md by
  *   journey step rather than file by file. Every one carries `since`, the
  *   day the row was written, and `issue` where an open issue is what it
  *   waits on - flowCoverage.test.ts refuses a row with neither. A reason
  *   with no date goes stale silently, and five did: three rows waited on a
- *   cutover that landed on 2026-10-23 (#1880), and two written on
- *   2026-10-24 gave "a stubbed API the suite does not have yet" as their
- *   reason a month after e2e/support/backend.ts (2026-09-23, #1643) was
- *   that API.
+ *   cutover that landed on 2026-10-23 (#1880 - Production still builds its
+ *   notices, closures and hazard areas with the exporters, so 78
+ *   organizations' notices reach UA only), and two written on 2026-10-24
+ *   gave "a stubbed API the suite does not have yet" as their reason a
+ *   month after e2e/support/backend.ts (2026-09-23, #1643 - The org
+ *   console's permission matrix skips ten endpoints, and the position mark
+ *   and outbox drain have no end-to-end test) was that API.
  * - `unit-only` - deliberately never a flow test, with the reason. A leaf
  *   with no state of its own is proved by a component test; driving a browser
  *   to it proves the same thing more slowly. An entry here is a decision
@@ -511,11 +516,15 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
-  // The planned-hike panel and the hazard area card (#1805), and a club
-  // closure's sheet (the maintainer's closure-map standard, 2026-10-11).
-  // These were `planned` on "the release e2e/data/ reads has none until the
-  // cutover", which stopped being a blocker when #1880 landed (2026-10-23) -
-  // and was never the whole wall: the hermetic build has no
+  // The planned-hike panel and the hazard area card (#1805 - dlt → dbt
+  // re-platform as one go/no-go change: every club through dlt, eleven
+  // contracted marts writing every phone file, and the hourly and monthly
+  // lanes), and a club closure's sheet (the maintainer's closure-map
+  // standard, 2026-10-11). These were `planned` on "the release e2e/data/
+  // reads has none until the cutover", which stopped being a blocker when
+  // #1880 - Production still builds its notices, closures and hazard areas
+  // with the exporters, so 78 organizations' notices reach UA only - landed
+  // (2026-10-23) - and was never the whole wall: the hermetic build has no
   // VITE_DATA_BASE_URL, so lib/publishedConditions.ts's `readPublished`
   // never asks for conditions/notices.json, hazard_areas.json or
   // trail_closures.json and there is nothing for a `page.route` to answer.
@@ -696,12 +705,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
-  // Supporting OurHike (#1876). Both screens' paid halves need a backend, and
-  // the hermetic build has none, which keeps the ask dormant there by design.
-  // The backend-shaped build (#1643) has one, so e2e/supportRooms.spec.ts
-  // drives them `@backend`: the ask opening by itself on the fifth active day
-  // and not the fourth, $0 kept on the phone, a paid choice handed to its
-  // checkout_url, and Stop on Your support reaching More's row.
+  // Supporting OurHike (#1876 - Ask every hiker to choose what they give
+  // after their fifth day of use, $0 included, and take payment only on the
+  // website). Both screens' paid halves need a backend, and the hermetic
+  // build has none, which keeps the ask dormant there by design. The
+  // backend-shaped build (#1643 - The org console's permission matrix skips
+  // ten endpoints, and the position mark and outbox drain have no end-to-end
+  // test) has one, so e2e/supportRooms.spec.ts drives them `@backend`: the
+  // ask opening by itself on the fifth active day and not the fourth, $0 kept
+  // on the phone, a paid choice handed to its checkout_url, and Stop on Your
+  // support reaching More's row.
   'screens/SupportAsk.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/supportRooms.spec.ts' },

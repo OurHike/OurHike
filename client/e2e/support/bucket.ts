@@ -9,12 +9,16 @@
 // conditions/notices.json, hazard_areas.json and trail_closures.json are
 // never asked for and a `page.route` on them has nothing to answer - which is
 // why the planned-hike notices, the hazard areas and the club closures could
-// not be driven in `e2e/` even after the cutover (#1880) published the files.
+// not be driven in `e2e/` even after the cutover published the files (#1880 -
+// Production still builds its notices, closures and hazard areas with the
+// exporters, so 78 organizations' notices reach UA only).
 // The preview-shot recipes route the same files in and work because the
 // preview build carries a bucket. Vite inlines the variable at build time, so
 // the only way to have it set is a build that set it: playwright.config.ts
 // serves one on BUCKET_PORT to the `phone-bucket` project, the same shape
-// e2e/support/backend.ts gave the API (#1643).
+// e2e/support/backend.ts gave the API (#1643 - The org console's permission
+// matrix skips ten endpoints, and the position mark and outbox drain have no
+// end-to-end test).
 //
 // SAME ORIGIN, ON PURPOSE, as the backend stub: the base points at a path on
 // the build's own origin, so every artifact the app asks the bucket for is a
@@ -95,9 +99,10 @@ export function bucketKey(url: URL): string {
  * `files` is keyed by artifact key. A HEAD is answered with the key's status
  * and no body, which is what lib/publishedNotices.ts's `noticesListed` asks
  * with. An answer the page has given up on - a download aborted by
- * lib/useConditions.ts's effect cleanup (#1892) - has nowhere to go, and the
- * fulfil's own error is swallowed here: that is the case a holding handler
- * exists to produce, not a failure of the stub.
+ * lib/useConditions.ts's effect cleanup (#1892 - Abort a superseded notices,
+ * hazard-area or closures download in useConditions) - has nowhere to go,
+ * and the fulfil's own error is swallowed here: that is the case a holding
+ * handler exists to produce, not a failure of the stub.
  */
 export async function stubBucket(page: Page, files: BucketFiles = {}): Promise<Bucket> {
   const bucket: Bucket = { seen: [] }

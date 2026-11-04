@@ -158,7 +158,9 @@ test.describe('usage measurement, linked to an account', { tag: '@backend' }, ()
     page,
     context,
   }) => {
-    // #1902's link, end to end: lib/usageQueue.ts's `sendUsageBatch` sends a
+    // The link of #1902 - Count six usage events with a sealed account id and
+    // GPS fix, keep them six months, close each month into a table, and report
+    // them per club - end to end: lib/usageQueue.ts's `sendUsageBatch` sends a
     // batch `identified: true`, with the session's token, only for rows
     // recorded under the account while the hiker's yes stands - and holds
     // linked rows back until that yes has reached the account

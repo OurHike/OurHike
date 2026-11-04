@@ -357,7 +357,9 @@ test.describe('signing in with an emailed code', { tag: '@backend' }, () => {
 // its token on the three edge-cached reads, so they either skip the cache or
 // hide the hiker's own queued report). lib/api.ts's THE SHARED READS:
 // `/closures`, `/reports` and `/disputes` are the reads a cache in front of the
-// API keeps one copy of for everybody (#1907), so they go with no token even
+// API keeps one copy of for everybody (#1907 - Let Cloudflare cache GET
+// /closures, /reports and /disputes in front of the API, and write the
+// click-path that stands it up), so they go with no token even
 // when there is one, and the hiker's own reports at any status come from
 // `GET /reports/mine` instead, merged in by lib/useConditions.ts. api.test.ts
 // holds each fetch's headers with `fetch` mocked; what it cannot see is the

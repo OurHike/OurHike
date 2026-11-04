@@ -1,20 +1,24 @@
-// The day-5 ask and More → Your support (#1876), against the stubbed backend
-// (`@backend`, e2e/support/backend.ts).
+// The day-5 ask and More → Your support (#1876 - Ask every hiker to choose
+// what they give after their fifth day of use, $0 included, and take payment
+// only on the website), against the stubbed backend (`@backend`,
+// e2e/support/backend.ts).
 //
 // screens/SupportAsk.tsx and screens/YourSupport.tsx were `planned` in
 // src/test/flowCoverage.ts because "a flow spec needs a stubbed API the suite
-// does not have yet" - which has not been true since #1643. lib/support.test.ts
-// holds `shouldAsk`'s rules, SupportAsk.test.tsx the window's three views and
-// YourSupport.test.tsx the page's states, each with the API mocked at the
-// module. What none of them can see is the launch: screens/SupportGate.tsx
-// loading after the first frame (screens/deferred.ts), reading the day count
-// lib/activeDays.ts kept in localStorage, waiting for the stored session and
-// the account's answer, and opening the window over Today within its
-// fifteen-second window with nobody having tapped - or not opening it, a day
-// early. Nor what a paid choice does to the browser: `window.location.assign`
-// to a page that is not this app, with no field anywhere in the window a
-// card number could go into. Nor that a Stop on the page reaches the More
-// row through lib/useSupport.ts's window event.
+// does not have yet", which stopped being true when #1643 - The org console's
+// permission matrix skips ten endpoints, and the position mark and outbox
+// drain have no end-to-end test - gave the suite e2e/support/backend.ts.
+// lib/support.test.ts holds `shouldAsk`'s rules, SupportAsk.test.tsx the
+// window's three views and YourSupport.test.tsx the page's states, each with
+// the API mocked at the module. What none of them can see is the launch:
+// screens/SupportGate.tsx loading after the first frame (screens/deferred.ts),
+// reading the day count lib/activeDays.ts kept in localStorage, waiting for
+// the stored session and the account's answer, and opening the window over
+// Today within its fifteen-second window with nobody having tapped - or not
+// opening it, a day early. Nor what a paid choice does to the browser:
+// `window.location.assign` to a page that is not this app, with no field
+// anywhere in the window a card number could go into. Nor that a Stop on the
+// page reaches the More row through lib/useSupport.ts's window event.
 //
 // THE WEB BUILD, WHICH IS WHAT PLAYWRIGHT DRIVES. In the store apps a paid
 // choice is email-only ("Email me how to set it up") and offered only on a US
@@ -238,7 +242,9 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
     const year = await page.evaluate(() => new Date().getFullYear())
     expect(local?.year).toBe(year)
     // COUNTED, ONCE, AT $0 - the `support_chosen` row usage measurement
-    // queues when lib/support.ts announces the answer (#1902).
+    // queues when lib/support.ts announces the answer (#1902 - Count six usage
+    // events with a sealed account id and GPS fix, keep them six months, close
+    // each month into a table, and report them per club).
     await expect
       .poll(async () =>
         (await queuedUsageRows(page)).filter((row) => row.event === 'support_chosen'),
@@ -421,7 +427,9 @@ test.describe('More → Your support', { tag: '@backend' }, () => {
 
     // AND THE MORE ROW SAYS SO TOO, without a fetch: the page's answer
     // reaches the gate's own copy through lib/useSupport.ts's window event
-    // (the fourth #1885 review found the row still reading the old amount).
+    // (the fourth review of #1885 - Ask every hiker to choose what they give
+    // after day five, $0 included, and pay only on the website - found the
+    // row still reading the old amount).
     // So no third GET - a row that only caught up by asking again would be
     // the window event gone and a fetch hiding it.
     await page.getByRole('button', { name: 'More', exact: true }).click()

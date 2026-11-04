@@ -9,8 +9,8 @@ hours every night. #1939 moved each to `utc_now().date()` and landed with no
 test, so the next route written from an older route's shape brings
 `date.today()` straight back. This file is the test that stops it;
 test_routers_work_projects.py's
-test_a_workday_dated_today_in_utc_is_listed_at_eleven_pm_new_york_time holds
-one route's behaviour with a set clock.
+test_get_workdays_bounds_both_ends_of_its_window_by_utc_date_at_eleven_pm_new_york_time
+holds one route's behaviour with a set clock.
 
 WHAT IS SCANNED: every call in every .py under backend/app, read as syntax
 (ast), so a comment or a docstring that names `date.today()` to say "never

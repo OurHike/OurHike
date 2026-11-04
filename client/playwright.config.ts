@@ -180,8 +180,10 @@ const BACKEND_COMMAND = [
  *
  * The hermetic build sets no `VITE_DATA_BASE_URL`, so in it
  * lib/publishedConditions.ts's `readPublished` returns before any request and
- * the conditions files the cutover (#1880) publishes - notices.json,
- * hazard_areas.json, trail_closures.json - are never asked for. The surfaces
+ * the conditions files the cutover publishes (#1880 - Production still builds
+ * its notices, closures and hazard areas with the exporters, so 78
+ * organizations' notices reach UA only) - notices.json, hazard_areas.json,
+ * trail_closures.json - are never asked for. The surfaces
  * drawn from them (the planned-hike notices, a hazard area's sheet, a club
  * closure's sheet) are RELEASING.md §8b's safety set, and nothing in `e2e/`
  * could reach them: a `page.route` on a file the app never requests answers
@@ -189,14 +191,17 @@ const BACKEND_COMMAND = [
  * at its own origin, where `e2e/support/bucket.ts` answers every artifact
  * with `page.route` - 404 unless a test says otherwise. No bucket is read;
  * nothing leaves the browser. The same shape, and the same reasoning, as the
- * backend build above (#1643).
+ * backend build above (#1643 - The org console's permission matrix skips ten
+ * endpoints, and the position mark and outbox drain have no end-to-end test).
  *
  * ALWAYS BUILT AND PREVIEWED, never the dev server, for BACKEND_COMMAND's
  * reason (two dev servers share one dependency cache). CHROMIUM ONLY, at
  * phone width, like the backend build. These tests tap marks drawn on the
  * map canvas, and WebKit drawing nothing where Chromium draws a trail line
- * in the data half (#1467) is still unexplained; a WebKit leg is worth
- * adding when somebody has run it and fixed what it turns up.
+ * in the data half is still unexplained (#1467 - WebKit draws no trail line
+ * where Chromium draws one, and nobody knows yet whether that is the engine
+ * or the sandbox); a WebKit leg is worth adding when somebody has run it and
+ * fixed what it turns up.
  *
  * A LONGER BUDGET THAN THE HERMETIC HALF'S, and why it is not the data
  * half's. What these tests wait on is not a network: the map's lazily

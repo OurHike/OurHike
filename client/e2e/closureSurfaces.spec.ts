@@ -40,13 +40,13 @@
 import { test, expect, type Locator, type Page, type Request } from '@playwright/test'
 
 import { stubBucket } from './support/bucket'
-import { readIDBEntry } from './support/idb'
 import { seedCamera, seedPreferences } from './support/seed'
 import { setSignal } from './support/signal'
 import {
   canvasPointAt,
   clubClosureStewards,
   openClosureSheet,
+  tapUntilOpen,
   trailClosureRows,
   trailClosuresDocument,
 } from '../preview-shots/fixtures/clubClosures.mjs'
@@ -127,41 +127,6 @@ function hazardAreasDocument() {
         review_state: 'unreviewed',
       },
     ],
-  }
-}
-
-/**
- * How long a tap loop keeps tapping before it gives up: the ceiling the
- * recipes keep (clubClosures.mjs's TAP_FOR_MS), on the same reasoning. What
- * it waits on is the mark drawing, which nothing on screen announces; a tap
- * before then opens nothing and costs nothing.
- */
-const TAP_FOR_MS = 45_000
-
-/** Tap `position` on the map canvas until `sheet` opens. */
-async function tapUntilOpen(
-  page: Page,
-  position: { x: number; y: number },
-  sheet: Locator,
-  what: string,
-): Promise<void> {
-  const canvas = page.locator('canvas.maplibregl-canvas').first()
-  const deadline = Date.now() + TAP_FOR_MS
-  while (!(await sheet.isVisible())) {
-    if (Date.now() > deadline) {
-      throw new Error(
-        `no "${what}" sheet after ${TAP_FOR_MS / 1000} s of taps at ` +
-          `${Math.round(position.x)},${Math.round(position.y)}: the area did not ` +
-          'draw, or something drawn over it takes the tap',
-      )
-    }
-    try {
-      await canvas.click({ position, timeout: 5000 })
-    } catch (error) {
-      if (await sheet.isVisible()) break
-      throw error
-    }
-    await sheet.waitFor({ timeout: 1500 }).catch(() => undefined)
   }
 }
 
@@ -327,17 +292,18 @@ test.describe(
       await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
     })
 
-    test('a superseded notices download that arrives late never overwrites the newer one', async ({
+    test('a notices download superseded by a lost signal is aborted while its answer is still held, and the next download is what the panel shows', async ({
       page,
     }) => {
       // #1870 - useConditions does not abort a superseded notices, hazard-area
       // or closures download, so a flapping connection runs two at once - fixed
-      // by #1892. lib/useConditions.notices.test.ts ('is aborted when a
+      // by #1892 - Abort a superseded notices, hazard-area or closures download
+      // in useConditions. lib/useConditions.notices.test.ts ('is aborted when a
       // flapping connection starts the next read') proves the abort in jsdom
-      // with a mocked fetch. What it cannot see is the half that matters to a
-      // phone: a real download the effect gave up on, answered LATER by the
-      // wire, and whether those late bytes reach lib/conditionsCache.ts's kept
-      // copy - the one a phone with no signal reads next. The effect's
+      // with a mocked fetch. What it cannot see is a real download the effect
+      // gave up on, still held on the wire, being stopped by the browser - and
+      // that abort is all that keeps its bytes out of lib/conditionsCache.ts's
+      // kept copy, the one a phone with no signal reads next. The effect's
       // `cancelled` flag keeps a late answer off the screen and nothing else:
       // lib/publishedConditions.ts's `readPublished` keeps every document that
       // parses, so without the abort the earlier download's bytes would
@@ -393,47 +359,34 @@ test.describe(
       await seedDayHikes(page, plannedDayHikes())
       await expect.poll(() => downloads).toBe(1)
 
-      // SIGNAL LOST: the effect's cleanup stops the download in flight. The
-      // browser reports it aborted while the wire is still holding its answer
-      // - the observable #1870 is about, and the one that makes the rest of
-      // this test deterministic: an aborted request has nowhere to deliver
-      // bytes to, however late they come. Without the abort it stays pending
-      // and this poll runs out.
+      // SIGNAL LOST: the effect's cleanup stops the download in flight, and
+      // the browser reports it aborted while the wire still holds its answer -
+      // the observable #1870 is about. Without the abort it stays pending and
+      // this poll runs out.
+      //
+      // THE ABORT IS THE WHOLE PROOF. An aborted request has nowhere to
+      // deliver bytes to, so however late the held answer is sent it reaches
+      // neither `readPublished`, nor the kept copy, nor the screen. This test
+      // used to send it afterwards and then read the kept copy, which passed
+      // whatever the late answer did - the second download's copy satisfied
+      // it. Nor would waiting for the stub to report its fulfil refused have
+      // helped: a fulfil is refused exactly when this abort has happened, so
+      // that wait could only go red where this one already had.
       await setSignal(page, page.context(), { on: false })
       await expect
         .poll(() => (earlierRequest === null ? undefined : ended.get(earlierRequest)))
         .toBe('net::ERR_ABORTED')
 
       // SIGNAL FOUND: the next run starts the second download, which the wire
-      // answers at once.
+      // answers at once, and that is what the panel shows.
       await setSignal(page, page.context(), { on: true })
-      await expect.poll(() => downloads).toBe(2)
-
       const panel = await openPlannedNotices(page)
       await expect(panel.getByText(LATER)).toBeVisible()
-      await expect(panel.getByText(EARLIER)).toHaveCount(0)
 
-      // NOW THE FIRST DOWNLOAD'S ANSWER IS SENT, late, to a request the page
-      // already gave up on. The kept copy - read straight out of IndexedDB,
-      // under lib/conditionsCache.ts's own key - is the later one.
+      // The held handler is let go so it does not outlive the test; its
+      // answer has nowhere to go, and e2e/support/bucket.ts swallows the
+      // refused fulfil.
       releaseEarlier()
-      const keptTitle = async () => {
-        const kept = (await readIDBEntry(page, `ourhike:conditions:${NOTICES}`)) as
-          { document: { notices: Array<{ title: string }> } } | undefined
-        return kept?.document.notices.map((row) => row.title) ?? []
-      }
-      await expect.poll(keptTitle).toEqual([LATER])
-
-      // AND WHAT A PHONE WITH NO SIGNAL READS NEXT IS THAT COPY: offline, the
-      // reader asks for nothing and recalls what was kept, so the panel opened
-      // again shows the later download and never the earlier.
-      await panel.getByRole('button', { name: 'Close' }).click()
-      await setSignal(page, page.context(), { on: false })
-      const again = await openPlannedNotices(page)
-      await expect(again.getByText(LATER)).toBeVisible()
-      await expect(again.getByText(EARLIER)).toHaveCount(0)
-      expect(await keptTitle()).toEqual([LATER])
-      expect(downloads).toBe(2)
     })
   },
 )

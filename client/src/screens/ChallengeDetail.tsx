@@ -205,7 +205,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
       {!open && (
         <p className="challenges__note">
           {challenge.window.opens !== null && today < challenge.window.opens
-            ? `Opens ${shortDate(challenge.window.opens)}. ${capitalised(CHALLENGE_WORDS.nounPlural)} count from then.`
+            ? `Opens ${shortDate(challenge.window.opens)}. ${capitalised(CHALLENGE_WORDS.noun)} counts from then.`
             : joined
               ? `Closed ${shortDate(challenge.window.closes ?? today)}. What you ${CHALLENGE_WORDS.past} stays here as a record.`
               : `Closed ${shortDate(challenge.window.closes ?? today)}.`}
@@ -219,7 +219,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           </button>
           <p className="challenges__note">
             Joining keeps this list on your phone. Nothing is sent until you{' '}
-            {CHALLENGE_WORDS.verb} a {CHALLENGE_WORDS.noun}.
+            {CHALLENGE_WORDS.verb} {CHALLENGE_WORDS.some}.
           </p>
         </div>
       ) : (

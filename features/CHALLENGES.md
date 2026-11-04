@@ -41,9 +41,15 @@ form.
   shows the hiker's own photo, the moment, and the club's note. Rewards are optional, and most
   challenges have none.
 - **2026-11-03, maintainer; confirmed by poll 2026-11-04 from the Card and Tile frames edited
-  both ways.** The verb is **earn**, not "tag" and never "paint": "Earn it", "12 blazes
-  earned", "Your blazes". Painting blazes is maintainer work and unauthorised blazing is a thing
-  clubs fight. Still one constant, `CHALLENGE_WORDS`; the comments and the prose below keep
+  both ways.** The verb is **earn**, not "tag" and never "paint": "Earn it". Painting blazes is
+  maintainer work and unauthorised blazing is a thing clubs fight.
+- **2026-11-04, maintainer, by poll from a picture of the word in the Challenges title, the
+  season strip, the tile sheet and the share poster.** What a hiker earns is **trail karma**,
+  never a blaze: "blazes are official, lets not mess with them". The brief's "12 blazes earned"
+  and "Your blazes" became "12 trail karma earned" and "Your trail karma". Picked from a second
+  round after the first (gold stars, feathers, gems, trophies) was "too boring"; patch and
+  sticker were never offered, because a club's finisher reward can be a real patch or sticker
+  in the mail. Still one constant, `CHALLENGE_WORDS`; the comments and the prose below keep
   "tag" where they describe the record (a `challengeTag` cargo is still what leaves the phone).
 - **2026-11-03, maintainer.** The ATC relationship is settled and no letter is needed; the
   basis on which the list's text is carried is recorded as `atc_bucket_list_licence` in

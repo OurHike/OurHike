@@ -96,7 +96,7 @@ STATUSES = ("draft", "published")
 #: ATC's list, copied into the reviewed file rather than re-derived - and an
 #: item with none draws the `learn` glyph on the phone. Twenty-six from the
 #: design frame (BlazeCard.dc.html) plus `pen`, which the frame's mapping
-#: used for six writing items without drawing a glyph for it (the frame fell
+#: used for five writing items without drawing a glyph for it (the frame fell
 #: back to `learn`); a pencil is the honest glyph for "write a journal
 #: entry", kept by the maintainer's poll of 2026-11-04 once seen on the card.
 ICON_NAMES = (

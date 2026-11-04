@@ -108,7 +108,7 @@ export interface ChallengeItem {
 export interface ChallengeSection {
   id: string
   title: string
-  /** The filter pill's word - "Anywhere", "Learn". */
+  /** The filter pill's word - "Learn", "Experience". */
   short: string
 }
 

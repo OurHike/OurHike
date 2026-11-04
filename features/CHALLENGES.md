@@ -157,7 +157,7 @@ same reason: each row is somebody's judgement that a line of a PDF is a particul
   "window": { "opens": "2027-05-15", "closes": "2027-09-01" },  // either may be null
   "finish": { "count": 25, "label": "for the drawing" },          // null = a record, no finish
   "reward": { "kind": "drawing", "rules_url": "https://…" },       // null = no reward (most)
-  "sections": [{ "id": "experience", "title": "Experience the A.T.", "short": "Anywhere" }],
+  "sections": [{ "id": "experience", "title": "Experience the A.T.", "short": "Experience" }],
   "items": [
     { "id": "mcafee-knob", "section": "experience", "title": "…",
       "note": "optional, 1–3 sentences, the club's", "note_by": "Roanoke A.T. Club",
@@ -258,7 +258,7 @@ no challenge changed. Each record's `reviewed` is the date that means something.
 
 An item's completion enqueues one `challengeTag` outbox cargo: challenge id, item id, authored
 time, `gps`/`hand`. A `places_all` item queues nothing until its last place. An item that
-stops being done — a hand tag pressed again, "Remove this tag" on the tagged place, a Triple
+stops being done — a hand tag pressed again, "Take it back" on the earned place, a Triple
 Crown peak taken back — queues a `challengeUntag` behind it, and Leave queues one for the
 whole challenge; the flush is in order, so the server ends where the phone did. Rejoining
 sends the kept tags again. The register line never leaves the phone (principle 6).

@@ -30,5 +30,9 @@ describe('the blaze card’s icon set (#1962)', () => {
     expect(blazeIconPath('rocket')).toBe(BLAZE_ICONS.learn)
     expect(blazeIconPath(null)).toBe(BLAZE_ICONS.learn)
     expect(blazeIconPath('mountain')).toBe(BLAZE_ICONS.mountain)
+    // Names every object inherits are not glyphs (review of #1990).
+    for (const inherited of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(blazeIconPath(inherited)).toBe(BLAZE_ICONS.learn)
+    }
   })
 })

@@ -2,16 +2,19 @@
 //
 // The pine header names it, its window and - only when the club set one - the
 // finish line; under them the blaze card (chrome/BlazeCard.tsx, #1962): the
-// club's items as tiles in the club's sections, one white blaze per earned
-// item, in place of the strip that laid the places along the trail by mile.
+// club's items as tiles in the club's sections, a tile turning karma gold for
+// each earned item, in place of the strip that laid the places along the
+// trail by mile.
 // A tap on a section of the card opens the list at that section; the card
 // can be made bigger, and only then is a tile itself a button, which opens
 // its row. Filter
 // pills are the club's own sections, in the club's order - for the ATC, Learn
 // · Experience · Protect · Mystery - and then Done, the hiker's own (#1961,
 // the blaze card brief: the list in the ATC's sections is the accessible,
-// findable form of the card, and it is numbered 1-100 in the ATC's order so a
-// hiker holding the ATC's paper list finds the same line).
+// findable form of the card, and it is numbered 1-100 in the published order,
+// which is the order of the ATC's 2025 PDF. Whether the ATC's own list prints
+// these numbers is @unvalidated: nothing in the tree shows that it does, and
+// the 2026 list a participant received is not in the tree to check).
 //
 // WHAT A ROW NEVER SAYS: what the hiker has not done. No "you haven't", no
 // count of what is left, no days remaining - features/VOLUNTEERING.md §5 rule
@@ -96,7 +99,7 @@ export interface ChallengeDetailProps {
   /** The phone's own waypoints by name, for "Pick a place". */
   places?: readonly SearchablePoi[]
   onUntag: (item: ChallengeItem, poi?: string) => void
-  /** "Remove this tag" on the tagged-place sheet - however it was made. */
+  /** "Take it back" on the earned-place sheet - however it was earned. */
   onRemoveTag?: (item: ChallengeItem, poi?: string) => void
   onSetNote: (item: ChallengeItem, note: string) => void
   onSendEntry: (entry: ChallengeEntryDraft) => void
@@ -133,6 +136,23 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
     if (asksWhere(item, 'hand')) setWhere({ item, poi })
     else props.onTag(item, poi)
   }
+  // A tile tapped on the big card: its row is shown under the right pill,
+  // scrolled into view and given focus, after the render that draws it. A
+  // section tapped on the card does the same for that section's pill, so the
+  // tap visibly lands somewhere - the list sits below the fold under a card
+  // of a hundred tiles, and a screen reader heard nothing change (review of
+  // #1990). `section:` marks a pill rather than a row.
+  const [goTo, setGoTo] = useState<string | null>(null)
+  useEffect(() => {
+    if (goTo === null) return
+    setGoTo(null)
+    const target = goTo.startsWith('section:')
+      ? document.querySelector<HTMLElement>('.challenge-pills [aria-pressed="true"]')
+      : document.getElementById(`challenge-item-${goTo}`)
+    if (target === null) return
+    target.scrollIntoView?.({ block: 'center' })
+    target.focus()
+  }, [goTo])
   // Where focus goes back to when the sheet closes - the row that opened it,
   // or the page's title when that row is gone.
   const opener = useRef<HTMLElement | null>(null)
@@ -171,7 +191,29 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
     () => challenge.sections[0]?.id ?? 'done',
   )
   const shown = filters.find((filter) => filter.key === filterKey) ?? filters[0]
-  // 1-100 in the ATC's order: the number a hiker's paper list carries.
+  // A pill that went away takes its selection with it. Done disappears when
+  // the last earned item is taken back; left as the stored key, the next item
+  // earned would bring Done back and jump the list there (review of #1969).
+  // Adjusted during render, React's pattern for state derived from props.
+  if (shown !== undefined && shown.key !== filterKey) setFilterKey(shown.key)
+  // Taking an item back from Done removes its row, and the focused pill with
+  // it - in the render after the record changes, which may be later than the
+  // tap. Once the focused control is gone, focus goes to the pill now showing
+  // rather than to <body>.
+  const pills = useRef<HTMLDivElement | null>(null)
+  const refocusPills = useRef(false)
+  const shownKey = shown?.key
+  const shownCount = shown?.items.length
+  useEffect(() => {
+    if (!refocusPills.current) return
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active !== document.body && active.isConnected)
+      return
+    refocusPills.current = false
+    pills.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
+  }, [shownKey, shownCount])
+  // 1-100 in the published order (the 2025 PDF's; whether the ATC's own
+  // list prints these numbers is @unvalidated - see the header).
   const numberOf = useMemo(
     () => new Map(challenge.items.map((item, index) => [item.id, index + 1])),
     [challenge],
@@ -235,7 +277,10 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           tags={tags}
           today={today}
           size={bigger ? 'expanded' : 'card'}
-          onOpenSection={(sectionId) => setFilterKey(sectionId)}
+          onOpenSection={(sectionId) => {
+            setFilterKey(sectionId)
+            setGoTo(`section:${sectionId}`)
+          }}
           onOpenItem={(item) => {
             setFilterKey(item.section)
             setSheetItem(item.id)
@@ -244,7 +289,6 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <button
           type="button"
           className="challenge-button challenge-button--ghost blaze-card__zoom"
-          aria-pressed={bigger}
           onClick={() => setBigger((current) => !current)}
         >
           {bigger ? 'Smaller tiles' : 'Bigger tiles'}
@@ -288,7 +332,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         )
       )}
 
-      <div className="challenge-pills" role="group" aria-label="Show">
+      <div className="challenge-pills" role="group" aria-label="Show" ref={pills}>
         {filters.map((filter) => (
           <button
             key={filter.key}
@@ -314,7 +358,10 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
             joined={joined}
             open={open}
             onTag={(poi) => requestEarn(item, poi)}
-            onUntag={(poi) => props.onUntag(item, poi)}
+            onUntag={(poi) => {
+              props.onUntag(item, poi)
+              if (shown?.key === 'done') refocusPills.current = true
+            }}
             onOpen={(from) => {
               opener.current = from
               setSheetItem(item.id)
@@ -334,7 +381,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <>
           {/* One status line (#1961), in place of a paragraph that branched
               three ways on the same facts. lib/challengeText.ts chooses it. */}
-          <p className="challenge-status" role="status">
+          <p className="challenge-status">
             {statusLine(challenge, {
               apiConfigured: API_CONFIGURED,
               signedIn: props.signedIn,
@@ -688,7 +735,7 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
           ))}
         </ul>
         <p className="challenges__note">
-          {summary} It stays in your challenges as a record of the trip.
+          {summary} It stays here as a record of the trip.
         </p>
         {sentLine}
         {sent === null && refusal !== null && (

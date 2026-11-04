@@ -37,7 +37,9 @@ one entry per person, name and email, three mystery items each with its own draw
 - **The card is a picture; the list is the control.** Tiles are tappable only in the expanded
   56 px state. The list in the ATC's four sections is the accessible, findable form.
 - **The share poster defaults to the state strip; the map is opt-in** behind the sentence
-  "This shows where you've been."
+  "This shows where you've been." **Superseded, 2026-11-04:** the maintainer chose the map
+  as the default by poll, from both posters as built; the map card keeps the sentence.
+  features/CHALLENGES.md has the record.
 
 ## What this is not
 

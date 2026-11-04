@@ -55,6 +55,13 @@ form.
   basis on which the list's text is carried is recorded as `atc_bucket_list_licence` in
   `pipeline/sources.json` (see "Open questions"). `takes_entries` stays false until the ATC
   confirms OurHike is its submission form for 2027.
+- **2026-11-04, maintainer, by poll from the two share posters as built** (the map version
+  and the states version, beside the brief's `Poster.dc.html`). The share sheet **opens on the
+  map poster** when the phone holds the map, overruling the brief's "the share poster defaults
+  to the state strip; the map is opt-in". The map card still says "This shows where you've
+  been." before anything is shared, and the states poster is the other card, one tap away. With
+  no map on the phone the sheet opens on the states poster. The same poll kept both layouts as
+  built and dropped the frame's hashtag, which no club has published.
 - **2026-11-04, maintainer (poll).** Until the ATC publishes 2027's dates, the reviewed file's
   window is 2027-05-13 → 2027-09-07 — the 2026 season's days carried onto 2027's calendar —
   over the 2026 dates themselves, which would read "Closed Sep 7" on every phone until the 2027
@@ -311,6 +318,7 @@ says so.
 | #1 Map layer | a Legend switch "Challenge places", **off by default**, listed only when a joined challenge is on the chosen trail and has a place to pin; a diamond pin from `map/poiIcons.ts`, hollow until tagged, drawn over the place's own waypoint pin at that pin's size at every zoom — the waypoint layer's own zoom ramp and quiet-type scale (maintainer poll, 2026-09-30, from frames at z7/z9/z11/z13; a fixed 36.8 px diamond was the first build). The trail line is never recoloured. |
 | #2, #2c Place card | "On your challenges" above "About this place", one row per item, **Earn it** inside the window and the window's date ("opens May 13") outside it |
 | #3 Today | "From today's walk", once, after the day's walk ends, only when something was passed — and, last of everything on Today in every mode, the season strip (`chrome/ChallengeSeasonStrip.tsx`, CHALLENGES_BLAZE_CARD.md slice 4): the mini card, trail karma earned, the states it landed in and how many at home, the club's finish line in the club's words; never a numeral for what is missing |
+| #6 Where your trail karma is, #7 share poster | `screens/ChallengeWhere.tsx` (CHALLENGES_BLAZE_CARD.md slice 5), the Where half of the Card / Where pair on the challenge's page: earned items under the state each landed in, south to north; "Not on the trail"; the places still on the card as chips, never counted; the strip of fourteen states (`lib/stateStripSvg.ts`); and the map (`lib/challengeMapSvg.ts`, drawn from `challenge_map.json` with no tiles) once anything earned is on the trail and the phone holds a map. "Share your summer" opens `chrome/PosterShareSheet.tsx`: a 1080 × 1350 PNG made on the phone (`lib/challengePoster.ts`), the map version by default, the states version one tap away, shared through the phone's own sheet or saved, never uploaded |
 | #6, #6b Plan | the places on this route by day; when no joined challenge touches the route, the one best match, dashed, with Join and Hide |
 | #8b, #8c Finish | with a reward, the entry; with none, "You walked …" and Done. Reachable from the day of joining (slice 4): before the finish line it shows what the club receives, "One entry per person — use the email you signed up with", each mystery item's own drawing, and when the entry opens; the form itself only once the finish line is reached. A sealed mystery item shows the club's `teaser` under "Sealed until …" |
 | #2a Org console | Org home → **Challenges**, and its **Finishers** sub-page |

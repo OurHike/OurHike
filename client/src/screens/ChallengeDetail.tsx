@@ -51,6 +51,7 @@ import { Diamond, DraftLabel, FinishBar, TagPill } from '../chrome/ChallengePart
 import { BlazeCard } from '../chrome/BlazeCard'
 import { TileSheet } from '../chrome/TileSheet'
 import { WhereSheet } from '../chrome/WhereSheet'
+import { ChallengeWhere } from './ChallengeWhere'
 import type { SearchablePoi } from '../lib/searchPoi'
 import { asksWhere, whereOptions, type TagPlace } from '../lib/wherePlace'
 import {
@@ -118,7 +119,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   const joined = state.joined.some((entry) => entry.challengeId === challenge.id)
   const tags = tagsFor(state, challenge.id)
   const { tagged, finish, eligible } = progress(challenge, state)
-  const [view, setView] = useState<'list' | 'finish'>('list')
+  const [view, setView] = useState<'list' | 'finish' | 'where'>('list')
   const [sheetItem, setSheetItem] = useState<string | null>(null)
   const [confirmingLeave, setConfirmingLeave] = useState(false)
   // The card's two sizes (#1962): its own, where a section is the tap
@@ -182,6 +183,41 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
     return <Finish {...props} onDone={() => setView('list')} />
   }
 
+  // The challenge's two views (#1965, frame Line.dc.html): the card and its
+  // list, and where the trail karma landed. One pair of buttons, above both.
+  const views = (
+    <div className="challenge-views" role="group" aria-label="Show">
+      <button
+        type="button"
+        aria-pressed={view !== 'where'}
+        onClick={() => setView('list')}
+      >
+        Card
+      </button>
+      <button
+        type="button"
+        aria-pressed={view === 'where'}
+        onClick={() => setView('where')}
+      >
+        Where
+      </button>
+    </div>
+  )
+  if (view === 'where') {
+    return (
+      <section className="challenges">
+        {views}
+        <ChallengeWhere
+          challenge={challenge}
+          tags={tags}
+          today={today}
+          walked={props.walked}
+          units={props.units ?? 'imperial'}
+        />
+      </section>
+    )
+  }
+
   const closeSheet = () => {
     setSheetItem(null)
     setRefocus(true)
@@ -199,6 +235,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
 
   return (
     <section className="challenges" aria-labelledby="challenge-title">
+      {joined && views}
       <header className="challenge-head">
         <p className="challenges__eyebrow">
           {challenge.orgShort} · {trailLabel(challenge.trail)} · {windowLine(challenge)}

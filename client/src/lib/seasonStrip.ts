@@ -8,11 +8,14 @@
 // StateStrip.dc.html's, read off a map by eye - @unvalidated, and the brief
 // says so: what settles them is the pipeline intersecting the published
 // centerline with the state outlines (slice 5), which will emit the real
-// boundaries beside challenges.json and replace this table. Until then a
-// blaze within a few miles of a state line may be told in the wrong state,
-// which is why the strip prints states and never a count per state.
+// boundaries beside challenges.json and replace this table. Slice 5 (#1965)
+// does: challenge_map.json's state runs are measured against the published
+// centerline, and a caller holding the map passes lib/challengeMap.ts's
+// lookup as `stateOf`. These bands remain only for a phone with no map yet,
+// where an item within a few miles of a state line may be told in the wrong
+// state - which is why the strip prints states and never a count per state.
 
-import type { Challenge } from './challenges'
+import type { Challenge, ChallengeItem } from './challenges'
 import { isPlaceItem } from './challenges'
 import { isItemDone, itemDoneAt, type ChallengeTag } from './challengeProgress'
 import { TRAIL_STATES, type TrailStateCode } from './wherePlace'
@@ -55,61 +58,95 @@ export interface SeasonSummary {
   atHome: number
 }
 
+/** Which state a trail mile is in. The map's published runs
+ *  (lib/challengeMap.ts `stateAtMile`) where the phone holds them; the
+ *  approximate bands above otherwise. */
+export type StateOfMile = (mile: number) => TrailStateCode | null
+
+/** One earned item and where it landed. */
+export interface EarnedPlace {
+  item: ChallengeItem
+  tag: ChallengeTag
+  /** The trail mile it happened at, when anything says: a named place's
+   *  own, the fix's, the middle of the walked day's extent, a picked
+   *  place's. Null for "somewhere in a state", at home, or not said. */
+  mile: number | null
+  state: TrailStateCode | null
+  /** On the trail at all - false for at home, "Not on the trail", and an
+   *  at-home item nobody was asked to place. */
+  onTrail: boolean
+  /** The place's own name, when one is known. */
+  placeName: string | null
+}
+
 /**
- * Where this hiker's earned items landed: a named place's own mile, else what the
- * hiker said when asked (lib/wherePlace.ts), else "at home". A `gps` tag on
- * "any shelter" carries the shelter's place in `poi`, read the same way.
+ * Where each of this hiker's earned items landed, in the club's order: a
+ * named place's own mile, else what the hiker said when asked
+ * (lib/wherePlace.ts), else "at home". A `gps` tag on "any shelter" carries
+ * the shelter's place in `poi`, read the same way.
  */
-export function seasonSummary(
+export function earnedPlaces(
   challenge: Challenge,
   tags: readonly ChallengeTag[],
-): SeasonSummary {
-  const states = new Set<TrailStateCode>()
-  let earned = 0
-  let atHome = 0
+  stateOf: StateOfMile = stateAtMile,
+): EarnedPlace[] {
+  const out: EarnedPlace[] = []
   for (const item of challenge.items) {
-    if (!isItemDone(item, challenge.id, tags)) continue
-    earned += 1
     const tag = itemDoneAt(item, challenge.id, tags)
+    if (tag === null || !isItemDone(item, challenge.id, tags)) continue
+    let mile: number | null = null
     let state: TrailStateCode | null = null
-    let placed = false
+    let onTrail = false
+    let placeName: string | null = null
     if (isPlaceItem(item)) {
       const place =
-        item.match.places.find((candidate) => candidate.poi === tag?.poi) ??
+        item.match.places.find((candidate) => candidate.poi === tag.poi) ??
         item.match.places[item.match.places.length - 1]
-      state = stateAtMile(place.mile)
-      placed = true
-    } else if (tag?.place !== undefined) {
+      mile = place.mile
+      placeName = place.name
+      onTrail = true
+    } else if (tag.place !== undefined) {
       switch (tag.place.kind) {
         case 'here':
-          state = stateAtMile(tag.place.mile)
-          placed = true
+          mile = tag.place.mile
+          onTrail = true
           break
         case 'walked':
-          state = stateAtMile((tag.place.fromMile + tag.place.toMile) / 2)
-          placed = true
+          mile = (tag.place.fromMile + tag.place.toMile) / 2
+          onTrail = true
           break
         case 'poi':
-          state = tag.place.mile === null ? null : stateAtMile(tag.place.mile)
-          placed = true
+          mile = tag.place.mile
+          placeName = tag.place.name
+          onTrail = true
           break
         case 'state':
           state = tag.place.state
-          placed = true
+          onTrail = true
           break
         case 'off':
-          placed = false
           break
       }
     }
-    if (!placed) atHome += 1
-    if (state !== null) states.add(state)
+    if (mile !== null) state = stateOf(mile)
+    out.push({ item, tag, mile, state, onTrail, placeName })
   }
+  return out
+}
+
+export function seasonSummary(
+  challenge: Challenge,
+  tags: readonly ChallengeTag[],
+  stateOf: StateOfMile = stateAtMile,
+): SeasonSummary {
+  const places = earnedPlaces(challenge, tags, stateOf)
+  const states = new Set<TrailStateCode>()
+  for (const place of places) if (place.state !== null) states.add(place.state)
   const order = TRAIL_STATES.map((entry) => entry.code)
   return {
-    earned,
+    earned: places.length,
     states: [...states].sort((a, b) => order.indexOf(a) - order.indexOf(b)),
-    atHome,
+    atHome: places.filter((place) => !place.onTrail).length,
   }
 }
 

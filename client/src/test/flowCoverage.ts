@@ -694,6 +694,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // The season strip at the bottom of Today (#1964): Today's (F2), driven
   // by Today.test.tsx's ordered-record test and its own unit test; no flow yet.
   'chrome/ChallengeSeasonStrip.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  // Where the trail karma landed and the share poster (#1965): the Where
+  // view behind the Card / Where pair, and its share sheet. Unit tests hold
+  // the list, the map's appearance and the poster's default; no flow drives
+  // them yet, and the poster's rasterising needs a real browser that this
+  // file's unit tests do not have.
+  'screens/ChallengeWhere.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'chrome/PosterShareSheet.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'chrome/BlazeTile.tsx': {
     step: 'F13 More',
     flow: {

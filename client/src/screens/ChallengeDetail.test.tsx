@@ -161,6 +161,34 @@ describe('one challenge', () => {
   })
 })
 
+describe('the Card and Where views (#1965)', () => {
+  it('switches a joined hiker between the card and where their trail karma landed, and back', async () => {
+    detail()
+    expect(screen.getByRole('button', { name: 'Card' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Where' }))
+    expect(
+      screen.getByRole('heading', { name: 'Where your trail karma is' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Where' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Card' }))
+    expect(
+      screen.queryByRole('heading', { name: 'Where your trail karma is' }),
+    ).toBeNull()
+    expect(screen.getByTestId('blaze-card')).toBeInTheDocument()
+  })
+
+  it('offers no Where view to a hiker who has not joined', () => {
+    detail({ state: { ...joinedWith(ATC_CHALLENGE), joined: [] } })
+    expect(screen.queryByRole('button', { name: 'Where' })).toBeNull()
+  })
+})
+
 describe('the blaze card in the header (#1962)', () => {
   it('draws the card with no tile button at its own size, and a section tap picks that pill', async () => {
     const { container } = detail()

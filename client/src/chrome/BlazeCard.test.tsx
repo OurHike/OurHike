@@ -86,7 +86,11 @@ describe('the blaze card (#1962)', () => {
     await userEvent.click(
       screen.getByRole('button', { name: /Take the McAfee Knob shuttle/ }),
     )
-    expect(onOpenItem).toHaveBeenCalledWith(item('mcafee-knob'))
+    // With the tile itself, where focus returns when its sheet closes.
+    expect(onOpenItem).toHaveBeenCalledWith(
+      item('mcafee-knob'),
+      expect.any(HTMLButtonElement),
+    )
     expect(
       screen.getByRole('button', {
         name: /^Earned: Visit the A\.T\.’s southern terminus/,

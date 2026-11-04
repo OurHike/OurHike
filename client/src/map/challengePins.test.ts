@@ -79,7 +79,7 @@ const TRIPLE_CROWN = placeItem('triple-crown', [DRAGONS, MCAFEE, TINKER])
 const MCAFEE_ITEM = placeItem('mcafee-knob', [MCAFEE])
 const SELF_REPORT: ChallengeItem = {
   ...placeItem('trivia', [MCAFEE]),
-  match: { kind: 'self_report' },
+  match: { kind: 'self_report', onTrail: false },
 }
 const ANY_SHELTER: ChallengeItem = {
   ...placeItem('any-shelter', [MCAFEE]),

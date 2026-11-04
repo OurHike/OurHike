@@ -513,6 +513,18 @@ class TestTheCommittedFiles:
         unknown = {item_id: icon for item_id, icon in icons.items() if icon not in ICON_NAMES}
         assert unknown == {}
 
+    def test_every_at_home_atc_item_says_whether_where_is_asked(self):
+        # The on-trail judgement per self_report line (#1963), copied from
+        # features/design/blaze-card/self-report-on-trail.json: 35 of the 76
+        # at-home items ask "Where did it happen?" by the ATC's own wording.
+        # The three mystery items carry none until the ATC reveals them.
+        raw = json.loads((exporter.REFERENCE_DIR / "atc" / "atc-summer-bucket-list-2027.json").read_text(encoding="utf-8"))
+        at_home = [entry for entry in raw["items"] if entry["match"]["kind"] == "self_report"]
+        judged = {entry["id"]: entry["match"].get("on_trail") for entry in at_home if "mystery" not in entry}
+        assert len(judged) == 76
+        assert all(isinstance(value, bool) for value in judged.values())
+        assert sum(judged.values()) == 35
+
     def test_the_anchors_block_names_exactly_the_pois_the_items_use(self):
         # `anchors` is a reviewer aid the resolver ignores - so nothing but
         # this keeps the names a reviewer reads in step with the ids that

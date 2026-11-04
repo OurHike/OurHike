@@ -75,6 +75,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: false,
       },
     },
     {
@@ -184,6 +185,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: false,
       },
     },
     {
@@ -196,6 +198,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: false,
       },
     },
     {
@@ -208,6 +211,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: false,
       },
     },
     {
@@ -220,6 +224,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: true,
       },
     },
     {
@@ -261,6 +266,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: true,
       },
     },
     {
@@ -574,6 +580,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: false,
       },
     },
     {
@@ -586,6 +593,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: true,
       },
     },
     {
@@ -626,6 +634,7 @@ export const ATC_CHALLENGE = {
       photo: null,
       match: {
         kind: 'self_report',
+        on_trail: false,
       },
     },
     {

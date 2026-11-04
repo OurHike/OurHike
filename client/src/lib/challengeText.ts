@@ -12,6 +12,7 @@
 
 import { CHALLENGE_WORDS } from './challengeWords'
 import { isItemDone, type ChallengeTag } from './challengeProgress'
+import { stateName, type TagPlace } from './wherePlace'
 import {
   isPlaceItem,
   isSelfReport,
@@ -178,4 +179,22 @@ export function formatMoment(iso: string): string {
   const minutes = String(at.getMinutes()).padStart(2, '0')
   const clock = `${hours % 12 === 0 ? 12 : hours % 12}:${minutes} ${hours < 12 ? 'am' : 'pm'}`
   return `${MONTHS[at.getMonth()]} ${at.getDate()} · ${clock}`
+}
+
+/** One line for where a blaze happened (lib/wherePlace.ts), as the sheet and
+ *  the Where view print it: a mile, a day's extent, a place, a state, or
+ *  "Not on the trail". */
+export function placeWords(place: TagPlace): string {
+  switch (place.kind) {
+    case 'here':
+      return `${mileLabel(place.mile)} · here`
+    case 'walked':
+      return `${mileLabel(place.fromMile)} – ${mileLabel(place.toMile)} · walked today`
+    case 'poi':
+      return place.mile === null ? place.name : `${place.name} · ${mileLabel(place.mile)}`
+    case 'state':
+      return `On the trail in ${stateName(place.state)}`
+    case 'off':
+      return 'Not on the trail'
+  }
 }

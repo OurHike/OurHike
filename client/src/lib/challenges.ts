@@ -80,7 +80,13 @@ export type ChallengeMatch =
       minFraction: number
     }
   | { kind: 'workday'; org: string | null; trail: string }
-  | { kind: 'self_report' }
+  | {
+      kind: 'self_report'
+      /** Whether earning it by hand asks "Where did it happen?" - the
+       *  reviewer's judgement per at-home line (features/CHALLENGES_BLAZE_CARD.md
+       *  slice 3). False: a quiz from the couch has no where. */
+      onTrail: boolean
+    }
 
 export interface ChallengeItem {
   id: string

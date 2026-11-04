@@ -60,6 +60,33 @@ describe('useChallenges keeps the server where the phone is', () => {
     })
   })
 
+  it('queues the same three fields for a tag with a place as for one without - the place never leaves the phone', async () => {
+    const sunrise = ATC_CHALLENGE.items.find((entry) => entry.id === 'white-blaze-photo')!
+    const { result } = await hook()
+    act(() => result.current.join(ATC_CHALLENGE.id))
+    act(() => result.current.tagItem(ATC_CHALLENGE, trivia, 'hand'))
+    act(() =>
+      result.current.tagItem(ATC_CHALLENGE, sunrise, 'hand', undefined, {
+        kind: 'state',
+        state: 'VA',
+      }),
+    )
+    await vi.waitFor(() => expect(queued).toHaveLength(2))
+    const [plain, placed] = queued.map((entry) => entry.body as Record<string, unknown>)
+    expect(Object.keys(placed).sort()).toEqual(Object.keys(plain).sort())
+    expect(placed).toEqual({
+      challenge_id: ATC_CHALLENGE.id,
+      item_id: 'white-blaze-photo',
+      how: 'hand',
+    })
+    expect(JSON.stringify(placed)).not.toMatch(/place|state|VA|mile/)
+    // And the phone's own record kept it.
+    const kept = result.current.state.tags.find(
+      (tag) => tag.itemId === 'white-blaze-photo',
+    )
+    expect(kept?.place).toEqual({ kind: 'state', state: 'VA' })
+  })
+
   it('sends a Triple Crown as hand-tagged when any of its peaks was', async () => {
     const crown = ATC_CHALLENGE.items.find(
       (entry) => entry.id === 'virginia-triple-crown',

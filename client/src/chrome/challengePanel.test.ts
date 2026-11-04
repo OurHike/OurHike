@@ -150,7 +150,7 @@ describe('the Legend row, when nothing could be drawn', () => {
       ...AT_LIST,
       items: AT_LIST.items.map((entry) => ({
         ...entry,
-        match: { kind: 'self_report' as const },
+        match: { kind: 'self_report' as const, onTrail: false },
       })),
     }
     const { props } = panel([atHome], state(true, atHome.id), 'AT')

@@ -28,7 +28,6 @@ import { CHALLENGE_WORDS } from '../lib/challengeWords'
 import type { ChallengeEntryDraft } from '../lib/challengeDrafts'
 import {
   isOpen,
-  isPlaceItem,
   isSealed,
   itemTitle,
   shortDate,
@@ -49,9 +48,12 @@ import type { MileRange } from '../lib/walkedMiles'
 import { localDay } from '../lib/passedToday'
 import { Diamond, DraftLabel, FinishBar, TagPill } from '../chrome/ChallengeParts'
 import { BlazeCard } from '../chrome/BlazeCard'
+import { TileSheet } from '../chrome/TileSheet'
+import { WhereSheet } from '../chrome/WhereSheet'
+import type { SearchablePoi } from '../lib/searchPoi'
+import { asksWhere, whereOptions, type TagPlace } from '../lib/wherePlace'
 import {
   formatDay,
-  formatMoment,
   handTaggable,
   itemMeta,
   itemTrailing,
@@ -77,8 +79,18 @@ export interface ChallengeDetailProps {
   defaultName?: string
   onJoin: () => void
   onLeave: () => void
-  /** `poi` names one place of a Triple-Crown-style item. */
-  onTag: (item: ChallengeItem, poi?: string) => void
+  /** `poi` names one place of a Triple-Crown-style item; `place` is where
+   *  the hiker said it happened when the Where sheet asked (#1963),
+   *  kept on this phone only. */
+  onTag: (item: ChallengeItem, poi?: string, place?: TagPlace) => void
+  /** The fix snapped to the trail, or null - for "Here" and "Near you".
+   *  Never asked for by any challenge screen. */
+  fixMile?: number | null
+  /** Today's walked miles (lib/passedToday.ts), for "Somewhere I walked
+   *  today" and "Near you". */
+  todayRanges?: readonly MileRange[]
+  /** The phone's own waypoints by name, for "Pick a place". */
+  places?: readonly SearchablePoi[]
   onUntag: (item: ChallengeItem, poi?: string) => void
   /** "Remove this tag" on the tagged-place sheet - however it was made. */
   onRemoveTag?: (item: ChallengeItem, poi?: string) => void
@@ -110,17 +122,13 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   // 2026-11-04 from the two shots - one pill, usable by any hand and a screen
   // reader; a pinch stays a possible follow-up, not a plan.
   const [bigger, setBigger] = useState(false)
-  // A tile tapped on the big card: its row is shown under the right pill,
-  // scrolled into view and given focus, after the render that draws it.
-  const [goTo, setGoTo] = useState<string | null>(null)
-  useEffect(() => {
-    if (goTo === null) return
-    setGoTo(null)
-    const row = document.getElementById(`challenge-item-${goTo}`)
-    if (row === null) return
-    row.scrollIntoView?.({ block: 'center' })
-    row.focus()
-  }, [goTo])
+  // "Where did it happen?" (#1963): the item being earned by hand, when
+  // that can mean something (lib/wherePlace.ts asksWhere); null otherwise.
+  const [where, setWhere] = useState<{ item: ChallengeItem; poi?: string } | null>(null)
+  const requestEarn = (item: ChallengeItem, poi?: string) => {
+    if (asksWhere(item, 'hand')) setWhere({ item, poi })
+    else props.onTag(item, poi)
+  }
   // Where focus goes back to when the sheet closes - the row that opened it,
   // or the page's title when that row is gone.
   const opener = useRef<HTMLElement | null>(null)
@@ -226,7 +234,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           onOpenSection={(sectionId) => setFilterKey(sectionId)}
           onOpenItem={(item) => {
             setFilterKey(item.section)
-            setGoTo(item.id)
+            setSheetItem(item.id)
           }}
         />
         <button
@@ -301,7 +309,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
             today={today}
             joined={joined}
             open={open}
-            onTag={(poi) => props.onTag(item, poi)}
+            onTag={(poi) => requestEarn(item, poi)}
             onUntag={(poi) => props.onUntag(item, poi)}
             onOpen={(from) => {
               opener.current = from
@@ -368,16 +376,19 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
       )}
 
       {sheet !== null && (
-        <TaggedPlace
+        <TileSheet
           challenge={challenge}
           item={sheet}
-          tag={itemDoneAt(sheet, challenge.id, tags)}
-          tags={tags}
-          walked={props.walked}
+          number={numberOf.get(sheet.id) ?? 0}
           today={today}
-          ownPhotoFor={props.ownPhotoFor}
-          onSetNote={(note) => props.onSetNote(sheet, note)}
-          onRemove={
+          tags={tags}
+          earnable={
+            joined && open && handTaggable(sheet) && sheet.match.kind !== 'places_all'
+          }
+          todayRanges={props.todayRanges}
+          fixMile={props.fixMile}
+          onEarn={() => requestEarn(sheet)}
+          onTakeBack={
             props.onRemoveTag === undefined
               ? undefined
               : (poi) => {
@@ -385,8 +396,27 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
                   closeSheet()
                 }
           }
-          onOpenWorkdays={props.onOpenWorkdays}
+          onSetNote={(note) => props.onSetNote(sheet, note)}
           onClose={closeSheet}
+        />
+      )}
+      {where !== null && (
+        <WhereSheet
+          challenge={challenge}
+          item={where.item}
+          today={today}
+          options={whereOptions({
+            fixMile: props.fixMile ?? null,
+            todayRanges: props.todayRanges ?? [],
+          })}
+          places={props.places ?? []}
+          onChoose={(place) => {
+            const asked = where
+            setWhere(null)
+            if (sheet !== null) closeSheet()
+            props.onTag(asked.item, asked.poi, place)
+          }}
+          onBack={() => setWhere(null)}
         />
       )}
     </section>
@@ -425,10 +455,9 @@ function ItemRow({
   const title = titleOrSealed(item, challenge, today)
   const trailing = itemTrailing(item)
   const revealed = item.mystery !== null && !sealed
-  // A row opens its sheet once it is done and holds a tag the hiker can look
-  // at or take back: a place, or "any shelter". The kinds that tag
-  // themselves would be put straight back by the day's walk, so they do not.
-  const opens = done && (isPlaceItem(item) || item.match.kind === 'poi_type')
+  // Every row opens its tile (#1963): read it in full, earn it from there,
+  // or take it back. A sealed mystery item opens too, and says it is sealed.
+  const opens = true
 
   let right: ReactNode = null
   if (!sealed && joined) {
@@ -530,210 +559,6 @@ function ItemRow({
         </ul>
       )}
     </li>
-  )
-}
-
-/** The tagged place (#4b): the hiker's own photo or the club's, labelled
- *  which; the moment; the club's note; the line walked; a private register
- *  line. No stamp, no animation. */
-function TaggedPlace({
-  challenge,
-  item,
-  tag,
-  tags,
-  walked,
-  today,
-  ownPhotoFor,
-  onSetNote,
-  onRemove,
-  onOpenWorkdays,
-  onClose,
-}: {
-  challenge: Challenge
-  item: ChallengeItem
-  tag: ChallengeTag | null
-  tags: readonly ChallengeTag[]
-  walked: readonly MileRange[]
-  today: string
-  ownPhotoFor?: (poiId: string) => string | null
-  onSetNote: (note: string) => void
-  /** Takes the tag back - `poi` for one peak of a Triple Crown. */
-  onRemove?: (poi?: string) => void
-  onOpenWorkdays?: () => void
-  onClose: () => void
-}) {
-  // A dialog takes focus and gives it back (ChallengeDetail's `opener`), and
-  // Escape closes it, as every sheet in this app does.
-  const closeButton = useRef<HTMLButtonElement | null>(null)
-  useEffect(() => {
-    closeButton.current?.focus()
-  }, [])
-  const places = isPlaceItem(item) ? item.match.places : []
-  const place =
-    places.find((candidate) => candidate.poi === tag?.poi) ?? places[places.length - 1]
-  const own =
-    place !== undefined && ownPhotoFor !== undefined ? ownPhotoFor(place.poi) : null
-  const photo = own ?? item.photo
-  const chip = own !== null ? 'your photo' : item.photo !== null ? 'club photo' : null
-  const [note, setNote] = useState(
-    () =>
-      tags.find((existing) => existing.itemId === item.id && existing.note)?.note ?? '',
-  )
-
-  // "Your line": ten miles either side of the place, the hiker's own walked
-  // miles filled, the challenge's places on it as diamonds.
-  const centre = place?.mile ?? 0
-  const low = Math.max(0, centre - 10)
-  const high = centre + 10
-  const at = (mile: number) =>
-    `${((Math.min(high, Math.max(low, mile)) - low) / (high - low)) * 100}%`
-  const nearby: { mile: number; done: boolean; key: string }[] = []
-  for (const other of challenge.items) {
-    if (!isPlaceItem(other) || isSealed(other, today)) continue
-    for (const candidate of other.match.places) {
-      if (candidate.mile < low || candidate.mile > high) continue
-      nearby.push({
-        mile: candidate.mile,
-        done: isItemDone(other, challenge.id, tags),
-        key: `${other.id}/${candidate.poi}`,
-      })
-    }
-  }
-
-  return (
-    <div
-      className="challenge-sheet"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="tagged-place-name"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.stopPropagation()
-          onSetNote(note)
-          onClose()
-        }
-      }}
-    >
-      <div
-        className="challenge-sheet__photo"
-        style={
-          photo !== null
-            ? { backgroundImage: `url(${JSON.stringify(photo)})` }
-            : undefined
-        }
-      >
-        <div className="challenge-sheet__top">
-          <span className="challenges__eyebrow">{challenge.name}</span>
-          <button
-            ref={closeButton}
-            type="button"
-            className="challenge-sheet__close"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
-        <div className="challenge-sheet__bottom">
-          <h2 className="challenge-sheet__name" id="tagged-place-name">
-            {place?.name ?? itemTitle(item, today)}
-          </h2>
-          {tag !== null && (
-            <span className="challenge-sheet__moment">{formatMoment(tag.at)}</span>
-          )}
-        </div>
-        {chip !== null && <span className="challenge-sheet__chip">{chip}</span>}
-      </div>
-      <div className="challenge-sheet__body">
-        {item.note !== null && (
-          <div className="challenge-note">
-            <span className="challenges__eyebrow">
-              From {item.noteBy ?? challenge.orgName}
-            </span>
-            <p>{item.note}</p>
-            {onOpenWorkdays !== undefined && (
-              <button type="button" className="challenge-link" onClick={onOpenWorkdays}>
-                Workdays on this section
-              </button>
-            )}
-          </div>
-        )}
-        {place !== undefined && (
-          <div>
-            <p className="challenges__eyebrow">
-              Your line · {trailLabel(challenge.trail)}
-            </p>
-            <div className="challenge-line" aria-hidden="true">
-              <span className="challenge-line__track" />
-              {walked
-                .filter((range) => range.endMile > low && range.startMile < high)
-                .map((range) => (
-                  <span
-                    key={`${range.startMile}-${range.endMile}`}
-                    className="challenge-line__walked"
-                    style={{
-                      left: at(range.startMile),
-                      width: `calc(${at(range.endMile)} - ${at(range.startMile)})`,
-                    }}
-                  />
-                ))}
-              {nearby.map((point) => (
-                <span
-                  key={point.key}
-                  className="challenge-strip__point"
-                  style={{ left: at(point.mile) }}
-                >
-                  <Diamond done={point.done} />
-                </span>
-              ))}
-            </div>
-            <div className="challenge-line__ends">
-              <span>{mileLabel(low)}</span>
-              <span>{mileLabel(high)}</span>
-            </div>
-          </div>
-        )}
-        <label className="challenge-field">
-          <span className="challenges__eyebrow">One line for the register</span>
-          <input
-            type="text"
-            maxLength={200}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            onBlur={() => onSetNote(note)}
-          />
-          <span className="challenges__note">Stays on this phone.</span>
-        </label>
-        <div className="challenge-actions">
-          <button
-            type="button"
-            className="challenge-button"
-            onClick={() => {
-              onSetNote(note)
-              onClose()
-            }}
-          >
-            Done
-          </button>
-          {onRemove !== undefined && tag !== null && (
-            // For the hiker who pressed Tag all after walking past the
-            // junction without going up. A tag already sent is taken back on
-            // the server too (lib/useChallenges.ts).
-            <button
-              type="button"
-              className="challenge-button challenge-button--ghost"
-              onClick={() =>
-                onRemove(
-                  item.match.kind === 'places_all' ? (tag.poi ?? undefined) : undefined,
-                )
-              }
-            >
-              {CHALLENGE_WORDS.takeBack}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
   )
 }
 

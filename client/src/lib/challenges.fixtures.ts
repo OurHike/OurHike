@@ -92,7 +92,7 @@ export const ATC_ARTIFACT = {
       section: 'learn',
       icon: 'quiz',
       title: 'Take our A.T. trivia quiz.',
-      match: { kind: 'self_report' },
+      match: { kind: 'self_report', on_trail: false },
     },
     {
       id: 'monson-visitor-center',
@@ -155,7 +155,7 @@ export const ATC_ARTIFACT = {
       section: 'experience',
       icon: 'blaze',
       title: 'Take a photo of a white blaze.',
-      match: { kind: 'self_report' },
+      match: { kind: 'self_report', on_trail: true },
     },
     {
       id: 'trail-crew',
@@ -169,7 +169,7 @@ export const ATC_ARTIFACT = {
       section: 'protect',
       icon: 'trash',
       title: 'Pick up litter on a hike.',
-      match: { kind: 'self_report' },
+      match: { kind: 'self_report', on_trail: true },
     },
     {
       id: 'mystery-1',

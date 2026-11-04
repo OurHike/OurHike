@@ -391,7 +391,17 @@ def resolve_match(
             return None, f"workday org {org!r} is not a known organization"
         return {"kind": kind, "org": org, "trail": trail}, ""
 
-    return {"kind": "self_report"}, ""
+    # Whether "Where did it happen?" is asked when it is earned by hand
+    # (features/CHALLENGES_BLAZE_CARD.md, slice 3): the reviewer's judgement
+    # per at-home line - features/design/blaze-card/self-report-on-trail.json
+    # for the ATC's, 35 of 76 by the ATC's own wording - copied into the
+    # reviewed file, never derived here. Absent is false: an item nobody has
+    # judged asks nothing, which is the brief's "only when it can mean
+    # something" erring on silence.
+    on_trail = match.get("on_trail", False)
+    if not isinstance(on_trail, bool):
+        return None, "on_trail must be true or false"
+    return {"kind": "self_report", "on_trail": on_trail}, ""
 
 
 def _mystery(raw: object, today: date) -> tuple[dict | None, str]:

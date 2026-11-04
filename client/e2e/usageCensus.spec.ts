@@ -166,7 +166,6 @@ test.describe('usage measurement, linked to an account', { tag: '@backend' }, ()
     // linked rows back until that yes has reached the account
     // (lib/useUsageMeasurement.ts's `consentSyncs`). So the account's
     // preferences are answered too: none yet (404), and every push taken.
-    const batches: UsageBatch[] = []
     const pushes: Array<{ measurement_linked?: unknown }> = []
     const backend = await stubBackend(page, {
       'GET /preferences/me': { status: 404, body: { detail: 'no preferences yet' } },
@@ -176,21 +175,29 @@ test.describe('usage measurement, linked to an account', { tag: '@backend' }, ()
         return { status: 200, body: { ...body, updated_at: new Date().toISOString() } }
       },
       'POST /usage-events': (request) => {
-        const body = request.postDataJSON() as {
-          identified: boolean
-          events: Array<{ event: string }>
-        }
-        batches.push({
-          identified: body.identified,
-          token: request.headers()['authorization'],
-          events: body.events.map((row) => row.event),
-        })
+        const events = (request.postDataJSON() as { events: unknown[] }).events
         return {
           status: 202,
-          body: { accepted: body.events.length, duplicates: 0, refused: 0 },
+          body: { accepted: events.length, duplicates: 0, refused: 0 },
         }
       },
     })
+    const batches = (): UsageBatch[] =>
+      backend.seen
+        .filter(
+          (request) => request.method === 'POST' && request.path === '/usage-events',
+        )
+        .map((request) => {
+          const body = request.body as {
+            identified: boolean
+            events: Array<{ event: string }>
+          }
+          return {
+            identified: body.identified,
+            token: request.authorization,
+            events: body.events.map((row) => row.event),
+          }
+        })
     await seedSession(page)
     // Signed in, with "no" as the standing answer to linking.
     await seedPreferences(page, { measurement_linked: false })
@@ -213,7 +220,9 @@ test.describe('usage measurement, linked to an account', { tag: '@backend' }, ()
       await setBackendSignal(page, context, backend, { on: false })
       await setBackendSignal(page, context, backend, { on: true })
       const carried = () =>
-        batches.slice(from).filter((batch) => batch.events.includes('map_screen_viewed'))
+        batches()
+          .slice(from)
+          .filter((batch) => batch.events.includes('map_screen_viewed'))
       await expect.poll(() => carried().length, { timeout: 15_000 }).toBeGreaterThan(0)
       return carried()
     }
@@ -229,7 +238,7 @@ test.describe('usage measurement, linked to an account', { tag: '@backend' }, ()
     // UNLINKED TO BEGIN WITH: a row recorded under the standing no goes
     // anonymous. (A launch past first run queues nothing of its own to send.)
     const before = await viewTheMapAndSend(0)
-    for (const batch of batches) {
+    for (const batch of batches()) {
       expect(batch.identified).toBe(false)
       expect(batch.token).toBeUndefined()
     }
@@ -244,7 +253,7 @@ test.describe('usage measurement, linked to an account', { tag: '@backend' }, ()
       .poll(() => pushes.some((body) => body.measurement_linked === true))
       .toBe(true)
     await expect.poll(unpushedConsent).toEqual([])
-    const linkedFrom = batches.length
+    const linkedFrom = batches().length
     const linked = await viewTheMapAndSend(linkedFrom)
     // The row recorded under the yes went linked, with the session's token.
     for (const batch of linked) {
@@ -263,9 +272,9 @@ test.describe('usage measurement, linked to an account', { tag: '@backend' }, ()
         pushes.slice(pushedBefore).some((body) => body.measurement_linked === false),
       )
       .toBe(true)
-    const unlinkedFrom = batches.length
+    const unlinkedFrom = batches().length
     await viewTheMapAndSend(unlinkedFrom)
-    for (const batch of batches.slice(unlinkedFrom)) {
+    for (const batch of batches().slice(unlinkedFrom)) {
       expect(batch.identified).toBe(false)
       expect(batch.token).toBeUndefined()
     }

@@ -284,11 +284,9 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
         body: '<!doctype html><title>Payment page (example)</title><h1>Payment page (example)</h1>',
       }),
     )
-    const tokens: Array<string | undefined> = []
     const backend = await stubBackend(page, {
       'GET /support/me': { status: 200, body: summary() },
-      'PUT /support/me': (request) => {
-        tokens.push(request.headers()['authorization'])
+      'PUT /support/me': () => {
         return {
           status: 200,
           body: {
@@ -335,15 +333,15 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
     ).toBeVisible()
     // What the server was told: the tier, the website's delivery, the usage
     // switch's state, and the account it is for.
-    const [put] = exactly(backend.seen, 'PUT', '/support/me')
-    expect(put.body).toMatchObject({
+    const puts = exactly(backend.seen, 'PUT', '/support/me')
+    expect(puts).toHaveLength(1)
+    expect(puts[0].body).toMatchObject({
       amount_cents: 1200,
       delivery: 'redirect',
       accounting_email: false,
       usage_counts: true,
     })
-    expect(tokens).toHaveLength(1)
-    expect(tokens[0]).toMatch(/^Bearer /)
+    expect(puts[0].authorization).toMatch(/^Bearer /)
   })
 })
 

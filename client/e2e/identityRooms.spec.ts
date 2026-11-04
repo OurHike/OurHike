@@ -19,7 +19,7 @@
 // EXIT. Each is left the way it ships, asserted on the screen behind it
 // rather than on the control having been clicked.
 
-import { test, expect, type Page, type Request } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, seedHikerMode, bootFreshPage } from './support/seed'
 import { fakeSession, seedSession, sent, stubBackend } from './support/backend'
 import { writeIDBEntries } from './support/idb'
@@ -388,22 +388,19 @@ test.describe('the shared reads, signed in', { tag: '@backend' }, () => {
       timestamp: authoredAt,
       verified_at: null,
     }
-    // The Authorization header each read arrived with, in order.
-    const authorization = new Map<string, Array<string | undefined>>()
-    const answer = (path: string, body: unknown) => (request: Request) => {
-      authorization.set(path, [
-        ...(authorization.get(path) ?? []),
-        request.headers()['authorization'],
-      ])
-      return { status: 200, body }
-    }
-    await stubBackend(page, {
-      'GET /closures': answer('/closures', []),
-      'GET /reports': answer('/reports', []),
-      'GET /disputes': answer('/disputes', []),
-      'GET /field-notes': answer('/field-notes', []),
-      'GET /reports/mine': answer('/reports/mine', [own]),
+    const backend = await stubBackend(page, {
+      'GET /closures': { status: 200, body: [] },
+      'GET /reports': { status: 200, body: [] },
+      'GET /disputes': { status: 200, body: [] },
+      'GET /field-notes': { status: 200, body: [] },
+      'GET /reports/mine': { status: 200, body: [own] },
     })
+    // The Authorization header each GET of exactly `path` arrived with, in
+    // order - exactly, because `/reports` is a prefix of `/reports/mine`.
+    const authorization = (path: string) =>
+      backend.seen
+        .filter((entry) => entry.method === 'GET' && entry.path.split('?')[0] === path)
+        .map((entry) => entry.authorization)
     await seedSession(page)
     await seedPreferences(page)
     // lib/sentReports.ts's ledger, as the outbox leaves it after a send: the
@@ -432,14 +429,14 @@ test.describe('the shared reads, signed in', { tag: '@backend' }, () => {
     // phone that holds one - the token `/reports/mine` shows it had.
     const reads = ['/closures', '/reports', '/disputes', '/reports/mine']
     await expect
-      .poll(() => reads.filter((path) => (authorization.get(path) ?? []).length > 0))
+      .poll(() => reads.filter((path) => authorization(path).length > 0))
       .toEqual(reads)
     for (const path of ['/closures', '/reports', '/disputes']) {
-      expect(authorization.get(path), `GET ${path}`).toEqual(
-        authorization.get(path)!.map(() => undefined),
+      expect(authorization(path), `GET ${path}`).toEqual(
+        authorization(path).map(() => undefined),
       )
     }
-    for (const token of authorization.get('/reports/mine')!) {
+    for (const token of authorization('/reports/mine')) {
       expect(token).toMatch(/^Bearer /)
     }
 

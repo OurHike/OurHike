@@ -44,8 +44,12 @@ import type { Page, Request } from '@playwright/test'
 
 /** A port of its own, beside the hermetic build's 5173/4173 and the
  *  backend build's 5174/4174, and the same in both worlds so a trace from CI
- *  names the port a local run used. */
-export const BUCKET_PORT = process.env.CI ? 4175 : 5175
+ *  names the port a local run used. The hermetic build has a pair because it
+ *  runs the dev server locally and the preview in CI (playwright.config.ts's
+ *  PORT); this one is always built and previewed (BUCKET_COMMAND), so one
+ *  port serves both, the next after `vite preview`'s 4173 and the backend
+ *  build's CI 4174. */
+export const BUCKET_PORT = 4175
 export const BUCKET_ORIGIN = `http://localhost:${BUCKET_PORT}`
 
 export const BUCKET_PREFIX = '/__e2e-bucket'

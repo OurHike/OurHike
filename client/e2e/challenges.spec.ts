@@ -27,6 +27,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences } from './support/seed'
 import { readIDBEntry, writeIDBEntries } from './support/idb'
 import { CHALLENGES_DOCUMENT } from '../preview-shots/fixtures/challenges.mjs'
+import { CHALLENGE_WORDS } from '../src/lib/challengeWords'
 
 const EVENING = new Date('2027-07-14T23:30:00Z')
 const TODAY = '2027-07-14'
@@ -54,7 +55,7 @@ async function arrive(page: Page): Promise<void> {
 async function openChallenges(page: Page): Promise<void> {
   await page.getByRole('tab', { name: 'More' }).click()
   await page.locator('.more__row').filter({ hasText: 'Challenges' }).first().click()
-  await expect(page.getByRole('heading', { name: 'Your blazes' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: CHALLENGE_WORDS.yours })).toBeVisible()
 }
 
 test.describe('challenges', () => {
@@ -64,7 +65,9 @@ test.describe('challenges', () => {
     await arrive(page)
     await openChallenges(page)
     await page.getByRole('button', { name: 'More', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Your blazes' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: CHALLENGE_WORDS.yours })).toHaveCount(
+      0,
+    )
   })
 
   test('join from Browse, be asked at camp about what the walk passed, tag it, find it done', async ({
@@ -101,7 +104,7 @@ test.describe('challenges', () => {
     await page.getByRole('tab', { name: 'More' }).click()
     await expect(page.getByRole('heading', { name: 'Browse challenges' })).toBeVisible()
     await page.getByRole('button', { name: 'Challenges', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Your blazes' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: CHALLENGE_WORDS.yours })).toBeVisible()
     await page.getByRole('button', { name: /A\.T\. Summer Bucket List/ }).click()
     // The list opens on the ATC's first section (Learn); the earned item is
     // an Experience item, and Done is the pill that lists what was earned.

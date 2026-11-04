@@ -19,7 +19,7 @@ export async function before(page) {
 }
 
 export const caption =
-  'The blaze card in the challenge’s header: tiles in the ATC’s sections, earned ones white (#1962, seeded hiker)'
+  'The card in the challenge’s header: tiles in the ATC’s sections, earned ones white (#1962, seeded hiker)'
 export const alt =
   'A challenge screen whose dark green header holds a card of small tiles in four labelled rows, Learn, Experience, Protect and Mystery, a few tiles white where the rest are dark green, and a Bigger tiles button under it'
 

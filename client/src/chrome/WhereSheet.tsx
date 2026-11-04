@@ -1,6 +1,6 @@
 // "Where did it happen?" (#1963, features/CHALLENGES_BLAZE_CARD.md slice 3;
 // the frame is features/design/blaze-card/Where.dc.html): the second step
-// of earning a blaze by hand, asked only when it can mean something
+// of earning an item by hand, asked only when it can mean something
 // (lib/wherePlace.ts asksWhere). Five answers, each a card:
 //
 //   Here · <place> - only with a fix inside the corridor; the snapped mile.
@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Challenge, ChallengeItem } from '../lib/challenges'
+import { CHALLENGE_WORDS } from '../lib/challengeWords'
 import { mileLabel, titleOrSealed } from '../lib/challengeText'
 import { searchPois, type SearchablePoi } from '../lib/searchPoi'
 import {
@@ -119,7 +120,9 @@ export function WhereSheet({
           >
             ‹ Back
           </button>
-          <span className="challenges__eyebrow">Earning a blaze · 2 of 2</span>
+          <span className="challenges__eyebrow">
+            Earning {CHALLENGE_WORDS.noun} · 2 of 2
+          </span>
         </div>
         <h2
           className="where-sheet__heading"

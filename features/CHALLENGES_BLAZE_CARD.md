@@ -28,6 +28,10 @@ one entry per person, name and email, three mystery items each with its own draw
 - **The verb is "earn"**, not "paint": painting blazes is maintainer work and unauthorized
   blazing is a thing clubs fight. "Earn it", "12 blazes earned", "Your blazes". One constant,
   `CHALLENGE_WORDS`. (Poll it once with the frames edited both ways; "earn" unless overruled.)
+  **Superseded in part, 2026-11-04:** what is earned is **trail karma**, not a blaze — "12
+  trail karma earned", "Your trail karma" (maintainer, by poll: "blazes are official, lets not
+  mess with them"). Wherever this brief says a hiker earns a blaze, read trail karma; the
+  card, its tiles and their file names are unchanged. features/CHALLENGES.md has the record.
 - **The season lives at the bottom of Today, never the top.** Top of Today is today's
   business: the walk prompt (`ChallengeCampCard`, once a day, only when something was passed).
 - **The card is a picture; the list is the control.** Tiles are tappable only in the expanded

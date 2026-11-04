@@ -41,9 +41,15 @@ form.
   shows the hiker's own photo, the moment, and the club's note. Rewards are optional, and most
   challenges have none.
 - **2026-11-03, maintainer; confirmed by poll 2026-11-04 from the Card and Tile frames edited
-  both ways.** The verb is **earn**, not "tag" and never "paint": "Earn it", "12 blazes
-  earned", "Your blazes". Painting blazes is maintainer work and unauthorised blazing is a thing
-  clubs fight. Still one constant, `CHALLENGE_WORDS`; the comments and the prose below keep
+  both ways.** The verb is **earn**, not "tag" and never "paint": "Earn it". Painting blazes is
+  maintainer work and unauthorised blazing is a thing clubs fight.
+- **2026-11-04, maintainer, by poll from a picture of the word in the Challenges title, the
+  season strip, the tile sheet and the share poster.** What a hiker earns is **trail karma**,
+  never a blaze: "blazes are official, lets not mess with them". The brief's "12 blazes earned"
+  and "Your blazes" became "12 trail karma earned" and "Your trail karma". Picked from a second
+  round after the first (gold stars, feathers, gems, trophies) was "too boring"; patch and
+  sticker were never offered, because a club's finisher reward can be a real patch or sticker
+  in the mail. Still one constant, `CHALLENGE_WORDS`; the comments and the prose below keep
   "tag" where they describe the record (a `challengeTag` cargo is still what leaves the phone).
 - **2026-11-03, maintainer.** The ATC relationship is settled and no letter is needed; the
   basis on which the list's text is carried is recorded as `atc_bucket_list_licence` in
@@ -300,11 +306,11 @@ says so.
 |---|---|
 | #2b Your challenges | More → **Challenges**, a destination after "Volunteer & report" |
 | #5 Challenge detail, #7 mystery | `screens/ChallengeDetail.tsx` — the blaze card in the header (`chrome/BlazeCard.tsx`, CHALLENGES_BLAZE_CARD.md slice 2: the items as tiles in the club's sections, a white blaze per earned item; a section tap opens the list at it, and only the bigger card's 56 px tiles are buttons); pills are the club's sections in the club's order (*Learn · Experience · Protect · Mystery* for the ATC) and then *Done*; rows numbered 1–100 in the club's order (slice 1) |
-| #4b Tagged place → the tile sheet | `chrome/TileSheet.tsx` (CHALLENGES_BLAZE_CARD.md slice 3), opened from any row or a tile of the bigger card: the hiker's own photo (matched on the phone by time and place, never uploaded) or the club's, labelled so, else the item's glyph; the item's number and place; **Earn the blaze** or, once earned, the moment, where it happened and one-tap **Take it back**; "Near you" and "Also here" from what the phone knows; the club's note; a private register line. Earning by hand opens `chrome/WhereSheet.tsx` only when it can mean something (`lib/wherePlace.ts`): never for a `gps` tag, never for an at-home item marked `on_trail: false`, never for a named place. Here only with a fix in the corridor; always "On the trail, somewhere" with a state, which is where it opens with no fix; the answer stays on the phone beside the tag and the cargo is unchanged |
+| #4b Tagged place → the tile sheet | `chrome/TileSheet.tsx` (CHALLENGES_BLAZE_CARD.md slice 3), opened from any row or a tile of the bigger card: the hiker's own photo (matched on the phone by time and place, never uploaded) or the club's, labelled so, else the item's glyph; the item's number and place; **Earn some karma** or, once earned, the moment, where it happened and one-tap **Take it back**; "Near you" and "Also here" from what the phone knows; the club's note; a private register line. Earning by hand opens `chrome/WhereSheet.tsx` only when it can mean something (`lib/wherePlace.ts`): never for a `gps` tag, never for an at-home item marked `on_trail: false`, never for a named place. Here only with a fix in the corridor; always "On the trail, somewhere" with a state, which is where it opens with no fix; the answer stays on the phone beside the tag and the cargo is unchanged |
 | #5a Browse | `screens/ChallengeBrowse.tsx` — Trail, Club and Open-now filters; "On your plan" first, then the rest by distance from the plan. **No popularity sort and no hiker counts.** |
 | #1 Map layer | a Legend switch "Challenge places", **off by default**, listed only when a joined challenge is on the chosen trail and has a place to pin; a diamond pin from `map/poiIcons.ts`, hollow until tagged, drawn over the place's own waypoint pin at that pin's size at every zoom — the waypoint layer's own zoom ramp and quiet-type scale (maintainer poll, 2026-09-30, from frames at z7/z9/z11/z13; a fixed 36.8 px diamond was the first build). The trail line is never recoloured. |
 | #2, #2c Place card | "On your challenges" above "About this place", one row per item, **Earn it** inside the window and the window's date ("opens May 13") outside it |
-| #3 Today | "From today's walk", once, after the day's walk ends, only when something was passed — and, last of everything on Today in every mode, the season strip (`chrome/ChallengeSeasonStrip.tsx`, CHALLENGES_BLAZE_CARD.md slice 4): the mini card, blazes earned, the states they landed in and how many at home, the club's finish line in the club's words; never a numeral for what is missing |
+| #3 Today | "From today's walk", once, after the day's walk ends, only when something was passed — and, last of everything on Today in every mode, the season strip (`chrome/ChallengeSeasonStrip.tsx`, CHALLENGES_BLAZE_CARD.md slice 4): the mini card, trail karma earned, the states it landed in and how many at home, the club's finish line in the club's words; never a numeral for what is missing |
 | #6, #6b Plan | the places on this route by day; when no joined challenge touches the route, the one best match, dashed, with Join and Hide |
 | #8b, #8c Finish | with a reward, the entry; with none, "You walked …" and Done. Reachable from the day of joining (slice 4): before the finish line it shows what the club receives, "One entry per person — use the email you signed up with", each mystery item's own drawing, and when the entry opens; the form itself only once the finish line is reached. A sealed mystery item shows the club's `teaser` under "Sealed until …" |
 | #2a Org console | Org home → **Challenges**, and its **Finishers** sub-page |

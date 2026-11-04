@@ -1,4 +1,4 @@
-// Where a blaze happened, on this phone only (#1963, features/
+// Where an earned item happened, on this phone only (#1963, features/
 // CHALLENGES_BLAZE_CARD.md, slice 3; the frame is
 // features/design/blaze-card/Where.dc.html).
 //
@@ -55,7 +55,7 @@ export function stateName(code: TrailStateCode): string {
   return TRAIL_STATES.find((state) => state.code === code)?.name ?? code
 }
 
-/** Where a blaze happened, as the hiker said. Device-only. */
+/** Where an earned item happened, as the hiker said. Device-only. */
 export type TagPlace =
   /** The fix's snapped mile when it was earned. */
   | { kind: 'here'; mile: number }

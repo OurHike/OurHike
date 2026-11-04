@@ -6,7 +6,7 @@
 // the walk prompt.
 //
 // WHAT IT SAYS: the mini card (BlazeCard at 8 px, decoration), how many
-// blazes, the states they landed in and how many at home, and the club's
+// trail karma, the states it landed in and how many at home, and the club's
 // finish line in the club's words. WHAT IT NEVER SAYS: how many are missing,
 // days left, anyone else (features/VOLUNTEERING.md §5). It is one button
 // that opens the challenge.
@@ -58,8 +58,7 @@ export function ChallengeSeasonStrip({
         </span>
         <span className="season__text">
           <span className="season__count">
-            <strong>{earned}</strong>{' '}
-            {earned === 1 ? CHALLENGE_WORDS.noun : CHALLENGE_WORDS.nounPlural}
+            <strong>{earned}</strong> {CHALLENGE_WORDS.noun}
           </span>
           {where !== '' && <span className="season__where">{where}</span>}
           <span className="season__meta">

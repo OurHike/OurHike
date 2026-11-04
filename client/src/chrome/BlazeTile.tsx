@@ -8,7 +8,7 @@
 // 56 px (the brief's first hard requirement). At the card's own 26 px and
 // the strip's 8 px it is a span inside a section the hiker taps as a whole.
 //
-// NO STAMP ANIMATION (maintainer, 2026-09-30): a tile becoming a blaze is a
+// NO STAMP ANIMATION (maintainer, 2026-09-30): a tile becoming earned is a
 // 150 ms colour change in the stylesheet, nothing else.
 
 import { blazeIconPath } from './blazeIcons'

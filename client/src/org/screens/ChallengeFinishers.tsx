@@ -250,7 +250,7 @@ export function ChallengeFinishers({
         <p className="org-panel__note">
           An entry carries what the finisher chose to send — a name, and an email or a
           mailing address — and the places they {CHALLENGE_WORDS.past}, each marked as
-          found by GPS or {CHALLENGE_WORDS.past} by hand. What a {CHALLENGE_WORDS.noun}{' '}
+          found by GPS or {CHALLENGE_WORDS.past} by hand. What an item{' '}
           {CHALLENGE_WORDS.past} by hand is worth is yours to decide.
         </p>
         <div className="org-inline">

@@ -8,7 +8,7 @@ export async function before(page) {
 }
 
 export const caption =
-  'The blaze card at 56 px: every tile a button, Smaller tiles under it (#1962, seeded hiker)'
+  'The card at 56 px: every tile a button, Smaller tiles under it (#1962, seeded hiker)'
 export const alt =
   'The same challenge header with the card’s tiles drawn large enough to tap, each showing its glyph, the earned ones white, and a Smaller tiles button'
 

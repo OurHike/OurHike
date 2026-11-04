@@ -26,7 +26,7 @@
 --
 -- A file row whose feature this build does not stage is not a drop and is
 -- not listed. CI's fixture build loads the whole file
--- (extract/_fixtures.py's reviewed_file) and stages none of the 21
+-- (extract/_fixtures.py's REVIEWED FILES) and stages none of the 21
 -- shelters whose synthesized water id the ledger retired
 -- (make_dbt_fixtures.py's `kept`; 21 such rows with a distance, measured
 -- on the fixture warehouse 2026-11-04), and on a live build a feature ATC
@@ -39,7 +39,9 @@
 --
 -- Measured 2026-11-04 on the committed files: 512 rows, 305 with a
 -- distance, every poi_id a live ledger row, and 0 rows here on the fixture
--- warehouse. int_points_of_interest__water_drops_a_distance_whose_poi_id_
+-- warehouse; 2 rows on a copy of it with one file row pointed at a retired
+-- atc_csi id and one at an id the ledger never minted.
+-- int_points_of_interest__water_drops_a_distance_whose_poi_id_
 -- the_ledger_retired (_points_of_interest__unit_tests.yml) pins the silent
 -- drop this test turns loud.
 --

@@ -205,7 +205,8 @@ poster is that SVG rasterised on device.
 Nine changes from the maintainer's second design pass (the review doc, "Second look"). Four
 are already in the mocks (three words only: card, blaze, map; "earn"; the explainer rests
 after one pass; nothing under 11 px). The five for the build: tiles never toggle on tap and
-every blaze has a one-tap "Take it back"; the list is numbered 1–100 in the ATC's order with
+every blaze has a one-tap "Take it back" (narrowed 2026-11-04, by poll: not on the kinds
+that earn themselves, which would only be earned again — features/CHALLENGES.md); the list is numbered 1–100 in the ATC's order with
 "Print my card" as a PDF; the Where sheet opens on "On the trail, somewhere" when there is no
 fix and no challenge screen ever asks to turn location on; the entry screen says "One entry
 per person — use the email you signed up with"; nothing on a challenge screen waits on the

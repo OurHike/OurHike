@@ -5,7 +5,9 @@
 //
 //   Here · <place> - only with a fix inside the corridor; the snapped mile.
 //   Somewhere I walked today - only on a day something was walked.
-//   Pick a place - the phone's own waypoints, by name (lib/searchPoi.ts).
+//   Pick a place - the phone's own waypoints, by name (lib/searchPoi.ts);
+//     for "any shelter" only shelters, so the answer to "which shelter"
+//     cannot be a summit (review of #2015).
 //   On the trail, somewhere - always, with a state; where the sheet opens
 //     with no fix, for the hiker with no signal and no download.
 //   Not on the trail - always.
@@ -33,7 +35,8 @@ export interface WhereSheetProps {
   item: ChallengeItem
   today: string
   options: WhereOptions
-  /** The phone's own waypoints, for Pick a place; empty hides the card. */
+  /** The phone's own waypoints, for Pick a place; none of the item's kind
+   *  hides the card. */
   places: readonly SearchablePoi[]
   onChoose: (place: TagPlace) => void
   onBack: () => void
@@ -41,7 +44,12 @@ export interface WhereSheetProps {
 
 type Choice = 'here' | 'walked' | 'poi' | 'state' | 'off'
 
-/** How many places the search lists; the box reaches the rest by name. */
+/** How many places the search lists; the box reaches the rest by name.
+ *
+ *  @unvalidated - eight is picked to keep the list inside one phone screen
+ *  under the open keyboard, not measured. What would settle it is the
+ *  smallest list that still shows the place a hiker typed toward after two
+ *  or three letters, on the real waypoint set. */
 const PLACE_LIMIT = 8
 
 export function WhereSheet({
@@ -61,9 +69,14 @@ export function WhereSheet({
   useEffect(() => {
     heading.current?.focus()
   }, [])
+  const ofType = item.match.kind === 'poi_type' ? item.match.type : null
+  const candidates = useMemo(
+    () => (ofType === null ? places : places.filter((place) => place.type === ofType)),
+    [ofType, places],
+  )
   const found = useMemo(
-    () => (choice === 'poi' ? searchPois(query, places, { limit: PLACE_LIMIT }) : []),
-    [choice, query, places],
+    () => (choice === 'poi' ? searchPois(query, candidates, { limit: PLACE_LIMIT }) : []),
+    [choice, query, candidates],
   )
 
   const chosen: TagPlace | null = (() => {
@@ -148,12 +161,14 @@ export function WhereSheet({
             'Somewhere I walked today',
             `${mileLabel(options.walked.fromMile)} – ${mileLabel(options.walked.toMile)}`,
           )}
-        {places.length > 0 &&
+        {candidates.length > 0 &&
           card(
             'poi',
             'Pick a place',
             picked === null
-              ? 'any shelter, summit or town on the trail'
+              ? ofType !== null
+                ? 'which one, by its name'
+                : 'any shelter, summit or town on the trail'
               : picked.mile === undefined
                 ? picked.name
                 : `${picked.name} · ${mileLabel(picked.mile)}`,

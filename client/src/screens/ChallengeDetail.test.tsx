@@ -295,6 +295,82 @@ describe('earning from the list asks where only when it can mean something (#196
   })
 })
 
+describe('what the review of #2015 found on the challenge page', () => {
+  const rowButton = (name: RegExp) =>
+    screen
+      .getAllByRole('button', { name })
+      .find((button) => button.classList.contains('challenge-row__open'))!
+
+  it('opens a sealed mystery item’s tile with nothing to earn on it', async () => {
+    const { props } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Mystery' }))
+    await userEvent.click(rowButton(/Sealed until Jul 20/))
+    const sheet = screen.getByRole('dialog', { name: 'Sealed until Jul 20' })
+    expect(within(sheet).queryByRole('button', { name: /Earn/ })).toBeNull()
+    expect(props.onTag).not.toHaveBeenCalled()
+  })
+
+  it('gives focus back to the row’s pill when the Where sheet is backed out of', async () => {
+    detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
+    const pill = screen.getByRole('button', {
+      name: /Earn it: Take a photo of a white blaze/,
+    })
+    await userEvent.click(pill)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(pill).toHaveFocus()
+  })
+
+  it('gives focus back to the tile’s Earn button from the Where sheet, and keeps the tile out of reach while it is open', async () => {
+    detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
+    await userEvent.click(rowButton(/Take a photo of a white blaze/))
+    await userEvent.click(screen.getByRole('button', { name: 'Earn some karma' }))
+    const tile = screen.getByRole('dialog', {
+      name: /Take a photo of a white blaze/,
+      hidden: true,
+    })
+    expect(tile).toHaveAttribute('inert')
+    const where = screen.getByRole('dialog', { name: 'Where did it happen?' })
+    await userEvent.click(within(where).getByRole('button', { name: '‹ Back' }))
+    expect(tile).not.toHaveAttribute('inert')
+    expect(screen.getByRole('button', { name: 'Earn some karma' })).toHaveFocus()
+  })
+
+  it('gives focus back to the tile on the bigger card that opened the sheet, not to a row', async () => {
+    detail()
+    await userEvent.click(rowButton(/Take our A\.T\. trivia/))
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Bigger tiles' }))
+    const tile = screen.getByRole('button', { name: /^Take the McAfee Knob shuttle/ })
+    await userEvent.click(tile)
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(tile).toHaveFocus()
+  })
+
+  it('gives each item opened its own sheet, so one item’s register line is never written onto the next', async () => {
+    const { props } = detail({
+      state: joinedWith(ATC_CHALLENGE, 'springer-mountain', 'mcafee-knob'),
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
+    await userEvent.click(rowButton(/Take the McAfee Knob shuttle/))
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /register/ }),
+      'cold morning',
+    )
+    // A keyboard or a pointer can leave a sheet that traps nothing, and
+    // open the next row underneath it.
+    await userEvent.click(rowButton(/southern terminus at Springer/))
+    expect(screen.getByRole('textbox', { name: /register/ })).toHaveValue('')
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(props.onSetNote).not.toHaveBeenCalledWith(
+      item(ATC_CHALLENGE, 'springer-mountain'),
+      'cold morning',
+    )
+  })
+})
+
 describe('the finish', () => {
   const finished = () =>
     joinedWith(

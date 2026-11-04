@@ -41,8 +41,9 @@ export interface BlazeCardProps {
   size: BlazeCardSize
   /** The card's size: a tap on a section opens the list at it. */
   onOpenSection?: (sectionId: string) => void
-  /** The expanded size: a tap on a tile opens that item's row. */
-  onOpenItem?: (item: ChallengeItem) => void
+  /** The expanded size: a tap on a tile opens that item's tile sheet;
+   *  `from` is the tile, where focus returns. */
+  onOpenItem?: (item: ChallengeItem, from: HTMLElement) => void
 }
 
 export function BlazeCard({
@@ -88,7 +89,7 @@ export function BlazeCard({
                   sealed={sealed}
                   onPress={
                     expanded && onOpenItem !== undefined
-                      ? () => onOpenItem(item)
+                      ? (from) => onOpenItem(item, from)
                       : undefined
                   }
                   label={

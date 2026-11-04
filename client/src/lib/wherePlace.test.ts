@@ -109,10 +109,10 @@ describe('a stored place', () => {
     expect(readTagPlace('Virginia')).toBeNull()
   })
 
-  it('prints as a mile, a day, a place, a state or not on the trail', () => {
-    expect(placeWords({ kind: 'here', mile: 714.9 })).toBe('mi 714.9 · here')
+  it('prints as a mile, a day, a place, a state or not on the trail, in words that stay true on a later day', () => {
+    expect(placeWords({ kind: 'here', mile: 714.9 })).toBe('mi 714.9 · where you stood')
     expect(placeWords({ kind: 'walked', fromMile: 710, toMile: 716 })).toBe(
-      'mi 710.0 – mi 716.0 · walked today',
+      'mi 710.0 – mi 716.0 · on that day’s walk',
     )
     expect(
       placeWords({ kind: 'poi', poi: 'x', name: 'Campbell Shelter', mile: 713 }),

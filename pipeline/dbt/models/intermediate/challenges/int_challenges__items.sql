@@ -173,7 +173,13 @@ typed as (
         coalesce(json_type(off_trail_json), 'NULL') as off_trail_type,
         -- A self_report item's "Where did it happen?" switch (#1963): JSON
         -- true, false, or absent (false); anything else is refused below.
-        coalesce(json_type(on_trail_json), 'NULL') as on_trail_type,
+        -- Absent and JSON null are different answers: json_extract gives SQL
+        -- null for a missing key and JSON null for `"on_trail": null`, which
+        -- lib/challenges.py refuses (review of #2015).
+        case
+            when on_trail_json is null then 'ABSENT'
+            else json_type(on_trail_json)
+        end as on_trail_type,
         coalesce(
             json_type(on_trail_json) = 'BOOLEAN'
             and json_extract_string(on_trail_json, '$') = 'true',
@@ -704,7 +710,7 @@ match_checked as (
                 end
             when
                 checked.kind = 'self_report'
-                and checked.on_trail_type not in ('NULL', 'BOOLEAN')
+                and checked.on_trail_type not in ('ABSENT', 'BOOLEAN')
                 then 'on_trail must be true or false'
         end as match_problem,
         -- What the match publishes as, by kind.

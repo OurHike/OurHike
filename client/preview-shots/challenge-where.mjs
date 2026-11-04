@@ -1,8 +1,9 @@
 // "Where did it happen?" with location off (#1963, frame
 // features/design/blaze-card/Where.dc.html): the seeded hiker earns "Take a
 // photo of a white blaze" - an at-home item the ATC's wording puts on the
-// trail - from its tile, and the sheet opens on "On the trail, somewhere"
-// because this phone has no fix. No Here card, and nothing asking for one.
+// trail - from its row's Earn it pill (the tile sheet's Earn button opens the
+// same sheet), and it opens on "On the trail, somewhere" because this phone
+// has no fix. No Here card, and nothing asking for one.
 //
 // SEEDED, AND SAID SO: fixtures/challenges.mjs, no location granted.
 import { EVENING, openChallenges, seedChallenges } from './fixtures/challenges.mjs'

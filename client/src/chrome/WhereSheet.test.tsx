@@ -1,11 +1,33 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WhereSheet } from './WhereSheet'
 import { ATC_CHALLENGE } from '../lib/challenges.fixtures'
 import { whereOptions } from '../lib/wherePlace'
 
-afterEach(cleanup)
+// jsdom has no navigator.geolocation; a stand-in whose every call is
+// watched, so "never asks for location" is held by what the sheet calls and
+// not only by what it says (review of #2015).
+const geolocation = {
+  getCurrentPosition: vi.fn(),
+  watchPosition: vi.fn(),
+  clearWatch: vi.fn(),
+}
+beforeEach(() => {
+  Object.defineProperty(navigator, 'geolocation', {
+    value: geolocation,
+    configurable: true,
+  })
+})
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
+
+function expectNoLocationAsked() {
+  expect(geolocation.getCurrentPosition).not.toHaveBeenCalled()
+  expect(geolocation.watchPosition).not.toHaveBeenCalled()
+}
 
 const TODAY = '2027-07-14'
 const sunrise = ATC_CHALLENGE.items.find((entry) => entry.id === 'white-blaze-photo')!
@@ -38,8 +60,9 @@ function sheet(overrides: Partial<Parameters<typeof WhereSheet>[0]> = {}) {
 }
 
 describe('Where did it happen? (#1963)', () => {
-  it('with no fix opens on "On the trail, somewhere", offers no Here, and never mentions location', () => {
+  it('with no fix opens on "On the trail, somewhere", offers no Here, and never mentions or asks for location', () => {
     sheet()
+    expectNoLocationAsked()
     expect(screen.queryByRole('button', { name: /^Here/ })).toBeNull()
     expect(
       screen.getByRole('button', { name: /On the trail, somewhere/ }),
@@ -117,5 +140,45 @@ describe('Where did it happen? (#1963)', () => {
     expect(document.body.textContent).not.toMatch(
       /other hikers|behind|streak|\brank|leaderboard|you haven[’']t|left to go|remaining/i,
     )
+  })
+
+  it('asks for no location through every answer it offers', async () => {
+    sheet({
+      options: whereOptions({
+        fixMile: 714.9,
+        todayRanges: [{ startMile: 700, endMile: 715 }],
+      }),
+    })
+    for (const name of [
+      /^Here/,
+      /Somewhere I walked today/,
+      /Pick a place/,
+      /On the trail, somewhere/,
+      /Not on the trail/,
+    ])
+      await userEvent.click(screen.getByRole('button', { name }))
+    expectNoLocationAsked()
+  })
+
+  it('offers only that kind of place for "any shelter", so the answer cannot be a summit', async () => {
+    const logbook = ATC_CHALLENGE.items.find((entry) => entry.id === 'shelter-logbook')!
+    sheet({ item: logbook })
+    await userEvent.click(screen.getByRole('button', { name: /Pick a place/ }))
+    expect(screen.getByRole('button', { name: /Pick a place/ })).toHaveTextContent(
+      'which one, by its name',
+    )
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Its name' }), 'm')
+    const offered = screen
+      .getAllByRole('button', { name: /Shelter|Summit/ })
+      .filter((button) => button.classList.contains('where-places__row'))
+      .map((button) => button.textContent)
+    expect(offered.join()).toContain('Campbell Shelter')
+    expect(offered.join()).not.toContain('McAfee Knob Summit')
+  })
+
+  it('offers no Pick a place for "any shelter" when the phone holds no shelter', () => {
+    const logbook = ATC_CHALLENGE.items.find((entry) => entry.id === 'shelter-logbook')!
+    sheet({ item: logbook, places: PLACES.filter((place) => place.type !== 'shelter') })
+    expect(screen.queryByRole('button', { name: /Pick a place/ })).toBeNull()
   })
 })

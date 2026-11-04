@@ -185,13 +185,16 @@ export function formatMoment(iso: string): string {
 
 /** One line for where an earned item happened (lib/wherePlace.ts), as the sheet and
  *  the Where view print it: a mile, a day's extent, a place, a state, or
- *  "Not on the trail". */
+ *  "Not on the trail". Read on any later day, so nothing in it is relative
+ *  to now: "here" and "walked today" were the Where sheet's words at the
+ *  moment of earning, and printed under "earned Jul 2" on Jul 14 they said
+ *  something false (review of #2015). */
 export function placeWords(place: TagPlace): string {
   switch (place.kind) {
     case 'here':
-      return `${mileLabel(place.mile)} · here`
+      return `${mileLabel(place.mile)} · where you stood`
     case 'walked':
-      return `${mileLabel(place.fromMile)} – ${mileLabel(place.toMile)} · walked today`
+      return `${mileLabel(place.fromMile)} – ${mileLabel(place.toMile)} · on that day’s walk`
     case 'poi':
       return place.mile === null ? place.name : `${place.name} · ${mileLabel(place.mile)}`
     case 'state':

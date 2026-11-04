@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.org_access import OrgAccess, club_by_slug, require_manage_volunteers, resolve_access
+from app.core.org_access import NO_SUCH_ORGANIZATION, OrgAccess, club_by_slug, require_manage_volunteers, resolve_access
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
 from app.db.session import get_db
@@ -117,12 +117,16 @@ def list_workdays(
     `days` is capped rather than trusted, because an unbounded window on a
     public endpoint is a full table scan anybody can ask for.
 
-    **A `pending` organization's workdays are never listed**, with `org` or
-    without it. Nothing about a held registration is published (`OrgState`),
-    and `create_workday` below refuses one now; this hides any row it wrote
+    **A `pending` organization's workdays are never listed**, and an `org`
+    naming one is the 404 a slug nobody registered gets, to everybody: an
+    empty list there told anybody the slug was held (the 2026-11-04 security
+    review; `club_for_a_public_read` in core/org_access.py is the rule).
+    Nothing about a held registration is published (`OrgState`), and
+    `create_workday` below refuses one now; this hides any row it wrote
     before that refusal existed. The embed an organization pastes on its own
-    site (site/public/embed/v1/ourhike.js) and the console both read this
-    list. Every other state lists exactly as before.
+    site (site/public/embed/v1/ourhike.js) draws nothing on the 404, and the
+    console reads this list as optional, so neither breaks on it. Every
+    other state lists exactly as before.
     """
     window = max(1, min(days, 365))
     query = (
@@ -136,7 +140,10 @@ def list_workdays(
         )
     )
     if org:
-        query = query.filter(WorkProject.club_id == club_by_slug(db, org).id)
+        club = club_by_slug(db, org)
+        if club.state == OrgState.pending:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_SUCH_ORGANIZATION)
+        query = query.filter(WorkProject.club_id == club.id)
 
     projects = query.order_by(WorkProject.starts_on, WorkProject.title).all()
     counts = _counts(db, [project.id for project in projects])

@@ -16,6 +16,14 @@ import { type UsageMeasurementInput, useUsageMeasurement } from './useUsageMeasu
 // recording when it should and, as often the point, NOT recording when it
 // should not: a restored session is not a sign-in, an old install is not a
 // new one, and nothing at all is kept while "Share usage statistics" is off.
+//
+// EVERY "NOTHING HAPPENED" WAITS ON `idleForTests()`, the hook's own promise that
+// every record, write and send it started has finished (TESTING.md: wait on
+// an observable that proves the sequence completed, never on a sleep). Seven
+// of these used to sleep 20 ms of real time and then assert absence, the
+// shape that passes on a broken hook exactly as readily as on a correct one;
+// `idleForTests()` after the action is red on the broken hook, because the write it
+// wrongly started is waited for.
 
 vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), update: vi.fn() }))
 vi.mock('./api', () => ({
@@ -43,6 +51,10 @@ beforeEach(() => {
   vi.mocked(accessToken).mockReset().mockResolvedValue('token')
 })
 afterEach(() => {
+  // Every hook a test rendered is unmounted before the next, so one answer
+  // (a $0 kept, a visibilitychange) is heard by one hook, as it is in the
+  // app - hooks left mounted answered later tests' events.
+  cleanup()
   vi.useRealTimers()
 })
 
@@ -104,7 +116,7 @@ describe('while sharing is off', () => {
 
     result.current.planMade({ miles: 5 })
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await result.current.idleForTests()
     expect(await events()).toEqual([])
   })
 
@@ -140,11 +152,13 @@ describe('sign-in', () => {
   it('does not count an account restored at launch as a sign-in', async () => {
     const onSignIn = vi.fn()
 
-    renderHook(() =>
+    const { result } = renderHook(() =>
       useUsageMeasurement(input({ accountEmail: 'alice@example.org', onSignIn })),
     )
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // The launch's own install and visit writes are done: so is the sign-in
+    // effect, which ran in the same mount and started no write.
+    await result.current.idleForTests()
     expect(await events()).not.toContain('user_login')
     expect(onSignIn).not.toHaveBeenCalled()
   })
@@ -182,11 +196,6 @@ describe('a $0 support answer', () => {
     },
     trailIndex: {} as TrailIndex,
   } as Partial<UsageMeasurementInput>
-
-  // Every hook an earlier test rendered is still mounted in this file, each
-  // listening for the $0 - unmounted here so one answer is heard by one hook,
-  // as it is in the app.
-  beforeEach(() => cleanup())
 
   async function initialised(overrides: Partial<UsageMeasurementInput> = {}) {
     const hook = renderHook(() =>
@@ -244,11 +253,11 @@ describe('a $0 support answer', () => {
   })
 
   it('records nothing when the $0 is kept while sharing is off', async () => {
-    renderHook(() => useUsageMeasurement(input({ enabled: false })))
+    const { result } = renderHook(() => useUsageMeasurement(input({ enabled: false })))
 
     writeZeroChoice(new Date())
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await result.current.idleForTests()
     expect(await events()).toEqual([])
   })
 })
@@ -319,7 +328,7 @@ describe('plans', () => {
     stored = { ...(stored as UsageStore), rows: [], off: true }
     result.current.planMade({ miles: 4 })
 
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await result.current.idleForTests()
     expect(await events()).toEqual([])
   })
 
@@ -390,7 +399,7 @@ describe('sending', () => {
     )
     result.current.planMade({ miles: 3 })
     await waitFor(async () => expect(await events()).toContain('hike_plan_made'))
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await result.current.idleForTests()
     expect(apiFetch).not.toHaveBeenCalled()
 
     rerender(
@@ -424,7 +433,8 @@ describe('sending linked rows', () => {
     await waitFor(async () => expect(await events()).toContain('hike_plan_made'))
 
     rerender(input({ ...alice, online: true }))
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // The flush the signal started has run to its end, which is the hold.
+    await result.current.idleForTests()
 
     expect(apiFetch).not.toHaveBeenCalled()
     expect(await events()).toContain('hike_plan_made')
@@ -474,13 +484,14 @@ describe('visits', () => {
       },
     }
 
-    renderHook(() => useUsageMeasurement(input()))
-    renderHook(() => useUsageMeasurement(input()))
+    const first = renderHook(() => useUsageMeasurement(input()))
+    const second = renderHook(() => useUsageMeasurement(input()))
 
-    await waitFor(() =>
-      expect((stored as UsageStore).session?.startedAt).toBeGreaterThan(now - 1000),
-    )
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    await Promise.all([
+      first.result.current.idleForTests(),
+      second.result.current.idleForTests(),
+    ])
+    expect((stored as UsageStore).session?.startedAt).toBeGreaterThan(now - 1000)
     expect((await events()).filter((event) => event === 'session')).toHaveLength(1)
   })
 

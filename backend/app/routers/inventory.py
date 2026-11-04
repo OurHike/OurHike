@@ -240,6 +240,12 @@ def enrol_in_inventory(
     club. Asking again answers the enrolment that already exists, with 200
     rather than 201, so a double tap or a retry is not an error.
     """
+    # A held (`pending`) registration. Anybody without a seat there never
+    # reaches this line: `org_access` answers them the 404 an unknown slug
+    # gets, #2018 — Harden the release review's security findings: one
+    # domain normaliser, held registrations off public reads, strict Stripe
+    # ids and choices, hash-pinned rollup installs. This 409 is what the
+    # registration's own seat holders get, who can see it exists.
     if access.club.state == OrgState.pending:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

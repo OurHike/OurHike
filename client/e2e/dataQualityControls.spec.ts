@@ -6,8 +6,10 @@ import {
 import { serveDataQuality } from '../preview-shots/fixtures/dataQuality.mjs'
 import {
   EXAMPLE_NOW,
+  hourlyDatabaseNearItsLimit,
   hourlyManyProblems,
   hourlyWithWarning,
+  monthlyAllGreen,
   monthlyManyProblems,
   monthlyWithWarnings,
 } from '../../site/src/lib/dataQualityExamples.mjs'
@@ -198,6 +200,62 @@ test('By finished table keeps every table name to one line on a phone, its sched
       .filter({ hasText: 'trail_lines' })
       .locator('.dq-lane-tag'),
   ).toHaveText('Monthly · 412 checks')
+})
+
+test('the database-size row reads its megabytes and the limit it fails at, and charts an unbanded history', async ({
+  page,
+}) => {
+  // THE DATABASE-SIZE STRIP: OurHike's own database held to fixed limits
+  // rather than to a range learned from the builds before, so its row says
+  // the size against the limit (site/src/lib/dataQuality.mjs's sizeSentence)
+  // and its chart draws two dashed lines where every other series has a
+  // band (limitedChartView). dataQuality.test.mjs holds both sentences and
+  // the view; what it cannot see is the page drawing them - an SVG with no
+  // band path and two limit lines, under a key that says what each means.
+  await open(page, { monthly: monthlyAllGreen(), hourly: hourlyDatabaseNearItsLimit() })
+  const size = row(page, 'base_ourhike__database_size', 'Volume')
+  await expect(size).toHaveCount(1)
+  await expect(size.locator('.dq-item__sentence')).toHaveText(
+    '415 MB in this build · limit 475 MB.',
+  )
+  // One warning, so its kind is open as the page loads and the row is on
+  // screen without a tap.
+  await expect(page.locator('details[data-fold="volume"]')).toHaveAttribute('open')
+  await expect(size).toBeVisible()
+
+  await size.locator('[data-chart-key]').click()
+  await expect(title(page)).toContainText('base_ourhike__database_size')
+  await expect(size.locator('[data-chart-key]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('[data-charted]')).toContainText('Charted from Needs a look')
+
+  // UNBANDED: no "usual range" drawn or named, and the limits drawn and
+  // named at their left ends - the fail limit the row's sentence quotes.
+  const chart = page.locator('[data-chart-svg]')
+  await expect(chart.locator('.dq-chart__band')).toHaveCount(0)
+  await expect(chart.locator('.dq-chart__limit--warn')).toHaveCount(1)
+  await expect(chart.locator('.dq-chart__limit--fail')).toHaveCount(1)
+  await expect(chart.locator('.dq-chart__limit-label')).toHaveText([
+    'warns 400 MB',
+    'fails 475 MB',
+  ])
+  // The key names both lines. It is aria-hidden, so the caption under the
+  // chart is what a screen reader hears, and it says the same two sizes.
+  const key = page.locator('.dq-key')
+  await expect(key.locator('.dq-key__band')).toHaveCount(0)
+  await expect(key).toContainText('Warns from 400 MB')
+  await expect(key).toContainText('Fails from 475 MB')
+  await expect(page.locator('.dq-figcaption')).toContainText(
+    'The check warns from 400 MB and fails from 475 MB.',
+  )
+
+  // THE NUMBERS BEHIND THE CHART say what the check made of each point by
+  // the same two lines, rather than a usual range: the last run, at 415 MB,
+  // is past the warning line and short of the failing one.
+  await page.getByText('The numbers behind the chart').click()
+  const table = page.locator('.dq-figure .dq-table')
+  await expect(table.getByRole('columnheader', { name: 'The check' })).toBeVisible()
+  await expect(table.getByRole('columnheader', { name: 'Usual range' })).toHaveCount(0)
+  await expect(table.locator('tbody tr').last()).toContainText('Warns')
 })
 
 test('the Show menu chooses from the keyboard on a laptop @desktop', async ({ page }) => {

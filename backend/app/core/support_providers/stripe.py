@@ -105,8 +105,16 @@ MARKER = "ourhike_tier_cents"
 FAILING = ("past_due", "unpaid")
 
 # What may go in a URL path or a client_reference_id without escaping.
-_SUBSCRIPTION_ID = re.compile(r"^sub_[A-Za-z0-9]{1,90}$")
-_CHOICE_ID = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
+#
+# Asked with `fullmatch` at every use, never `match`: these were written
+# `^...$` and asked with `match`, and Python's `$` also matches before a
+# trailing newline, so `_CHOICE_ID.match("abc\n")` was truthy and a
+# `client_reference_id` of "abc\n" passed as a choice id (the 2026-11-04
+# security review). routers/analytics.py's `_version_of` documents the same
+# trap. Written without anchors, like the backend's other `fullmatch`
+# patterns (`_PROJECT_REF` in app/config.py): `fullmatch` is the anchor.
+_SUBSCRIPTION_ID = re.compile(r"sub_[A-Za-z0-9]{1,90}")
+_CHOICE_ID = re.compile(r"[A-Za-z0-9_-]{1,200}")
 
 _SESSION_KINDS = ("checkout.session.completed", "checkout.session.async_payment_succeeded")
 
@@ -210,7 +218,7 @@ class Stripe:
     def checkout_url(self, choice: SupportChoice) -> str | None:
         """The tier's Payment Link, carrying this choice's id and email."""
         link = payment_links().get(choice.amount_cents)
-        if link is None or not _CHOICE_ID.match(choice.id or ""):
+        if link is None or not _CHOICE_ID.fullmatch(choice.id or ""):
             return None
         query = {"client_reference_id": choice.id}
         if choice.email:
@@ -313,7 +321,7 @@ class Stripe:
                     subscription_ref=_ref(obj.get("subscription")),
                     customer_ref=_ref(obj.get("customer")),
                     plan_ref=_ref(obj.get("payment_link")),
-                    choice_ref=choice if isinstance(choice, str) and _CHOICE_ID.match(choice) else None,
+                    choice_ref=choice if isinstance(choice, str) and _CHOICE_ID.fullmatch(choice) else None,
                     email=_email(details.get("email")) or _email(obj.get("customer_email")),
                     amount_cents=_cents(obj.get("amount_total")),
                     tier_cents=_tier(obj),
@@ -423,7 +431,7 @@ class Stripe:
         """
         ref = choice.provider_ref or ""
         now = choice.provider_status in FAILING
-        if settings.stripe_secret_key and _SUBSCRIPTION_ID.match(ref):
+        if settings.stripe_secret_key and _SUBSCRIPTION_ID.fullmatch(ref):
             try:
                 if now:
                     response = httpx.delete(f"{API}/v1/subscriptions/{ref}", auth=(settings.stripe_secret_key, ""), timeout=10.0)

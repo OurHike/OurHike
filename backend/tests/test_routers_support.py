@@ -43,12 +43,12 @@ from app.core.support_providers import PROVIDERS
 from app.core.support_providers import stripe as stripe_provider
 from app.core.support_providers.stripe import MARKER
 from app.core.time import utc_now
-from app.models.analytics import AnalyticsEvent, UsageEvent
+from app.models.analytics import AnalyticsEvent, AnalyticsMonth, UsageEvent
 from app.models.mail import EmailSend, MailPurpose, SuppressionReason
 from app.models.profile import Profile
 from app.models.support import SupportCharge, SupportChoice, SupportEvent, SupportStatus
 from app.routers.support import clear_total_cache
-from tests.factories import make_usage_consent
+from tests.factories import make_rollup_heartbeat, make_usage_consent
 from tests.tokens import auth_headers
 
 SECRET = "whsec_test"
@@ -129,6 +129,16 @@ def _fresh_total():
     clear_total_cache()
     yield
     clear_total_cache()
+
+
+@pytest.fixture(autouse=True)
+def _rollup_has_run(db_session):
+    """The paid count writes nothing while the six-month delete is not running,
+    as `POST /usage-events` collects nothing then (`rollup_paused` in
+    app/core/analytics_support.py); every test but the two about that needs
+    the rollup to look alive. tests/test_routers_usage_events.py has the same
+    fixture, and tests/test_support_review4.py imports this one."""
+    make_rollup_heartbeat(db_session)
 
 
 @pytest.fixture
@@ -379,14 +389,32 @@ def test_a_choice_keeps_the_consent_record_a_provider_move_needs(client, configu
 
 
 def test_the_email_is_the_tokens_never_one_the_request_carries(client, configured):
-    """A typed address could point a stranger's payment at this account."""
-    response = client.put(
+    """A typed address could point a stranger's payment at this account. One
+    sent anyway is refused, since `SupportChoiceIn` forbids fields it does
+    not declare, and the address recorded is the token's."""
+    headers = auth_headers(str(uuid.uuid4()), email="Hiker@Example.com ")
+    typed = client.put(
         "/support/me",
         json={"amount_cents": 6000, "delivery": "redirect", "email": "someone-else@example.com"},
-        headers=auth_headers(str(uuid.uuid4()), email="Hiker@Example.com "),
+        headers=headers,
     )
+    assert typed.status_code == 422
+
+    response = client.put("/support/me", json={"amount_cents": 6000, "delivery": "redirect"}, headers=headers)
 
     assert response.json()["support"]["email"] == "hiker@example.com"
+
+
+def test_a_choice_carrying_a_field_the_api_does_not_take_is_a_422_and_records_nothing(client, configured, db_session):
+    """`SupportChoiceIn` was the one write model in schemas/support.py without
+    `extra="forbid"`, so an undeclared field was dropped in silence and the
+    choice recorded as if it had not been sent (the 2026-11-04 security
+    review). `provider` is the server's to pick (`current_provider`)."""
+    response = _choose(client, str(uuid.uuid4()), provider="opencollective")
+
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"][0]["type"] == "extra_forbidden"
+    assert db_session.query(SupportChoice).count() == 0
 
 
 def test_a_sign_in_with_no_email_cannot_choose(client, configured):
@@ -600,6 +628,27 @@ def test_when_stripe_cannot_be_reached_the_founder_is_asked_instead(client, conf
     [notice] = configured.to("founder@ourhike.org")
     assert "sub_777" in _text(notice)
     assert "Cancel at end of period" in _text(notice)
+
+
+@pytest.mark.parametrize("ref", ["sub_123\n", "sub_123/x"], ids=["trailing-newline", "path-after-it"])
+def test_a_subscription_id_that_is_not_whole_never_reaches_stripes_url_and_the_founder_is_asked(
+    client, configured, db_session, ref
+):
+    """`request_cancel` puts the id in the path of `{API}/v1/subscriptions/{ref}`,
+    and `_ref` keeps any webhook string of 100 characters or fewer, so
+    `_SUBSCRIPTION_ID.fullmatch` is all that stands between a webhook's
+    `subscription` field and that path. The pattern has no anchors, so with
+    `.match` at this site `sub_123` off the front of either of these passed
+    and Stripe was called on the whole string."""
+    user_id = str(uuid.uuid4())
+    _paying(client, user_id)
+    db_session.query(SupportChoice).update({SupportChoice.provider_ref: ref})
+    db_session.commit()
+
+    assert _stop(client, user_id).json()["status"] == "stop_requested"
+
+    assert configured.api.calls == []
+    assert len(configured.to("founder@ourhike.org", about="Stop requested")) == 1
 
 
 def _tried_long_ago(db_session):
@@ -939,6 +988,39 @@ def test_without_the_choice_id_a_payment_is_kept_apart_and_the_founder_told(clie
     assert "sub_777" in _text(note)
 
 
+def test_a_choice_id_with_a_trailing_newline_attaches_to_no_choice(client, configured, db_session):
+    """`_CHOICE_ID` was written `^...$` and asked with `match`, and Python's
+    `$` also matches before a trailing newline - the trap routers/analytics.py's
+    `_version_of` documents - so a `client_reference_id` of "<id>\\n" passed
+    as a choice id (the 2026-11-04 security review). The parse is checked
+    first because it is what was wrong: the choice lookup after it compares
+    the id exactly in Postgres, so it found no choice before the fix either."""
+    user_id = str(uuid.uuid4())
+    choice = _choice_id(_choose(client, user_id))
+    session = _session(choice=f"{choice}\n")
+
+    [event] = PROVIDERS["stripe"].normalise(session)
+    assert event.choice_ref is None
+
+    assert _deliver(client, session).json() == {"result": "active"}
+    mine = db_session.query(SupportChoice).filter(SupportChoice.profile_id == user_id).one()
+    assert (mine.status, mine.provider_ref) == (SupportStatus.pending, None)
+    apart = db_session.query(SupportChoice).filter(SupportChoice.profile_id.is_(None)).one()
+    assert apart.provider_ref == "sub_777"
+
+
+def test_a_choice_id_with_a_trailing_newline_gets_no_checkout_link(configured):
+    """`checkout_url` writes the choice's id into the Payment Link as its
+    `client_reference_id`, after `_CHOICE_ID.fullmatch`. The pattern has no
+    anchors, so with `.match` at this site "<id>\\n" passed and the link
+    carried the newline. The same id without it gets the tier's link, so the
+    None is the id's doing."""
+    stripe = PROVIDERS["stripe"]
+
+    assert stripe.checkout_url(SupportChoice(id="abc\n", amount_cents=6000, email=None)) is None
+    assert stripe.checkout_url(SupportChoice(id="abc", amount_cents=6000, email=None)).startswith(LINKS[6000])
+
+
 def test_a_stranger_who_types_a_hikers_address_can_neither_block_nor_be_stopped_by_them(client, configured, db_session):  # R3-B4
     """The third review's attack on matching by email: nothing here reads
     the address to decide whose a payment is."""
@@ -1267,6 +1349,51 @@ def test_an_account_that_turned_usage_statistics_off_is_not_counted(client, conf
 
     assert _support_rows(db_session) == []
     assert db_session.query(SupportChoice).filter(SupportChoice.status == SupportStatus.active).count() == 1
+
+
+def _rollup_stale(db_session) -> None:
+    """Only a heartbeat a minute past `analytics_rollup_stale_days`, as
+    tests/test_routers_usage_events.py `_only_heartbeat` leaves one."""
+    db_session.query(AnalyticsMonth).delete()
+    db_session.commit()
+    make_rollup_heartbeat(db_session, now=utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1))
+
+
+def test_a_payment_confirmed_while_the_rollup_is_stale_is_not_counted(client, configured, db_session):
+    """The Privacy Policy: "If the deletion job stops, we stop collecting
+    within three days." `POST /usage-events` kept that; the paid count did
+    not, writing its row with the intake gates bypassed, until the release
+    review of 2026-11-04 (finding 9). Red on 5c5d899e: one row written. The
+    choice is still recorded as paid - only the usage count is skipped - and
+    `counted_at` stays unset, which the next test is about."""
+    _rollup_stale(db_session)
+    user_id = str(uuid.uuid4())
+
+    _paying(client, user_id)
+
+    assert _support_rows(db_session) == []
+    [choice] = db_session.query(SupportChoice).filter(SupportChoice.profile_id == user_id).all()
+    assert choice.status == SupportStatus.active
+    assert choice.counted_at is None
+
+
+def test_a_confirmation_redelivered_once_the_rollup_is_back_is_counted_once(client, configured, db_session):
+    """Nothing here dedupes a delivery by its event id (`apply_delivery` logs
+    every one after applying it), so a confirmation Stripe resends - or the
+    founder resends from its dashboard, which keeps events 30 days - reaches
+    the count again. Skipped during the pause, counted once after it, and
+    `counted_at` then keeps a third delivery from counting it twice."""
+    _rollup_stale(db_session)
+    choice = _choice_id(_choose(client, str(uuid.uuid4())))
+    envelope = _session(choice=choice)
+    _deliver(client, envelope)
+    assert _support_rows(db_session) == []
+
+    make_rollup_heartbeat(db_session)
+    _deliver(client, envelope)
+    _deliver(client, envelope)
+
+    assert [row.support_cents for row in _support_rows(db_session)] == [6000]
 
 
 def test_a_move_between_providers_is_not_counted_as_a_new_choice(client, configured, monkeypatch, db_session):

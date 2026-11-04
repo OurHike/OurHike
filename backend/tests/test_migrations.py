@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 import sqlalchemy
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from alembic import command
 from app.config import settings
@@ -109,6 +110,44 @@ def migration_engine():
     finally:
         _reset_schema(engine)
         engine.dispose()
+
+
+def test_the_revision_chain_has_one_head():
+    """`alembic upgrade head` refuses to run against two heads, and `main`
+    carried two for 25 minutes on 2026-11-02: **#1936 — Move each closed
+    month's unlinked usage rows to Parquet in a private R2 bucket, nightly
+    before the rollup** (8f6794da722d) merged at 20:37 and **#1927 — Keep who
+    wrote an org's row in clubs.maintainer_written, which account deletion
+    cannot null** (c3a9e5d27f18) at 20:40, each revising 897b71ad5fff, until
+    **#1950 — Re-point clubs.maintainer_written's migration onto the usage
+    archive's, so main has one Alembic head again** landed at 21:05 (times
+    -05:00, `git log --first-parent main`; the issue was #1945 — main has two
+    Alembic heads since #1927 merged after #1936, so migrate.yml cannot give
+    UA clubs.maintainer_written). migrate.yml's UA run on that push would have
+    failed at `upgrade head`.
+
+    This goes red on the first run that sees both heads: `main`'s post-merge
+    run, or a pull request's or merge-queue entry's run that starts after the
+    other head has landed. backend-tests.yml runs on `pull_request`, whose
+    checkout is the branch merged into `main` as `main` stood when the run
+    started, and on `merge_group`. On 2026-11-02 neither pull request's run
+    could: each one's last Backend tests run started on 2026-10-29, days
+    before either merged (the Actions API, read 2026-11-04), so `main`'s run
+    was the first. migrate.yml runs only on a push touching alembic/versions,
+    and this test names the two heads where Alembic says only "Multiple head
+    revisions are present".
+    Checked to have teeth with a throwaway revision beside the head
+    (2026-11-04: red with it, green without). Needs no database: the heads
+    are read from the files in alembic/versions.
+    """
+    heads = ScriptDirectory.from_config(_alembic_config()).get_heads()
+
+    assert len(heads) == 1, (
+        f"alembic/versions declares {len(heads)} heads, {sorted(heads)}: two branches revised the same parent, "
+        "and `alembic upgrade head` refuses to choose. Re-point the newer one onto the other, as "
+        "#1950 — Re-point clubs.maintainer_written's migration onto the usage archive's, so main has one Alembic head "
+        "again - did."
+    )
 
 
 def test_upgrade_head_builds_the_schema_with_rls_on(migration_engine):

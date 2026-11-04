@@ -61,6 +61,7 @@ A change to an extractor, or a new upstream answer, needs a new pin: dispatch `r
 |---|---|---|
 | Raw store | every resource's rows as Parquet (zstd), each lane its own dlt pipeline, plus `_extract_runs`, the run log | private bucket `our-hike-raw`, under `raw/` |
 | Step cache | pins (`steps/raw_inputs/<raw_run>/`), stored warehouses (`steps/dbt_warehouse/<env>/<raw_run>/`), expensive Python steps' outputs as GeoParquet | same bucket, under `steps/`, write-once |
+| Planetiler's sources | the basemap build's three non-OSM inputs (about 1.4 GB of zips) and their manifest, for when the Actions cache has dropped them (`lib/planetiler_sources.py`) | same bucket, under `planetiler_sources/`, replaced when a source is fetched again; one writer, `build-basemap.yml`'s fetch step; the retention step lists it and never deletes from it |
 | Row history | each mart's snapshot, saved between runs | the history store; the monthly store keeps its newest 3 saves, the hourly stores 24 |
 | Warehouse | every dbt model | one `warehouse.duckdb` per build, rebuilt each run |
 | Phone files | what phones download | the public bucket `our-hike`, served at `data.ourhike.org`; only `publish.py` writes it |

@@ -73,9 +73,18 @@ export function walkedDayHikes(store = DAY_HIKES) {
   }
 }
 
-/** Seed the fixture into idb-keyval's `ourhike:day-hikes` key, then reload -
- *  the store is read once at mount, which has already happened by the time
- *  a drive or a spec calls this. */
+/**
+ * Seed the fixture into idb-keyval's `ourhike:day-hikes` key, then reload -
+ * the store is read once at mount, which has already happened by the time
+ * a drive or a spec calls this.
+ *
+ * Typed loosely on purpose: without it TypeScript reads the parameter's type
+ * off DAY_HIKES, and a store whose legs differ from the fixture's (an
+ * unblazed leg, no `concurrent_sources`) is refused at the call site.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {{ hikes: object[], openId: string | null }} [store]
+ */
 export async function seedDayHikes(page, store = DAY_HIKES) {
   await page.evaluate(
     ({ store: seeded }) =>

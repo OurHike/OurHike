@@ -620,6 +620,11 @@ class TestCors:
         assert check_cors(BASE, "a.pmtiles")["state"] == OK
 
 
+#: The GeoJSON files check 15 holds to the national bound rather than the
+#: corridor: the two `nearby_` files (#1873) and the overview (#1981).
+NATIONAL_FILES = ("nearby_poi.geojson", "nearby_trails.geojson", "network_overview.geojson")
+
+
 class TestVectorContent:
     def _collection(self, features):
         return {"type": "FeatureCollection", "features": features}
@@ -690,19 +695,33 @@ class TestVectorContent:
         assert exempt[15] == OK
         assert not_exempt[15] == FAILED
 
-    def test_any_organizations_nearby_feature_may_leave_the_corridor(self, requests_mock):
-        """#1873: nearby_poi and nearby_trails carry every organization,
-        nationwide, so an Arizona point from an unlisted source is intended."""
-        requests_mock.get(f"{BASE}/nearby_poi.geojson", json=self._collection([self._point(-110.98, 34.34, source="x")]))
+    @pytest.mark.parametrize("key", NATIONAL_FILES)
+    def test_any_organizations_feature_in_a_national_file_may_leave_the_corridor(self, requests_mock, key):
+        """nearby_poi and nearby_trails (#1873) and network_overview (#1981)
+        carry every organization, nationwide, so an Arizona point from an
+        unlisted source is intended. Run 21 failed network_overview on 48
+        such features, Alaska to the Pacific Crest."""
+        requests_mock.get(f"{BASE}/{key}", json=self._collection([self._point(-110.98, 34.34, source="x")]))
 
-        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}[15] == OK
+        assert {r["check"]: r["state"] for r in check_vector(BASE, [key])}[15] == OK
 
-    def test_a_nearby_feature_on_null_island_or_in_metres_is_still_caught(self, requests_mock):
-        requests_mock.get(f"{BASE}/nearby_poi.geojson", json=self._collection([self._point(0.2, -0.3)]))
-        requests_mock.get(f"{BASE}/nearby_trails.geojson", json=self._collection([self._point(1_500_000.0, 2_000_000.0)]))
+    @pytest.mark.parametrize("key", NATIONAL_FILES)
+    @pytest.mark.parametrize(("lon", "lat"), [(0.2, -0.3), (1_500_000.0, 2_000_000.0)], ids=["null island", "metres"])
+    def test_a_national_feature_on_null_island_or_in_metres_is_still_caught(self, requests_mock, key, lon, lat):
+        requests_mock.get(f"{BASE}/{key}", json=self._collection([self._point(lon, lat)]))
 
-        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_poi.geojson"])}[15] == FAILED
-        assert {r["check"]: r["state"] for r in check_vector(BASE, ["nearby_trails.geojson"])}[15] == FAILED
+        assert {r["check"]: r["state"] for r in check_vector(BASE, [key])}[15] == FAILED
+
+    def test_the_files_export_nearby_trails_writes_nationwide_are_held_to_the_national_bound(self):
+        """verify_release.py names network_overview.geojson rather than
+        importing it, because the release check installs no duckdb. This
+        fails the day the exporter renames either file and the check goes
+        back to holding a nationwide file to the A.T. corridor."""
+        import export_nearby_trails
+
+        for name in (export_nearby_trails.ARTIFACT_NAME, export_nearby_trails.OVERVIEW_ARTIFACT_NAME):
+            assert name in NATIONAL_FILES
+            assert verify_release._is_national(name)
 
     def test_a_versioned_trailhead_file_may_be_empty_like_its_v1_twin(self, requests_mock):
         """#1873: `v2/poi_trailhead.geojson` read as type `v2/poi_trailhead`, which

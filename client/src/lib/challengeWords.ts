@@ -42,7 +42,7 @@ export const CHALLENGE_WORDS = {
   some: 'some karma',
   /** The past tense for running text: "earned Jul 14". */
   past: 'earned',
-  /** The one-tap undo every earned item has (the brief's "Second look"). */
+  /** The one-tap undo on an earned item's sheet (the brief's "Second look"). */
   takeBack: 'Take it back',
   /** More's destination and the list screen's title. */
   yours: 'Your trail karma',

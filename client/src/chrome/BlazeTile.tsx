@@ -21,8 +21,9 @@ export interface BlazeTileProps {
   done: boolean
   /** A mystery item still sealed: a dashed outline round a question mark. */
   sealed: boolean
-  /** Given only where the tile is big enough to be a target. */
-  onPress?: () => void
+  /** Given only where the tile is big enough to be a target; `from` is the
+   *  tile's button, where focus returns when what it opened closes. */
+  onPress?: (from: HTMLButtonElement) => void
   /** The accessible name of a pressable tile - the item's title. */
   label?: string
 }
@@ -45,7 +46,7 @@ export function BlazeTile({ icon, done, sealed, onPress, label }: BlazeTileProps
       type="button"
       className={classes.join(' ')}
       aria-label={label}
-      onClick={onPress}
+      onClick={(event) => onPress(event.currentTarget)}
     >
       {glyph}
     </button>

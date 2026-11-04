@@ -362,16 +362,15 @@ export function untag(
 }
 
 /**
- * Takes a tag back, however it was made - the tagged-place sheet's "Remove
- * this tag", for the hiker who walked past McAfee Knob's junction without
- * going up and pressed Tag all anyway. `poi` narrows it to one place, as for
- * `untag`.
+ * Takes a tag back, however it was made - the tile sheet's "Take it back",
+ * for the hiker who walked past McAfee Knob's junction without going up and
+ * pressed Earn all anyway. `poi` narrows it to one place, as for `untag`.
  *
  * A tag that already reached the server is taken back there too:
  * lib/useChallenges.ts queues the removal when the item stops being done. The
- * kinds that tag themselves are not offered this (the sheet does not open for
- * them), because autoTags would put the same tag back the next time it read
- * the same day.
+ * kinds that tag themselves are not offered this - the tile sheet hides the
+ * button on them (chrome/TileSheet.tsx) - because autoTags would put the same
+ * tag back the next time it read the same day.
  */
 export function removeTag(
   state: ChallengeState,
@@ -679,8 +678,8 @@ export function autoTags(
         ).length
         done = days.size > answered
         // Stamped on the day worked rather than the day the phone noticed:
-        // August 31's hours first seen on September 5 still happened inside
-        // a window that closed September 1.
+        // September 6's hours first seen on September 10 still happened inside
+        // a window that closed September 7.
         if (done) workedOn = [...days].sort()[answered]
         place = { poi: '', name: item.title ?? '', mile: 0 }
       }

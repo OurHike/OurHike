@@ -570,6 +570,7 @@ import {
 import { mapPointsFrom, type BoundingBox, type MapPoint } from './lib/legendContents'
 import {
   AT_THE_FIX,
+  fixIsStale,
   nearbyPlaces,
   placesByName,
   reportLocationFields,
@@ -9008,8 +9009,17 @@ function App() {
         // For "Where did it happen?" and "Near you" (#1963): the fix snapped
         // to the trail, today's walked miles and the phone's own waypoints.
         // Nothing here asks for location; a null fix is simply no Here card.
-        fixMile={currentFix?.mile ?? null}
-        todayRanges={passedToday.ranges}
+        // A fix past the report path's STALE_FIX_SECONDS is no fix here:
+        // useGeolocation keeps a pocketed phone's last fix "located", and
+        // "your position right now" from miles back would be stored as the
+        // place (review of #2015). Today's miles only if they are today's,
+        // as the camp card reads them.
+        fixMile={
+          currentFix !== null && !fixIsStale(currentFix.fixedAt, now)
+            ? (currentFix.mile ?? null)
+            : null
+        }
+        todayRanges={challengeTodayRanges}
         units={units}
         places={searchablePois}
         onRemoveTag={(item, poi) => challenges.removeTag(openChallengeRecord, item, poi)}

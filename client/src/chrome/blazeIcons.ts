@@ -1,7 +1,7 @@
 // The blaze card's icon set (#1962, features/CHALLENGES_BLAZE_CARD.md): one
 // stroke glyph per kind of item, on a 24-unit box, the set the design frames
 // draw (features/design/blaze-card/BlazeCard.dc.html). Twenty-six from the
-// frame plus `pen`, which item-icons.json uses for six writing items and the
+// frame plus `pen`, which item-icons.json uses for five writing items and the
 // frame fell back to `learn` for - a pencil is the honest glyph, and the
 // frame's fallback was the mock's bug rather than its intent (maintainer, poll
 // 2026-11-04, shown the pencil on the expanded card: keep it).
@@ -56,7 +56,9 @@ export const BLAZE_ICON_NAMES = Object.keys(BLAZE_ICONS).sort() as BlazeIconName
  *  draws the learn glyph rather than nothing, so a newer artifact on an older
  *  shell still shows a tile. */
 export function blazeIconPath(name: string | null): string {
-  return name !== null && name in BLAZE_ICONS
+  // Own names only: `in` also finds what every object inherits, and
+  // 'constructor' or 'toString' would draw a blank tile (review of #1990).
+  return name !== null && Object.hasOwn(BLAZE_ICONS, name)
     ? BLAZE_ICONS[name as BlazeIconName]
     : BLAZE_ICONS.learn
 }

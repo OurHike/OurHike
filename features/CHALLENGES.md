@@ -51,6 +51,12 @@ form.
   sticker were never offered, because a club's finisher reward can be a real patch or sticker
   in the mail. Still one constant, `CHALLENGE_WORDS`; the comments and the prose below keep
   "tag" where they describe the record (a `challengeTag` cargo is still what leaves the phone).
+- **2026-11-04, maintainer, by poll after the review of #2015 — The tile sheet asks where,
+  and only when it can mean something.** "Take it back" is hidden on the kinds that earn
+  themselves — a section walked, a height reached, a workday logged — over remembering a
+  refusal that `autoTags` would respect. Taken back, autoTags put the same tag straight back
+  and queued a tag, an untag and a tag again; the brief's "every blaze has a one-tap Take it
+  back" now covers the items a tap can earn (`lib/challengeText.ts` `handTaggable`).
 - **2026-11-03, maintainer.** The ATC relationship is settled and no letter is needed; the
   basis on which the list's text is carried is recorded as `atc_bucket_list_licence` in
   `pipeline/sources.json` (see "Open questions"). `takes_entries` stays false until the ATC
@@ -157,7 +163,7 @@ same reason: each row is somebody's judgement that a line of a PDF is a particul
   "window": { "opens": "2027-05-15", "closes": "2027-09-01" },  // either may be null
   "finish": { "count": 25, "label": "for the drawing" },          // null = a record, no finish
   "reward": { "kind": "drawing", "rules_url": "https://…" },       // null = no reward (most)
-  "sections": [{ "id": "experience", "title": "Experience the A.T.", "short": "Anywhere" }],
+  "sections": [{ "id": "experience", "title": "Experience the A.T.", "short": "Experience" }],
   "items": [
     { "id": "mcafee-knob", "section": "experience", "title": "…",
       "note": "optional, 1–3 sentences, the club's", "note_by": "Roanoke A.T. Club",
@@ -258,7 +264,7 @@ no challenge changed. Each record's `reviewed` is the date that means something.
 
 An item's completion enqueues one `challengeTag` outbox cargo: challenge id, item id, authored
 time, `gps`/`hand`. A `places_all` item queues nothing until its last place. An item that
-stops being done — a hand tag pressed again, "Remove this tag" on the tagged place, a Triple
+stops being done — a hand tag pressed again, "Take it back" on the earned place, a Triple
 Crown peak taken back — queues a `challengeUntag` behind it, and Leave queues one for the
 whole challenge; the flush is in order, so the server ends where the phone did. Rejoining
 sends the kept tags again. The register line never leaves the phone (principle 6).
@@ -306,7 +312,7 @@ says so.
 |---|---|
 | #2b Your challenges | More → **Challenges**, a destination after "Volunteer & report" |
 | #5 Challenge detail, #7 mystery | `screens/ChallengeDetail.tsx` — the blaze card in the header (`chrome/BlazeCard.tsx`, CHALLENGES_BLAZE_CARD.md slice 2: the items as tiles in the club's sections, a tile turning karma gold per earned item; a section tap opens the list at it, and only the bigger card's 56 px tiles are buttons); pills are the club's sections in the club's order (*Learn · Experience · Protect · Mystery* for the ATC) and then *Done*; rows numbered 1–100 in the club's order (slice 1) |
-| #4b Tagged place → the tile sheet | `chrome/TileSheet.tsx` (CHALLENGES_BLAZE_CARD.md slice 3), opened from any row or a tile of the bigger card: the hiker's own photo (matched on the phone by time and place, never uploaded) or the club's, labelled so, else the item's glyph; the item's number and place; **Earn some karma** or, once earned, the moment, where it happened and one-tap **Take it back**; "Near you" and "Also here" from what the phone knows; the club's note; a private register line. Earning by hand opens `chrome/WhereSheet.tsx` only when it can mean something (`lib/wherePlace.ts`): never for a `gps` tag, never for an at-home item marked `on_trail: false`, never for a named place. Here only with a fix in the corridor; always "On the trail, somewhere" with a state, which is where it opens with no fix; the answer stays on the phone beside the tag and the cargo is unchanged |
+| #4b Tagged place → the tile sheet | `chrome/TileSheet.tsx` (CHALLENGES_BLAZE_CARD.md slice 3), opened from any row or a tile of the bigger card: the hiker's own photo (matched on the phone by time and place, never uploaded) or the club's, labelled so, else the item's glyph; the item's number and place; **Earn some karma** (never on a sealed mystery item) or, once earned, the moment, where it happened and one-tap **Take it back** on any item a tap could have earned; "Near you" and "Also here" from what the phone knows, and no "Near you" for a place off the trail; the club's note, with "Workdays on this section" under it on an item with a place; a private register line. Earning by hand opens `chrome/WhereSheet.tsx` only when it can mean something (`lib/wherePlace.ts`): never for a `gps` tag, never for an at-home item marked `on_trail: false`, never for a named place. Here only with a fix in the corridor; always "On the trail, somewhere" with a state, which is where it opens with no fix; the answer stays on the phone beside the tag and the cargo is unchanged |
 | #5a Browse | `screens/ChallengeBrowse.tsx` — Trail, Club and Open-now filters; "On your plan" first, then the rest by distance from the plan. **No popularity sort and no hiker counts.** |
 | #1 Map layer | a Legend switch "Challenge places", **off by default**, listed only when a joined challenge is on the chosen trail and has a place to pin; a diamond pin from `map/poiIcons.ts`, hollow until tagged, drawn over the place's own waypoint pin at that pin's size at every zoom — the waypoint layer's own zoom ramp and quiet-type scale (maintainer poll, 2026-09-30, from frames at z7/z9/z11/z13; a fixed 36.8 px diamond was the first build). The trail line is never recoloured. |
 | #2, #2c Place card | "On your challenges" above "About this place", one row per item, **Earn it** inside the window and the window's date ("opens May 13") outside it |

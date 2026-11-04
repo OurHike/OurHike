@@ -2,16 +2,19 @@
 //
 // The pine header names it, its window and - only when the club set one - the
 // finish line; under them the blaze card (chrome/BlazeCard.tsx, #1962): the
-// club's items as tiles in the club's sections, one white blaze per earned
-// item, in place of the strip that laid the places along the trail by mile.
+// club's items as tiles in the club's sections, a tile turning karma gold for
+// each earned item, in place of the strip that laid the places along the
+// trail by mile.
 // A tap on a section of the card opens the list at that section; the card
 // can be made bigger, and only then is a tile itself a button, which opens
 // its row. Filter
 // pills are the club's own sections, in the club's order - for the ATC, Learn
 // · Experience · Protect · Mystery - and then Done, the hiker's own (#1961,
 // the blaze card brief: the list in the ATC's sections is the accessible,
-// findable form of the card, and it is numbered 1-100 in the ATC's order so a
-// hiker holding the ATC's paper list finds the same line).
+// findable form of the card, and it is numbered 1-100 in the published order,
+// which is the order of the ATC's 2025 PDF. Whether the ATC's own list prints
+// these numbers is @unvalidated: nothing in the tree shows that it does, and
+// the 2026 list a participant received is not in the tree to check).
 //
 // WHAT A ROW NEVER SAYS: what the hiker has not done. No "you haven't", no
 // count of what is left, no days remaining - features/VOLUNTEERING.md §5 rule
@@ -70,12 +73,11 @@ export interface ChallengeDetailProps {
   state: ChallengeState
   /** The hiker's local YYYY-MM-DD. */
   today: string
-  /** All-time walked miles, lib/walkedMiles.ts - "your line" on a tagged
-   *  place. Never uploaded, never stored here. */
+  /** All-time walked miles, lib/walkedMiles.ts. Never uploaded, never
+   *  stored here. Nothing on this page draws them since the tile sheet
+   *  replaced the tagged-place sheet and its "your line" (#1963); the Where
+   *  view (#1965) is what reads them next. */
   walked: readonly MileRange[]
-  /** The hiker's own photo of a place, if they added one on its card
-   *  (features/POI_PHOTOS.md) - kept on the phone, never uploaded. */
-  ownPhotoFor?: (poiId: string) => string | null
   signedIn: boolean
   /** For the entry form's name field; the hiker can change it. */
   defaultName?: string
@@ -97,7 +99,8 @@ export interface ChallengeDetailProps {
   /** The phone's own waypoints by name, for "Pick a place". */
   places?: readonly SearchablePoi[]
   onUntag: (item: ChallengeItem, poi?: string) => void
-  /** "Remove this tag" on the tagged-place sheet - however it was made. */
+  /** "Take it back" on the tile sheet - however it was earned, except for
+   *  the kinds that earn themselves (chrome/TileSheet.tsx). */
   onRemoveTag?: (item: ChallengeItem, poi?: string) => void
   onSetNote: (item: ChallengeItem, note: string) => void
   onSendEntry: (entry: ChallengeEntryDraft) => void
@@ -108,6 +111,8 @@ export interface ChallengeDetailProps {
   /** Clears a refused entry so the form comes back. */
   onForgetEntry?: () => void
   onSignIn?: () => void
+  /** "Workdays on this section", under the club's note on an item with a
+   *  place (chrome/TileSheet.tsx). */
   onOpenWorkdays?: () => void
 }
 
@@ -130,21 +135,51 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   // "Where did it happen?" (#1963): the item being earned by hand, when
   // that can mean something (lib/wherePlace.ts asksWhere); null otherwise.
   const [where, setWhere] = useState<{ item: ChallengeItem; poi?: string } | null>(null)
-  const requestEarn = (item: ChallengeItem, poi?: string) => {
-    if (asksWhere(item, 'hand')) setWhere({ item, poi })
-    else props.onTag(item, poi)
+  // The control that asked, so Back and Earn put focus back on it (review of
+  // #2015: both left it on <body>) - a row's pill, or the tile sheet's Earn.
+  const whereOpener = useRef<HTMLElement | null>(null)
+  const requestEarn = (item: ChallengeItem, from: HTMLElement | null, poi?: string) => {
+    if (asksWhere(item, 'hand')) {
+      whereOpener.current = from
+      setWhere({ item, poi })
+    } else props.onTag(item, poi)
   }
-  // Where focus goes back to when the sheet closes - the row that opened it,
-  // or the page's title when that row is gone.
+  // A tile tapped on the big card: its row is shown under the right pill,
+  // scrolled into view and given focus, after the render that draws it. A
+  // section tapped on the card does the same for that section's pill, so the
+  // tap visibly lands somewhere - the list sits below the fold under a card
+  // of a hundred tiles, and a screen reader heard nothing change (review of
+  // #1990). `section:` marks a pill rather than a row.
+  const [goTo, setGoTo] = useState<string | null>(null)
+  useEffect(() => {
+    if (goTo === null) return
+    setGoTo(null)
+    const target = goTo.startsWith('section:')
+      ? document.querySelector<HTMLElement>('.challenge-pills [aria-pressed="true"]')
+      : document.getElementById(`challenge-item-${goTo}`)
+    if (target === null) return
+    target.scrollIntoView?.({ block: 'center' })
+    target.focus()
+  }, [goTo])
+  // Where focus goes back to when a sheet closes - the row or tile that
+  // opened it, or the page's title when that is gone. Applied after the
+  // render that removed the sheet, not in the handler: "Take it back" can
+  // replace the control in that same render, and focus sent to it first fell
+  // to <body> (second Challenges review, 2026-10-01). No dependency list: it
+  // runs after every render, and does nothing unless a close asked.
   const opener = useRef<HTMLElement | null>(null)
   const title = useRef<HTMLHeadingElement | null>(null)
-  const [refocus, setRefocus] = useState(false)
+  const pendingFocus = useRef<HTMLElement | null>(null)
+  const focusAfterRender = (target: HTMLElement | null) => {
+    pendingFocus.current = target ?? title.current
+  }
   useEffect(() => {
-    if (!refocus) return
-    setRefocus(false)
-    if (opener.current?.isConnected) opener.current.focus()
+    const target = pendingFocus.current
+    if (target === null) return
+    pendingFocus.current = null
+    if (target.isConnected) target.focus()
     else title.current?.focus()
-  }, [refocus])
+  })
   // Tags only count inside the window, so nothing offers one outside it
   // (review, 2026-09-30: the ATC's 2027 draft is on phones in 2026).
   const open = isOpen(challenge, today)
@@ -172,7 +207,29 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
     () => challenge.sections[0]?.id ?? 'done',
   )
   const shown = filters.find((filter) => filter.key === filterKey) ?? filters[0]
-  // 1-100 in the ATC's order: the number a hiker's paper list carries.
+  // A pill that went away takes its selection with it. Done disappears when
+  // the last earned item is taken back; left as the stored key, the next item
+  // earned would bring Done back and jump the list there (review of #1969).
+  // Adjusted during render, React's pattern for state derived from props.
+  if (shown !== undefined && shown.key !== filterKey) setFilterKey(shown.key)
+  // Taking an item back from Done removes its row, and the focused pill with
+  // it - in the render after the record changes, which may be later than the
+  // tap. Once the focused control is gone, focus goes to the pill now showing
+  // rather than to <body>.
+  const pills = useRef<HTMLDivElement | null>(null)
+  const refocusPills = useRef(false)
+  const shownKey = shown?.key
+  const shownCount = shown?.items.length
+  useEffect(() => {
+    if (!refocusPills.current) return
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active !== document.body && active.isConnected)
+      return
+    refocusPills.current = false
+    pills.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus()
+  }, [shownKey, shownCount])
+  // 1-100 in the published order (the 2025 PDF's; whether the ATC's own
+  // list prints these numbers is @unvalidated - see the header).
   const numberOf = useMemo(
     () => new Map(challenge.items.map((item, index) => [item.id, index + 1])),
     [challenge],
@@ -184,13 +241,8 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
 
   const closeSheet = () => {
     setSheetItem(null)
-    setRefocus(true)
+    focusAfterRender(opener.current)
   }
-  // After the render that closed the sheet, not in the handler: "Remove this
-  // tag" leaves an item that is no longer done, and that same render turns
-  // its row from a button into text. Focus sent to the button before it was
-  // replaced fell to <body> (second Challenges review, 2026-10-01); the title
-  // is always there.
 
   const sheet =
     sheetItem === null
@@ -236,8 +288,14 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           tags={tags}
           today={today}
           size={bigger ? 'expanded' : 'card'}
-          onOpenSection={(sectionId) => setFilterKey(sectionId)}
-          onOpenItem={(item) => {
+          onOpenSection={(sectionId) => {
+            setFilterKey(sectionId)
+            setGoTo(`section:${sectionId}`)
+          }}
+          onOpenItem={(item, from) => {
+            // Focus comes back to the tile, not to whichever row was opened
+            // last (review of #2015).
+            opener.current = from
             setFilterKey(item.section)
             setSheetItem(item.id)
           }}
@@ -245,7 +303,6 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <button
           type="button"
           className="challenge-button challenge-button--ghost blaze-card__zoom"
-          aria-pressed={bigger}
           onClick={() => setBigger((current) => !current)}
         >
           {bigger ? 'Smaller tiles' : 'Bigger tiles'}
@@ -298,7 +355,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         )
       )}
 
-      <div className="challenge-pills" role="group" aria-label="Show">
+      <div className="challenge-pills" role="group" aria-label="Show" ref={pills}>
         {filters.map((filter) => (
           <button
             key={filter.key}
@@ -323,8 +380,11 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
             today={today}
             joined={joined}
             open={open}
-            onTag={(poi) => requestEarn(item, poi)}
-            onUntag={(poi) => props.onUntag(item, poi)}
+            onTag={(from, poi) => requestEarn(item, from, poi)}
+            onUntag={(poi) => {
+              props.onUntag(item, poi)
+              if (shown?.key === 'done') refocusPills.current = true
+            }}
             onOpen={(from) => {
               opener.current = from
               setSheetItem(item.id)
@@ -344,7 +404,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
         <>
           {/* One status line (#1961), in place of a paragraph that branched
               three ways on the same facts. lib/challengeText.ts chooses it. */}
-          <p className="challenge-status" role="status">
+          <p className="challenge-status">
             {statusLine(challenge, {
               apiConfigured: API_CONFIGURED,
               signedIn: props.signedIn,
@@ -391,18 +451,29 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
 
       {sheet !== null && (
         <TileSheet
+          // A new item is a new sheet: kept state would carry one item's
+          // register line onto the next (review of #2015).
+          key={sheet.id}
+          // Under the Where sheet, out of reach: one modal at a time.
+          inert={where !== null}
           challenge={challenge}
           item={sheet}
           number={numberOf.get(sheet.id) ?? 0}
           today={today}
           tags={tags}
+          // A sealed mystery item opens and says it is sealed; it is never
+          // earned before anybody can know what it is (review of #2015).
           earnable={
-            joined && open && handTaggable(sheet) && sheet.match.kind !== 'places_all'
+            joined &&
+            open &&
+            !isSealed(sheet, today) &&
+            handTaggable(sheet) &&
+            sheet.match.kind !== 'places_all'
           }
           todayRanges={props.todayRanges}
           fixMile={props.fixMile}
           units={props.units}
-          onEarn={() => requestEarn(sheet)}
+          onEarn={(from) => requestEarn(sheet, from)}
           onTakeBack={
             props.onRemoveTag === undefined
               ? undefined
@@ -412,11 +483,13 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
                 }
           }
           onSetNote={(note) => props.onSetNote(sheet, note)}
+          onOpenWorkdays={props.onOpenWorkdays}
           onClose={closeSheet}
         />
       )}
       {where !== null && (
         <WhereSheet
+          key={`${where.item.id}:${where.poi ?? ''}`}
           challenge={challenge}
           item={where.item}
           today={today}
@@ -429,9 +502,13 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
             const asked = where
             setWhere(null)
             if (sheet !== null) closeSheet()
+            else focusAfterRender(whereOpener.current)
             props.onTag(asked.item, asked.poi, place)
           }}
-          onBack={() => setWhere(null)}
+          onBack={() => {
+            setWhere(null)
+            focusAfterRender(whereOpener.current)
+          }}
         />
       )}
     </section>
@@ -459,9 +536,10 @@ function ItemRow({
   joined: boolean
   /** Inside the window - the only time a new tag is offered. */
   open: boolean
-  onTag: (poi?: string) => void
+  /** `from` is the pill pressed, where focus returns from the Where sheet. */
+  onTag: (from: HTMLElement, poi?: string) => void
   onUntag: (poi?: string) => void
-  /** Opens the tagged-place sheet; `from` is where focus returns. */
+  /** Opens the tile sheet; `from` is where focus returns. */
   onOpen: (from: HTMLElement) => void
 }) {
   const sealed = isSealed(item, today)
@@ -470,9 +548,6 @@ function ItemRow({
   const title = titleOrSealed(item, challenge, today)
   const trailing = itemTrailing(item)
   const revealed = item.mystery !== null && !sealed
-  // Every row opens its tile (#1963): read it in full, earn it from there,
-  // or take it back. A sealed mystery item opens too, and says it is sealed.
-  const opens = true
 
   let right: ReactNode = null
   if (!sealed && joined) {
@@ -485,7 +560,7 @@ function ItemRow({
         <TagPill
           tagged={done}
           label={`${done ? CHALLENGE_WORDS.done : CHALLENGE_WORDS.act}: ${title}`}
-          onPress={() => (done ? onUntag() : onTag())}
+          onPress={(from) => (done ? onUntag() : onTag(from))}
         />
       )
     } else if (done) {
@@ -532,19 +607,16 @@ function ItemRow({
       tabIndex={-1}
       className={sealed ? 'challenge-row challenge-row--sealed' : 'challenge-row'}
     >
-      {/* A button only when it does something: a disabled button on every
-          row that cannot open yet read each one out as "unavailable". */}
-      {opens ? (
-        <button
-          type="button"
-          className="challenge-row__open"
-          onClick={(event) => onOpen(event.currentTarget)}
-        >
-          {text}
-        </button>
-      ) : (
-        <div className="challenge-row__open">{text}</div>
-      )}
+      {/* Every row opens its tile (#1963): read it in full, earn it from
+          there, or take it back. A sealed mystery item opens too, and says
+          it is sealed. */}
+      <button
+        type="button"
+        className="challenge-row__open"
+        onClick={(event) => onOpen(event.currentTarget)}
+      >
+        {text}
+      </button>
       {right}
       {places.length > 0 && joined && !sealed && (
         // Each peak of a Triple Crown is its own tag: the row says which are
@@ -565,8 +637,8 @@ function ItemRow({
                   <TagPill
                     tagged={placeTag !== undefined}
                     label={`${placeTag !== undefined ? CHALLENGE_WORDS.done : CHALLENGE_WORDS.act}: ${place.name}`}
-                    onPress={() =>
-                      placeTag !== undefined ? onUntag(place.poi) : onTag(place.poi)
+                    onPress={(from) =>
+                      placeTag !== undefined ? onUntag(place.poi) : onTag(from, place.poi)
                     }
                   />
                 ) : null}
@@ -704,7 +776,7 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
           ))}
         </ul>
         <p className="challenges__note">
-          {summary} It stays in your challenges as a record of the trip.
+          {summary} It stays here as a record of the trip.
         </p>
         {sentLine}
         {sent === null && refusal !== null && (

@@ -142,7 +142,7 @@ export function PoiChallenges(props: PoiChallengesProps) {
           </ul>
           {/* The one status line (#1961), the same sentence the challenge's
               own page prints; "the club" where two clubs' lists meet here. */}
-          <p className="challenge-status" role="status">
+          <p className="challenge-status">
             {statusLine(
               joinedChallenges.length === 1 ? joinedChallenges[0] : { orgShort: 'club' },
               { apiConfigured: API_CONFIGURED, signedIn: props.signedIn !== false },

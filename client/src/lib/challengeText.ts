@@ -107,18 +107,21 @@ export function statusLine(
   club: Pick<Challenge, 'orgShort'>,
   state: { apiConfigured: boolean; signedIn: boolean },
 ): string {
+  // Every state promises the same two things: it is kept on this phone, and
+  // the club is told a count, never a name (review of #1969: the no-server
+  // line used to say neither, and read as if saving stopped with a server).
   if (!state.apiConfigured)
-    return `Saved on this phone until OurHike’s server is running.`
+    return `Saved on this phone, and counted for the ${club.orgShort} once OurHike’s server is running, never by name.`
   if (!state.signedIn)
-    return `Saved on this phone · counted for the ${club.orgShort} once you sign in, never by name.`
-  return `Saved on this phone · counted for the ${club.orgShort} with signal, never by name.`
+    return `Saved on this phone, and counted for the ${club.orgShort} once you sign in, never by name.`
+  return `Saved on this phone, and counted for the ${club.orgShort} with signal, never by name.`
 }
 
 /**
  * The one sentence a screen reader hears for the blaze card (#1962): what is
  * earned, by section, and never what is not. "12 trail karma earned: 3 Learn, 7
- * Experience, 2 Protect." A card with nothing earned yet says so in four
- * words rather than printing a hundred.
+ * Experience, 2 Protect." A card with nothing earned yet says so in one
+ * short sentence rather than printing a hundred.
  */
 export function cardSummary(challenge: Challenge, tags: readonly ChallengeTag[]): string {
   const parts: string[] = []
@@ -189,13 +192,16 @@ export function formatMoment(iso: string): string {
 
 /** One line for where an earned item happened (lib/wherePlace.ts), as the sheet and
  *  the Where view print it: a mile, a day's extent, a place, a state, or
- *  "Not on the trail". */
+ *  "Not on the trail". Read on any later day, so nothing in it is relative
+ *  to now: "here" and "walked today" were the Where sheet's words at the
+ *  moment of earning, and printed under "earned Jul 2" on Jul 14 they said
+ *  something false (review of #2015). */
 export function placeWords(place: TagPlace): string {
   switch (place.kind) {
     case 'here':
-      return `${mileLabel(place.mile)} · here`
+      return `${mileLabel(place.mile)} · where you stood`
     case 'walked':
-      return `${mileLabel(place.fromMile)} – ${mileLabel(place.toMile)} · walked today`
+      return `${mileLabel(place.fromMile)} – ${mileLabel(place.toMile)} · on that day’s walk`
     case 'poi':
       return place.mile === null ? place.name : `${place.name} · ${mileLabel(place.mile)}`
     case 'state':

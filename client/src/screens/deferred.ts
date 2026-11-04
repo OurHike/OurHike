@@ -263,10 +263,15 @@ export const HikeFinish = screen(
 // with the crew-against-a-walk helpers split into lib/crews.ts so they stop
 // riding on the eager lib/workProjects.ts, brought it back to 255,844.
 //
-// chrome/ReportPickBar.tsx was tried here too and is deliberately NOT: it is
-// small enough that the registry entry and the import stub cost 21 bytes MORE
-// than the module weighed. A lazy boundary that makes the bundle bigger is a
-// boundary bought for its own sake.
+// chrome/ReportPickBar.tsx was tried here first and kept eager on purpose
+// (2026-09-15): it was small enough that the registry entry and the import
+// stub cost 21 bytes MORE than the module weighed, and a lazy boundary that
+// makes the bundle bigger is a boundary bought for its own sake. That held
+// until 8b25ab44 (2026-10-27, #1903), which brought SignInWindow back into
+// the eager closure for WebKit's sake and deferred this bar with four other
+// map surfaces to pay for it - the entry above, in the #1903 list, is the
+// current one. The 21 bytes were measured against a module that has grown
+// since; nobody has re-measured the bar on its own.
 export const CrewsSection = screen(
   () => import('../chrome/CrewsSection').then((m) => m.CrewsSection),
   'CrewsSection',

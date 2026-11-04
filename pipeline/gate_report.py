@@ -455,6 +455,7 @@ def _stub_manifests(root: Path, publish_module) -> tuple[dict[str, str], dict[st
         "registry_manifest.json",
         "highlights_manifest.json",
         "challenges_manifest.json",
+        "challenge_map_manifest.json",
         "suggested_hikes_manifest.json",
         "places_manifest.json",
         "retired_poi_manifest.json",

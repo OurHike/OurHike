@@ -32,6 +32,8 @@ signed-out caller would be telling them the resource exists, and one answering
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from app.core.console_tokens import hash_secret, new_key_pair
@@ -842,3 +844,27 @@ def test_only_an_enrolled_volunteer_can_finish_the_field_guide(client, survey_wo
         assert response.status_code == expected
     else:
         assert response.status_code == (200 if who == ENROLLED_VOLUNTEER else 404)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_only_an_enrolled_volunteer_can_upload_a_survey_record(client, survey_world, who):
+    """#1985. An admin who has not joined the survey cannot file a record as
+    if they had walked it; the waiver and the field guide come first for
+    everybody."""
+    body = {
+        "id": str(uuid.uuid4()),
+        "structure_id": str(uuid.uuid4()),
+        "kind": "bridge",
+        "captured_at": "2026-11-02T10:14:00Z",
+        "lat": 41.4321,
+        "lon": -73.8765,
+        "accuracy_m": 4.3,
+        "readings": [{"lat": 41.4321, "lon": -73.8765, "acc": 4.3, "t": 0}],
+        "readings_seconds": 1,
+        "condition": "good",
+        "repair": "leave",
+    }
+    response = _call(client, survey_world, who, "post", "/clubs/{slug}/inventory/observations", body)
+    expected = _expected({ENROLLED_VOLUNTEER}, who)
+
+    assert response.status_code == (201 if expected is None else expected)

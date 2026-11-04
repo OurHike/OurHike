@@ -24,13 +24,15 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.org_access import OrgAccess, club_by_slug, org_access, require_org_admin
+from app.core.auth import get_current_email, get_current_user_optional
+from app.core.org_access import OrgAccess, club_for_a_public_read, org_access, require_org_admin
 from app.core.orm import commit_and_refresh
 from app.core.registry_pr import RegistryPrRefused, open_registry_pr
 from app.db.session import get_db
 from app.models.club import OrgAdmin
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail, RegistrySignoff
+from app.models.profile import Profile
 from app.schemas.org_registry import (
     CoverageGap,
     CoverageOut,
@@ -109,15 +111,24 @@ def _read_registry(db: Session, club_id: str) -> list[OrgParkOut]:
 
 
 @router.get("/{slug}/registry", response_model=list[OrgParkOut])
-def read_registry(slug: str, db: Session = Depends(get_db)) -> list[OrgParkOut]:
+def read_registry(
+    slug: str,
+    db: Session = Depends(get_db),
+    viewer: Profile | None = Depends(get_current_user_optional),
+    email: str | None = Depends(get_current_email),
+) -> list[OrgParkOut]:
     """An organization's registry, whole.
 
     Public, because this is what the organization publishes about its own
     trails and the demo org at `/for-orgs/demo` is exactly this endpoint with
     a different slug. The roster and the hours are the private half and live
     elsewhere.
+
+    A held (`pending`) registration has published nothing, so its registry
+    is a 404 except to a moderator and the people holding a seat on it
+    (`club_for_a_public_read`) - the console reads it for them.
     """
-    return _read_registry(db, club_by_slug(db, slug).id)
+    return _read_registry(db, club_for_a_public_read(db, slug, viewer, email).id)
 
 
 @router.post("/{slug}/registry/parks", response_model=OrgParkOut, status_code=status.HTTP_201_CREATED)

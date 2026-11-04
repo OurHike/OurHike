@@ -28,7 +28,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_email, get_current_user, get_current_user_optional
-from app.core.org_access import OrgAccess, club_by_slug, org_access, require_org_admin, resolve_access
+from app.core.org_access import (
+    OrgAccess,
+    club_by_slug,
+    club_for_a_public_read,
+    org_access,
+    require_org_admin,
+    resolve_access,
+)
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
 from app.core.trail_challenge import PUBLISHER_DOMAINS
@@ -218,15 +225,25 @@ def read_org(
     slug: str,
     db: Session = Depends(get_db),
     viewer: Profile | None = Depends(get_current_user_optional),
+    email: str | None = Depends(get_current_email),
 ) -> OrgOut:
     """One organization. Public: what an org publishes about itself is public
     by construction - that is what registering is. The roster, the hours and
-    the unpublished registry are other resources with their own gates."""
-    return _with_admins(db, club_by_slug(db, slug), viewer)
+    the unpublished registry are other resources with their own gates.
+
+    A held (`pending`) registration has published nothing, so it is a 404
+    here except to a moderator and to the people holding a seat on it
+    (`club_for_a_public_read`)."""
+    return _with_admins(db, club_for_a_public_read(db, slug, viewer, email), viewer)
 
 
 @router.get("/{slug}/scoreboard", response_model=ScoreboardOut)
-def read_scoreboard(slug: str, db: Session = Depends(get_db)) -> ScoreboardOut:
+def read_scoreboard(
+    slug: str,
+    db: Session = Depends(get_db),
+    viewer: Profile | None = Depends(get_current_user_optional),
+    email: str | None = Depends(get_current_email),
+) -> ScoreboardOut:
     """Miles maintained, active volunteers, hours this season. Public.
 
     The design's coverage badge (embed 3), whose own caption says where each
@@ -269,8 +286,13 @@ def read_scoreboard(slug: str, db: Session = Depends(get_db)) -> ScoreboardOut:
     beside the number so the window is stated rather than implied. What would
     settle it: asking the first organizations what they call a season, and a
     column on `clubs` if the answers differ.
+
+    **A HELD (`pending`) REGISTRATION HAS NO BADGE**: a 404, as `GET
+    /clubs/{slug}` answers it, except to a moderator and the people holding
+    a seat on it (`club_for_a_public_read`). The embed draws nothing on a
+    404, which is what it already drew for a held org's workdays.
     """
-    club = club_by_slug(db, slug)
+    club = club_for_a_public_read(db, slug, viewer, email)
     season_started = dt.date(utc_now().date().year, 1, 1)
 
     miles = (

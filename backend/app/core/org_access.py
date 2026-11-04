@@ -34,12 +34,12 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_email, get_current_user
-from app.core.role_invites import apply_pending_invites
+from app.core.role_invites import apply_pending_invites, normalise_email
 from app.db.session import get_db
 from app.models.club import Club, OrgAdmin, OrgState
 from app.models.maintainer_assignment import MaintainerAssignment
-from app.models.org_role import OrgRole
-from app.models.profile import Profile
+from app.models.org_role import OrgRole, RoleInvite
+from app.models.profile import MODERATOR_ROLES, Profile
 
 
 @dataclass(frozen=True)
@@ -142,17 +142,98 @@ def resolve_access(db: Session, club: Club, person_id: str) -> OrgAccess:
     )
 
 
+NO_SUCH_ORGANIZATION = "No such organization"
+
+
 def club_by_slug(db: Session, slug: str) -> Club:
     """The org a route names, or 404.
 
     A deleted org answers 404 rather than 410: a person who should not know
     an org ever existed learns nothing from a 404, and the only people
     entitled to know it was deleted already have its export.
+
+    **A HELD (`pending`) REGISTRATION IS FOUND HERE AND HIDDEN FROM THE
+    PUBLIC READS**, which ask `club_for_a_public_read` below instead: `GET
+    /clubs/{slug}`, `GET /clubs/{slug}/scoreboard` and `GET
+    /clubs/{slug}/registry`. They served a `pending` org's name, domain,
+    website and typed links to anybody with the slug (the 2026-11-04
+    security review), while `list_orgs` and `list_workdays` hid it because
+    listing it "puts our word behind a row a stranger typed" - and a slug is
+    no secret: it is in the embed snippet and the console's address. A
+    `pending` org is one whose only address at its domain was typed by the
+    registrant for somebody else (`OrgState`), so the organization may not
+    know it exists here, and nothing about it is published until somebody
+    at the domain agrees.
+
+    Not hidden in this function itself, because the paths that end a held
+    registration have to find it for people who hold nothing there yet:
+    `claim_org` (the real organization claiming over a stranger's
+    registration), `approve_seat` and `org_access`, which turns a waiting
+    invitation into a seat. Two kinds of caller still read it through the
+    public routes: **a moderator**, because a held registration is what
+    "a person has to pick it up" hands them; and **somebody holding a seat
+    on it** - the registrant, and every admin they named, who needs the
+    console to see the seat waiting for them and say yes or no - which is
+    the same `OrgAdmin` row `_as_viewer_reads_it` in routers/clubs.py reads
+    as "own seat", approved or not.
     """
     club = db.query(Club).filter(Club.slug == slug).one_or_none()
     if club is None or club.state == OrgState.deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such organization")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_SUCH_ORGANIZATION)
     return club
+
+
+def club_for_a_public_read(db: Session, slug: str, viewer: Profile | None, email: str | None) -> Club:
+    """`club_by_slug` for a read anybody may make, with a held registration answering 404 to most.
+
+    `viewer` is None when anonymous; `email` is the caller's verified
+    address from the token, or None. `club_by_slug`'s docstring says why
+    `pending` is hidden and who still sees it. The 404 is the same status
+    and sentence as a slug nobody registered, so it does not tell a stranger
+    that a held registration exists.
+    """
+    club = club_by_slug(db, slug)
+    if club.state == OrgState.pending and not _reads_a_held_registration(db, club, viewer, email):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_SUCH_ORGANIZATION)
+    return club
+
+
+def _reads_a_held_registration(db: Session, club: Club, viewer: Profile | None, email: str | None) -> bool:
+    """A moderator, a seat holder, or somebody an admin invitation is about to seat.
+
+    **THE INVITATION COUNTS BECAUSE THE CONSOLE RACES ITS OWN SEAT.**
+    `useOrgData` in client/src/org/OrgConsole.tsx fetches `GET
+    /clubs/{slug}` and `GET /clubs/{slug}/access` together
+    (`Promise.all`), and `org_access` is where a waiting admin invitation
+    becomes a seat for somebody who already had an account. So the first
+    time an invited secretary opens the console, the read can run before
+    their seat is written; refusing it on that ground failed the whole
+    console for exactly the person whose approval releases the
+    registration. An unclaimed admin invitation at their verified address
+    is the seat `_seat_from` in core/role_invites.py will write on that
+    same page load (reasoned from the code; not reproduced against a
+    browser), so it reads as one here.
+    """
+    if viewer is None:
+        return False
+    if viewer.role in MODERATOR_ROLES:
+        return True
+    seat = db.query(OrgAdmin.id).filter(OrgAdmin.club_id == club.id, OrgAdmin.person_id == viewer.id).first()
+    if seat is not None:
+        return True
+    if not email:
+        return False
+    invited = (
+        db.query(RoleInvite.id)
+        .filter(
+            RoleInvite.club_id == club.id,
+            RoleInvite.email == normalise_email(email),
+            RoleInvite.grants_admin_seat.is_(True),
+            RoleInvite.claimed_at.is_(None),
+        )
+        .first()
+    )
+    return invited is not None
 
 
 def org_access(

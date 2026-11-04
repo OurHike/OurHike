@@ -25,7 +25,7 @@ from app.models.org_role import RoleInvite
 from app.models.profile import Role
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
 from app.schemas.org import PUBLIC_EMAIL_DOMAINS, address_is_at_domain, normalise_domain, why_domain_proves_nothing
-from tests.factories import make_admin, make_org, make_profile
+from tests.factories import make_admin, make_org, make_profile, make_section
 from tests.tokens import auth_headers
 
 _REGISTRATION = {
@@ -1244,13 +1244,102 @@ def test_a_held_registrations_registrant_reads_only_their_own_seat(client):
     every seat" handed them the secretary's account id and that reason - and
     with it, which account the address they typed belongs to."""
     stranger, secretary, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
-    assert client.get("/clubs/ramapo-trail-conference").json()["state"] == "pending"
+    # A held registration is not anybody's to read by slug (the test below);
+    # the registrant's own read is this test's subject.
+    assert client.get("/clubs/ramapo-trail-conference").status_code == 404
 
-    seats = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(stranger)).json()["admins"]
+    read = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(stranger))
 
+    assert read.status_code == 200, read.text
+    assert read.json()["state"] == "pending"
+    seats = read.json()["admins"]
     assert {seat["person_id"] for seat in seats} == {stranger, None}
     assert secretary not in {seat["person_id"] for seat in seats}
     assert {seat["decline_reason"] for seat in seats} == {None}
+
+
+def test_nobody_outside_a_held_registration_can_read_it_by_slug(client, db_session):
+    """The 2026-11-04 security review: `club_by_slug` refused only `deleted`,
+    so `GET /clubs/{slug}` served a `pending` org's name, domain, website and
+    typed links to anybody with the slug, while `GET /clubs` hid the same
+    row because listing it "puts our word behind a row a stranger typed".
+
+    Anonymous and a signed-in account with no seat get the 404 a slug nobody
+    registered gets, word for word. The registrant reads it with their own
+    seat only (the test above); a moderator reads it whole."""
+    registrant, secretary, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+    nobody_registered = client.get("/clubs/no-such-organization").json()
+
+    for headers in ({}, auth_headers(str(uuid.uuid4()), email="hiker@example.org")):
+        response = client.get("/clubs/ramapo-trail-conference", headers=headers)
+        assert response.status_code == 404, response.text
+        assert response.json() == nobody_registered
+        assert "ramapotrails.org" not in response.text
+
+    own = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(registrant))
+    assert own.status_code == 200, own.text
+    assert {seat["person_id"] for seat in own.json()["admins"]} == {registrant, None}
+
+    moderator = make_profile(db_session, Role.maintainer)
+    whole = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(moderator.id))
+    assert whole.status_code == 200, whole.text
+    assert whole.json()["domain"] == "ramapotrails.org"
+    assert {seat["person_id"] for seat in whole.json()["admins"]} == {registrant, secretary}
+
+
+def test_nobody_outside_a_held_registration_can_read_its_registry(client, db_session):
+    """`GET /clubs/{slug}/registry` asked `club_by_slug` too, so a held
+    registration's parks, trails and sections - typed by a registrant
+    nobody at the domain has confirmed - were public by slug."""
+    registrant, _, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+    make_section(db_session, db_session.query(Club).one(), name="Typed By A Stranger")
+    path = "/clubs/ramapo-trail-conference/registry"
+
+    for headers in ({}, auth_headers(str(uuid.uuid4()), email="hiker@example.org")):
+        response = client.get(path, headers=headers)
+        assert response.status_code == 404, response.text
+        assert "Typed By A Stranger" not in response.text
+
+    for viewer in (registrant, make_profile(db_session, Role.maintainer).id):
+        read = client.get(path, headers=auth_headers(viewer))
+        assert read.status_code == 200, read.text
+        assert read.json()[0]["trails"][0]["sections"][0]["name"] == "Typed By A Stranger"
+
+
+def test_a_held_registration_has_no_public_scoreboard(client, db_session):
+    """`GET /clubs/{slug}/scoreboard` is the badge an organization puts on its
+    own donate page, and it served a held registration's totals by slug
+    while `GET /workdays` already hid that org's workdays from the same
+    embed."""
+    registrant, _, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+    make_section(db_session, db_session.query(Club).one(), miles=13.8)
+    path = "/clubs/ramapo-trail-conference/scoreboard"
+
+    for headers in ({}, auth_headers(str(uuid.uuid4()), email="hiker@example.org")):
+        assert client.get(path, headers=headers).status_code == 404
+
+    for viewer in (registrant, make_profile(db_session, Role.maintainer).id):
+        read = client.get(path, headers=auth_headers(viewer))
+        assert read.status_code == 200, read.text
+        assert read.json()["miles_maintained"] == 13.8
+
+
+def test_an_invited_admin_reads_a_held_registration_before_their_seat_is_written(client, db_session):
+    """The console fetches `GET /clubs/{slug}` and `GET /clubs/{slug}/access`
+    together, and `/access` is what turns a waiting admin invitation into a
+    seat for somebody who already had an account. So the read can arrive
+    first, and refusing it failed the whole console for the person whose
+    approval releases the registration. Their waiting invitation reads as
+    the seat it is about to become; an address nobody invited does not."""
+    _register(client, str(uuid.uuid4()), email="chair@gmail.com", admins=[{"email": "sec@ramapotrails.org"}])
+    secretary = make_profile(db_session)  # an account from before the invitation
+
+    early = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(secretary.id, email="sec@ramapotrails.org"))
+
+    assert early.status_code == 200, early.text
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == secretary.id).count() == 0, "no seat written yet"
+    uninvited = auth_headers(make_profile(db_session).id, email="treasurer@ramapotrails.org")
+    assert client.get("/clubs/ramapo-trail-conference", headers=uninvited).status_code == 404
 
 
 def test_a_held_registrations_registrant_cannot_read_the_other_holders_from_the_org_export(client):

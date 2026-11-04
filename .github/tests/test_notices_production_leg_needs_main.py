@@ -2,8 +2,10 @@
 
 The notices job fills each environment's notices store, and
 production's is the one publish-conditions.yml's production leg has built
-hikers' closures and warnings from since the cutover (#1880, 2026-10-23). A schedule
-fires from main alone, but `workflow_dispatch` runs any ref, with that ref's
+hikers' closures and warnings from since the cutover of 2026-10-23 (#1880 —
+Production still builds its notices, closures and hazard areas with the
+exporters, so 78 organizations' notices reach UA only). A schedule fires from
+main alone, but `workflow_dispatch` runs any ref, with that ref's
 copy of the workflow, and the soak dispatches this workflow from
 the pull request's branch. So it carries publish-conditions.yml's two locks,
 and this file holds both the same way

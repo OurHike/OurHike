@@ -59,7 +59,7 @@ this whole cycle staled - the same script every pull request runs, pointed at
 the release span instead of a branch.
 
 For each stale dispatchable path (`publish-vector-data.yml`,
-`build-basemap.yml`, `build-dem.yml`):
+`build-basemap.yml`, `build-dem.yml`, `publish-podcasts.yml`):
 
 - **UA first, always.** If the standing per-merge rule (CLAUDE.md, "A
   pipeline change is not finished at the merge") kept UA current, this is
@@ -83,6 +83,11 @@ For each stale dispatchable path (`publish-vector-data.yml`,
   is not missing, so nothing 404s - a hiker on the Light rung just gets
   terrain built against an older corridor. `verify_release.py` checks that
   artifact since #1144 and did not before.
+- **`publish-podcasts.yml`'s production dispatch is the only thing that
+  changes production's `podcasts/episodes.json`.** That file sits at the
+  bucket root under each environment's prefix, which no release folder
+  carries, so `promote-data.yml` below never moves it (`OWN_UPLOADERS` in
+  `scripts/pipeline_scopes.py`).
 
 `publish-conditions.yml` needs nothing (hourly, both environments);
 `build-raster.yml` is withdrawn for v2 (#855) and stays that way unless the

@@ -72,10 +72,9 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.analytics_rollup import month_start, retention_start
+from app.core.analytics_rollup import ROLLUP_RAN_AT_SQL, heartbeat_stale, month_start, retention_start
 from app.core.analytics_seal import month_label, seal, user_key
 from app.core.analytics_storage import ROWS_HELD_SQL, ceiling_rows
-from app.core.analytics_support import heartbeat_stale
 from app.core.auth import get_current_user_optional
 from app.core.time import utc_now
 from app.db.session import get_db
@@ -161,14 +160,15 @@ def normalised_shares(clubs: dict[str, float] | None) -> dict[str, float] | None
 
 # Read once per batch, in one round trip, before anything in it is: how many
 # rows today has stored, how many are held at all
-# (app/core/analytics_storage.py), and when the nightly rollup last ran.
+# (app/core/analytics_storage.py), and when the nightly rollup last ran
+# (app/core/analytics_rollup.py, the definition `rollup_paused` reads too).
 _INTAKE_GATE = text(
     f"""
     select
       (select coalesce(sum(rows), 0) from analytics_intake
         where received_on = :today and outcome = 'stored') as stored_today,
       ({ROWS_HELD_SQL}) as rows_held,
-      (select max(computed_at) from analytics_months) as rollup_ran_at
+      ({ROLLUP_RAN_AT_SQL}) as rollup_ran_at
     """
 )
 

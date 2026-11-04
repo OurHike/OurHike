@@ -17,7 +17,9 @@ what runs.** Checked against that pull request's branch on 2026-10-15:
   dlt's loads under `raw/`. The extract job, as dlt resources in `pipeline/extract/`, on
   a monthly lane (`refresh-reference.yml`, 05:15 UTC on the 3rd) and two hourly jobs
   (`publish-conditions.yml` every hour, `extract-notices.yml` every 4 hours) — both hourly
-  jobs' production legs on dbt since #1880 (2026-10-23), the monthly lane on UA's
+  jobs' production legs on dbt since 2026-10-23 (**#1880 — Production still builds its
+  notices, closures and hazard areas with the exporters, so 78 organizations' notices
+  reach UA only**), the monthly lane on UA's
   leg only until the cutover in **#1811 — Fast follows after PR #1805's dlt → dbt
   re-platform: the hiker's own download choice, the cutover, and what the port found in
   today's code** moves production's. Each resource's three-valued change check

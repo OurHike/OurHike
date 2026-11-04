@@ -22,6 +22,9 @@ closures there are. `backend/scripts/analytics_rollup.py`, `analytics_archive.py
 and `analytics_quality.py` each refuse to print a count for that reason, and
 `test_no_row_count_reaches_the_log` holds this script to the same rule on a good
 night and on a bad one, while the counts still travel inside the sealed file.
+Nor does an archive's exact size reach the log, because `auth.dump`'s size counts
+accounts: `test_the_dump_logs_no_archive_size_and_hands_the_workflow_the_exact_bytes`
+finds only the rounded total there, and the exact bytes in $GITHUB_OUTPUT.
 """
 
 from __future__ import annotations
@@ -52,8 +55,10 @@ BACKEND_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backend-tests.yml"
 ADMIN_URL_VARIABLE = "OURHIKE_BACKUP_TEST_ADMIN_URL"
 #: The Docker image whose pg_dump the tests run, when PATH's cannot: pg_dump
 #: refuses a server newer than itself, ubuntu-latest's client is 16, and the
-#: server backend-tests.yml starts is postgres:17 (measured on #1972's first
-#: run, 2026-11-04: "server version: 17.11 ... pg_dump version: 16.15"). It is
+#: server backend-tests.yml starts is postgres:17 (measured on the first run
+#: of #1972 - Fix the eleven fix-before-tag findings of the 2026-11-04 release
+#: review, and the docs the release falsified - 2026-11-04: "server version:
+#: 17.11 ... pg_dump version: 16.15"). It is
 #: the same way the backup job itself gets Postgres 17's tools
 #: (backup-database.yml's PG_IMAGE, backup_database.py's Tools). Unset locally,
 #: where PATH's tools and the local server are the same major version.
@@ -274,6 +279,20 @@ def test_the_report_names_every_table_and_whether_it_came_back_and_never_a_count
     assert not re.search(r"\d", "\n".join(lines))
 
 
+@pytest.mark.parametrize(
+    ("reltuples", "verdict"),
+    [
+        (-1, "never counted by the catalog"),
+        (0, "no rows by the catalog, pages still on disk"),
+        (500, "holds rows by the catalog"),
+    ],
+    ids=["never-analyzed", "emptied", "holds-rows"],
+)
+def test_the_uncovered_schema_refusal_says_whether_a_table_holds_rows_and_never_how_many(reltuples, verdict):
+    """`reltuples` reaches the public log only as one of three verdicts: a table's rows are its size."""
+    assert backup._rows_by_catalog(reltuples) == verdict
+
+
 def test_a_held_transaction_keeps_psql_stdin_open_inside_docker(tmp_path):
     """Without `--interactive`, Docker hands psql an empty stdin and the held transaction ends at once."""
     argv, _ = backup.Tools(workdir=tmp_path, image="postgres:17").command("psql", ["--quiet"], {}, interactive=True)
@@ -297,6 +316,23 @@ def _at_the_line() -> int:
 def test_egress_warning_stays_quiet_up_to_the_share_and_speaks_past_it():
     assert backup.egress_warning(_at_the_line()) == ""
     assert backup.egress_warning(_at_the_line() + 1) != ""
+
+
+@pytest.mark.parametrize(
+    ("total", "said"),
+    [(0, "under 1 MB"), (999_999, "under 1 MB"), (1_000_000, "about 1 MB"), (12_345_678, "about 12 MB")],
+)
+def test_the_logged_archive_size_is_whole_megabytes_and_never_the_byte_figure(total, said):
+    assert backup.rounded_size(total) == said
+
+
+def test_a_run_by_hand_with_no_github_output_prints_the_step_outputs(monkeypatch, capsys):
+    """Off Actions there is no public log and no step to hand a figure to, so stdout is where it goes."""
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+
+    backup._output("egress_bytes", "12345")
+
+    assert capsys.readouterr().out == "egress_bytes=12345\n"
 
 
 def test_egress_warning_names_the_night_the_month_and_the_quota():
@@ -405,6 +441,15 @@ def test_the_upload_reads_the_object_back_and_matches_its_sha256(tmp_path):
     assert uploaded.returncode == 0, uploaded.stderr
     assert "Stored postgres/2026/10/29/ourhike-20261029T051203Z.tar.age" in uploaded.stdout
     assert "SHA-256" in uploaded.stdout and "read back from the bucket" in uploaded.stdout
+
+
+def test_the_upload_logs_no_size_for_the_sealed_file(tmp_path):
+    """The sealed file is both archives plus a fixed overhead, so its exact size would undo `dump`'s rounding."""
+    uploaded = _upload(tmp_path)
+
+    size = (tmp_path / "ourhike-20261029T051203Z.tar.age").stat().st_size
+    assert uploaded.returncode == 0, uploaded.stderr
+    assert str(size) not in uploaded.stdout and "bytes" not in uploaded.stdout, uploaded.stdout
 
 
 def test_a_stored_copy_the_same_size_but_different_bytes_fails_the_upload(tmp_path):
@@ -783,10 +828,16 @@ def _unavailable(reason: str) -> None:
 
 
 def test_with_the_admin_url_set_an_unavailable_server_fails_rather_than_skips(monkeypatch):
-    """CI set the server up on purpose, so "could not reach it" is a failure there and a skip on a laptop."""
+    """CI set the server up on purpose, so "could not reach it" is a failure there and a skip on a laptop.
+
+    Both outcomes are caught and the type asserted: a `Skipped` is not a
+    `pytest.fail.Exception`, so `pytest.raises(pytest.fail.Exception)` alone
+    let an always-skip `_unavailable` escape and report this test skipped."""
     monkeypatch.setenv(ADMIN_URL_VARIABLE, "postgresql://backup_tests:backup@localhost:5433/postgres")
-    with pytest.raises(pytest.fail.Exception, match="meant to run here"):
+    with pytest.raises((pytest.fail.Exception, pytest.skip.Exception)) as raised:
         _unavailable("this Postgres refuses TLS")
+    assert raised.type is pytest.fail.Exception, f"skipped instead of failing: {raised.value}"
+    assert "meant to run here" in str(raised.value)
     monkeypatch.delenv(ADMIN_URL_VARIABLE)
     with pytest.raises(pytest.skip.Exception):
         _unavailable("this Postgres refuses TLS")
@@ -874,10 +925,9 @@ def test_a_good_backup_comes_back_row_for_row_through_dump_and_verify(postgres, 
 
 
 def _figures(text: str) -> set[str]:
-    """Every standalone run of digits on a line that is not about bytes - "40" in "40 row(s)", not the "12" in
-    "12,345 bytes". An archive's size is the one figure the log may carry, and it is never a row count."""
-    lines = [line for line in text.splitlines() if "bytes" not in line]
-    return set(re.findall(r"(?<![\d,.])\d+(?![\d,.])", "\n".join(lines)))
+    """Every standalone run of digits - "40" in "40 row(s)". No line is exempt: an archive's exact size counts
+    accounts (the module docstring), so a line about bytes is held to the same rule as any other."""
+    return set(re.findall(r"(?<![\d,.])\d+(?![\d,.])", text))
 
 
 def test_no_row_count_reaches_the_log_on_a_good_night_or_a_bad_one(postgres, run, capsys):
@@ -911,16 +961,23 @@ def _outputs(run) -> dict[str, str]:
     return dict(line.split("=", 1) for line in lines)
 
 
-def test_the_dump_logs_each_archive_and_hands_the_workflow_its_bytes(postgres, run, capsys):
+def test_the_dump_logs_no_archive_size_and_hands_the_workflow_the_exact_bytes(postgres, run, capsys):
+    """`auth.dump` holds only the account tables, so its exact size counts accounts (the security review of
+    a87898ff). The log gets the two archives' total rounded to megabytes; $GITHUB_OUTPUT gets the exact bytes."""
     postgres.reset(FORTY_CLOSURES_SQL)
 
     assert run("dump") == 0
 
     said = capsys.readouterr().out
-    assert "public.dump: " in said and "auth.dump: " in said and " uncompressed" in said
+    sizes = {name: ((run.workdir / name).stat().st_size, _restored_text_bytes(run.workdir, name)) for name in backup.ARCHIVES}
+    on_disk = sum(disk for disk, _ in sizes.values())
+    text = sum(sql for _, sql in sizes.values())
+    exact = {on_disk, text, *(figure for pair in sizes.values() for figure in pair)}
+    assert not [name for name in backup.ARCHIVES if name in said], f"an archive was named in the log:\n{said}"
+    assert not [n for n in exact if str(n) in said or f"{n:,}" in said], f"an exact byte figure reached the log:\n{said}"
+    assert "archive_bytes" not in said and "egress_bytes" not in said
+    assert "The two archives come to under 1 MB on disk" in said
     outputs = _outputs(run)
-    on_disk = sum((run.workdir / name).stat().st_size for name in backup.ARCHIVES)
-    text = sum(_restored_text_bytes(run.workdir, name) for name in backup.ARCHIVES)
     assert (int(outputs["archive_bytes"]), int(outputs["egress_bytes"])) == (on_disk, text)
     assert outputs["egress_warning"] == ""
 
@@ -1035,7 +1092,8 @@ def test_a_table_with_rows_in_a_schema_the_backup_does_not_dump_stops_the_dump(p
 
     assert run("dump") == 1
     said = capsys.readouterr().err
-    assert "analytics.events (never counted by the catalog" in said and "SUPABASE_SCHEMAS" in said
+    assert "analytics.events (never counted by the catalog)" in said and "SUPABASE_SCHEMAS" in said
+    assert not re.search(r"\d", said), f"a row count or a size on disk reached the log:\n{said}"
     assert not (run.workdir / "public.dump").exists(), "pg_dump ran although the dump was refused"
 
 

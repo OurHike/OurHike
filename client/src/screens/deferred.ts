@@ -267,11 +267,14 @@ export const HikeFinish = screen(
 // (2026-09-15): it was small enough that the registry entry and the import
 // stub cost 21 bytes MORE than the module weighed, and a lazy boundary that
 // makes the bundle bigger is a boundary bought for its own sake. That held
-// until 8b25ab44 (2026-10-27, #1903), which brought SignInWindow back into
+// until 8b25ab44 (2026-10-27, merged 2026-10-28 in #1903 - Count six usage
+// events with the account and fix sealed, check every metric nightly for
+// anomalies, and report it per club), which brought SignInWindow back into
 // the eager closure for WebKit's sake and deferred this bar with four other
-// map surfaces to pay for it - the entry above, in the #1903 list, is the
-// current one. The 21 bytes were measured against a module that has grown
-// since; nobody has re-measured the bar on its own.
+// map surfaces to pay for it - the `ReportPickBar` entry above, among the
+// surfaces that pull request deferred, is the current one. The 21 bytes were
+// measured against a module that has grown since; nobody has re-measured the
+// bar on its own.
 export const CrewsSection = screen(
   () => import('../chrome/CrewsSection').then((m) => m.CrewsSection),
   'CrewsSection',

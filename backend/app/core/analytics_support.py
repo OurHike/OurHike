@@ -73,39 +73,28 @@ WHAT IT DOES NOT CLAIM
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.core.analytics_rollup import ROLLUP_RAN_AT_SQL, heartbeat_stale
 from app.models.analytics import AnalyticsEvent, SealState, UsageEvent, UsagePlatform
 from app.models.preferences import UserPreferences
 from app.models.support import SupportChoice
 
-# The rollup's heartbeat: the newest `analytics_months.computed_at`, which
-# every nightly run leaves on the current month, rows or none
-# (app/core/analytics_rollup.py, step 1).
-_ROLLUP_RAN_AT = text("select max(computed_at) from analytics_months")
-
-
-def heartbeat_stale(ran_at: datetime | None, now: datetime) -> bool:
-    """The one rule for "the rollup is not running": no heartbeat, or one older than `analytics_rollup_stale_days`.
-
-    `POST /usage-events` reads the heartbeat inside its one intake query and
-    `rollup_paused` below reads it on its own, so the comparison lives here
-    and both call it; a change to the rule reaches both by construction.
-    """
-    return ran_at is None or ran_at < now - timedelta(days=settings.analytics_rollup_stale_days)
+# The rollup's heartbeat, defined once beside the job that writes it.
+_ROLLUP_RAN_AT = text(ROLLUP_RAN_AT_SQL)
 
 
 def rollup_paused(db: Session, now: datetime) -> bool:
     """The nightly rollup has not run for `analytics_rollup_stale_days`, or never has.
 
-    The rule `POST /usage-events` turns a batch away by (`heartbeat_stale`,
-    which `_gate_outcome` in app/routers/analytics.py applies to the same
-    heartbeat), so the paid count keeps the Privacy Policy's "within three
-    days" too.
+    The rule `POST /usage-events` turns a batch away by: the same heartbeat
+    (`ROLLUP_RAN_AT_SQL`) and the same comparison (`heartbeat_stale`), both
+    from app/core/analytics_rollup.py, which `_gate_outcome` in
+    app/routers/analytics.py applies too - so the paid count keeps the
+    Privacy Policy's "within three days" as well.
     """
     return heartbeat_stale(db.execute(_ROLLUP_RAN_AT).scalar(), now)
 

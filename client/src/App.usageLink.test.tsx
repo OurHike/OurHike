@@ -6,7 +6,9 @@ import { noteSignInStarted } from './lib/signInMarker'
 import { USAGE_KEY, type UsageStore } from './lib/usageQueue'
 
 // "Link your usage to your account?" is asked after a sign-in this app
-// started (#1902) - and only in a build that has somewhere to send the rows.
+// started (#1902 - Count six usage events with a sealed account id and GPS
+// fix, keep them six months, close each month into a table, and report them
+// per club) - and only in a build that has somewhere to send the rows.
 // With no API_BASE_URL (unset is what every build currently produces,
 // .github/expected-settings.yml) lib/usageQueue.ts answers 'later' for every
 // batch, so the question used to ask a hiker to link rows that never leave

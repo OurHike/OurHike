@@ -242,8 +242,10 @@ jobs:
       #
       # The tests dump with the image's pg_dump, not the runner's: pg_dump
       # refuses a server newer than itself, ubuntu-latest's client is 16, and
-      # this server is 17 (the first run of #1972, 2026-11-04: "server version:
-      # 17.11 ... pg_dump version: 16.15"). A 17 client cannot be installed
+      # this server is 17 (the first run of #1972 - Fix the eleven
+      # fix-before-tag findings of the 2026-11-04 release review, and the docs
+      # the release falsified - 2026-11-04: "server version: 17.11 ...
+      # pg_dump version: 16.15"). A 17 client cannot be installed
       # here, since the pooler step strips the PGDG archive apt would fetch it
       # from, and the image is what the backup job itself dumps with
       # (backup-database.yml, PG_IMAGE), so this is the production path.
@@ -252,9 +254,10 @@ jobs:
       # `postgres` user is a superuser, and RLS never applies to one, so the
       # test that makes RLS apply to a table's owner and expects the count to
       # refuse (the issue's trap) could not spring under it - its second run
-      # on #1972 showed the dump going through where the count should have
-      # stopped it. `backup_tests` has LOGIN and CREATEDB and nothing else,
-      # the shape of the local default role (ourhike) the file runs under.
+      # on that pull request showed the dump going through where the count
+      # should have stopped it. `backup_tests` has LOGIN and CREATEDB and
+      # nothing else, the shape of the local default role (ourhike) the file
+      # runs under.
       - name: Install age and start a Postgres 17 that speaks TLS, for the backup's tests
         if: steps.scope.outputs.run == 'true'
         working-directory: .

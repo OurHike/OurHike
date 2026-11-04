@@ -13,42 +13,12 @@
 // queue in IndexedDB (idb-keyval's store, read by e2e/support/usage.ts) and
 // the requests e2e/support/backend.ts records.
 
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 
 import { seedSession, setBackendSignal, stubBackend } from './support/backend'
 import { seedPreferences } from './support/seed'
 import { readIDBEntry } from './support/idb'
-import { count, queuedEvents } from './support/usage'
-
-/** Moves the visit in progress `minutes` into the past, as if the phone had
- *  been put away that long - the idle gap is half an hour
- *  (lib/usageEvents.ts `SESSION_IDLE_MS`), and a test does not wait it out. */
-function ageVisit(page: Page, minutes: number): Promise<void> {
-  return page.evaluate(
-    (ms) =>
-      new Promise<void>((resolve, reject) => {
-        const open = indexedDB.open('keyval-store')
-        open.onerror = () => reject(open.error)
-        open.onsuccess = () => {
-          const store = open.result
-            .transaction('keyval', 'readwrite')
-            .objectStore('keyval')
-          const read = store.get('ourhike:usage')
-          read.onsuccess = () => {
-            const usage = read.result
-            if (usage?.session) {
-              usage.session.startedAt -= ms
-              usage.session.lastSeenAt -= ms
-            }
-            const write = store.put(usage, 'ourhike:usage')
-            write.onsuccess = () => resolve()
-            write.onerror = () => reject(write.error)
-          }
-        }
-      }),
-    minutes * 60_000,
-  )
-}
+import { ageVisit, count, queuedEvents } from './support/usage'
 
 test.describe('usage measurement, counted end to end', () => {
   test('a fresh install that skips first run is counted once, and a relaunch continues its visit until the idle gap has passed', async ({

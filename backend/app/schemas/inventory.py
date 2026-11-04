@@ -1,8 +1,9 @@
 """Request and response models for `/clubs/{slug}/inventory` (#1984).
 
 features/STRUCTURE_INVENTORY.md is the design. Enrolment and the club's
-settings (#1984), and an observation's upload (#1985); photos, areas, claims,
-passes, the review queue and the exports arrive with their own issues.
+settings (#1984), an observation's upload (#1985) and its photos (#1986);
+areas, claims, passes, the review queue and the exports arrive with their
+own issues.
 
 **What the wire refuses to carry is part of the design.** `EnrollmentCreate`
 has no time field: the server stamps the signature, so a phone's clock can
@@ -240,3 +241,21 @@ class ObservationReceipt(BaseModel):
     review_state: ReviewState
     mile: float | None
     off_line_ft: float | None
+
+
+class InventoryPhotoReceipt(BaseModel):
+    """What a photo upload tells the outbox: how far the record's set now runs."""
+
+    observation_id: str
+    photo_count: int
+
+
+class InventoryPhotoLink(BaseModel):
+    """A short-lived URL for one of a record's photos, `ReportPhotoLink`'s shape.
+
+    A bearer capability for the object, which is why it is asked for with a
+    token and answered with a URL that expires.
+    """
+
+    url: str
+    expires_in: int

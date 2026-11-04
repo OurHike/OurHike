@@ -2,9 +2,9 @@
 
 #1984 lands the front of it: a club's survey settings, and a volunteer
 enrolling by signing the club's waiver and finishing the field guide. #1985
-lands the record itself: an observation's upload. Photos, the review queue,
-areas, claims, walks and exports arrive with their own issues, on the
-access rules in `app/core/inventory_access.py`.
+lands the record itself: an observation's upload, and #1986 its photos. The
+review queue, areas, claims, walks and exports arrive with their own issues,
+on the access rules in `app/core/inventory_access.py`.
 
 **Nothing here notifies anybody.** OurHike sends no notifications at all
 (client/src/test/noNotifications.test.ts); enrolling is a row, not an
@@ -13,13 +13,30 @@ announcement.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.inventory_access import enrollment_of, require_inventory_volunteer
+from app.core.auth import still_signed_in
+from app.core.inventory_access import enrollment_of, require_inventory_volunteer, supervised_section_ids
 from app.core.org_access import OrgAccess, org_access, require_org_admin
-from app.core.orm import commit_and_refresh
+from app.core.orm import commit_and_refresh, release_before_waiting
+from app.core.photos import (
+    ALLOWED_CONTENT_TYPE,
+    FIRST_PHOTO_INDEX,
+    JPEG_MAGIC,
+    MAX_PHOTO_BYTES,
+    MAX_REPORT_PHOTOS,
+    PHOTO_URL_TTL_SECONDS,
+    PhotoStorageUnavailable,
+    discard_refused_upload,
+    inventory_photo_key,
+    photo_storage_configured,
+    photo_uploads_enabled,
+    presigned_object_url,
+    store_photo_object,
+)
 from app.core.time import to_naive_utc, utc_now
 from app.db.session import get_db
 from app.models.club import OrgState
@@ -35,10 +52,13 @@ from app.models.inventory import (
     InventoryStructure,
     StructureStatus,
 )
+from app.routers.reports import read_capped_body
 from app.schemas.inventory import (
     EnrollmentCreate,
     EnrollmentOut,
     EnrollmentPatch,
+    InventoryPhotoLink,
+    InventoryPhotoReceipt,
     InventorySettingsIn,
     InventorySettingsOut,
     ObservationCreate,
@@ -394,3 +414,180 @@ def upload_inventory_observation(
         return _receipt(existing)
     db.refresh(row)
     return _receipt(row)
+
+
+# --- A record's photos (#1986) ----------------------------------------------
+#
+# The report pipeline's, with a key of its own and no table: the same caps,
+# the same JPEG check by header and by magic bytes, the same order - check,
+# hand the database connection back, read the bytes, put them, then record
+# them in one short transaction on the locked row - for the same reasons
+# app/routers/reports.py argues at `_record_stored_photo` (#1915, #1925).
+# Photos are numbered from FIRST_PHOTO_INDEX and the set is dense: an upload
+# may append or replace, never skip, so `photo_count` always says how far
+# `inventory/{id}/{n}.jpg` runs.
+
+
+def _photo_target(row: InventoryObservation | None, index: int, club_id: str, person_id: str) -> InventoryObservation:
+    """The record photo `index` may be written to, or the refusal that says why.
+
+    404 for a record that is not the caller's at this club, uniformly: survey
+    records are club-private, and a 403 would confirm an id names one.
+    """
+    if row is None or row.club_id != club_id or row.volunteer_id != person_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such record of yours")
+    if not photo_uploads_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo storage is not configured on this server.",
+        )
+    if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A record holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
+        )
+    if index > row.photo_count + 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This record has {row.photo_count} photos; the next one is {row.photo_count + 1}.",
+        )
+    return row
+
+
+def _photo_checked_then_released(
+    db: Session, observation_id: str, index: int, enrollment: InventoryEnrollment
+) -> tuple[str, str]:
+    """The checks, then the connection handed back before the wait for the
+    bytes; the caller's club and id as plain strings, read before the release
+    so nothing afterwards touches an expired row."""
+    club_id, person_id = enrollment.club_id, enrollment.person_id
+    _photo_target(db.get(InventoryObservation, observation_id), index, club_id, person_id)
+    release_before_waiting(db)
+    return club_id, person_id
+
+
+def _store_then_record_photo(
+    db: Session, observation_id: str, index: int, body: bytes, club_id: str, person_id: str
+) -> InventoryPhotoReceipt:
+    """The put, holding no connection, then the record on the locked row.
+
+    A refusal at the record step takes the object back out, unless a
+    recorded photo is still using that key: a refused upload at an index
+    already in the set has overwritten that photo, and deleting it would
+    leave the count pointing at nothing.
+    """
+    key = inventory_photo_key(observation_id, index)
+    try:
+        store_photo_object(key, body)
+    except PhotoStorageUnavailable as error:
+        # `error.detail`, never `str(error)`: the message names the endpoint,
+        # and the endpoint names the account (app/core/photos.py).
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
+
+    row = db.get(InventoryObservation, observation_id, with_for_update=True, populate_existing=True)
+    try:
+        still_signed_in(db, person_id)
+        _photo_target(row, index, club_id, person_id)
+    except HTTPException:
+        unrecorded = row is None or index > row.photo_count
+        db.rollback()
+        if unrecorded:
+            discard_refused_upload(key)
+        raise
+    # max(), not +1: an index inside the set is a retry or a replacement.
+    row.photo_count = max(row.photo_count, index)
+    commit_and_refresh(db, row)
+    return InventoryPhotoReceipt(observation_id=row.id, photo_count=row.photo_count)
+
+
+@router.put(
+    "/clubs/{slug}/inventory/observations/{observation_id}/photos/{index}",
+    response_model=InventoryPhotoReceipt,
+    responses={
+        404: {"description": "No such record of yours at this organization."},
+        409: {"description": "That index is out of sequence, or past the cap."},
+        413: {"description": "Photo is larger than the cap."},
+        415: {"description": "Not a JPEG, by header or by magic bytes."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+async def upload_inventory_photo(
+    observation_id: str,
+    index: int,
+    request: Request,
+    enrollment: InventoryEnrollment = Depends(require_inventory_volunteer),
+    db: Session = Depends(get_db),
+) -> InventoryPhotoReceipt:
+    """Photo `index` of the caller's own record, numbered by the caller.
+
+    The outbox re-sends photo 2 as photo 2, so a retry lands on the object it
+    landed on last time. Words upload before photos (rule 4): a record's
+    photos are sent only after the record itself has been answered.
+    """
+    club_id, person_id = await run_in_threadpool(_photo_checked_then_released, db, observation_id, index, enrollment)
+
+    if (request.headers.get("content-type") or "").split(";")[0].strip() != ALLOWED_CONTENT_TYPE:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Record photos must be {ALLOWED_CONTENT_TYPE}.",
+        )
+    body = await read_capped_body(request, MAX_PHOTO_BYTES)
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No photo in the request body.")
+    if not body.startswith(JPEG_MAGIC):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Record photos must be {ALLOWED_CONTENT_TYPE}.",
+        )
+    return await run_in_threadpool(_store_then_record_photo, db, observation_id, index, body, club_id, person_id)
+
+
+@router.get(
+    "/clubs/{slug}/inventory/observations/{observation_id}/photos/{index}/link",
+    response_model=InventoryPhotoLink,
+    responses={
+        404: {"description": "No such record, no photo at that index, or not one you may see."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+def get_inventory_photo_link(
+    observation_id: str,
+    index: int,
+    response: Response,
+    access: OrgAccess = Depends(org_access),
+    db: Session = Depends(get_db),
+) -> InventoryPhotoLink:
+    """A short-lived URL for one of a record's photos, `PHOTO_URL_TTL_SECONDS`.
+
+    **Who may see it:** the volunteer who took it, the club's admins, and a
+    section supervisor for a structure in a section under their role - the
+    people who review it. Other volunteers browsing the inventory are the
+    inventory screens' question (#2007), not this one's.
+
+    **404 for everything it refuses**, the report link's rule: a distinct 403
+    would confirm that an id names a real record to somebody who may not see
+    it.
+    """
+    if not photo_storage_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Photo storage is not configured on this server.",
+        )
+    row = db.get(InventoryObservation, observation_id)
+    refused = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record photo not found")
+    if row is None or row.club_id != access.club.id or not FIRST_PHOTO_INDEX <= index <= row.photo_count:
+        raise refused
+    if row.volunteer_id != access.person_id and not access.is_admin:
+        section_id = db.get(InventoryStructure, row.structure_id).section_id
+        if not (
+            access.is_supervisor
+            and section_id is not None
+            and section_id in supervised_section_ids(db, access.club.id, access.person_id)
+        ):
+            raise refused
+    try:
+        url = presigned_object_url(inventory_photo_key(row.id, index))
+    except PhotoStorageUnavailable as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return InventoryPhotoLink(url=url, expires_in=PHOTO_URL_TTL_SECONDS)

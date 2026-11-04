@@ -17,6 +17,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import hash_pins
+
 ROOT = Path(__file__).resolve().parents[2]
 REQUIREMENTS = ROOT / "pipeline" / "requirements-extract.txt"
 
@@ -38,33 +40,17 @@ INSTALL_SITES = {
 }
 
 
-def _commands(text: str) -> list[str]:
-    """One string per shell command line, a backslash continuation joined to the line it continues."""
-    return re.sub(r"\\\n\s*", " ", text).splitlines()
-
-
-def _installs() -> dict[str, list[str]]:
-    github = ROOT / ".github"
-    found: dict[str, list[str]] = {}
-    for path in sorted([*github.glob("workflows/*.yml"), *github.glob("actions/*/action.yml")]):
-        commands = [command for command in _commands(path.read_text(encoding="utf-8")) if INSTALLS_EXTRACT.search(command)]
-        if commands:
-            found[str(path.relative_to(github))] = commands
-    return found
-
-
 def test_every_pin_in_requirements_extract_lists_a_sha256():
     text = REQUIREMENTS.read_text(encoding="utf-8")
     assert "--generate-hashes" in text.splitlines()[1], "the header's own command compiles with --generate-hashes"
-    blocks = re.split(r"\n(?=[A-Za-z0-9])", text)
-    pins = [block for block in blocks if re.match(r"^[A-Za-z0-9_.\-\[\]]+==", block)]
+    pins = hash_pins.pins(text)
     assert len(pins) >= 60, "the file's pins were found"
-    unhashed = [block.split()[0] for block in pins if "--hash=sha256:" not in block]
+    unhashed = [pin.split()[0] for pin in pins if "--hash=sha256:" not in pin]
     assert unhashed == []
 
 
 def test_every_install_of_requirements_extract_requires_hashes():
-    installs = _installs()
+    installs = hash_pins.installs_of(INSTALLS_EXTRACT)
     assert {site: len(commands) for site, commands in installs.items()} == INSTALL_SITES
     missing = [
         (site, command.strip())

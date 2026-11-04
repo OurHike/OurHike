@@ -61,6 +61,7 @@ A change to an extractor, or a new upstream answer, needs a new pin: dispatch `r
 |---|---|---|
 | Raw store | every resource's rows as Parquet (zstd), each lane its own dlt pipeline, plus `_extract_runs`, the run log | private bucket `our-hike-raw`, under `raw/` |
 | Step cache | pins (`steps/raw_inputs/<raw_run>/`), stored warehouses (`steps/dbt_warehouse/<env>/<raw_run>/`), expensive Python steps' outputs as GeoParquet | same bucket, under `steps/`, write-once |
+| Planetiler's sources | the basemap build's three non-OSM inputs (about 1.4 GB of zips) and their manifest, for when the Actions cache has dropped them (`lib/planetiler_sources.py`) | same bucket, under `planetiler_sources/`, replaced when a source is fetched again; one writer, `build-basemap.yml`'s fetch step; the retention step lists it and never deletes from it |
 | Row history | each mart's snapshot, saved between runs | the history store; the monthly store keeps its newest 3 saves, the hourly stores 24 |
 | Warehouse | every dbt model | one `warehouse.duckdb` per build, rebuilt each run |
 | Phone files | what phones download | the public bucket `our-hike`, served at `data.ourhike.org`; only `publish.py` writes it |
@@ -131,7 +132,7 @@ Seeds hold every rule that is data rather than code: `notice_words.csv` (the clo
 
 ### One key per table
 
-Every model has one key column, unique and not null, tested at error. A key of several columns is built with `dbt_utils.generate_surrogate_key`. The key's inputs are the registry key, then the upstream's own id where it is unique (GlobalID, else the layer's object id), else the smallest set of current values measured unique. Never a row's position in the file. Two closures models that cut areas keep their key test at warn, a recorded exception. A publisher's reload can renumber an object id, so anything that joins across releases (the POI identity ledger, graph cells) checks the release too.
+Every model has one key column, unique and not null, tested at error. A key of several columns is built with `dbt_utils.generate_surrogate_key`. The key's inputs are the registry key, then the upstream's own id where it is unique (GlobalID, else the layer's object id), else the smallest set of current values measured unique. Never a row's position in the file. A layer that serves one feature as several polygon parts names the fields that differ per part (`part_fields` in `sources.json`), and its base model keeps one row per key carrying the union of the parts' shapes (#1947). Two closures models that cut areas keep their key test at warn, a recorded exception. A publisher's reload can renumber an object id, so anything that joins across releases (the POI identity ledger, graph cells) checks the release too.
 
 ### Python steps, outside dbt
 

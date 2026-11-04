@@ -20,6 +20,17 @@ outlive both the signature and the visibility decision behind it".
 tests/test_edge_cache.py lists the three, so adding a fourth is a visible
 decision rather than a decorator copied from a neighbour.
 
+**ONE ROUTE OUTSIDE THE THREE SETS A SHARED ANSWER OF ITS OWN.** `GET
+/support/total` answers `public, max-age=3600` (app/routers/support.py
+`support_total`): a count and a sum that are public by the founder's
+commitment (poll, 2026-10-23), the same bytes to every caller, signed in or
+not, and already computed at most once an hour per process. It is not a
+fourth route here - it does not use `shared_at_edge` - and the edge never
+keeps it, because LAUNCH_CHECKLIST.md §6's cache rule is scoped to the
+three paths above rather than to the hostname; a browser or the phone may
+keep it for the hour. Named so that "everything else" below is read as what
+it is: every route that chose nothing.
+
 **A SIGNED-IN CALLER IS NEVER SHARED.** A request carrying `Authorization`
 gets `private, no-store`, whatever the route does with the token. Cloudflare
 does not store a response marked private, so a reporter's view of their own
@@ -44,7 +55,8 @@ the header is set here regardless of the cache in front, repeating what
 ever narrowed from `*`, one origin's answer can no longer be shared, and these
 routes have to leave the edge cache in the same change.
 
-**EVERYTHING ELSE SAYS `no-store`** (NoStoreByDefaultMiddleware). That binds
+**EVERY ROUTE THAT CHOSE NOTHING SAYS `no-store`** (NoStoreByDefaultMiddleware,
+which never overwrites a header a route set). That binds
 a cache rule that honours the origin's `Cache-Control`, which is the rule
 LAUNCH_CHECKLIST.md §6 sets up. It does not bind one told to ignore it:
 Cloudflare's docs say that with an Edge TTL that ignores the origin's

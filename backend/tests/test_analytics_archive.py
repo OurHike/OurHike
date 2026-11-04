@@ -26,6 +26,7 @@ from app.models.analytics import (
     AnalyticsArchivedDaily,
     AnalyticsArchivePart,
     AnalyticsEvent,
+    AnalyticsMonth,
     AnalyticsMonthly,
     UsageEvent,
 )
@@ -451,6 +452,44 @@ def test_a_month_inside_retention_keeps_its_files(db_session, store, script):
 
     assert result.retired == []
     assert store.keys() == ["2026-10/part-0001.parquet"]
+
+
+def _late(db_session, month: date = OCTOBER) -> float | None:
+    row = db_session.get(AnalyticsMonthly, (month, "events_after_close", ALL, ALL))
+    return None if row is None else row.value
+
+
+def test_the_night_a_month_passes_retention_keeps_its_frozen_late_count(db_session, store, script):
+    """analytics-rollup.yml runs the archive before the rollup. On the night a
+    month passes retention, `retire` drops its files and its
+    `analytics_archived_daily` rows first; the rollup then still called
+    `_count_late` for it (its `raw_deleted_at` was not yet set), read its
+    archived rows as 0, and wrote max(0, linked rows held - every row at
+    close) over the late count the month had carried since its close - 0
+    here, for 1 - and only then set `raw_deleted_at`, freezing the wrong
+    figure for good. Red on 5c5d899e (the release review's finding 2):
+    `assert 0.0 == 1`. The control without the archive always passed, because
+    nothing had taken the rows the count needs.
+
+    The figure is the one `CLOSE_AFTER_DAYS`'s @unvalidated note says would
+    settle it (app/core/analytics_rollup.py), so the night it was lost was the
+    night it was finished."""
+    _october(db_session)
+    _close_october(db_session)
+    _event(db_session, date(2026, 10, 4), received=ARCHIVE_DAY)  # one late unlinked row
+    _archive(db_session, store, script)
+    analytics_rollup.run(db_session, today=ARCHIVE_DAY)
+    assert _late(db_session) == 1  # as test_the_rollup_counts_archived_rows_back_into_a_closed_months_late_rows pins
+    later = date(2027, 5, 2)
+    assert retention_start(later) > OCTOBER
+
+    # The workflow's order on that night: archive, then rollup.
+    assert _archive(db_session, store, script, today=later).retired == [OCTOBER]
+    rolled = analytics_rollup.run(db_session, today=later)
+
+    assert OCTOBER in rolled.deleted
+    assert db_session.get(AnalyticsMonth, OCTOBER).raw_deleted_at is not None
+    assert _late(db_session) == 1, "the late count a frozen month keeps must not move on its last night"
 
 
 # --- the command ----------------------------------------------------------------

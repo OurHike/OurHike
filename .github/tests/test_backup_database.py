@@ -10,8 +10,21 @@ which is safe, but `pg_dump --enable-row-security` succeeds with zero rows. The
 tests at the end run the real `main(["dump"])`, `verify` and `seal` against a
 real Postgres: a good backup comes back row for row, and an empty, a one-row-
 short and a statistics-less one are each refused. They skip where no Postgres
-is reachable, which includes CI's settings job; measured 2026-10-29 on the
-session's local Postgres 16.15 with age 1.1.1.
+is reachable, which includes CI's settings jobs; measured 2026-10-29 on the
+session's local Postgres 16.15 with age 1.1.1. In CI they run in
+backend-tests.yml's `pytest-postgres` job, against a postgres:17 that job
+starts with TLS (since 2026-11-04 - the release review found they had skipped
+on every CI run before), and a test below keeps that step there.
+
+THE LOG CARRIES NO ROW COUNT. Actions logs on this repository are public, and
+a production table's row count is its size - how many hikers, reports and
+closures there are. `backend/scripts/analytics_rollup.py`, `analytics_archive.py`
+and `analytics_quality.py` each refuse to print a count for that reason, and
+`test_no_row_count_reaches_the_log` holds this script to the same rule on a good
+night and on a bad one, while the counts still travel inside the sealed file.
+Nor does an archive's exact size reach the log, because `auth.dump`'s size counts
+accounts: `test_the_dump_logs_no_archive_size_and_hands_the_workflow_the_exact_bytes`
+finds only the rounded total there, and the exact bytes in $GITHUB_OUTPUT.
 """
 
 from __future__ import annotations
@@ -21,12 +34,14 @@ import datetime
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import backup_database as backup
 import pytest
@@ -35,6 +50,19 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backup-database.yml"
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "backup_database.py"
+BACKEND_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backend-tests.yml"
+#: The variable the Postgres-backed tests read their server from; backend-tests.yml sets it.
+ADMIN_URL_VARIABLE = "OURHIKE_BACKUP_TEST_ADMIN_URL"
+#: The Docker image whose pg_dump the tests run, when PATH's cannot: pg_dump
+#: refuses a server newer than itself, ubuntu-latest's client is 16, and the
+#: server backend-tests.yml starts is postgres:17 (measured on the first run
+#: of #1972 - Fix the eleven fix-before-tag findings of the 2026-11-04 release
+#: review, and the docs the release falsified - 2026-11-04: "server version:
+#: 17.11 ... pg_dump version: 16.15"). It is
+#: the same way the backup job itself gets Postgres 17's tools
+#: (backup-database.yml's PG_IMAGE, backup_database.py's Tools). Unset locally,
+#: where PATH's tools and the local server are the same major version.
+PG_IMAGE_VARIABLE = "OURHIKE_BACKUP_TEST_PG_IMAGE"
 
 POOLER = "postgresql://ourhike_backup.abcdefghijklmnopqrst:p%40ss%2Fw0rd@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
 
@@ -187,7 +215,7 @@ def test_a_tool_on_path_inherits_no_stray_libpq_setting(tmp_path, monkeypatch):
 def test_a_table_with_rows_that_restores_empty_is_the_failure():
     problems = backup.compare({"public.closures": 12, "public.profiles": 3}, {"public.closures": 0, "public.profiles": 3})
 
-    assert problems == ["public.closures: 12 row(s) when it was dumped, 0 in the restore"]
+    assert problems == ["public.closures came back empty: it held rows when it was dumped and the restore holds none"]
 
 
 def test_a_table_missing_from_the_restore_fails_whatever_it_held():
@@ -207,15 +235,62 @@ def test_empty_on_both_sides_is_a_faithful_backup():
 def test_compare_refuses_a_restore_one_row_short_because_the_count_is_exact():
     """`dump` counts in the snapshot it dumps, so any difference is a missing row, never an estimate being off."""
     assert backup.compare({"public.closures": 40}, {"public.closures": 39}) == [
-        "public.closures: 40 row(s) when it was dumped, 39 in the restore"
+        "public.closures came back short of the rows it held when it was dumped"
     ]
 
 
-def test_the_report_puts_every_table_side_by_side():
-    lines = backup.report({"public.closures": 12}, {"public.closures": 12, "auth.users": 2}).splitlines()
+def test_compare_refuses_a_restore_with_more_rows_than_were_dumped():
+    assert backup.compare({"public.closures": 40}, {"public.closures": 41}) == [
+        "public.closures came back with more rows than it held when it was dumped"
+    ]
 
-    assert lines[1].split() == ["auth.users", "-", "2"]
-    assert lines[2].split() == ["public.closures", "12", "12"]
+
+@pytest.mark.parametrize(
+    ("dumped", "restored"),
+    [
+        ({"public.closures": 12}, {"public.closures": 0}),
+        ({"public.closures": 40}, {"public.closures": 39}),
+        ({"public.closures": 40}, {"public.closures": 41}),
+        ({"public.closures": 7}, {"public.reports": 1}),
+    ],
+    ids=["empty", "short", "more", "missing"],
+)
+def test_a_problem_names_the_table_and_the_direction_and_never_a_count(dumped, restored):
+    """The counts are production's size; the log is public (the module docstring)."""
+    [problem] = backup.compare(dumped, restored)
+
+    assert problem.startswith("public.closures ")
+    assert not re.search(r"\d", problem), problem
+
+
+def test_the_report_names_every_table_and_whether_it_came_back_and_never_a_count():
+    lines = backup.report(
+        {"public.closures": 12, "public.reports": 40, "public.trips": 7, "public.profiles": 3},
+        {"public.closures": 12, "public.reports": 0, "public.trips": 6, "auth.users": 2},
+    ).splitlines()
+
+    assert lines[1:] == [
+        f"{'auth.users':40} not counted when it was dumped",
+        f"{'public.closures':40} matched",
+        f"{'public.profiles':40} MISSING from the restore",
+        f"{'public.reports':40} EMPTY in the restore",
+        f"{'public.trips':40} SHORT in the restore",
+    ]
+    assert not re.search(r"\d", "\n".join(lines))
+
+
+@pytest.mark.parametrize(
+    ("reltuples", "verdict"),
+    [
+        (-1, "never counted by the catalog"),
+        (0, "no rows by the catalog, pages still on disk"),
+        (500, "holds rows by the catalog"),
+    ],
+    ids=["never-analyzed", "emptied", "holds-rows"],
+)
+def test_the_uncovered_schema_refusal_says_whether_a_table_holds_rows_and_never_how_many(reltuples, verdict):
+    """`reltuples` reaches the public log only as one of three verdicts: a table's rows are its size."""
+    assert backup._rows_by_catalog(reltuples) == verdict
 
 
 def test_a_held_transaction_keeps_psql_stdin_open_inside_docker(tmp_path):
@@ -241,6 +316,23 @@ def _at_the_line() -> int:
 def test_egress_warning_stays_quiet_up_to_the_share_and_speaks_past_it():
     assert backup.egress_warning(_at_the_line()) == ""
     assert backup.egress_warning(_at_the_line() + 1) != ""
+
+
+@pytest.mark.parametrize(
+    ("total", "said"),
+    [(0, "under 1 MB"), (999_999, "under 1 MB"), (1_000_000, "about 1 MB"), (12_345_678, "about 12 MB")],
+)
+def test_the_logged_archive_size_is_whole_megabytes_and_never_the_byte_figure(total, said):
+    assert backup.rounded_size(total) == said
+
+
+def test_a_run_by_hand_with_no_github_output_prints_the_step_outputs(monkeypatch, capsys):
+    """Off Actions there is no public log and no step to hand a figure to, so stdout is where it goes."""
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+
+    backup._output("egress_bytes", "12345")
+
+    assert capsys.readouterr().out == "egress_bytes=12345\n"
 
 
 def test_egress_warning_names_the_night_the_month_and_the_quota():
@@ -349,6 +441,15 @@ def test_the_upload_reads_the_object_back_and_matches_its_sha256(tmp_path):
     assert uploaded.returncode == 0, uploaded.stderr
     assert "Stored postgres/2026/10/29/ourhike-20261029T051203Z.tar.age" in uploaded.stdout
     assert "SHA-256" in uploaded.stdout and "read back from the bucket" in uploaded.stdout
+
+
+def test_the_upload_logs_no_size_for_the_sealed_file(tmp_path):
+    """The sealed file is both archives plus a fixed overhead, so its exact size would undo `dump`'s rounding."""
+    uploaded = _upload(tmp_path)
+
+    size = (tmp_path / "ourhike-20261029T051203Z.tar.age").stat().st_size
+    assert uploaded.returncode == 0, uploaded.stderr
+    assert str(size) not in uploaded.stdout and "bytes" not in uploaded.stdout, uploaded.stdout
 
 
 def test_a_stored_copy_the_same_size_but_different_bytes_fails_the_upload(tmp_path):
@@ -587,6 +688,34 @@ def test_the_tracking_issue_hears_every_outcome_of_a_run_from_main_and_nothing_f
     assert _steps()["Open, update, or close the tracking issue"]["if"] == "always() && steps.ref.outcome == 'success'"
 
 
+# --- Where the Postgres-backed tests run in CI ---------------------------------
+
+
+def test_backend_tests_yml_runs_this_file_against_a_postgres_that_speaks_tls():
+    """The tests below need pg_dump, pg_restore, age and a server that takes
+    `sslmode=require`, which `dump` insists on. The settings jobs have none of
+    those, so until 2026-11-04 every one of them skipped on every CI run (the
+    release review's finding 6). backend-tests.yml's service container speaks
+    no TLS either - the postgres image ships no certificate - so that job
+    starts a second postgres:17 with a certificate of its own, and its scope
+    list names what this file reads, so a change to any of it runs the step."""
+    steps = yaml.safe_load(BACKEND_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["pytest-postgres"]["steps"]
+    [tests] = [step for step in steps if Path(__file__).name in str(step.get("run", ""))]
+    [server] = [step for step in steps if "ssl=on" in str(step.get("run", ""))]
+
+    assert tests["working-directory"] == ".github/tests" and tests["if"] == "steps.scope.outputs.run == 'true'"
+    url = urlsplit(tests["env"][ADMIN_URL_VARIABLE])
+    assert url.scheme == "postgresql" and url.hostname == "localhost"
+    assert steps.index(server) < steps.index(tests)
+    assert f"--publish {url.port}:5432" in server["run"], "the Postgres with TLS must be the one the URL names"
+    assert "apt-get install -y -qq age" in server["run"]
+    image = tests["env"][PG_IMAGE_VARIABLE]
+    assert image in server["run"], "the tests must dump with the image the server runs, or pg_dump refuses it as newer"
+    scope = next(step for step in steps if "changed-paths" in str(step.get("uses", "")))["with"]["paths"].split()
+    for path in (SCRIPT, Path(__file__), WORKFLOW):
+        assert path.relative_to(REPO_ROOT).as_posix() in scope, f"a change to {path.name} alone would not run the step"
+
+
 # --- Against a real Postgres --------------------------------------------------
 #
 # One source and one scratch database per module (per xdist worker), reset
@@ -594,7 +723,7 @@ def test_the_tracking_issue_hears_every_outcome_of_a_run_from_main_and_nothing_f
 # which took 3m35s on this session's loaded Postgres 16.15 (measured
 # 2026-10-29), against well under a second for the reset.
 
-ADMIN_URL = os.environ.get("OURHIKE_BACKUP_TEST_ADMIN_URL", "postgresql://ourhike:ourhike@localhost:5432/ourhike_dev")
+ADMIN_URL = os.environ.get(ADMIN_URL_VARIABLE, "postgresql://ourhike:ourhike@localhost:5432/ourhike_dev")
 
 #: The two Supabase Auth tables `dump` reads, as a stand-in `auth` schema.
 AUTH_SQL = (
@@ -667,7 +796,7 @@ class Postgres:
 def postgres():
     """A source and a scratch database for the module, all dropped together at the end."""
     if not _reachable():
-        pytest.skip("no local Postgres with psql, pg_dump and pg_restore; CI's settings job has none")
+        _unavailable("no local Postgres with psql, pg_dump and pg_restore; CI's settings job has none")
     base = ADMIN_URL.rsplit("/", 1)[0]
     suffix = uuid.uuid4().hex[:8]
     made: list[str] = []
@@ -675,13 +804,60 @@ def postgres():
         for name in (f"backup_test_src_{suffix}", f"backup_test_scratch_{suffix}"):
             created = _psql(ADMIN_URL, f"create database {name}")
             if created.returncode != 0:
-                pytest.skip(f"this role cannot create databases: {created.stderr.strip()}")
+                _unavailable(f"this role cannot create databases: {created.stderr.strip()}")
             made.append(name)
         if _psql(f"{base}/{made[0]}?sslmode=require", "select 1").returncode != 0:
-            pytest.skip("this Postgres refuses TLS, and `dump` will not connect without it")
+            _unavailable("this Postgres refuses TLS, and `dump` will not connect without it")
         yield Postgres(base=base, source=f"{base}/{made[0]}", scratch=f"{base}/{made[1]}", made=made)
     finally:
         _drop_all(base, made)
+
+
+def _unavailable(reason: str) -> None:
+    """Skip locally, fail in CI.
+
+    With `ADMIN_URL_VARIABLE` set, the server was started for these tests on
+    purpose (backend-tests.yml), and a quiet skip there is finding 6 of the
+    2026-11-04 release review again: eleven tests that never ran and a green
+    step that said nothing. Unset, this is a laptop without the tools, where
+    skipping is the right answer.
+    """
+    if ADMIN_URL_VARIABLE in os.environ:
+        pytest.fail(f"{ADMIN_URL_VARIABLE} is set, so these tests were meant to run here, but: {reason}")
+    pytest.skip(reason)
+
+
+def test_with_the_admin_url_set_an_unavailable_server_fails_rather_than_skips(monkeypatch):
+    """CI set the server up on purpose, so "could not reach it" is a failure there and a skip on a laptop.
+
+    Both outcomes are caught and the type asserted: a `Skipped` is not a
+    `pytest.fail.Exception`, so `pytest.raises(pytest.fail.Exception)` alone
+    let an always-skip `_unavailable` escape and report this test skipped."""
+    monkeypatch.setenv(ADMIN_URL_VARIABLE, "postgresql://backup_tests:backup@localhost:5433/postgres")
+    with pytest.raises((pytest.fail.Exception, pytest.skip.Exception)) as raised:
+        _unavailable("this Postgres refuses TLS")
+    assert raised.type is pytest.fail.Exception, f"skipped instead of failing: {raised.value}"
+    assert "meant to run here" in str(raised.value)
+    monkeypatch.delenv(ADMIN_URL_VARIABLE)
+    with pytest.raises(pytest.skip.Exception):
+        _unavailable("this Postgres refuses TLS")
+
+
+def _tools(workdir: Path) -> backup.Tools:
+    """The script's tools as the tests run them by hand: PATH's, or `PG_IMAGE_VARIABLE`'s image in CI."""
+    return backup.Tools(workdir=workdir, image=os.environ.get(PG_IMAGE_VARIABLE) or None)
+
+
+def _image_args() -> list[str]:
+    """`--pg-image` as backup-database.yml passes it, so CI's pg_dump matches its server; nothing locally."""
+    image = os.environ.get(PG_IMAGE_VARIABLE)
+    return ["--pg-image", image] if image else []
+
+
+def _restored_text_bytes(workdir: Path, name: str) -> int:
+    """The bytes of SQL text pg_restore writes from one archive, counted as `dump` counts them (binary, through the same tools)."""
+    argv, env = _tools(workdir).command("pg_restore", ["--file=-", str(workdir / name)], {})
+    return len(subprocess.run(argv, env=env, capture_output=True, check=True).stdout)
 
 
 @pytest.fixture
@@ -689,14 +865,15 @@ def run(postgres, tmp_path, monkeypatch):
     """`backup_database.main` as the workflow calls it, against the module's databases."""
     monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "github_output"))
     workdir = tmp_path / "backup"
+    image = _image_args()
 
     def stage(name: str, *, source: str | None = None) -> int:
         if name == "dump":
             monkeypatch.setenv("BACKUP_DATABASE_URL", f"{source or postgres.source}?sslmode=require")
-            return backup.main(["dump", "--workdir", str(workdir)])
+            return backup.main(["dump", "--workdir", str(workdir), *image])
         if name == "verify":
-            return backup.main(["verify", "--workdir", str(workdir), "--scratch-url", postgres.scratch])
-        return backup.main([name, "--workdir", str(workdir)])
+            return backup.main(["verify", "--workdir", str(workdir), "--scratch-url", postgres.scratch, *image])
+        return backup.main([name, "--workdir", str(workdir), *image])
 
     stage.workdir = workdir
     return stage
@@ -713,10 +890,10 @@ def test_verify_full_reaches_the_server_from_inside_docker_with_the_named_certif
     """The review's `root certificate file ... does not exist`, end to end:
     psql 17 in the container checks the local server's own certificate."""
     if not _reachable():
-        pytest.skip("no local Postgres to connect to")
+        _unavailable("no local Postgres to connect to")
     served = Path(_psql(ADMIN_URL, "show ssl_cert_file").stdout.strip() or "/nonexistent")
     if not served.is_file():
-        pytest.skip("the local Postgres serves no certificate this test can read")
+        _unavailable("the local Postgres serves no certificate this test can read")
     # Copied to a path the image does not have and the workdir mount does not
     # cover, as a certificate on the runner would be.
     (tmp_path / "certs").mkdir()
@@ -724,7 +901,7 @@ def test_verify_full_reaches_the_server_from_inside_docker_with_the_named_certif
     shutil.copyfile(served, certificate)
     checked = f"{ADMIN_URL}?sslmode=verify-full&sslrootcert={certificate}"
     if _psql(checked, "select 1").returncode != 0:
-        pytest.skip("the local Postgres's certificate does not pass verify-full for its own host")
+        _unavailable("the local Postgres's certificate does not pass verify-full for its own host")
 
     (tmp_path / "work").mkdir()
     tools = backup.Tools(workdir=tmp_path / "work", image="postgres:17")
@@ -747,24 +924,60 @@ def test_a_good_backup_comes_back_row_for_row_through_dump_and_verify(postgres, 
     assert backup._read_counts(run.workdir / backup.RESTORED_ROWS) == FORTY_CLOSURES
 
 
+def _figures(text: str) -> set[str]:
+    """Every standalone run of digits - "40" in "40 row(s)". No line is exempt: an archive's exact size counts
+    accounts (the module docstring), so a line about bytes is held to the same rule as any other."""
+    return set(re.findall(r"(?<![\d,.])\d+(?![\d,.])", text))
+
+
+def test_no_row_count_reaches_the_log_on_a_good_night_or_a_bad_one(postgres, run, capsys):
+    """The module docstring's rule, on the real `dump` and `verify`: the log names each table and whether it came
+    back, a bad night names the table and the direction, and the counts are in the two TSVs that travel inside
+    the sealed file. 40 and 47 are the closures and the total; 39 is the short restore below."""
+    postgres.reset(FORTY_CLOSURES_SQL)
+
+    assert (run("dump"), run("verify")) == (0, 0)
+    good = capsys.readouterr()
+    said = good.out + good.err
+    assert not {"40", "47"} & _figures(said) and not re.search(r"\d+ row", said), f"a row count reached the log:\n{said}"
+    assert "public.closures" in good.out and "matched" in good.out
+    assert backup._read_counts(run.workdir / backup.LIVE_ROWS) == FORTY_CLOSURES
+
+    # A restore one row short, which must be refused by name and direction, never by number.
+    assert _psql(postgres.source, "delete from public.closures where id = 40").returncode == 0
+    source_env = backup.libpq_environment(postgres.source, require_encryption=False)
+    _tools(run.workdir).run(
+        "pg_dump", ["--format=custom", "--schema=public", f"--file={run.workdir / 'public.dump'}"], source_env
+    )
+    assert run("verify") == 1
+    bad = capsys.readouterr()
+    said = bad.out + bad.err
+    assert "public.closures came back short" in bad.err
+    assert not {"40", "39", "47"} & _figures(said) and not re.search(r"\d+ row", said), f"a row count reached the log:\n{said}"
+
+
 def _outputs(run) -> dict[str, str]:
     lines = (run.workdir.parent / "github_output").read_text(encoding="utf-8").splitlines()
     return dict(line.split("=", 1) for line in lines)
 
 
-def test_the_dump_logs_each_archive_and_hands_the_workflow_its_bytes(postgres, run, capsys):
+def test_the_dump_logs_no_archive_size_and_hands_the_workflow_the_exact_bytes(postgres, run, capsys):
+    """`auth.dump` holds only the account tables, so its exact size counts accounts (the security review of
+    a87898ff). The log gets the two archives' total rounded to megabytes; $GITHUB_OUTPUT gets the exact bytes."""
     postgres.reset(FORTY_CLOSURES_SQL)
 
     assert run("dump") == 0
 
     said = capsys.readouterr().out
-    assert "public.dump: " in said and "auth.dump: " in said and " uncompressed" in said
+    sizes = {name: ((run.workdir / name).stat().st_size, _restored_text_bytes(run.workdir, name)) for name in backup.ARCHIVES}
+    on_disk = sum(disk for disk, _ in sizes.values())
+    text = sum(sql for _, sql in sizes.values())
+    exact = {on_disk, text, *(figure for pair in sizes.values() for figure in pair)}
+    assert not [name for name in backup.ARCHIVES if name in said], f"an archive was named in the log:\n{said}"
+    assert not [n for n in exact if str(n) in said or f"{n:,}" in said], f"an exact byte figure reached the log:\n{said}"
+    assert "archive_bytes" not in said and "egress_bytes" not in said
+    assert "The two archives come to under 1 MB on disk" in said
     outputs = _outputs(run)
-    on_disk = sum((run.workdir / name).stat().st_size for name in backup.ARCHIVES)
-    text = sum(
-        len(subprocess.run(["pg_restore", "--file=-", str(run.workdir / name)], capture_output=True, check=True).stdout)
-        for name in backup.ARCHIVES
-    )
     assert (int(outputs["archive_bytes"]), int(outputs["egress_bytes"])) == (on_disk, text)
     assert outputs["egress_warning"] == ""
 
@@ -812,19 +1025,21 @@ def test_an_empty_dump_from_row_level_security_is_refused_by_the_restore(postgre
 
     # What `dump` does now: refuse at the count, the same refusal pg_dump gives.
     refused = run.workdir.parent / "refused"
-    assert backup.main(["dump", "--workdir", str(refused)]) == 1
+    assert backup.main(["dump", "--workdir", str(refused), *_image_args()]) == 1
     assert "row-level security" in capsys.readouterr().err
 
     # The trap: a dump made with --enable-row-security succeeds and holds no closures.
     source_env = backup.libpq_environment(postgres.source, require_encryption=False)
-    backup.Tools(workdir=run.workdir).run(
+    _tools(run.workdir).run(
         "pg_dump",
         ["--format=custom", "--enable-row-security", "--schema=public", f"--file={run.workdir / 'public.dump'}"],
         source_env,
     )
 
     assert run("verify") == 1
-    assert "public.closures: 40 row(s) when it was dumped, 0 in the restore" in capsys.readouterr().err
+    assert (
+        "public.closures came back empty: it held rows when it was dumped and the restore holds none" in capsys.readouterr().err
+    )
 
 
 def test_a_restore_one_row_short_is_refused(postgres, run, capsys):
@@ -834,12 +1049,12 @@ def test_a_restore_one_row_short_is_refused(postgres, run, capsys):
     # An archive missing one row: the same table dumped again after a delete.
     assert _psql(postgres.source, "delete from public.closures where id = 40").returncode == 0
     source_env = backup.libpq_environment(postgres.source, require_encryption=False)
-    backup.Tools(workdir=run.workdir).run(
+    _tools(run.workdir).run(
         "pg_dump", ["--format=custom", "--schema=public", f"--file={run.workdir / 'public.dump'}"], source_env
     )
 
     assert run("verify") == 1
-    assert "public.closures: 40 row(s) when it was dumped, 39 in the restore" in capsys.readouterr().err
+    assert "public.closures came back short of the rows it held when it was dumped" in capsys.readouterr().err
 
 
 def test_the_counts_are_exact_when_the_database_has_lost_its_statistics(postgres, run, capsys):
@@ -857,11 +1072,13 @@ def test_the_counts_are_exact_when_the_database_has_lost_its_statistics(postgres
 
     # And the empty dump the statistics let through is refused.
     copy_env = backup.libpq_environment(copy, require_encryption=False)
-    backup.Tools(workdir=run.workdir).run(
+    _tools(run.workdir).run(
         "pg_dump", ["--format=custom", "--schema-only", "--schema=public", f"--file={run.workdir / 'public.dump'}"], copy_env
     )
     assert run("verify") == 1
-    assert "public.closures: 40 row(s) when it was dumped, 0 in the restore" in capsys.readouterr().err
+    assert (
+        "public.closures came back empty: it held rows when it was dumped and the restore holds none" in capsys.readouterr().err
+    )
 
 
 def test_a_table_with_rows_in_a_schema_the_backup_does_not_dump_stops_the_dump(postgres, run, capsys):
@@ -875,7 +1092,8 @@ def test_a_table_with_rows_in_a_schema_the_backup_does_not_dump_stops_the_dump(p
 
     assert run("dump") == 1
     said = capsys.readouterr().err
-    assert "analytics.events (never counted by the catalog" in said and "SUPABASE_SCHEMAS" in said
+    assert "analytics.events (never counted by the catalog)" in said and "SUPABASE_SCHEMAS" in said
+    assert not re.search(r"\d", said), f"a row count or a size on disk reached the log:\n{said}"
     assert not (run.workdir / "public.dump").exists(), "pg_dump ran although the dump was refused"
 
 

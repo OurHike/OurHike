@@ -436,12 +436,14 @@ class Settings(BaseSettings):
 
     # NOTHING IS COLLECTED THAT NOTHING WOULD DELETE. Six-month retention is a
     # promise the nightly rollup keeps (app/core/analytics_rollup.py deletes a
-    # month's raw rows), so `POST /usage-events` reads that job's heartbeat -
-    # the newest `analytics_months.computed_at`, which every run refreshes,
-    # rows or none - and once it is older than this many days, counts each
-    # batch as `paused` and answers 503. The phone keeps the rows, so nothing
-    # is lost while the job is mended; what stops is collection with no delete
-    # behind it.
+    # month's raw rows), so two readers check that job's heartbeat - the
+    # newest `analytics_months.computed_at`, which every run refreshes, rows
+    # or none (`ROLLUP_RAN_AT_SQL` and `heartbeat_stale`, both in
+    # app/core/analytics_rollup.py). Once it is older than this many days,
+    # `POST /usage-events` counts each batch as `paused` and answers 503, and
+    # the paid support count (`rollup_paused`, app/core/analytics_support.py)
+    # writes nothing. The phone keeps the rows, so nothing is lost while the
+    # job is mended; what stops is collection with no delete behind it.
     #
     # Reasoned from the schedule: the job runs once a day
     # (.github/workflows/analytics-rollup.yml), so three days from the last

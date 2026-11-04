@@ -70,6 +70,7 @@ IDENTIFIED = "int_points_of_interest__identified_applies_the_ledger_like_apply_l
 RETIRED = "int_points_of_interest__retired_resolves_like_lib_poi_identity"
 WATER = "int_points_of_interest__water_attaches_and_synthesizes_like_export_poi"
 HELD_WATER = "int_points_of_interest__water_holds_a_point_whose_id_the_ledger_retired"
+DROPPED_WATER = "int_points_of_interest__water_drops_a_distance_keyed_by_any_id_but_the_published_one"
 ENRICHED = "int_points_of_interest__enriched_attaches_capacity_and_nearby_like_export_poi"
 OSM_DESCRIBED = "int_points_of_interest__described_says_what_describe_water_says"
 OSM_REACH = "int_points_of_interest__osm_water_reach_measures_like_measure_distances"
@@ -1190,6 +1191,19 @@ def test_tombstones_resolve_as_lib_poi_identity_resolves():
 def test_water_is_attached_and_synthesized_as_export_poi_does(tmp_path):
     test = _unit_test(WATER)
     _held(_expected(test, "poi_id"), water_answers(test, tmp_path))
+
+
+def test_a_distance_keyed_by_any_id_but_the_published_one_is_dropped_as_export_poi_drops_it(tmp_path):
+    """DROPPED_WATER's rows through today's Python: load_water_distances() keys the distance by the file's id, which
+    is not the id the shelter publishes under, and attach_water_distance() finds no record published under it (that
+    the file's id is a retired one is the case's story, not its cause: apply_ledger_ids() follows no retired id to its
+    live successor), so the shelter ships with no distance in the Python as in the SQL. The second assertion is what
+    keeps this from passing on a fixture the Python attaches: the drop is the case, not an accident of it."""
+    test = _unit_test(DROPPED_WATER)
+    answers = water_answers(test, tmp_path)
+    _held(_expected(test, "poi_id"), answers)
+    assert answers["atc_shelters:D1"]["water_distance_ft"] is None, "the Python attached the retired id's distance"
+    assert answers["atc_shelters:D2"]["water_distance_ft"] == 130, "the live id's distance did not attach"
 
 
 #: The properties a poi_<type>.geojson feature carries that the water model and export_poi.py's records both hold.

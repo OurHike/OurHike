@@ -85,6 +85,7 @@ httpx==0.28.1
 idna==3.18
     # via
     #   -c backend/requirements.txt
+    #   -r backend/requirements.in
     #   anyio
     #   httpx
     #   requests

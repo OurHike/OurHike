@@ -59,7 +59,11 @@ describe('Badge', () => {
 
     const badge = screen.getByText('Unknown')
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveStyle({ background: 'var(--stone-150)' })
+    // The inline value, not toHaveStyle: jsdom 30.1 builds getComputedStyle's
+    // `background` from its longhands, and a var() nothing defines comes back
+    // as "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box
+    // border-box", so a computed comparison cannot see the token this sets.
+    expect(badge.style.background).toBe('var(--stone-150)')
   })
 })
 
@@ -156,7 +160,8 @@ describe('Button', () => {
     fireEvent.mouseEnter(button)
     fireEvent.mouseDown(button)
 
-    expect(button).toHaveStyle({ background: 'var(--brand-primary-press)' })
+    // Inline, not toHaveStyle - see Badge's fallback test above.
+    expect(button.style.background).toBe('var(--brand-primary-press)')
     expect(button).toHaveStyle({ transform: 'scale(0.97)' })
   })
 
@@ -182,7 +187,7 @@ describe('Button', () => {
     fireEvent.mouseLeave(button)
 
     expect(button).toHaveStyle({ transform: 'scale(1)' })
-    expect(button).toHaveStyle({ background: 'var(--brand-primary)' })
+    expect(button.style.background).toBe('var(--brand-primary)')
   })
 
   it('stays at its resting background while disabled, however it is poked', () => {
@@ -192,7 +197,7 @@ describe('Button', () => {
     fireEvent.mouseEnter(button)
     fireEvent.mouseDown(button)
 
-    expect(button).toHaveStyle({ background: 'var(--brand-primary)' })
+    expect(button.style.background).toBe('var(--brand-primary)')
     expect(button).toHaveStyle({ transform: 'scale(1)' })
     expect(button).toHaveStyle({ cursor: 'not-allowed' })
   })

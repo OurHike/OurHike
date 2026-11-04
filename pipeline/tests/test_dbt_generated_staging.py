@@ -267,6 +267,32 @@ def test_a_row_with_no_measured_key_or_a_server_row_id_in_it_is_refused(entry):
         _table(entry).key_inputs()
 
 
+def test_a_layer_of_parts_unions_their_shapes_and_counts_its_raw_keys_rather_than_its_rows():
+    """#1947: BLM's national monuments arrive as 1,078 rows of 57 names, one per polygon part. Deduped as copies,
+    California Coastal National Monument kept one rock of its 942; with `part_fields` the kept row is the union."""
+    parts = _table({"key": "a", "id_field": "NAME", "part_fields": ["GlobalID", "Shape.STArea()"]})
+
+    sql = make_dbt_staging.base_sql(parts)
+    assert "st_union_agg(source.geom) over (partition by source.name) as geom" in sql
+    assert sql.rstrip().endswith("relation='renamed', partition_by='place_key', order_by='_dlt_id'\n) }}")
+    assert 'part_columns: ["geometry", "globalid", "shape_starea"]' in make_dbt_staging.sources_yaml("club", [parts])
+    assert """compare_keys: ["'a'", "name"]""" in make_dbt_staging.base_yaml("club", [parts])
+
+
+def test_a_layer_whose_rows_are_features_unions_nothing_and_counts_every_raw_row():
+    features = _table({"key": "a", "id_field": "NAME"})
+
+    assert "st_union_agg" not in make_dbt_staging.base_sql(features)
+    assert "part_columns" not in make_dbt_staging.sources_yaml("club", [features])
+    assert "compare_keys" not in make_dbt_staging.base_yaml("club", [features])
+
+
+def test_a_layer_of_parts_keyed_by_its_shape_is_refused():
+    """Each part's shape would be its own key, so nothing would be unioned and every part would be a feature."""
+    with pytest.raises(KeyRefused, match="part_fields"):
+        _table({"key": "a", "key_fields": ["geometry", "Name"], "part_fields": []}).key_inputs()
+
+
 def test_an_arcgis_date_is_cast_from_epoch_milliseconds_to_a_utc_timestamp():
     sql = make_dbt_staging.base_sql(_table({"key": "a", "id_field": "GlobalID", "date_fields": ["UPDATED", "Edit_Date"]}))
     assert "* exclude (geometry, updated, edit_date)" in sql

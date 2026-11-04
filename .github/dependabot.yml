@@ -78,15 +78,6 @@ updates:
         versions: [">=19.3"]
       - dependency-name: "@types/react-dom"
         versions: [">=19.3"]
-      # jsdom: 30.1 computes the `background` shorthand from its longhands in
-      # getComputedStyle, so the four toHaveStyle({ background: 'var(--…)' })
-      # asserts in design-system/components/components.test.tsx fail under it
-      # (15c1eb0b, measured 2026-11-03). That commit's first reason - 30.1's
-      # Blobs breaking vitest 4.1's URL.createObjectURL - no longer applies on
-      # vitest 5.1. Lifted once those four asserts read `el.style.background`,
-      # which passes under both (the same commit measured it).
-      - dependency-name: jsdom
-        versions: [">=30.1"]
 
   # -------------------------------------------------------------- pipeline
   # requirements.txt here is compiled output, not a hand-written list.

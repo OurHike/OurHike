@@ -83,6 +83,21 @@ text. The SQL text under-counts the egress too, by pg_dump's catalog queries
 and the protocol's framing: reasoned, not measured - nobody has set this figure
 beside Supabase's Shared Pooler Egress for the same night.
 
+THE LOG NAMES TABLES, NEVER A COUNT. Actions logs on this repository are
+public, and a production table's row count is its size - how many hikers,
+reports and closures there are - the reason backend/scripts/analytics_rollup.py,
+analytics_archive.py and analytics_quality.py print month and check names and
+never a figure. So `verify` logs each table and whether it came back
+(`report`), a refusal names the table and the direction (`compare`: empty,
+short, more, missing), and `dump` says how many tables it dumped and nothing
+about rows. The counts travel where they are needed: LIVE_ROWS and
+RESTORED_ROWS inside the sealed file, readable with the maintainer's key.
+An archive's bytes are still logged - a size is not a row count, and the
+egress warning is made from it. Until 2026-11-04 the log carried every
+table's dumped and restored count and their total (the release review's
+finding 5); test_backup_database.py now runs a good night and a bad one and
+fails on a count in either.
+
 SECRETS STAY OUT OF ARGV. The connection string is split into libpq's own
 environment variables (PGHOST, PGPASSWORD...) for each tool, and a Docker-run
 tool is passed their NAMES (`--env PGPASSWORD`), never their values. No error
@@ -522,18 +537,35 @@ def compare(dumped: Mapping[str, int], restored: Mapping[str, int]) -> list[str]
     for table, count in sorted(dumped.items()):
         if table not in restored:
             problems.append(f"{table} is in the database and missing from the restore")
-        elif restored[table] != count:
-            problems.append(f"{table}: {count} row(s) when it was dumped, {restored[table]} in the restore")
+        elif restored[table] == count:
+            continue
+        elif restored[table] == 0:
+            problems.append(f"{table} came back empty: it held rows when it was dumped and the restore holds none")
+        elif restored[table] < count:
+            problems.append(f"{table} came back short of the rows it held when it was dumped")
+        else:
+            problems.append(f"{table} came back with more rows than it held when it was dumped")
     return problems
 
 
 def report(dumped: Mapping[str, int], restored: Mapping[str, int]) -> str:
-    """Every table side by side, for the log."""
-    lines = [f"{'table':40} {'dumped':>12} {'restored':>12}"]
+    """Every table and whether it came back, for the log: names and verdicts, never a count (the module docstring)."""
+    lines = [f"{'table':40} restore"]
     for table in sorted(set(dumped) | set(restored)):
-        before = dumped.get(table)
-        after = restored.get(table)
-        lines.append(f"{table:40} {'-' if before is None else before:>12} {'-' if after is None else after:>12}")
+        before, after = dumped.get(table), restored.get(table)
+        if before is None:
+            verdict = "not counted when it was dumped"
+        elif after is None:
+            verdict = "MISSING from the restore"
+        elif after == before:
+            verdict = "matched"
+        elif after == 0:
+            verdict = "EMPTY in the restore"
+        elif after < before:
+            verdict = "SHORT in the restore"
+        else:
+            verdict = "MORE ROWS in the restore than were dumped"
+        lines.append(f"{table:40} {verdict}")
     return "\n".join(lines)
 
 
@@ -698,7 +730,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.stage == "dump":
             counts = dump(workdir, tools, libpq_environment(os.environ.get("BACKUP_DATABASE_URL", "")))
             print(
-                f"Dumped {len(counts)} table(s) holding {sum(counts.values())} row(s) between them, counted in the dump's snapshot."
+                f"Dumped {len(counts)} table(s), each counted in the dump's snapshot; the counts travel in {LIVE_ROWS} "
+                "inside the sealed file, never in this log."
             )
             sizes = archive_bytes(workdir, tools)
             for name, (on_disk, uncompressed) in sizes.items():
@@ -712,7 +745,11 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error("verify needs --scratch-url")
             problems = verify(workdir, tools, libpq_environment(args.scratch_url, require_encryption=False))
             if problems:
-                print("\nThis dump does not count as a backup:", file=sys.stderr)
+                print(
+                    f"\nThis dump does not count as a backup (the counts stay in {LIVE_ROWS} and {RESTORED_ROWS} under the "
+                    "workdir, never in this log):",
+                    file=sys.stderr,
+                )
                 for problem in problems:
                     print(f"  - {problem}", file=sys.stderr)
                 return 1

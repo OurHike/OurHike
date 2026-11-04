@@ -21,12 +21,14 @@ import datetime
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import backup_database as backup
 import pytest
@@ -187,7 +189,7 @@ def test_a_tool_on_path_inherits_no_stray_libpq_setting(tmp_path, monkeypatch):
 def test_a_table_with_rows_that_restores_empty_is_the_failure():
     problems = backup.compare({"public.closures": 12, "public.profiles": 3}, {"public.closures": 0, "public.profiles": 3})
 
-    assert problems == ["public.closures: 12 row(s) when it was dumped, 0 in the restore"]
+    assert problems == ["public.closures came back empty: it held rows when it was dumped and the restore holds none"]
 
 
 def test_a_table_missing_from_the_restore_fails_whatever_it_held():
@@ -207,15 +209,48 @@ def test_empty_on_both_sides_is_a_faithful_backup():
 def test_compare_refuses_a_restore_one_row_short_because_the_count_is_exact():
     """`dump` counts in the snapshot it dumps, so any difference is a missing row, never an estimate being off."""
     assert backup.compare({"public.closures": 40}, {"public.closures": 39}) == [
-        "public.closures: 40 row(s) when it was dumped, 39 in the restore"
+        "public.closures came back short of the rows it held when it was dumped"
     ]
 
 
-def test_the_report_puts_every_table_side_by_side():
-    lines = backup.report({"public.closures": 12}, {"public.closures": 12, "auth.users": 2}).splitlines()
+def test_compare_refuses_a_restore_with_more_rows_than_were_dumped():
+    assert backup.compare({"public.closures": 40}, {"public.closures": 41}) == [
+        "public.closures came back with more rows than it held when it was dumped"
+    ]
 
-    assert lines[1].split() == ["auth.users", "-", "2"]
-    assert lines[2].split() == ["public.closures", "12", "12"]
+
+@pytest.mark.parametrize(
+    ("dumped", "restored"),
+    [
+        ({"public.closures": 12}, {"public.closures": 0}),
+        ({"public.closures": 40}, {"public.closures": 39}),
+        ({"public.closures": 40}, {"public.closures": 41}),
+        ({"public.closures": 7}, {"public.reports": 1}),
+    ],
+    ids=["empty", "short", "more", "missing"],
+)
+def test_a_problem_names_the_table_and_the_direction_and_never_a_count(dumped, restored):
+    """The counts are production's size; the log is public (the module docstring)."""
+    [problem] = backup.compare(dumped, restored)
+
+    assert problem.startswith("public.closures ")
+    assert not re.search(r"\d", problem), problem
+
+
+def test_the_report_names_every_table_and_whether_it_came_back_and_never_a_count():
+    lines = backup.report(
+        {"public.closures": 12, "public.reports": 40, "public.trips": 7, "public.profiles": 3},
+        {"public.closures": 12, "public.reports": 0, "public.trips": 6, "auth.users": 2},
+    ).splitlines()
+
+    assert lines[1:] == [
+        f"{'auth.users':40} not counted when it was dumped",
+        f"{'public.closures':40} matched",
+        f"{'public.profiles':40} MISSING from the restore",
+        f"{'public.reports':40} EMPTY in the restore",
+        f"{'public.trips':40} SHORT in the restore",
+    ]
+    assert not re.search(r"\d", "\n".join(lines))
 
 
 def test_a_held_transaction_keeps_psql_stdin_open_inside_docker(tmp_path):
@@ -747,6 +782,39 @@ def test_a_good_backup_comes_back_row_for_row_through_dump_and_verify(postgres, 
     assert backup._read_counts(run.workdir / backup.RESTORED_ROWS) == FORTY_CLOSURES
 
 
+def _figures(text: str) -> set[str]:
+    """Every standalone run of digits on a line that is not about bytes - "40" in "40 row(s)", not the "12" in
+    "12,345 bytes". An archive's size is the one figure the log may carry, and it is never a row count."""
+    lines = [line for line in text.splitlines() if "bytes" not in line]
+    return set(re.findall(r"(?<![\d,.])\d+(?![\d,.])", "\n".join(lines)))
+
+
+def test_no_row_count_reaches_the_log_on_a_good_night_or_a_bad_one(postgres, run, capsys):
+    """The module docstring's rule, on the real `dump` and `verify`: the log names each table and whether it came
+    back, a bad night names the table and the direction, and the counts are in the two TSVs that travel inside
+    the sealed file. 40 and 47 are the closures and the total; 39 is the short restore below."""
+    postgres.reset(FORTY_CLOSURES_SQL)
+
+    assert (run("dump"), run("verify")) == (0, 0)
+    good = capsys.readouterr()
+    said = good.out + good.err
+    assert not {"40", "47"} & _figures(said) and not re.search(r"\d+ row", said), f"a row count reached the log:\n{said}"
+    assert "public.closures" in good.out and "matched" in good.out
+    assert backup._read_counts(run.workdir / backup.LIVE_ROWS) == FORTY_CLOSURES
+
+    # A restore one row short, which must be refused by name and direction, never by number.
+    assert _psql(postgres.source, "delete from public.closures where id = 40").returncode == 0
+    source_env = backup.libpq_environment(postgres.source, require_encryption=False)
+    backup.Tools(workdir=run.workdir).run(
+        "pg_dump", ["--format=custom", "--schema=public", f"--file={run.workdir / 'public.dump'}"], source_env
+    )
+    assert run("verify") == 1
+    bad = capsys.readouterr()
+    said = bad.out + bad.err
+    assert "public.closures came back short" in bad.err
+    assert not {"40", "39", "47"} & _figures(said) and not re.search(r"\d+ row", said), f"a row count reached the log:\n{said}"
+
+
 def _outputs(run) -> dict[str, str]:
     lines = (run.workdir.parent / "github_output").read_text(encoding="utf-8").splitlines()
     return dict(line.split("=", 1) for line in lines)
@@ -824,7 +892,9 @@ def test_an_empty_dump_from_row_level_security_is_refused_by_the_restore(postgre
     )
 
     assert run("verify") == 1
-    assert "public.closures: 40 row(s) when it was dumped, 0 in the restore" in capsys.readouterr().err
+    assert (
+        "public.closures came back empty: it held rows when it was dumped and the restore holds none" in capsys.readouterr().err
+    )
 
 
 def test_a_restore_one_row_short_is_refused(postgres, run, capsys):
@@ -839,7 +909,7 @@ def test_a_restore_one_row_short_is_refused(postgres, run, capsys):
     )
 
     assert run("verify") == 1
-    assert "public.closures: 40 row(s) when it was dumped, 39 in the restore" in capsys.readouterr().err
+    assert "public.closures came back short of the rows it held when it was dumped" in capsys.readouterr().err
 
 
 def test_the_counts_are_exact_when_the_database_has_lost_its_statistics(postgres, run, capsys):
@@ -861,7 +931,9 @@ def test_the_counts_are_exact_when_the_database_has_lost_its_statistics(postgres
         "pg_dump", ["--format=custom", "--schema-only", "--schema=public", f"--file={run.workdir / 'public.dump'}"], copy_env
     )
     assert run("verify") == 1
-    assert "public.closures: 40 row(s) when it was dumped, 0 in the restore" in capsys.readouterr().err
+    assert (
+        "public.closures came back empty: it held rows when it was dumped and the restore holds none" in capsys.readouterr().err
+    )
 
 
 def test_a_table_with_rows_in_a_schema_the_backup_does_not_dump_stops_the_dump(postgres, run, capsys):

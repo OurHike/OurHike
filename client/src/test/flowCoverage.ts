@@ -17,10 +17,22 @@
  * - `covered` - a spec in client/e2e/ drives this surface today, and names
  *   which. Claimed only where the spec actually asserts on the surface;
  *   passing through a screen on the way somewhere else is not coverage of it.
- * - `planned` - belongs in the battery and is not written. The honest
- *   majority right now. This is the work list, not an apology: #1386 opened
- *   the layer with four specs deliberately, and the rest is scoped in
- *   features/FLOW_TESTING.md by journey step rather than file by file.
+ * - `planned` - belongs in the battery and is not written. This is the work
+ *   list, not an apology: #1386 - Rendered is not findable: add Playwright
+ *   entrance/exit/state assertions per screen, checked first against
+ *   #1374's pathway rebuild - opened the layer with four specs
+ *   deliberately, and the rest is scoped in features/FLOW_TESTING.md by
+ *   journey step rather than file by file. Every one carries `since`, the
+ *   day the row was written, and `issue` where an open issue is what it
+ *   waits on - flowCoverage.test.ts refuses a row with neither. A reason
+ *   with no date goes stale silently, and five did: three rows waited on a
+ *   cutover that landed on 2026-10-23 (#1880 - Production still builds its
+ *   notices, closures and hazard areas with the exporters, so 78
+ *   organizations' notices reach UA only), and two written on 2026-10-24
+ *   gave "a stubbed API the suite does not have yet" as their reason a
+ *   month after e2e/support/backend.ts (2026-09-23, #1643 - The org
+ *   console's permission matrix skips ten endpoints, and the position mark
+ *   and outbox drain have no end-to-end test) was that API.
  * - `unit-only` - deliberately never a flow test, with the reason. A leaf
  *   with no state of its own is proved by a component test; driving a browser
  *   to it proves the same thing more slowly. An entry here is a decision
@@ -43,7 +55,16 @@
 
 export type FlowStatus =
   | { readonly status: 'covered'; readonly spec: string }
-  | { readonly status: 'planned' }
+  | {
+      readonly status: 'planned'
+      /** The day this row was first written into this file, YYYY-MM-DD:
+       *  `git log -S "'<module>'" --format=%ad --date=short --
+       *  client/src/test/flowCoverage.ts | tail -1` against a full clone (a
+       *  shallow one dates every row to its graft). */
+      readonly since?: string
+      /** The open issue this row waits on, where one is named. */
+      readonly issue?: number
+    }
   | { readonly status: 'unit-only'; readonly why: string }
 
 export interface FlowSurface {
@@ -99,7 +120,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // the offline state are flows worth driving, with the episode list
   // answered the way preview-shots/fixtures/podcasts.mjs answers it. Save is
   // not - it leaves for Spotify's sign-in, which no flow test should reach.
-  'chrome/PodcastCard.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/PodcastCard.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'planned', since: '2026-09-26' },
+  },
   'chrome/PodcastAppIcon.tsx': {
     step: 'F2 Today',
     flow: {
@@ -110,7 +134,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // The "which app do you listen in?" list (#1690), inside the podcast card
   // and behind More → Settings. Planned with the card: the first-tap ask is
   // a flow worth driving once the card's flow test exists.
-  'chrome/PodcastAppPicker.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/PodcastAppPicker.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'planned', since: '2026-09-26' },
+  },
   'chrome/SpotifyIcon.tsx': {
     step: 'F2 Today',
     flow: {
@@ -125,7 +152,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // and MapScreen omits the block entirely". So the rail is absent for
   // exactly the reason the ribbon draws nothing, and the same published
   // elevation cell would move both.
-  'chrome/NextUpRail.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/NextUpRail.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'planned', since: '2026-09-11', issue: 1401 },
+  },
   'chrome/FieldNoteSection.tsx': {
     step: 'F2 Today',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
@@ -200,7 +230,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // The report's crosshair (#1439). `planned` rather than `unit-only`: it is
   // drivable the moment the flow suite can reach the long report form, which
   // needs an account (#1399).
-  'chrome/ReportPickBar.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
+  'chrome/ReportPickBar.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'planned', since: '2026-09-15', issue: 1399 },
+  },
   'chrome/RouteMapPickBar.tsx': {
     step: 'F4 step 2 · Route',
     flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
@@ -284,7 +317,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // published; neither is this spec's to decide. #1401 — "The elevation cells
   // under the followed walk 404, so the ribbon and the next-up rail both draw
   // nothing".
-  'chrome/ElevationRibbon.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
+  'chrome/ElevationRibbon.tsx': {
+    step: 'F6 walking it',
+    flow: { status: 'planned', since: '2026-09-11', issue: 1401 },
+  },
   'screens/TrailRibbon.tsx': {
     step: 'F6 walking it',
     flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
@@ -420,7 +456,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
   },
-  'screens/Moderation.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
+  'screens/Moderation.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'planned', since: '2026-09-11', issue: 1399 },
+  },
 
   // ---- F12 the map --------------------------------------------------------
   'chrome/MapScreen.tsx': {
@@ -477,31 +516,34 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
-  // The planned-hike panel and the hazard area card (#1805). PLANNED, and
-  // the reason is the data rather than the drive: both render only when
-  // conditions/notices.json is on the phone, which only the dbt path
-  // publishes, so the release e2e/data/ reads has none until the cutover.
-  // Their spec is mapSheets.spec.ts's notices case with the file routed in,
-  // as preview-shots/planned-hike-notices.mjs routes it for the camera; the
-  // rule underneath is held by lib/plannedNotices.test.ts and
-  // lib/hazardAreas.test.ts in the meantime.
+  // The planned-hike panel and the hazard area card (#1805 - dlt → dbt
+  // re-platform as one go/no-go change: every club through dlt, eleven
+  // contracted marts writing every phone file, and the hourly and monthly
+  // lanes), and a club closure's sheet (the maintainer's closure-map
+  // standard, 2026-10-11). These were `planned` on "the release e2e/data/
+  // reads has none until the cutover", which stopped being a blocker when
+  // #1880 - Production still builds its notices, closures and hazard areas
+  // with the exporters, so 78 organizations' notices reach UA only - landed
+  // (2026-10-23) - and was never the whole wall: the hermetic build has no
+  // VITE_DATA_BASE_URL, so lib/publishedConditions.ts's `readPublished`
+  // never asks for conditions/notices.json, hazard_areas.json or
+  // trail_closures.json and there is nothing for a `page.route` to answer.
+  // e2e/closureSurfaces.spec.ts drives all three against the bucket-shaped
+  // build (`@bucket`, e2e/support/bucket.ts), with the recipes' own fixtures
+  // answered on the wire: the panel's planned-hike row and its absent
+  // elsewhere row, a hazard area tapped on the canvas, and a club closure's
+  // mark tapped open.
   'chrome/PlannedNoticeList.tsx': {
     step: 'F12 the map',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/closureSurfaces.spec.ts' },
   },
   'chrome/HazardAreaSheet.tsx': {
     step: 'F12 the map',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/closureSurfaces.spec.ts' },
   },
-  // A club closure's sheet (the maintainer's closure-map standard, 2026-10-11). PLANNED, for
-  // the two above's reason: it opens only from a mark drawn out of
-  // conditions/trail_closures.json, which only the dbt path publishes.
-  // preview-shots/club-closures-on-the-map.mjs routes the file in for the
-  // camera; noticesPanel.clubClosures.test.tsx and ClubClosureSheet.test.tsx
-  // hold the rule and the sheet in the meantime.
   'chrome/ClubClosureSheet.tsx': {
     step: 'F12 the map',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/closureSurfaces.spec.ts' },
   },
   // A CLUB LINE'S SHEET is a state of this module
   // the flow suite does not reach yet: the data suite reads the release
@@ -537,7 +579,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // the spec's locator. Nothing there asserts on the band yet, and it was not
   // written blind: this branch's sandbox cannot reach the bucket to run it.
   // PoiCard.weather.test.tsx holds the band's states in the meantime.
-  'chrome/WeatherBand.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/WeatherBand.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned', since: '2026-09-30' },
+  },
   'chrome/weatherIcons.tsx': {
     step: 'F12 the map',
     flow: {
@@ -589,7 +634,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // and below it. #1403 — "The highlight marks were removed from the map, so
   // HighlightSheet has no door — give it one or retire it" — is the decision:
   // a band above the seam, or retire the sheet with its module.
-  'chrome/HighlightSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/HighlightSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned', since: '2026-09-11', issue: 1403 },
+  },
   'chrome/ElevationChart.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/desktopMap.spec.ts' },
@@ -616,15 +664,33 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // `planned` rather than
   // `unit-only` because the surface is meant to be drivable, and will be the
   // day the pipeline publishes what it reads.
-  'chrome/WorkdaySheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'chrome/WorkdaySheet.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'planned', since: '2026-09-11', issue: 1402 },
+  },
   // The crews section's two shared pieces (#1440). `planned` for
   // WorkdaySheet's own reason, and it is the same blocker: #1402 - no workday
   // artifact is published, so there is nothing for a flow to drive them with.
-  'chrome/CrewsSection.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
-  'chrome/WorkdayRow.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
-  'chrome/CrewContactLink.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
-  'chrome/WorkdayCalendar.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
-  'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'chrome/CrewsSection.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'planned', since: '2026-09-15', issue: 1402 },
+  },
+  'chrome/WorkdayRow.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'planned', since: '2026-09-15', issue: 1402 },
+  },
+  'chrome/CrewContactLink.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'planned', since: '2026-09-17', issue: 1402 },
+  },
+  'chrome/WorkdayCalendar.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'planned', since: '2026-09-15', issue: 1402 },
+  },
+  'chrome/workdayPanel.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'planned', since: '2026-09-11', issue: 1402 },
+  },
   'chrome/ClubSheet.tsx': {
     step: 'F14 volunteering',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
@@ -639,19 +705,29 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
-  // Supporting OurHike (#1876). PLANNED, and the reason is not a missing
-  // fixture: both screens' paid halves need a backend, and the flow suite
-  // builds with none (pr-preview.yml leaves VITE_API_BASE_URL unset), which
-  // keeps the ask dormant by design. The rules are held by
-  // lib/support.test.ts, SupportAsk.test.tsx and YourSupport.test.tsx; a flow
-  // spec needs a stubbed API the suite does not have yet.
-  'screens/SupportAsk.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/YourSupport.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  // Supporting OurHike (#1876 - Ask every hiker to choose what they give
+  // after their fifth day of use, $0 included, and take payment only on the
+  // website). Both screens' paid halves need a backend, and the hermetic
+  // build has none, which keeps the ask dormant there by design. The
+  // backend-shaped build (#1643 - The org console's permission matrix skips
+  // ten endpoints, and the position mark and outbox drain have no end-to-end
+  // test) has one, so e2e/supportRooms.spec.ts drives them `@backend`: the
+  // ask opening by itself on the fifth active day and not the fourth, $0 kept
+  // on the phone, a paid choice handed to its checkout_url, and Stop on Your
+  // support reaching More's row.
+  'screens/SupportAsk.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/supportRooms.spec.ts' },
+  },
+  'screens/YourSupport.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/supportRooms.spec.ts' },
+  },
   'screens/SupportGate.tsx': {
     step: 'F13 More',
     flow: {
       status: 'unit-only',
-      why: 'Renders nothing of its own: it counts days and decides whether to open SupportAsk, whose rules lib/support.test.ts holds and whose flow is planned above. A browser would be driving the window, not this.',
+      why: 'Renders nothing of its own: it counts days and decides whether to open SupportAsk, whose rules lib/support.test.ts holds. Its decision is what e2e/supportRooms.spec.ts watches the window for, so a browser driven here drives the window, not this.',
     },
   },
   'screens/Settings.tsx': {
@@ -662,7 +738,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
-  'screens/Registry.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/Registry.tsx': {
+    step: 'F13 More',
+    flow: { status: 'planned', since: '2026-09-11', issue: 1399 },
+  },
   // Challenges (#1780): joined, one, Browse - and the pieces every challenge
   // surface shares. e2e/challenges.spec.ts walks join, tag and the list.
   'screens/Challenges.tsx': {
@@ -687,8 +766,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F2 Today',
     flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
   },
-  'chrome/PoiChallenges.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/PlanChallenges.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'chrome/PoiChallenges.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'planned', since: '2026-09-30' },
+  },
+  'chrome/PlanChallenges.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'planned', since: '2026-09-30' },
+  },
   'screens/GpsTrace.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
@@ -697,7 +782,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
   },
-  'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/IdentitySetup.tsx': {
+    step: 'F13 More',
+    flow: { status: 'planned', since: '2026-09-11', issue: 1399 },
+  },
   // Driven by the @backend half of e2e/identityRooms.spec.ts, which finishes
   // an emailed-code sign-in against a stubbed Supabase: the question (#1902)
   // follows it, and "No thanks" returns the hiker to the map signed in.

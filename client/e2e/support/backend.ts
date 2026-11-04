@@ -51,6 +51,8 @@ export interface Recorded {
   /** The path under the API or Supabase prefix, with its query string. */
   path: string
   body: unknown
+  /** The Authorization header it carried, or undefined for none. */
+  authorization: string | undefined
 }
 
 export interface Reply {
@@ -111,6 +113,7 @@ export async function stubBackend(page: Page, routes: Routes = {}): Promise<Back
         method: request.method(),
         path: `${path}${url.search}`,
         body: parsed(request),
+        authorization: request.headers()['authorization'],
       })
 
       const entry = routes[`${request.method()} ${path}`]

@@ -265,7 +265,7 @@ def poi_photo_key(poi_id: str, contributor_id: str) -> str:
 
 
 def inventory_photo_key(observation_id: str, index: int = FIRST_PHOTO_INDEX) -> str:
-    """Where photo `index` of a structure-survey record lives (#1986). Pure,
+    """Where photo `index` of a structure-survey record lives. Pure,
     and the only spelling of it, `photo_key`'s rule.
 
     Keyed by the OBSERVATION, never the structure: a structure is visited

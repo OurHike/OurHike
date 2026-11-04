@@ -1,4 +1,6 @@
-"""A survey record's photos: the report pipeline, keyed by record (#1986).
+"""A survey record's photos: the report pipeline, keyed by record.
+
+#1986 — Observation photos use the report pipeline with a key of their own and no table.
 
 The checks are the report upload's, and so is the order they run in; what
 this file holds is what is the survey's own. The key is the observation's,
@@ -6,42 +8,25 @@ so a later visit's photo never replaces an earlier one's. The set is dense.
 A link reaches the person who took the photo and the people who review the
 record, and refuses everybody else with the same 404.
 
-S3 is doubled in-process with moto, test_poi_photos.py's convention.
+S3 is doubled in-process with moto, through conftest.py's `photo_bucket`.
 """
 
 import uuid
 
-import boto3
 import pytest
-from moto import mock_aws
 
-from app.config import settings
 from app.core.time import utc_now
 from app.models.club import OrgState
 from app.models.inventory import InventoryEnrollment, InventoryObservation, InventoryStructure
+from tests.conftest import PHOTO_BUCKET
 from tests.factories import make_admin, make_assignment, make_org, make_profile, make_role, make_section
 from tests.tokens import auth_headers
 
-_BUCKET = "ourhike-test"
 _JPEG = b"\xff\xd8\xff\xe0" + b"pretend jpeg bytes" * 4
 
 
-@pytest.fixture()
-def r2(monkeypatch):
-    """A configured, empty bucket with uploads on - test_poi_photos.py's."""
-    with mock_aws():
-        monkeypatch.setattr(settings, "r2_photo_endpoint_url", "https://s3.amazonaws.com")
-        monkeypatch.setattr(settings, "r2_photo_bucket", _BUCKET)
-        monkeypatch.setattr(settings, "r2_photo_access_key_id", "test-key")
-        monkeypatch.setattr(settings, "r2_photo_secret_access_key", "test-secret")
-        monkeypatch.setattr(settings, "r2_photo_write_enabled", True)
-        s3 = boto3.client("s3", region_name="us-east-1")
-        s3.create_bucket(Bucket=_BUCKET)
-        yield s3
-
-
-def _stored(r2) -> list[str]:
-    return sorted(entry["Key"] for entry in r2.list_objects_v2(Bucket=_BUCKET).get("Contents", []))
+def _stored(photo_bucket) -> list[str]:
+    return sorted(entry["Key"] for entry in photo_bucket.list_objects_v2(Bucket=PHOTO_BUCKET).get("Contents", []))
 
 
 def _volunteer(db_session, org):
@@ -86,9 +71,6 @@ def _record(client, survey, person=None, structure_id=None) -> str:
         "structure_id": structure_id or str(uuid.uuid4()),
         "kind": "bridge",
         "captured_at": "2026-11-02T10:14:00Z",
-        "lat": 41.43,
-        "lon": -73.88,
-        "accuracy_m": 4.3,
         "readings": [{"lat": 41.43, "lon": -73.88, "acc": 4.3, "t": 0}],
         "readings_seconds": 1,
         "condition": "poor",
@@ -107,17 +89,17 @@ def _link(client, survey, observation_id, index, person):
     return client.get(f"{survey['base']}/{observation_id}/photos/{index}/link", headers=auth_headers(person.id))
 
 
-def test_a_photo_lands_under_its_record_and_the_count_is_all_the_row_learns(client, survey, r2, db_session):
+def test_a_photo_lands_under_its_record_and_the_count_is_all_the_row_learns(client, survey, photo_bucket, db_session):
     record = _record(client, survey)
 
     response = _put(client, survey, record, 1)
 
     assert response.status_code == 200, response.text
     assert response.json() == {"observation_id": record, "photo_count": 1}
-    assert _stored(r2) == [f"inventory/{record}/1.jpg"]
+    assert _stored(photo_bucket) == [f"inventory/{record}/1.jpg"]
 
 
-def test_a_later_visits_photo_never_replaces_an_earlier_ones(client, survey, r2):
+def test_a_later_visits_photo_never_replaces_an_earlier_ones(client, survey, photo_bucket):
     """Keyed by the record, not the structure: last year's scoured abutment
     stays beside this week's sound bridge."""
     structure_id = str(uuid.uuid4())
@@ -127,10 +109,10 @@ def test_a_later_visits_photo_never_replaces_an_earlier_ones(client, survey, r2)
     _put(client, survey, first, 1)
     _put(client, survey, second, 1)
 
-    assert _stored(r2) == sorted([f"inventory/{first}/1.jpg", f"inventory/{second}/1.jpg"])
+    assert _stored(photo_bucket) == sorted([f"inventory/{first}/1.jpg", f"inventory/{second}/1.jpg"])
 
 
-def test_a_retry_of_photo_one_does_not_claim_a_second(client, survey, r2):
+def test_a_retry_of_photo_one_does_not_claim_a_second(client, survey, photo_bucket):
     record = _record(client, survey)
 
     _put(client, survey, record, 1)
@@ -139,7 +121,7 @@ def test_a_retry_of_photo_one_does_not_claim_a_second(client, survey, r2):
     assert again.json()["photo_count"] == 1
 
 
-def test_the_set_is_dense_and_capped(client, survey, r2):
+def test_the_set_is_dense_and_capped(client, survey, photo_bucket):
     record = _record(client, survey)
     _put(client, survey, record, 1)
 
@@ -149,20 +131,20 @@ def test_the_set_is_dense_and_capped(client, survey, r2):
     assert _put(client, survey, record, 2).json()["photo_count"] == 2
 
 
-def test_a_photo_is_a_jpeg_by_its_header_and_by_its_bytes(client, survey, r2):
+def test_a_photo_is_a_jpeg_by_its_header_and_by_its_bytes(client, survey, photo_bucket):
     record = _record(client, survey)
 
     assert _put(client, survey, record, 1, content_type="image/png").status_code == 415
     assert _put(client, survey, record, 1, body=b"\x89PNG not a jpeg").status_code == 415
-    assert _stored(r2) == []
+    assert _stored(photo_bucket) == []
 
 
-def test_somebody_elses_record_is_not_found_and_nothing_is_stored(client, survey, r2, db_session):
+def test_somebody_elses_record_is_not_found_and_nothing_is_stored(client, survey, photo_bucket, db_session):
     record = _record(client, survey)
     somebody_else = _volunteer(db_session, survey["org"])
 
     assert _put(client, survey, record, 1, person=somebody_else).status_code == 404
-    assert _stored(r2) == []
+    assert _stored(photo_bucket) == []
 
 
 def test_a_server_with_no_bucket_says_so(client, survey):
@@ -171,7 +153,7 @@ def test_a_server_with_no_bucket_says_so(client, survey):
     assert _put(client, survey, record, 1).status_code == 503
 
 
-def test_the_volunteer_and_the_clubs_admin_get_a_link(client, survey, r2):
+def test_the_volunteer_and_the_clubs_admin_get_a_link(client, survey, photo_bucket):
     record = _record(client, survey)
     _put(client, survey, record, 1)
 
@@ -182,7 +164,7 @@ def test_the_volunteer_and_the_clubs_admin_get_a_link(client, survey, r2):
         assert response.headers["Cache-Control"] == "private, no-store, max-age=0"
 
 
-def test_a_supervisor_sees_a_records_photo_only_in_a_section_under_their_role(client, survey, r2, db_session):
+def test_a_supervisor_sees_a_records_photo_only_in_a_section_under_their_role(client, survey, photo_bucket, db_session):
     under, outside = _record(client, survey), _record(client, survey)
     for record, section in ((under, survey["section"]), (outside, survey["elsewhere"])):
         _put(client, survey, record, 1)
@@ -194,7 +176,7 @@ def test_a_supervisor_sees_a_records_photo_only_in_a_section_under_their_role(cl
     assert _link(client, survey, outside, 1, survey["supervisor"]).status_code == 404
 
 
-def test_everybody_else_and_every_missing_photo_get_the_same_404(client, survey, r2, db_session):
+def test_everybody_else_and_every_missing_photo_get_the_same_404(client, survey, photo_bucket, db_session):
     record = _record(client, survey)
     _put(client, survey, record, 1)
     somebody_else = _volunteer(db_session, survey["org"])

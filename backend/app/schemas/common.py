@@ -22,6 +22,7 @@ from real hikers would settle where the ceiling belongs.
 """
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from pydantic import AfterValidator, Field
@@ -55,3 +56,21 @@ def _looks_like_an_address(value: str) -> str:
 
 
 EmailAddress = Annotated[str, Field(max_length=EMAIL_MAX_CHARS), AfterValidator(_looks_like_an_address)]
+
+
+# A phone's clock drifts, so a time up to this far ahead of the server's is
+# skew rather than tampering. The figure `ReportCreate` has always used; one
+# copy, so a report and a survey record cannot come to disagree about it.
+CLOCK_SKEW = timedelta(minutes=5)
+
+
+def refuse_a_future_time(value: datetime, name: str) -> datetime:
+    """`value`, unless it is further in the future than a phone's clock drifts.
+
+    A naive value is read as UTC, the storage convention. Unbounded into the
+    past on purpose: a hiker off-grid for a fortnight sends old times.
+    """
+    compared = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if compared > datetime.now(timezone.utc) + CLOCK_SKEW:
+        raise ValueError(f"{name} cannot be in the future")
+    return value

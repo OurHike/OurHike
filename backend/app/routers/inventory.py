@@ -23,6 +23,8 @@ announcement.
 
 from __future__ import annotations
 
+import statistics
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.exc import IntegrityError
@@ -37,7 +39,6 @@ from app.core.photos import (
     FIRST_PHOTO_INDEX,
     JPEG_MAGIC,
     MAX_PHOTO_BYTES,
-    MAX_REPORT_PHOTOS,
     PHOTO_URL_TTL_SECONDS,
     PhotoStorageUnavailable,
     discard_refused_upload,
@@ -62,18 +63,18 @@ from app.models.inventory import (
     InventoryStructure,
     StructureStatus,
 )
-from app.routers.reports import read_capped_body
+from app.routers.reports import read_capped_body, refuse_an_out_of_sequence_photo
 from app.schemas.inventory import (
     EnrollmentCreate,
     EnrollmentOut,
     EnrollmentPatch,
-    InventoryPhotoLink,
     InventoryPhotoReceipt,
     InventorySettingsIn,
     InventorySettingsOut,
     ObservationCreate,
     ObservationReceipt,
 )
+from app.schemas.report import ReportPhotoLink
 
 router = APIRouter(tags=["inventory"])
 
@@ -310,9 +311,25 @@ def finish_inventory_training(
     return _enrollment_out(row)
 
 
-# A merge chain longer than this is a loop somebody made by hand, not a club
-# merging duplicates; refusing it beats following it forever.
-MAX_MERGE_HOPS = 8
+def _middle_of(readings: list) -> tuple[float, float, float]:
+    """The point a record saves, and its accuracy, derived from its readings.
+
+    Rule 2: the phone records what it knows and saves the middle of it. The
+    middle is the median latitude and the median longitude taken separately
+    - which a stray reading cannot drag, where a mean would follow it - and
+    the accuracy is the median of the readings' own. Reasoned rather than
+    measured: no real phone's readings under canopy have been looked at yet
+    (#1997 — Where is it? — GPS readings populate a plain grid as they
+    arrive, the median is saved with its accuracy and count, and the screen
+    never shows a presumed place). The Location screen must show the point
+    and accuracy this function computes, so its verdict and the saved record
+    agree.
+    """
+    return (
+        statistics.median(reading.lat for reading in readings),
+        statistics.median(reading.lon for reading in readings),
+        statistics.median(reading.acc for reading in readings),
+    )
 
 
 def _receipt(row: InventoryObservation) -> ObservationReceipt:
@@ -339,7 +356,9 @@ def _already_uploaded(db: Session, observation_id: str, enrollment: InventoryEnr
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That record id is already taken")
 
 
-def _structure_for(db: Session, payload: ObservationCreate, enrollment: InventoryEnrollment) -> InventoryStructure:
+def _structure_for(
+    db: Session, payload: ObservationCreate, enrollment: InventoryEnrollment, lat: float, lon: float
+) -> InventoryStructure:
     """The structure this visit is to, created when its id is new.
 
     A structure since merged into another is followed to the one it turned
@@ -360,8 +379,8 @@ def _structure_for(db: Session, payload: ObservationCreate, enrollment: Inventor
             club_id=enrollment.club_id,
             kind=payload.kind,
             subkind=payload.subkind,
-            lat=payload.lat,
-            lon=payload.lon,
+            lat=lat,
+            lon=lon,
             created_by=enrollment.person_id,
         )
         db.add(structure)
@@ -371,12 +390,22 @@ def _structure_for(db: Session, payload: ObservationCreate, enrollment: Inventor
         return structure
     if structure.club_id != enrollment.club_id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That structure id is already taken")
-    for _ in range(MAX_MERGE_HOPS):
-        if structure.status != StructureStatus.merged or structure.merged_into_id is None:
-            break
-        structure = db.get(InventoryStructure, structure.merged_into_id)
-    else:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That structure's merges loop back on themselves")
+    # Followed to the end however long the chain, with each structure seen
+    # once: a chain that comes back to itself is a loop somebody made by hand,
+    # and one whose target is gone has nowhere to land. Both are refused
+    # rather than followed forever or dereferenced into a 500.
+    seen = {structure.id}
+    while structure.status == StructureStatus.merged and structure.merged_into_id is not None:
+        if structure.merged_into_id in seen:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That structure's merges loop back on themselves")
+        target = db.get(InventoryStructure, structure.merged_into_id)
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="That structure was merged into one that is no longer in the inventory",
+            )
+        seen.add(target.id)
+        structure = target
     if payload.kind is not None and payload.kind != structure.kind:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -405,7 +434,8 @@ def upload_inventory_observation(
 
     **Every reading is kept whole** (rule 2), and the server counts them.
     **Unsafe sets nothing special on the row**: the review queue orders by
-    `condition`, and the email to the club's admins is #1992's.
+    `condition`, and the email to the club's admins is the job of #1992 —
+    An Unsafe observation sends the Local Chair one email when mail is on, and nothing else.
     """
     observation_id = str(payload.id)
     existing = _already_uploaded(db, observation_id, enrollment)
@@ -413,7 +443,8 @@ def upload_inventory_observation(
         response.status_code = status.HTTP_200_OK
         return _receipt(existing)
 
-    structure = _structure_for(db, payload, enrollment)
+    lat, lon, accuracy_m = _middle_of(payload.readings)
+    structure = _structure_for(db, payload, enrollment, lat, lon)
 
     pass_id = str(payload.pass_id) if payload.pass_id is not None else None
     if pass_id is not None:
@@ -441,9 +472,9 @@ def upload_inventory_observation(
         volunteer_id=enrollment.person_id,
         captured_at=to_naive_utc(payload.captured_at),
         offline=payload.offline,
-        lat=payload.lat,
-        lon=payload.lon,
-        accuracy_m=payload.accuracy_m,
+        lat=lat,
+        lon=lon,
+        accuracy_m=accuracy_m,
         readings_count=len(payload.readings),
         readings_seconds=payload.readings_seconds,
         readings=[reading.model_dump() for reading in payload.readings],
@@ -456,7 +487,7 @@ def upload_inventory_observation(
         problems=list(payload.problems),
         repair=payload.repair,
         timing=payload.timing,
-        size_bucket=payload.size_bucket,
+        size_bucket=payload.size_bucket.value if payload.size_bucket is not None else None,
         size_measured=payload.size_measured,
         size_unit=payload.size_unit,
         size_method=payload.size_method,
@@ -481,13 +512,16 @@ def upload_inventory_observation(
     return _receipt(row)
 
 
-# --- A record's photos (#1986) ----------------------------------------------
+# --- A record's photos ------------------------------------------------------
+#
+# #1986 — Observation photos use the report pipeline with a key of their own and no table.
 #
 # The report pipeline's, with a key of its own and no table: the same caps,
 # the same JPEG check by header and by magic bytes, the same order - check,
 # hand the database connection back, read the bytes, put them, then record
 # them in one short transaction on the locked row - for the same reasons
-# app/routers/reports.py argues at `_record_stored_photo` (#1915, #1925).
+# app/routers/reports.py argues at `_record_stored_photo`: #1915 — A photo upload holds a pooled database connection inside an open transaction while the phone sends the bytes, so fifteen slow uploads make every other read 500,
+# and #1925 — Hand the database connection back before a photo upload waits for its bytes.
 # Photos are numbered from FIRST_PHOTO_INDEX and the set is dense: an upload
 # may append or replace, never skip, so `photo_count` always says how far
 # `inventory/{id}/{n}.jpg` runs.
@@ -506,16 +540,7 @@ def _photo_target(row: InventoryObservation | None, index: int, club_id: str, pe
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Photo storage is not configured on this server.",
         )
-    if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"A record holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
-        )
-    if index > row.photo_count + 1:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"This record has {row.photo_count} photos; the next one is {row.photo_count + 1}.",
-        )
+    refuse_an_out_of_sequence_photo(index, row.photo_count, "record")
     return row
 
 
@@ -609,7 +634,7 @@ async def upload_inventory_photo(
 
 @router.get(
     "/clubs/{slug}/inventory/observations/{observation_id}/photos/{index}/link",
-    response_model=InventoryPhotoLink,
+    response_model=ReportPhotoLink,
     responses={
         404: {"description": "No such record, no photo at that index, or not one you may see."},
         503: {"description": "This deployment has no photo bucket configured."},
@@ -621,13 +646,13 @@ def get_inventory_photo_link(
     response: Response,
     access: OrgAccess = Depends(org_access),
     db: Session = Depends(get_db),
-) -> InventoryPhotoLink:
+) -> ReportPhotoLink:
     """A short-lived URL for one of a record's photos, `PHOTO_URL_TTL_SECONDS`.
 
     **Who may see it:** the volunteer who took it, the club's admins, and a
     section supervisor for a structure in a section under their role - the
     people who review it. Other volunteers browsing the inventory are the
-    inventory screens' question (#2007), not this one's.
+    inventory screens' question, #2007 — Inventory and history: worst first, a history per structure, the Chair's note, CSV and GeoJSON - not this one's.
 
     **404 for everything it refuses**, the report link's rule: a distinct 403
     would confirm that an id names a real record to somebody who may not see
@@ -655,4 +680,4 @@ def get_inventory_photo_link(
     except PhotoStorageUnavailable as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
     response.headers["Cache-Control"] = "private, no-store, max-age=0"
-    return InventoryPhotoLink(url=url, expires_in=PHOTO_URL_TTL_SECONDS)
+    return ReportPhotoLink(url=url, expires_in=PHOTO_URL_TTL_SECONDS)

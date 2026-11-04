@@ -194,7 +194,8 @@ def _withdraw(client, hiker: str):
 
 
 def _survey_record(client, db_session) -> tuple[str, str]:
-    """A trained survey volunteer's record (#1986), and the photo URL under it.
+    """A trained survey volunteer's record, and the photo URL under it, for
+    #1986 — Observation photos use the report pipeline with a key of their own and no table.
 
     The rows are written and the test's own session closed before the
     request, so the pool counts below see only the request.
@@ -215,9 +216,6 @@ def _survey_record(client, db_session) -> tuple[str, str]:
         "structure_id": str(uuid.uuid4()),
         "kind": "bridge",
         "captured_at": "2026-11-02T10:14:00Z",
-        "lat": 41.43,
-        "lon": -73.88,
-        "accuracy_m": 4.3,
         "readings": [{"lat": 41.43, "lon": -73.88, "acc": 4.3, "t": 0}],
         "readings_seconds": 1,
         "condition": "poor",

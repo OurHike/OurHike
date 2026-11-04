@@ -34,11 +34,8 @@ from __future__ import annotations
 
 import uuid
 
-import boto3
 import pytest
-from moto import mock_aws
 
-from app.config import settings
 from app.core.console_tokens import hash_secret, new_key_pair
 from app.core.time import utc_now
 from app.models.club import OrgState
@@ -853,7 +850,9 @@ def test_only_an_enrolled_volunteer_can_finish_the_field_guide(client, survey_wo
 
 @pytest.mark.parametrize("who", SURVEY_PEOPLE)
 def test_only_an_enrolled_volunteer_can_upload_a_survey_record(client, survey_world, who):
-    """#1985. An admin who has not joined the survey cannot file a record as
+    """#1985 — An observation uploads once, idempotent on its id, creates its structure when the structure is new, and keeps every GPS reading it was given.
+
+    An admin who has not joined the survey cannot file a record as
     if they had walked it; the waiver and the field guide come first for
     everybody."""
     body = {
@@ -861,9 +860,6 @@ def test_only_an_enrolled_volunteer_can_upload_a_survey_record(client, survey_wo
         "structure_id": str(uuid.uuid4()),
         "kind": "bridge",
         "captured_at": "2026-11-02T10:14:00Z",
-        "lat": 41.4321,
-        "lon": -73.8765,
-        "accuracy_m": 4.3,
         "readings": [{"lat": 41.4321, "lon": -73.8765, "acc": 4.3, "t": 0}],
         "readings_seconds": 1,
         "condition": "good",
@@ -876,44 +872,38 @@ def test_only_an_enrolled_volunteer_can_upload_a_survey_record(client, survey_wo
 
 
 @pytest.fixture
-def survey_photo(client, db_session, survey_world, monkeypatch):
+def survey_photo(client, db_session, survey_world, photo_bucket):
     """`survey_world` with a bucket, and one record of the enrolled
-    volunteer's, in the world's section, carrying photo 1 (#1986)."""
-    with mock_aws():
-        monkeypatch.setattr(settings, "r2_photo_endpoint_url", "https://s3.amazonaws.com")
-        monkeypatch.setattr(settings, "r2_photo_bucket", "ourhike-test")
-        monkeypatch.setattr(settings, "r2_photo_access_key_id", "test-key")
-        monkeypatch.setattr(settings, "r2_photo_secret_access_key", "test-secret")
-        monkeypatch.setattr(settings, "r2_photo_write_enabled", True)
-        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket="ourhike-test")
-        volunteer = survey_world["people"][ENROLLED_VOLUNTEER]
-        record_id = str(uuid.uuid4())
-        body = {
-            "id": record_id,
-            "structure_id": str(uuid.uuid4()),
-            "kind": "bridge",
-            "captured_at": "2026-11-02T10:14:00Z",
-            "lat": 41.43,
-            "lon": -73.88,
-            "accuracy_m": 4.3,
-            "readings": [{"lat": 41.43, "lon": -73.88, "acc": 4.3, "t": 0}],
-            "readings_seconds": 1,
-            "condition": "poor",
-            "repair": "major",
-        }
-        base = f"/clubs/{survey_world['org'].slug}/inventory/observations"
-        assert client.post(base, json=body, headers=auth_headers(volunteer.id)).status_code == 201
-        photo = {**auth_headers(volunteer.id), "Content-Type": "image/jpeg"}
-        assert client.put(f"{base}/{record_id}/photos/1", content=b"\xff\xd8\xff\xe0 jpeg", headers=photo).status_code == 200
-        structure_id = db_session.get(InventoryObservation, record_id).structure_id
-        db_session.get(InventoryStructure, structure_id).section_id = survey_world["section"].id
-        db_session.commit()
-        yield {**survey_world, "record": record_id}
+    volunteer's, in the world's section, carrying photo 1 (#1986 —
+    Observation photos use the report pipeline with a key of their own and
+    no table)."""
+    volunteer = survey_world["people"][ENROLLED_VOLUNTEER]
+    record_id = str(uuid.uuid4())
+    body = {
+        "id": record_id,
+        "structure_id": str(uuid.uuid4()),
+        "kind": "bridge",
+        "captured_at": "2026-11-02T10:14:00Z",
+        "readings": [{"lat": 41.43, "lon": -73.88, "acc": 4.3, "t": 0}],
+        "readings_seconds": 1,
+        "condition": "poor",
+        "repair": "major",
+    }
+    base = f"/clubs/{survey_world['org'].slug}/inventory/observations"
+    assert client.post(base, json=body, headers=auth_headers(volunteer.id)).status_code == 201
+    photo = {**auth_headers(volunteer.id), "Content-Type": "image/jpeg"}
+    assert client.put(f"{base}/{record_id}/photos/1", content=b"\xff\xd8\xff\xe0 jpeg", headers=photo).status_code == 200
+    structure_id = db_session.get(InventoryObservation, record_id).structure_id
+    db_session.get(InventoryStructure, structure_id).section_id = survey_world["section"].id
+    db_session.commit()
+    return {**survey_world, "record": record_id}
 
 
 @pytest.mark.parametrize("who", SURVEY_PEOPLE)
 def test_only_the_volunteer_who_logged_a_record_can_add_its_photos(client, survey_photo, who):
-    """#1986. Everybody else is refused before a byte is read: 403 for the
+    """#1986 — Observation photos use the report pipeline with a key of their own and no table.
+
+    Everybody else is refused before a byte is read: 403 for the
     people the survey's volunteer check turns away."""
     path = f"/clubs/{{slug}}/inventory/observations/{survey_photo['record']}/photos/2"
     url = path.replace("{slug}", survey_photo["org"].slug)
@@ -926,7 +916,9 @@ def test_only_the_volunteer_who_logged_a_record_can_add_its_photos(client, surve
 
 @pytest.mark.parametrize("who", SURVEY_PEOPLE)
 def test_a_records_photo_reaches_its_volunteer_and_its_reviewers_and_is_a_404_to_everybody_else(client, survey_photo, who):
-    """#1986. The volunteer, the club's admins, and the supervisor whose role
+    """#1986 — Observation photos use the report pipeline with a key of their own and no table.
+
+    The volunteer, the club's admins, and the supervisor whose role
     reaches the record's section. A maintainer and an outsider get the same
     404 a missing photo gets - a 403 would confirm the record exists."""
     response = _call(

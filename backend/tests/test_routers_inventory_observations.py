@@ -1,4 +1,6 @@
-"""An observation's upload: idempotent on its id, every reading kept (#1985).
+"""An observation's upload: idempotent on its id, every reading kept.
+
+#1985 — An observation uploads once, idempotent on its id, creates its structure when the structure is new, and keeps every GPS reading it was given.
 
 Who may upload is test_org_permission_matrix.py's job. This file holds the
 outbox's contract - a second send of a record answers the first and changes
@@ -61,9 +63,6 @@ def _record(**changes):
         "kind": "bridge",
         "captured_at": "2026-11-02T10:14:00-05:00",
         "offline": True,
-        "lat": 41.4321,
-        "lon": -73.8765,
-        "accuracy_m": 4.3,
         "readings": READINGS,
         "readings_seconds": 38,
         "condition": "poor",
@@ -99,7 +98,8 @@ def test_the_first_record_of_a_new_structure_creates_both_and_starts_submitted(c
     structure = db_session.get(InventoryStructure, body["structure_id"])
     assert structure.kind is StructureKind.bridge
     assert structure.created_by == survey["volunteer"].id
-    assert (structure.lat, structure.lon) == (41.4321, -73.8765)
+    # The median of the 23 readings, derived by the server: the twelfth.
+    assert (structure.lat, structure.lon) == (pytest.approx(41.4321 + 11e-6), pytest.approx(-73.8765))
 
 
 def test_every_reading_is_kept_whole_and_the_server_counts_them(client, survey, db_session):
@@ -276,3 +276,73 @@ def test_a_volunteer_who_has_not_finished_the_field_guide_cannot_upload(client, 
     untrained = _volunteer(db_session, survey["org"], trained=False)
 
     assert _send(client, survey, _record(), person=untrained).status_code == 403
+
+
+def test_a_point_the_phone_sends_is_ignored_and_the_readings_decide_where_it_is(client, survey, db_session):
+    """Rule 2, from the adversarial review: the saved point is the middle of
+    the readings, so a client cannot store a point its readings do not
+    support. A location field on the wire is ignored, not trusted."""
+    body = _record(lat=10.0, lon=10.0, accuracy_m=0.1)
+    _send(client, survey, body)
+
+    row = db_session.get(InventoryObservation, body["id"])
+    assert row.lat == pytest.approx(41.4321 + 11e-6)
+    assert row.lon == pytest.approx(-73.8765)
+    # The median of the readings' own accuracies, 4.0 + 11/10.
+    assert row.accuracy_m == pytest.approx(5.1)
+
+
+def test_one_stray_reading_does_not_drag_the_saved_point(client, survey, db_session):
+    """A median, not a mean: a reading thrown a kilometre by a canopy
+    reflection moves the saved point not at all."""
+    stray = [*READINGS[:-1], {"lat": 41.4421, "lon": -73.8665, "acc": 300.0, "t": 2_000}]
+    body = _record(readings=stray)
+    _send(client, survey, body)
+
+    row = db_session.get(InventoryObservation, body["id"])
+    assert row.lat == pytest.approx(41.4321 + 11e-6)
+    assert row.lon == pytest.approx(-73.8765)
+
+
+def test_a_number_cannot_pose_as_a_bucket(client, survey):
+    """Rule 3: only the screen's four buckets are buckets."""
+    assert _send(client, survey, _record(size_bucket="18.5 ft")).status_code == 422
+    for bucket in ("under_10_ft", "10_to_25_ft", "25_to_50_ft", "over_50_ft"):
+        assert _send(client, survey, _record(size_bucket=bucket)).status_code == 201
+
+
+def _structure_row(db_session, survey, **fields):
+    row = InventoryStructure(
+        id=str(uuid.uuid4()),
+        club_id=survey["org"].id,
+        kind=StructureKind.bridge,
+        lat=41.43,
+        lon=-73.88,
+        created_by=survey["volunteer"].id,
+        **fields,
+    )
+    db_session.add(row)
+    db_session.flush()
+    return row
+
+
+def test_a_merge_chain_longer_than_eight_is_followed_to_its_end(client, survey, db_session):
+    """The old walk stopped after eight hops and called a real chain a loop."""
+    chain = [_structure_row(db_session, survey)]
+    for _ in range(10):
+        chain.append(_structure_row(db_session, survey, status=StructureStatus.merged, merged_into_id=chain[-1].id))
+    db_session.commit()
+
+    response = _send(client, survey, _record(structure_id=chain[-1].id, kind=None))
+
+    assert response.status_code == 201
+    assert response.json()["structure_id"] == chain[0].id
+
+
+def test_merges_that_loop_back_on_themselves_are_refused_not_followed(client, survey, db_session):
+    first = _structure_row(db_session, survey)
+    second = _structure_row(db_session, survey, status=StructureStatus.merged, merged_into_id=first.id)
+    first.status, first.merged_into_id = StructureStatus.merged, second.id
+    db_session.commit()
+
+    assert _send(client, survey, _record(structure_id=first.id, kind=None)).status_code == 409

@@ -5,7 +5,8 @@ endpoints, and an enrolled volunteer is a person `org_access` did not know
 about.
 
 features/STRUCTURE_INVENTORY.md is the design. Enrolment and the club's
-settings (#1984), an observation's upload (#1985) and its photos (#1986);
+settings (#1984 — A club's enrolment, settings and waiver have endpoints, and an enrolled volunteer is a person `org_access` did not know about), an
+observation's upload (#1985 — An observation uploads once, idempotent on its id, creates its structure when the structure is new, and keeps every GPS reading it was given) and its photos (#1986 — Observation photos use the report pipeline with a key of their own and no table);
 areas, claims, passes, the review queue and the exports arrive with their
 own issues.
 
@@ -20,8 +21,9 @@ nothing yet would be a switch that lies.
 
 from __future__ import annotations
 
+import enum
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
@@ -37,7 +39,7 @@ from app.models.inventory import (
     SizeMethod,
     StructureKind,
 )
-from app.schemas.common import FiniteFloat, NoteText
+from app.schemas.common import FiniteFloat, NoteText, refuse_a_future_time
 
 # A name as typed under the club's waiver. Long enough for anybody's full
 # name, short enough that the field cannot be used to store something else.
@@ -124,7 +126,9 @@ class InventorySettingsIn(BaseModel):
     stale_days: int = Field(ge=30, le=3650)
 
 
-# --- An observation's upload (#1985) ---------------------------------------
+# --- An observation's upload ------------------------------------------------
+#
+# #1985 — An observation uploads once, idempotent on its id, creates its structure when the structure is new, and keeps every GPS reading it was given.
 
 # Bounds on input, not findings. The phone samples for up to 40 seconds
 # (the design doc's numbers table, @unvalidated); 600 readings is ten a
@@ -140,6 +144,22 @@ TagKey = Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r
 ShortLabel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
 Latitude = Annotated[FiniteFloat, Field(ge=-90, le=90)]
 Longitude = Annotated[FiniteFloat, Field(ge=-180, le=180)]
+
+
+class SizeBucket(str, enum.Enum):
+    """The four buckets on the "About how long?" screen (2e), and no others.
+
+    An enum rather than free text so a number cannot pose as a bucket -
+    `size_bucket: "18.5 ft"` would be stored as an estimate and printed like
+    a measurement, the exact confusion rule 3 exists to prevent - and so
+    every client's buckets group. The column stays a VARCHAR holding the
+    value: a bucket is a label on the wire, not a type in the database.
+    """
+
+    under_10_ft = "under_10_ft"
+    ten_to_25_ft = "10_to_25_ft"
+    twenty_five_to_50_ft = "25_to_50_ft"
+    over_50_ft = "over_50_ft"
 
 
 class Reading(BaseModel):
@@ -158,8 +178,12 @@ class ObservationCreate(BaseModel):
     the record before the server has seen it. `structure_id` is the client's
     too when the structure is new, and then `kind` says what it is.
 
-    **There is no `readings_count`.** The server counts `readings`, so the
-    count and the readings kept beside it cannot disagree. There is no
+    **There is no position on the wire, and no `readings_count`.** The server
+    derives both from `readings` (app/routers/inventory.py's `_middle_of`):
+    the saved point is the median of the readings and its accuracy the median
+    of theirs, so the point a record carries and the readings kept beside it
+    cannot disagree. Rule 2 says the phone saves the middle of what it read;
+    a client-sent point could be anywhere, and nothing could tell. There is no
     `mile` and no distance to the line either: those are the server's,
     computed from the club's own section line (the design doc's conflict 1).
 
@@ -177,9 +201,6 @@ class ObservationCreate(BaseModel):
     captured_at: datetime
     offline: bool = False
 
-    lat: Latitude
-    lon: Longitude
-    accuracy_m: Annotated[FiniteFloat, Field(ge=0)]
     readings: Annotated[list[Reading], Field(min_length=1, max_length=MAX_READINGS)]
     readings_seconds: Annotated[int, Field(ge=0, le=MAX_READINGS_SECONDS)]
     fix_source: FixSource = FixSource.sampled
@@ -195,7 +216,7 @@ class ObservationCreate(BaseModel):
     timing: RepairTiming | None = None
 
     size_method: SizeMethod | None = None
-    size_bucket: ShortLabel | None = None
+    size_bucket: SizeBucket | None = None
     size_measured: Annotated[FiniteFloat, Field(gt=0)] | None = None
     size_unit: Literal["ft", "m"] | None = None
     counts: dict[TagKey, Annotated[int, Field(ge=0, le=10_000)]] | None = None
@@ -206,11 +227,8 @@ class ObservationCreate(BaseModel):
     @field_validator("captured_at")
     @classmethod
     def _reject_a_future_capture(cls, value: datetime) -> datetime:
-        """Phone clocks drift, so a small lead is skew; `ReportCreate`'s rule."""
-        compared = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        if compared > datetime.now(timezone.utc) + timedelta(minutes=5):
-            raise ValueError("captured_at cannot be in the future")
-        return value
+        """`ReportCreate`'s skew rule, from one shared copy."""
+        return refuse_a_future_time(value, "captured_at")
 
     @model_validator(mode="after")
     def _a_size_says_how_it_was_arrived_at(self) -> "ObservationCreate":
@@ -237,7 +255,8 @@ class ObservationReceipt(BaseModel):
     """What the outbox needs back: which rows hold the record, and its state.
 
     `mile` and `off_line_ft` are null until the server has computed them on
-    accept (#1987); the phone never sends them.
+    accept, by #1987 — The server computes an observation's mile and distance to the line from the club's own section geometry, and stores both beside the raw point;
+    the phone never sends them.
     """
 
     observation_id: str
@@ -252,14 +271,3 @@ class InventoryPhotoReceipt(BaseModel):
 
     observation_id: str
     photo_count: int
-
-
-class InventoryPhotoLink(BaseModel):
-    """A short-lived URL for one of a record's photos, `ReportPhotoLink`'s shape.
-
-    A bearer capability for the object, which is why it is asked for with a
-    token and answered with a URL that expires.
-    """
-
-    url: str
-    expires_in: int

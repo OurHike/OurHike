@@ -32,7 +32,7 @@ shapely
 # That the SQL side's PROJ is DuckDB spatial's own, which moves only with the
 # duckdb pin above, is reasoned, not checked. Raise this with that pin, or
 # with a parity test that says how close is close enough.
-pyproj<3.8
+pyproj<3.9
 boto3
 
 # export_conditions.py alone, and the only reason this pipeline talks to

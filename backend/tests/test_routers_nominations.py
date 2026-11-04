@@ -274,6 +274,14 @@ class TestSubmitting:
             # a subdomain of the org's domain, and Fastmail delivers
             # anything@mallory.fastmail.com to the account mallory@fastmail.com.
             ("https://mallory.fastmail.com", "anything@mallory.fastmail.com"),
+            # gmail.com in disguise (the 2026-11-04 security review): a host
+            # read by `urlsplit` and only lowercased was not gmail.com to the
+            # rule, so it said nothing, and the contact gate refused these
+            # for the wrong reason - the address was at gmail.com and the
+            # stored domain was not. `normalise_domain` reads gmail.com.
+            ("https://gmail.com​/", "mallory@gmail.com"),
+            ("https://ｇｍａｉｌ.com", "mallory@gmail.com"),
+            ("https://www.gmail.com​", "mallory@gmail.com"),
         ],
     )
     def test_a_website_whose_domain_proves_nothing_is_refused_and_nothing_is_stored(self, client, db_session, website, contact):

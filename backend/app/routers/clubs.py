@@ -49,6 +49,7 @@ from app.schemas.org import (
     OrgOut,
     OrgSettingsUpdate,
     ScoreboardOut,
+    address_is_at_domain,
     why_domain_proves_nothing,
 )
 
@@ -118,12 +119,6 @@ def _as_viewer_reads_it(club: Club, admins: list[OrgAdmin], viewer: Profile | No
     return out
 
 
-def _domain_of(email: str | None) -> str | None:
-    if not email or "@" not in email:
-        return None
-    return email.rsplit("@", 1)[1].strip().lower()
-
-
 def _revoke_the_registrants_unverified_seat(db: Session, club: Club, *, verified_by: str) -> None:
     """The other half of releasing a held registration - #1641 finding 3's
     third bullet.
@@ -190,14 +185,11 @@ def _somebody_holds_the_domain(domain: str, addresses: list[str | None]) -> bool
     form, because the form is a screen and this is the actual gate. A
     subdomain counts (`trails.ramapotrails.org`), because organizations
     really do run mail that way and refusing it would fail a legitimate
-    registration with a message nobody could act on.
+    registration with a message nobody could act on. The rule, and the
+    normalising of both sides, is `address_is_at_domain` in
+    schemas/org.py, which routers/nominations.py asks too.
     """
-    domain = domain.strip().lower()
-    for address in addresses:
-        candidate = _domain_of(address)
-        if candidate and (candidate == domain or candidate.endswith("." + domain)):
-            return True
-    return False
+    return any(address_is_at_domain(address, domain) for address in addresses)
 
 
 @router.get("", response_model=list[OrgOut])

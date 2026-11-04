@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import re
 
+import idna
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.time import UtcDatetime
@@ -118,8 +119,102 @@ _PUBLIC_MAIL_BY_PROVIDER = {
 }
 PUBLIC_EMAIL_DOMAINS = frozenset(domain for domains in _PUBLIC_MAIL_BY_PROVIDER.values() for domain in domains.split())
 
+# What a domain is once `normalise_domain` has folded it: ASCII letters,
+# digits and hyphens, in two or more dot-separated labels. Matched with
+# `fullmatch`, never `match` and a `$`: Python's `$` also matches before a
+# trailing newline, the trap routers/analytics.py's `_version_of` documents.
+_BARE_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
+_ONE_LABEL = re.compile(r"[a-z0-9-]+")
 
-def why_domain_proves_nothing(domain: str) -> str | None:
+
+def _folded(value: str | None) -> str | None:
+    """`value` stripped, lowercased, less one trailing dot and through IDNA, or None where IDNA refuses it."""
+    cleaned = (value or "").strip().lower().removesuffix(".")
+    if not cleaned:
+        return None
+    try:
+        return idna.encode(cleaned, uts46=True, std3_rules=True).decode("ascii")
+    except UnicodeError:  # idna.IDNAError and its subclasses
+        return None
+
+
+def normalise_domain(value: str | None) -> str | None:
+    """`value` as the bare hostname every door compares, or None if it is not one.
+
+    ONE NORMALISER, BECAUSE FOUR DOORS HAD FOUR (the 2026-11-04 security
+    review). `OrgCreate` refused only a missing dot and a space, so it stored
+    `ramapotrails.org/foo`, `ramapotrails.org:443` and `ramapotrails.org`
+    followed by a tab, and cut `https://ramapotrails.org/trails/` down to
+    `ramapotrails.org/trails`. `why_domain_proves_nothing` stripped and
+    lowercased, so `gmail.com` followed by a zero-width space, or typed in
+    fullwidth letters, was not `gmail.com` to it. The address checks in
+    routers/clubs.py and routers/nominations.py each stripped, lowercased and
+    compared on their own. Every one of them asks this now and refuses on
+    None, so a path, port, tab, scheme or zero-width character never reaches
+    a comparison.
+
+    In order: stripped, lowercased, one trailing dot removed
+    (`ramapotrails.org.` is the same name written fully qualified; a second
+    dot is not), folded with the `idna` package's UTS #46 mapping, and held to
+    `_BARE_DOMAIN`. What the fold does, measured against idna 3.18 (the
+    version requirements.txt pins) on 2026-11-04:
+
+    - maps fullwidth and other compatibility letters (`ｇｍａｉｌ.com`,
+      `ℊmail.com`) and the ideographic full stop (`gmail。com`) to ASCII;
+    - drops the characters UTS #46 ignores, U+200B ZERO WIDTH SPACE, U+00AD
+      SOFT HYPHEN, U+2060 WORD JOINER and U+FEFF among them, so
+      `gmail.com` + U+200B is `gmail.com`;
+    - refuses a zero-width joiner or non-joiner out of context, a `/`, `:`,
+      tab or `_`, an empty label, a label over 63 characters and a hyphen at
+      either end of one;
+    - writes a real non-ASCII label as its `xn--` A-label (`bücher.de` is
+      `xn--bcher-kva.de`), so a Unicode address and a stored domain meet in
+      one spelling.
+
+    What it does not catch:
+
+    - **A look-alike.** A Cyrillic `а` in `gmаil.com` folds to
+      `xn--gmil-63d.com`, a different domain on no list. Somebody had to
+      register it, so an address there is evidence about whoever did; that a
+      reader might take it for Gmail is a display risk nothing here judges.
+    - **A public suffix.** `co.uk` has two labels and passes; see
+      `why_domain_proves_nothing`.
+
+    A website address is refused rather than cut down to its host, because
+    cutting is how `ramapotrails.org/trails` got stored. Where a door really
+    does take a website (`POST /clubs/nominations`), it reads the host with
+    `urlsplit` first and normalises that.
+    """
+    folded = _folded(value)
+    if folded is None or not _BARE_DOMAIN.fullmatch(folded):
+        return None
+    return folded
+
+
+def address_is_at_domain(address: str | None, domain: str | None) -> bool:
+    """Whether `address` is at `domain` or at a subdomain of it, both through `normalise_domain`.
+
+    THE SUBDOMAIN RULE, WRITTEN ONCE. `_somebody_holds_the_domain` in
+    routers/clubs.py (registering, releasing a held registration, claiming)
+    and `_at_domain` in routers/nominations.py (a nomination's contacts, and
+    whose decline closes the door for good) each wrote it out, the second
+    with a docstring calling it "the same rule", and only the first
+    normalised the domain it compared against. A subdomain counts
+    (`maria@trails.ramapotrails.org`) because organizations really do run
+    mail that way. Either side `normalise_domain` refuses matches nothing,
+    so an invitation typed as `sec@ramapotrails.org/foo` no longer "holds"
+    a domain stored as `ramapotrails.org/foo`.
+    """
+    if not address or "@" not in address:
+        return False
+    host = normalise_domain(address.rsplit("@", 1)[1])
+    wanted = normalise_domain(domain)
+    if host is None or wanted is None:
+        return False
+    return host == wanted or host.endswith("." + wanted)
+
+
+def why_domain_proves_nothing(domain: str | None) -> str | None:
     """Why an address at `domain` cannot show who runs an organization, or None.
 
     Three doors take "a verified address at the organization's domain" as the
@@ -133,6 +228,9 @@ def why_domain_proves_nothing(domain: str) -> str | None:
     - **Blank**, once normalised: no address can be at it.
     - **No dot.** A bare top-level domain: a website of `https://com` stored
       `com`, which every `.com` address holds.
+    - **Not a hostname** once `normalise_domain` has folded it: a path, a
+      port, a scheme or a tab in it, so no address could honestly be
+      compared with it.
     - **A public mail provider** (`PUBLIC_EMAIL_DOMAINS` above): anybody can
       get an address there.
     - **A subdomain of one.** The claim takes an address at a subdomain of
@@ -145,23 +243,29 @@ def why_domain_proves_nothing(domain: str) -> str | None:
       provider's would be refused too and wait for a person; none is known,
       and that is the cheaper of the two mistakes.
 
-    **`domain` is normalised here rather than trusted to arrive that way**:
-    stripped, lowercased, and with any trailing dot removed. `claim_org` asks
-    about a STORED domain, and the rows this check exists for are the ones
-    today's validators did not write - by hand, or by an older version of a
-    door. The address check after it (`_somebody_holds_the_domain` in
-    routers/clubs.py) strips and lowercases before comparing, so a rule that
-    read the row as stored passed `GMAIL.COM` and `gmail.com ` while
-    `mallory@gmail.com` still matched both and was seated.
+    **`domain` is normalised here rather than trusted to arrive that way**,
+    by `normalise_domain`, the fold every door uses. `claim_org` asks about a
+    STORED domain, and the rows this check exists for are the ones today's
+    validators did not write - by hand, or by an older version of a door. The
+    address check after it (`address_is_at_domain`) folds both sides the same
+    way before comparing, so a rule that read the row as stored passed
+    `GMAIL.COM` and `gmail.com ` while `mallory@gmail.com` still matched both
+    and was seated - and a rule that only stripped and lowercased passed
+    `gmail.com` followed by a zero-width space, which the address check now
+    reads as `gmail.com`.
 
     A public suffix such as `co.uk` has a dot and passes. Closing that needs
     the Public Suffix List, a new dependency nobody has taken on yet.
     """
-    normalised = domain.strip().lower().rstrip(".")
-    if not normalised:
+    cleaned = (domain or "").strip()
+    if not cleaned:
         return "That domain is blank, so no address can be at it."
-    if "." not in normalised:
-        return f"{normalised} is a top-level domain, not an organization's own, so every address under it would count."
+    normalised = normalise_domain(cleaned)
+    if normalised is None:
+        folded = _folded(cleaned)
+        if folded is not None and _ONE_LABEL.fullmatch(folded):
+            return f"{folded} is a top-level domain, not an organization's own, so every address under it would count."
+        return f"{cleaned!r} is not a bare domain name like ramapotrails.org, so no address can be compared with it."
     if normalised in PUBLIC_EMAIL_DOMAINS:
         return (
             f"{normalised} is a public email provider, not an organization's own domain - "
@@ -441,16 +545,21 @@ class OrgCreate(BaseModel):
     @classmethod
     def _a_bare_domain(cls, value: str) -> str:
         # A bare hostname, because it is compared against the part of an
-        # email address after the `@`. Accepting "https://ramapotrails.org/"
-        # here and comparing it to "ramapotrails.org" would fail the
-        # domain check for every admin and give no reason why.
-        cleaned = value.strip().lower().removeprefix("https://").removeprefix("http://").strip("/")
-        if "." not in cleaned or " " in cleaned:
-            raise ValueError("give the bare domain, e.g. ramapotrails.org")
-        problem = why_domain_proves_nothing(cleaned)
+        # email address after the `@` - through `normalise_domain`, the rule
+        # every door uses, so what is stored is what is compared. A website
+        # address is refused with a sentence saying what to type rather than
+        # cut down to its host: cutting is how
+        # "https://ramapotrails.org/trails/" was stored as
+        # "ramapotrails.org/trails", which no address is at.
+        normalised = normalise_domain(value)
+        if normalised is None:
+            raise ValueError(
+                "give the bare domain your organization's mail runs on, e.g. ramapotrails.org - no https://, path, port or spaces"
+            )
+        problem = why_domain_proves_nothing(normalised)
         if problem:
             raise ValueError(f"{problem} Give the domain your organization's own website and mail run on.")
-        return cleaned
+        return normalised
 
 
 class OrgSettingsUpdate(BaseModel):

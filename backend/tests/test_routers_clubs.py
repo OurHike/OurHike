@@ -24,7 +24,7 @@ from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
 from app.models.org_role import RoleInvite
 from app.models.profile import Role
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
-from app.schemas.org import PUBLIC_EMAIL_DOMAINS, why_domain_proves_nothing
+from app.schemas.org import PUBLIC_EMAIL_DOMAINS, address_is_at_domain, normalise_domain, why_domain_proves_nothing
 from tests.factories import make_admin, make_org, make_profile
 from tests.tokens import auth_headers
 
@@ -288,6 +288,121 @@ def test_one_rule_says_which_domains_prove_nothing_about_who_runs_an_organizatio
     assert (why_domain_proves_nothing(domain) is not None) is proves_nothing
 
 
+# The 2026-11-04 security review's probes of `OrgCreate`: none is a hostname,
+# and the old validator stored each one (the last cut down to
+# `ramapotrails.org/trails`) because it refused only a missing dot and a space.
+# Each pair is what was typed and what the old validator stored.
+_NOT_A_HOSTNAME = [
+    ("ramapotrails.org/foo", "ramapotrails.org/foo"),
+    ("ramapotrails.org:443", "ramapotrails.org:443"),
+    ("ramapotrails.org\tfoo", "ramapotrails.org\tfoo"),
+    ("https://ramapotrails.org/trails/", "ramapotrails.org/trails"),
+]
+
+# gmail.com, spelled so that a strip-and-lowercase rule read some other
+# domain, while the UTS #46 fold `normalise_domain` applies reads gmail.com.
+_GMAIL_IN_DISGUISE = [
+    "gmail.com​",  # a zero-width space after it
+    "gm​ail.com",  # and inside it
+    "﻿gmail.com",  # a byte-order mark before it
+    "ｇｍａｉｌ.com",  # fullwidth letters
+    "gmail。com",  # an ideographic full stop for the dot
+]
+
+
+@pytest.mark.parametrize(("typed", "stored_before"), _NOT_A_HOSTNAME)
+def test_a_domain_that_is_not_a_bare_hostname_proves_nothing(typed, stored_before):
+    """`why_domain_proves_nothing` returned None for all four, so every door
+    that asks it - registering, nominating, claiming, releasing a held
+    registration - took a path, a port, a tab or a scheme as a domain."""
+    assert normalise_domain(typed) is None
+    assert normalise_domain(stored_before) is None
+    assert "is not a bare domain name" in (why_domain_proves_nothing(typed) or "")
+    assert "is not a bare domain name" in (why_domain_proves_nothing(stored_before) or "")
+
+
+@pytest.mark.parametrize("disguised", _GMAIL_IN_DISGUISE)
+def test_gmail_spelled_with_invisible_or_fullwidth_characters_still_proves_nothing(disguised):
+    """The rule stripped and lowercased, and none of these five is
+    `gmail.com` to `str.strip` and `str.lower`, so each returned None."""
+    assert normalise_domain(disguised) == "gmail.com"
+    assert "gmail.com is a public email provider" in (why_domain_proves_nothing(disguised) or "")
+
+
+@pytest.mark.parametrize(
+    ("value", "normalised"),
+    [
+        ("ramapotrails.org", "ramapotrails.org"),
+        (" RamapoTrails.ORG. ", "ramapotrails.org"),
+        ("trails.ramapotrails.org", "trails.ramapotrails.org"),
+        ("bücher.de", "xn--bcher-kva.de"),
+        ("xn--bcher-kva.de", "xn--bcher-kva.de"),
+        ("ramapotrails.org..", None),
+        (".ramapotrails.org", None),
+        ("ramapo_trails.org", None),
+        ("-ramapotrails.org", None),
+        ("ramapotrails", None),
+        ("gmail.com‍", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_normalise_domain_answers_one_spelling_or_none(value, normalised):
+    """What every door stores and compares: one trailing dot is the same
+    name, a second is not; a real non-ASCII label is its `xn--` form, so a
+    Unicode address and the stored domain meet in one spelling."""
+    assert normalise_domain(value) == normalised
+
+
+@pytest.mark.parametrize(
+    ("address", "domain", "at_it"),
+    [
+        ("maria@ramapotrails.org", "ramapotrails.org", True),
+        ("maria@trails.ramapotrails.org", "ramapotrails.org", True),
+        ("Maria@RamapoTrails.ORG", " ramapotrails.org. ", True),
+        ("maria@xn--bcher-kva.de", "bücher.de", True),
+        ("maria@notramapotrails.org", "ramapotrails.org", False),
+        ("maria@ramapotrails.org.evil.com", "ramapotrails.org", False),
+        ("maria@ramapotrails.org", "trails.ramapotrails.org", False),
+        *[(f"sec@{stored}", stored, False) for _, stored in _NOT_A_HOSTNAME],
+        ("not-an-address", "ramapotrails.org", False),
+        (None, "ramapotrails.org", False),
+        ("maria@ramapotrails.org", None, False),
+    ],
+)
+def test_an_address_is_at_a_domain_or_a_subdomain_of_it_and_nothing_else(address, domain, at_it):
+    """The subdomain rule registering, claiming and nominating all ask, in
+    one function. An invitation typed at a string that is not a hostname
+    used to "hold" that string, because both sides were compared as typed."""
+    assert address_is_at_domain(address, domain) is at_it
+
+
+@pytest.mark.parametrize(("typed", "stored_before"), _NOT_A_HOSTNAME)
+def test_registering_refuses_a_domain_that_is_not_a_bare_hostname(client, db_session, typed, stored_before):
+    """`OrgCreate` stored each of these, and an invitation typed at the
+    stored string "held" it, so the registration came back 201 `pending`
+    on a domain no mailbox is at - and held the slug."""
+    response = _register(client, str(uuid.uuid4()), domain=typed, admins=[{"email": f"sec@{stored_before}"}])
+
+    assert response.status_code == 422, response.text
+    assert "give the bare domain" in response.json()["detail"][0]["msg"]
+    assert db_session.query(Club).count() == 0
+
+
+@pytest.mark.parametrize("disguised", _GMAIL_IN_DISGUISE)
+def test_registering_gmail_spelled_in_disguise_is_refused_as_a_public_provider(client, db_session, disguised):
+    """The same door, the other half of the probe: `OrgCreate` asked the rule
+    about the spelling as typed, the rule said nothing, and an invitation
+    typed at that spelling held it."""
+    response = _register(
+        client, str(uuid.uuid4()), email="mallory@gmail.com", domain=disguised, admins=[{"email": f"sec@{disguised}"}]
+    )
+
+    assert response.status_code == 422, response.text
+    assert "gmail.com is a public email provider" in response.json()["detail"][0]["msg"]
+    assert db_session.query(Club).count() == 0
+
+
 def test_every_listed_mail_provider_is_a_plain_lowercase_hostname():
     """`why_domain_proves_nothing` compares a normalised hostname against
     `PUBLIC_EMAIL_DOMAINS` exactly, and a nominated website loses its `www.`
@@ -296,6 +411,7 @@ def test_every_listed_mail_provider_is_a_plain_lowercase_hostname():
     nothing without anybody noticing."""
     misspelled = [domain for domain in PUBLIC_EMAIL_DOMAINS if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", domain)]
     assert misspelled == []
+    assert [domain for domain in PUBLIC_EMAIL_DOMAINS if normalise_domain(domain) != domain] == []
     assert not [domain for domain in PUBLIC_EMAIL_DOMAINS if domain.startswith("www.")]
 
 
@@ -348,7 +464,7 @@ def test_an_organization_whose_stored_domain_proves_nothing_cannot_be_claimed(cl
     assert db_session.query(Club).one().state == OrgState.unclaimed
 
 
-@pytest.mark.parametrize("stored", ["GMAIL.COM", "Gmail.com", "gmail.com ", " gmail.com", "gmail.com\n"])
+@pytest.mark.parametrize("stored", ["GMAIL.COM", "Gmail.com", "gmail.com ", " gmail.com", "gmail.com\n", *_GMAIL_IN_DISGUISE])
 def test_a_stored_webmail_domain_in_another_spelling_still_cannot_be_claimed(client, db_session, stored):
     """`claim_org` asks `why_domain_proves_nothing` about the domain AS
     STORED, and then `_somebody_holds_the_domain` strips and lowercases it

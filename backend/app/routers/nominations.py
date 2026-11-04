@@ -86,7 +86,7 @@ from app.schemas.nomination import (
     ProposalOut,
     ProposedSource,
 )
-from app.schemas.org import RESERVED_SLUGS, why_domain_proves_nothing
+from app.schemas.org import RESERVED_SLUGS, address_is_at_domain, normalise_domain, why_domain_proves_nothing
 
 router = APIRouter(tags=["nominations"])
 
@@ -248,22 +248,21 @@ def nominate_read(
 
 
 def _domain_of(website: str) -> str:
+    """The domain a nominated website is at: its host through `normalise_domain`, less a leading `www.`.
+
+    `normalise_domain` is the fold every door uses (schemas/org.py), so a
+    host typed as `gmail.com` + U+200B ZERO WIDTH SPACE, or in fullwidth
+    letters, is `gmail.com` here and `why_domain_proves_nothing` refuses it.
+    A host it refuses comes back as `urlsplit` read it, so that the refusal
+    can say what is wrong with it - and it does refuse every such host, so
+    nothing unnormalised is stored as a club's domain.
+    """
     from urllib.parse import urlsplit
 
     raw = website if "://" in website else f"https://{website}"
-    return (urlsplit(raw).hostname or "").lower().removeprefix("www.")
-
-
-def _at_domain(email: str, domain: str) -> bool:
-    """Whether `email` is an address at `domain` or one of its subdomains.
-
-    The same rule `routers/clubs.py` uses for an admin's address, and for the
-    same reason: organizations really do run mail on `trails.example.org`.
-    """
-    if not domain or "@" not in email:
-        return False
-    host = email.rsplit("@", 1)[1].strip().lower()
-    return host == domain or host.endswith("." + domain)
+    host = urlsplit(raw).hostname or ""
+    folded = normalise_domain(host)
+    return host if folded is None else folded.removeprefix("www.")
 
 
 def _slug_for(db: Session, name: str, domain: str) -> str:
@@ -347,7 +346,7 @@ def submit_nomination(
     # An organization whose published contacts use a personal mail provider
     # cannot be nominated this way and waits for a person, which is the
     # honest outcome rather than a rule that bends for it.
-    off_domain = [str(contact.email) for contact in payload.contacts if not _at_domain(str(contact.email).lower(), domain)]
+    off_domain = [str(contact.email) for contact in payload.contacts if not address_is_at_domain(str(contact.email), domain)]
     if off_domain:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -609,7 +608,7 @@ def decide_proposal(
         # the organization. Submission now refuses contacts off the domain;
         # this holds the line for contacts written before it did, whose
         # decline still counts for this nomination and closes nothing else.
-        if payload.never_ask_again and club.domain and _at_domain(pending.email, club.domain):
+        if payload.never_ask_again and club.domain and address_is_at_domain(pending.email, club.domain):
             # `nomination_refusals.domain` is unique, and the gate that stops
             # a second nomination is checked when one is submitted rather
             # than when one is decided - so two nominations for one club can

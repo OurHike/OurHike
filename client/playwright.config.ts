@@ -193,19 +193,21 @@ const BACKEND_COMMAND = [
  *
  * ALWAYS BUILT AND PREVIEWED, never the dev server, for BACKEND_COMMAND's
  * reason (two dev servers share one dependency cache). CHROMIUM ONLY, at
- * phone width, like the backend build - and here the data half's finding
- * stands too: WebKit in this sandbox draws no mark on the map where Chromium
- * does (#1467), and these tests tap marks. A WebKit leg is worth adding when
- * somebody has run it and fixed what it turns up.
+ * phone width, like the backend build. These tests tap marks drawn on the
+ * map canvas, and WebKit drawing nothing where Chromium draws a trail line
+ * in the data half (#1467) is still unexplained; a WebKit leg is worth
+ * adding when somebody has run it and fixed what it turns up.
  *
  * A LONGER BUDGET THAN THE HERMETIC HALF'S, and why it is not the data
  * half's. What these tests wait on is not a network: the map's lazily
  * fetched closure and hazard chunks, the trail index built from a seeded
  * release, and a tap loop that keeps tapping until the mark has drawn (the
- * recipes' own door, preview-shots/fixtures/clubClosures.mjs). Measured
- * 2026-11-04 in the agent sandbox: the slowest of the four tests finished in
- * well under half of this; the budget is headroom for a loaded CI runner, not
- * an expectation.
+ * recipes' own door, preview-shots/fixtures/clubClosures.mjs, whose 45 s
+ * ceiling is already past the hermetic 30 s). Measured 2026-11-04 in the
+ * agent sandbox, three runs of e2e/closureSurfaces.spec.ts on two workers:
+ * the slowest test took 12.4 s. So 90 s and a 10 s expect window are
+ * headroom for a loaded CI runner, @unvalidated: nobody has timed these on
+ * CI, and a run there is what would settle them.
  */
 const BUCKET_MODE_AVAILABLE = BACKEND_MODE_AVAILABLE
 const BUCKET_COMMAND = [

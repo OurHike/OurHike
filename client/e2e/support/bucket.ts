@@ -71,7 +71,8 @@ export interface BucketReply {
  * needs to hold an answer back, count the asks, or answer differently each
  * time (closureSurfaces.spec.ts's superseded download).
  */
-export type BucketFile = object | ((request: Request) => BucketReply | Promise<BucketReply>)
+export type BucketFile =
+  object | ((request: Request) => BucketReply | Promise<BucketReply>)
 
 export type BucketFiles = Record<string, BucketFile>
 
@@ -82,7 +83,9 @@ export interface Bucket {
 
 /** The artifact key a bucket URL asks for. */
 export function bucketKey(url: URL): string {
-  const path = url.pathname.slice(url.pathname.indexOf(BUCKET_PREFIX) + BUCKET_PREFIX.length)
+  const path = url.pathname.slice(
+    url.pathname.indexOf(BUCKET_PREFIX) + BUCKET_PREFIX.length,
+  )
   return path.replace(/^\/(releases\/[^/]+\/)?/, '')
 }
 
@@ -111,7 +114,9 @@ export async function stubBucket(page: Page, files: BucketFiles = {}): Promise<B
           ? await file(request)
           : { status: 200, body: file }
     const body =
-      request.method() === 'HEAD' || reply.body === undefined ? '' : JSON.stringify(reply.body)
+      request.method() === 'HEAD' || reply.body === undefined
+        ? ''
+        : JSON.stringify(reply.body)
     try {
       await route.fulfill({ status: reply.status, contentType: 'application/json', body })
     } catch {
@@ -119,9 +124,4 @@ export async function stubBucket(page: Page, files: BucketFiles = {}): Promise<B
     }
   })
   return bucket
-}
-
-/** The requests for one key, by method. */
-export function asked(seen: readonly BucketRequest[], method: string, key: string): BucketRequest[] {
-  return seen.filter((entry) => entry.method === method && entry.key === key)
 }

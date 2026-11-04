@@ -9,14 +9,20 @@ build job, and each test below holds one way of quietly undoing it:
   the state extracts;
 - a restore key that has to match exactly, which turns every run cold;
 - a save that is skipped after a partial fetch, which loses the files that
-  did arrive, or one that can fail the run over a cache-service hiccup.
+  did arrive, or one that can fail the run over a cache-service hiccup;
+- the raw store's key on any step but the fetch, or on the job, where
+  Planetiler, osmium and the state extracts would hold a key to the whole
+  private bucket, or the public bucket's key anywhere in the build job.
 
 The cached path must be the directory lib/planetiler_sources.py's
-SOURCES_DIR names; pipeline/tests/test_planetiler_sources.py holds that half.
+SOURCES_DIR names, and the fetch step's settings the ones
+fetch_planetiler_sources.py's RAW_BUCKET_SETTINGS names;
+pipeline/tests/test_planetiler_sources.py holds that half.
 """
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -30,10 +36,20 @@ FETCH = "Fetch Planetiler's profile sources that are missing or stale"
 SAVE = "Save Planetiler's profile sources"
 BUILD = "Build the basemap"
 
+RAW_STORE_KEY = {"R2_ENDPOINT_URL", "R2_RAW_BUCKET", "R2_RAW_ACCESS_KEY_ID", "R2_RAW_SECRET_ACCESS_KEY"}
+
+
+def _workflow() -> dict:
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
 
 def _steps() -> list[dict]:
-    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    return workflow["jobs"]["build"]["steps"]
+    return _workflow()["jobs"]["build"]["steps"]
+
+
+def _secrets(node) -> set[str]:
+    """Every secret a parsed piece of the workflow names."""
+    return set(re.findall(r"secrets\.([A-Za-z0-9_]+)", yaml.safe_dump(node)))
 
 
 def _at(steps: list[dict], name: str) -> int:
@@ -80,3 +96,23 @@ def test_the_save_follows_a_partial_fetch_only_when_something_landed_and_cannot_
     assert save["continue-on-error"] is True
     assert save["with"]["path"] == CACHED
     assert save["with"]["key"] == PREFIX + "${{ " + manifest + " }}"
+
+
+def test_in_the_build_job_only_the_fetch_step_holds_a_key_and_it_is_the_raw_stores():
+    """The raw store's key opens the whole private bucket, not only
+    planetiler_sources/, so it sits on the one step whose code reads and
+    writes that folder. On the job it would reach the Planetiler jar,
+    osmium and every step after them."""
+    workflow = _workflow()
+    build = workflow["jobs"]["build"]
+    assert not _secrets(workflow.get("env") or {}), "no key at workflow level"
+    assert not _secrets(build.get("env") or {}), "no key at job level"
+    held = {step.get("name"): _secrets(step) for step in build["steps"] if _secrets(step)}
+    assert held == {FETCH: RAW_STORE_KEY}
+    fetch = build["steps"][_at(build["steps"], FETCH)]
+    assert fetch["env"] == {name: "${{ secrets.%s }}" % name for name in RAW_STORE_KEY}
+
+
+def test_the_publish_job_never_holds_the_raw_stores_key():
+    publish = _workflow()["jobs"]["publish"]
+    assert not {name for name in _secrets(publish) if name.startswith("R2_RAW_")}

@@ -142,15 +142,9 @@ async function openYourSupport(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Your support' })).toBeVisible()
 }
 
-/** The browser has the account's answer to `GET /support/me` - not merely
- *  the stub has the request, which `backend.seen` records before it replies. */
-function supportAnswered(page: Page) {
-  return page.waitForResponse(
-    (response) =>
-      response.request().method() === 'GET' &&
-      new URL(response.url()).pathname.endsWith('/support/me'),
-  )
-}
+/** screens/SupportGate.tsx's answer for this launch, on `<html>`: "asked"
+ *  or "not-asked", written once when the gate decides. */
+const decision = (page: Page) => page.locator('html')
 
 test.describe('the day-5 ask', { tag: '@backend' }, () => {
   test('the ask opens by itself on the fifth active day (ASK_ON_DAY) and not on the fourth', async ({
@@ -159,25 +153,23 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
     const backend = await stubBackend(page, {
       'GET /support/me': { status: 200, body: summary() },
     })
-    // Signed in, so the gate's decision has an observable it waits on: the
-    // account's answer. The gate decides the first time that answer has
-    // settled (screens/SupportGate.tsx), so once the browser has the answer
-    // to `/support/me` the ask has either opened or will not.
+    // Signed in, so the gate decides on the account's answer, the first time
+    // it has settled (screens/SupportGate.tsx).
     await seedSession(page)
     await seedActiveDays(page, 3)
     await seedPreferences(page)
-    const answered = supportAnswered(page)
     await page.goto('/')
 
-    // THE FOURTH DAY: the account answered, the app is up, and nothing asked.
-    // Checked 2026-11-04 by setting lib/support.ts's ASK_ON_DAY to 4: this
-    // line went red on 4 of 4 runs, the window already open when it looked
-    // (and on 6 of 6 of a draft that did not yet wait for the answer).
-    await answered
+    // THE FOURTH DAY: the gate has decided, on the account's answer, and
+    // decided not to ask. A "no" draws nothing, so what is waited on is the
+    // gate's own answer on `<html data-support-ask>`. The browser having the
+    // answer to `/support/me` would not do: that still leaves the gate a
+    // parse, two state updates, an effect and two renders from deciding.
+    // Checked 2026-11-04 by setting lib/support.ts's ASK_ON_DAY to
+    // 4: the wait went red on 3 of 3 runs, the attribute reading "asked", and
+    // green on 3 of 3 with it back at 5.
+    await expect(decision(page)).toHaveAttribute('data-support-ask', 'not-asked')
     expect(exactly(backend.seen, 'GET', '/support/me')).toHaveLength(1)
-    await expect(
-      page.getByRole('button', { name: 'Account, signed in as hiker@example.org' }),
-    ).toBeVisible()
     await expect(ask(page)).toHaveCount(0)
 
     // THE FIFTH: the same phone, one more day, relaunched - no tap in
@@ -196,14 +188,14 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
     )
   })
 
-  test('$0 is kept on the phone with no PUT /support/me, and queues one support_chosen row at 0 cents', async ({
+  test('$0 is kept on a signed-in phone with no PUT /support/me, and queues one support_chosen row at 0 cents', async ({
     page,
   }) => {
     const backend = await stubBackend(page, {
-      // Signed out, the gate asks the server whether it takes a paid choice
-      // before it asks the hiker: a required question every answer to which
-      // fails would be worse than none (lib/supportApi.ts).
-      'GET /support/total': { status: 200, body: { accepting: true, total_cents: 0 } },
+      // SIGNED IN, so a $0 sent to the server would arrive here as a PUT:
+      // lib/api.ts's `authedFetch` throws before making any request when
+      // there is no token, and a signed-out phone could never show one.
+      'GET /support/me': { status: 200, body: summary() },
       'POST /usage-events': (request) => ({
         status: 202,
         body: {
@@ -213,6 +205,7 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
         },
       }),
     })
+    await seedSession(page)
     await seedActiveDays(page, 4)
     await seedPreferences(page)
     await page.goto('/')
@@ -237,8 +230,7 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
       page.getByRole('dialog', { name: /Before you pick \$0|Choose what you give/ }),
     ).toHaveCount(0)
     expect(new URL(page.url()).origin).toBe(BACKEND_ORIGIN)
-    // NO LINK, NO CALL: $0 stays on this phone and needs no account.
-    expect(exactly(backend.seen, 'PUT', '/support/me')).toHaveLength(0)
+    // NO LINK: $0 stays on this phone, kept for the year.
     const local = await page.evaluate(
       (key) => JSON.parse(localStorage.getItem(key) ?? 'null') as { year: number } | null,
       LOCAL_CHOICE_KEY,
@@ -263,6 +255,14 @@ test.describe('the day-5 ask', { tag: '@backend' }, () => {
       page.getByText(`You chose $0 for ${year}.`, { exact: false }),
     ).toBeVisible()
     await expect(page.getByRole('button', { name: 'Choose an amount' })).toBeVisible()
+
+    // NO CALL, judged last: Your support's own GET /support/me, which the
+    // page makes after the answer, has arrived, so anything the answer sent
+    // left the phone before it. Checked 2026-11-04 by having SupportAsk's
+    // `keepZero` also send the $0 through `chooseSupport`: red on 3 of 3
+    // runs, one PUT recorded, and green on 3 of 3 without it.
+    await expect.poll(() => exactly(backend.seen, 'GET', '/support/me').length).toBe(2)
+    expect(exactly(backend.seen, 'PUT', '/support/me')).toHaveLength(0)
   })
 
   test('a paid choice sends PUT /support/me with delivery "redirect" and lands on its checkout_url, with no card field in the window', async ({

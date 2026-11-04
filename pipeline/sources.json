@@ -19145,6 +19145,56 @@
       "reaches_hikers_comment": "True by decision 76 (2026-10-04): stg_census__states reads it into int_closures__notice_state_shapes, which simplifies only the states dbt/seeds/notice_states.csv names, and pub_conditions_notice_states writes them to conditions/notice_states.json, both unit-tested; assert_notice_state_shapes_stay_inside_their_edge_margin fails the build when a simplified shape strays from its original by more than the margin the phone reads. Never drawn: client/src/lib/plannedNotices.ts reads a shape only to decide whether a planned route is in its state."
     },
     {
+      "key": "us_atlas_states",
+      "title": "us-atlas 3.0.1, states-10m.json: the US states as TopoJSON, from the Census Bureau's 2017 cartographic boundary files",
+      "provider": "U.S. Census Bureau",
+      "kind": "atlas_file",
+      "url": "https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json",
+      "file_format": "topojson",
+      "trust": "authoritative",
+      "steward": "U.S. Census Bureau",
+      "licence": "PUBLIC DOMAIN for the boundaries, on 17 U.S.C. 105 and the Census Bureau's own statement that its boundary products \"are not copyrighted\" and \"are free to use in a product or publication\" with acknowledgement (`terms`), the reading census_tiger_states ships on; `attribution` carries the acknowledgement. The us-atlas README names the source: \"a convenient redistribution of the Census Bureau's cartographic boundary shapefiles, 2017 edition as TopoJSON\" (read 2026-11-04). Those 2017 files' own metadata was not read, because www2.census.gov's robots.txt refuses every agent (census_tiger_states' notes); the same agency's statement about its 2025 boundary files is the evidence, and it is the same agency's product. THE FILE ITSELF is Mike Bostock's packaging under the ISC licence (\"Copyright 2013-2019 Michael Bostock\", package.json `license: ISC`, read 2026-11-04), whose one condition is that its copyright notice and permission notice appear in all copies: challenge_map.json carries both in its `notices`, as export_challenge_map.py writes them. WHAT PUBLISHES: the outlines of the states inside the challenge map's frame, simplified, the borders between them, and the A.T.'s state runs by mile measured against them, in challenge_map.json. They are drawn on the challenge map and the share poster (#1965).",
+      "licence_basis": "stated_by_org",
+      "attribution": "U.S. Census Bureau",
+      "terms": "The Census Bureau's own words for its boundary products, as its TIGER/Line 2025 metadata states them (quoted in full on census_tiger_states, read 2026-10-04): \"The TIGER/Line Shapefile products are not copyrighted however TIGER/Line and Census TIGER are registered trademarks of the U.S. Census Bureau. These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source.\"",
+      "person_fields": [],
+      "person_fields_comment": "None: each state is a TopoJSON geometry whose properties are its `name`, with its FIPS code as `id`, read 2026-11-04. No field names a person.",
+      "freshness": {
+        "kind": "none",
+        "notes": "Pinned to us-atlas 3.0.1 in the URL, and an npm version's files never change once published, so a fetched copy is never stale and fetch_atlas_outlines.py keeps one it can parse. Moving to a later edition is an edit to this row's URL."
+      },
+      "discovered_via": "features/CHALLENGES_BLAZE_CARD.md (2026-11-03), \"The map: reuse, do not invent\": US states from us-atlas, recorded in sources.json the way every other source is. Its mock maps (features/design/blaze-card/mapbuild/) were drawn from the same package. Read 2026-11-04 from unpkg.com and cdn.jsdelivr.net, whose robots.txt allows every agent (unpkg) or serves none (jsDelivr).",
+      "discovered_date": "2026-11-04",
+      "notes": "114,554 bytes, a TopoJSON Topology with objects `states` (56 geometries, 50 states, DC and 5 territories, `id` the two-digit FIPS code) and `nation`, quantized and simplified but not projected, 419 arcs (read 2026-11-04). The README describes it as derived from the 2017 cartographic boundary files, with the state boundaries computed by merging counties. Cartographic, so a state stops at its shoreline and the Great Lakes are water: right for a picture, and why the state runs it gives are a picture's too - export_challenge_map.py's docstring says how they were measured and where they cannot be trusted.",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True: export_challenge_map.py simplifies the states inside the map's frame into challenge_map.json, which publish.py ships beside challenges.json, and the phone draws them under the challenge map and the share poster (#1965). The state runs by mile derived from them name the state an earned item landed in."
+    },
+    {
+      "key": "world_atlas_countries",
+      "title": "world-atlas 2.0.2, countries-50m.json: the world's countries as TopoJSON, from Natural Earth 4.1.0 at 1:50m",
+      "provider": "Natural Earth",
+      "kind": "atlas_file",
+      "url": "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json",
+      "file_format": "topojson",
+      "trust": "authoritative",
+      "steward": "Natural Earth",
+      "licence": "PUBLIC DOMAIN, stated by Natural Earth (`terms`, its Terms of Use page read 2026-11-04): \"in the public domain\", \"No permission is needed\", and \"Crediting the authors is unnecessary\"; `attribution` credits it anyway, in the short form the page offers. The world-atlas README names the source: \"a convenient redistribution of Natural Earth's vector data, version 4.1.0 as TopoJSON\". THE FILE ITSELF is Mike Bostock's packaging under the ISC licence (\"Copyright 2013-2019 Michael Bostock\", read 2026-11-04), whose condition challenge_map.json meets by carrying its copyright and permission notices in `notices`. WHAT PUBLISHES: Canada's outline inside the challenge map's frame, simplified, in challenge_map.json - the land north of Maine, Vermont, New Hampshire and New York on the challenge map and the share poster (#1965). Nothing else in the file is read.",
+      "licence_basis": "stated_by_org",
+      "attribution": "Natural Earth",
+      "terms": "Natural Earth's Terms of Use page (https://www.naturalearthdata.com/about/terms-of-use/, read 2026-11-04): \"All versions of Natural Earth raster + vector map data found on this website are in the public domain. You may use the maps in any manner, including modifying the content and design, electronic dissemination, and offset printing. ... No permission is needed to use Natural Earth. Crediting the authors is unnecessary.\"",
+      "person_fields": [],
+      "person_fields_comment": "None: each country is a TopoJSON geometry whose one property is its `name`, with its ISO 3166-1 numeric code as `id`, read 2026-11-04. The terms name the primary authors; no field in the file names anyone.",
+      "freshness": {
+        "kind": "none",
+        "notes": "Pinned to world-atlas 2.0.2 in the URL, and an npm version's files never change once published, so a fetched copy is never stale and fetch_atlas_outlines.py keeps one it can parse. Moving to a later edition is an edit to this row's URL."
+      },
+      "discovered_via": "features/CHALLENGES_BLAZE_CARD.md (2026-11-03), \"The map: reuse, do not invent\": Canada from world-atlas (Natural Earth, public domain). Read 2026-11-04 from unpkg.com and cdn.jsdelivr.net; naturalearthdata.com's robots.txt disallows only /wp-admin/.",
+      "discovered_date": "2026-11-04",
+      "notes": "756,420 bytes, a TopoJSON Topology with objects `countries` and `land`, quantized but not projected (read 2026-11-04). 1:50m rather than world-atlas's 1:110m, because the 1:110m file draws the St. Lawrence and the Great Lakes' north shores as a handful of straight lines at the scale of the share poster (the brief's mock maps used the same 1:50m file).",
+      "reaches_hikers": true,
+      "reaches_hikers_comment": "True: export_challenge_map.py clips and simplifies Canada's outline into challenge_map.json, which publish.py ships beside challenges.json, and the phone draws it under the challenge map and the share poster (#1965)."
+    },
+    {
       "key": "mo_state_parks_trail_advisories",
       "title": "Missouri State Parks trail advisories (Katy and Rock Island trails)",
       "provider": "Missouri State Parks",
@@ -21799,7 +21849,11 @@
       },
       "U.S. Census Bureau": {
         "state": "not_asked",
-        "note": "Not asked. Its state boundaries reach a phone only inside conditions/notice_states.json, which the app never draws (decision 76, 2026-10-04), so there is nothing an org mark would sit beside. Nothing has been sent."
+        "note": "Not asked. Its state boundaries reach a phone inside conditions/notice_states.json, which the app never draws (decision 76, 2026-10-04), and since 2026-11-04 as the outlines under the challenge map and its share poster (us_atlas_states, #1965), credited there in words. A mark would sit beside that credit only with a grant nobody has asked for. Nothing has been sent."
+      },
+      "Natural Earth": {
+        "state": "not_asked",
+        "note": "Not asked. Its countries reach a phone only as Canada's outline under the challenge map and its share poster (world_atlas_countries, #1965), credited there in words although its terms say crediting is unnecessary. Nothing has been sent."
       },
       "PTNY": {
         "state": "not_asked",
@@ -22917,7 +22971,12 @@
       "org:census": {
         "provider": "U.S. Census Bureau",
         "name": "United States Census Bureau",
-        "note": "The federal statistical agency. Registered for its TIGER/Line state boundaries alone (decision 76, 2026-10-04), which reach a phone only as the shapes conditions/notice_states.json carries for a state-wide agency notice, and are never drawn."
+        "note": "The federal statistical agency. Registered for its TIGER/Line state boundaries (decision 76, 2026-10-04), which reach a phone only as the shapes conditions/notice_states.json carries for a state-wide agency notice and are never drawn there, and since 2026-11-04 for us-atlas's redistribution of its 2017 cartographic state boundaries (us_atlas_states), which the challenge map and its share poster draw (#1965)."
+      },
+      "org:naturalearth": {
+        "provider": "Natural Earth",
+        "name": "Natural Earth",
+        "note": "A public-domain map dataset at 1:10m, 1:50m and 1:110m, made by volunteers and supported by the North American Cartographic Information Society (naturalearthdata.com, read 2026-11-04). Registered for world-atlas's redistribution of its 1:50m countries (world_atlas_countries), of which only Canada's outline reaches a phone, drawn north of the trail on the challenge map and its share poster (#1965)."
       },
       "org:ptny": {
         "provider": "PTNY",
@@ -28935,6 +28994,10 @@
             "note": "Registered for its TIGER/Line state boundaries under decision 76 (2026-10-04). That read asked nothing about this organization's point data, so `unprobed` is the literal state, not a finding that it publishes none."
           }
         }
+      },
+      "Natural Earth": {
+        "probed_date": "2026-11-04",
+        "not_a_poi_source": "Registered for world-atlas's 1:50m countries, read for Canada's outline on the challenge map. Natural Earth's cultural layers include populated places and airports, which this survey did not read for the corridor and which nothing here would place against an A.T. waypoint; recorded so that every provider has an answer, not as a finding that it publishes no points."
       },
       "PTNY": {
         "probed_date": "2026-10-08",

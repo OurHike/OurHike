@@ -1489,6 +1489,19 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(challenges_manifest.read_text())
         artifacts["challenges.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The challenge map's geometry, if export_challenge_map.py has run (#1965):
+    # the centerline thinned for a phone, the state and Canada outlines from
+    # the atlas files, and the state runs by mile. Challenges' shape and
+    # challenges' reason - no generated_at, so a run that changes nothing
+    # uploads nothing. The exporter writes no manifest when an input is
+    # missing and takes away an earlier run's, so a release built without the
+    # atlas files simply has no map, which config.ts declares `@release
+    # optional` and the phone reads as "the list alone".
+    challenge_map_manifest = PROCESSED_DIR / "challenge_map_manifest.json"
+    if challenge_map_manifest.exists():
+        manifest = json.loads(challenge_map_manifest.read_text())
+        artifacts["challenge_map.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # The routes somebody wrote up, if export_suggested_hikes.py has run
     # (#1427, features/SUGGESTED_HIKES.md) - NYNJTC's hikes from the Hike
     # Finder export. Same shape again. It is absent from a release for THREE

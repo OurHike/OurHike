@@ -86,6 +86,12 @@ NOT_YET_EXTRACTED = frozenset(
         "rctc_rachel_carson_trail_geojson",
         "vtrans_lvrt_centerline",
         "wsprc_long_distance_trails",
+        # The two atlas files the challenge map is drawn on (#1965 — Challenges: where your blazes are — the map, the
+        # list, the poster): pinned npm files fetched whole by fetch_atlas_outlines.py and read only by
+        # export_challenge_map.py, a Python exporter like every phone file before the cutover. extract/_gis_files.py
+        # reads no TopoJSON, and nothing in dbt draws a map; a resource for them waits on a mart that would.
+        "us_atlas_states",
+        "world_atlas_countries",
     }
 )
 

@@ -320,6 +320,12 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
       feeds, challenge lists), is `unresolved`, its terms quoted on its row.
     The history of each movement is in git; the counts below are recounted from
     the registry, and change only when somebody edits them deliberately.
+
+    2026-11-04 (#1965 — Challenges: where your blazes are — the map, the list,
+    the poster): `stated_by_org` 198 -> 200, the two atlas files the challenge
+    map is drawn on. us_atlas_states rests on the Census Bureau's own "not
+    copyrighted" statement, as census_tiger_states does; world_atlas_countries on
+    Natural Earth's "in the public domain". Both reach hikers.
     """
     counts: dict[str, int] = {}
     for source in REGISTRY["sources"]:
@@ -328,7 +334,7 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     assert counts == {
         "maintainer_authorisation": 250,
         "public_gis": 304,
-        "stated_by_org": 198,
+        "stated_by_org": 200,
         "unresolved": 32,
         "maintainer_clearinghouse": 13,
     }

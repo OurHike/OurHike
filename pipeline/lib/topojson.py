@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import shapely
-from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon
+from shapely.geometry import LineString, MultiLineString, Polygon
 from shapely.geometry.base import BaseGeometry
 
 Position = tuple[float, float]

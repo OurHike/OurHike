@@ -31,8 +31,11 @@ ATLAS_SOURCE_KEYS = frozenset({US_ATLAS_KEY, WORLD_ATLAS_KEY})
 #: Where each file lands, and the TopoJSON object it must carry to count as
 #: fetched - the check fetch_atlas_outlines.py makes before it keeps a file,
 #: because an HTML error page saved under a `.json` name is the failure a
-#: download-whole fetcher is prone to.
+#: download-whole fetcher is prone to. The version is in the name, so a row
+#: moved to a later edition lands beside the old copy rather than on it; the
+#: names must move with the rows' URLs, which tests/test_fetch_atlas_outlines.py
+#: holds.
 ATLAS_FILES: dict[str, tuple[Path, str]] = {
-    US_ATLAS_KEY: (RAW_DIR / "us-atlas-states-10m.json", "states"),
-    WORLD_ATLAS_KEY: (RAW_DIR / "world-atlas-countries-50m.json", "countries"),
+    US_ATLAS_KEY: (RAW_DIR / "us-atlas@3.0.1-states-10m.json", "states"),
+    WORLD_ATLAS_KEY: (RAW_DIR / "world-atlas@2.0.2-countries-50m.json", "countries"),
 }

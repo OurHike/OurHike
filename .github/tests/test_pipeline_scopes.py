@@ -58,6 +58,15 @@ PUBLISHING_PATHS = {
     # check-conditions.yml`, and which put conditions/data_quality.json in
     # place with `python publish.py --sidecar`.
     "check-conditions.yml",
+    # The tenth, and the one the invocation rule cannot see: it uploads
+    # through export_podcasts.py's own boto3 `upload()` (#1683 - Offer
+    # podcast episodes picked for the hike, with a one-tap Spotify save and
+    # an in-app player), never publish.py, so the script names it
+    # (`OWN_UPLOADERS`, with the reason).
+    # Found on 2026-11-04 by the release review: 52715269's edit to
+    # pipeline/reference/podcast_episodes.json showed as STALE for every
+    # path but the one that publishes it.
+    "publish-podcasts.yml",
 }
 
 #: The extract paths: workflows that run `python -m extract._run` and no
@@ -213,6 +222,35 @@ def test_the_dispatched_build_s_note_names_its_scheduled_caller_and_its_own_inpu
     assert "refresh-reference.yml's schedule" in note
     assert "gh workflow run build-reference.yml --ref main -f raw_run=<raw_run>" in note
     assert "data_environment" not in note and "publish=true" not in note
+
+
+def test_the_podcast_list_stales_the_podcast_publish_and_its_note_says_production_needs_its_own_dispatch():
+    """publish-podcasts.yml publishes `podcasts/episodes.json` at the bucket root under each environment's
+    prefix - a live object no release folder carries, so promote-data.yml never moves it (the workflow's header,
+    "WHY THE ROOT AND NOT A RELEASE FOLDER") - and the generic note's "production is the release train's
+    promotion" would leave production's list at its last dispatch for ever."""
+    verdict = _verdict(["pipeline/reference/podcast_episodes.json", "pipeline/export_podcasts.py"])
+    assert "STALE  publish-podcasts.yml  <- pipeline/export_podcasts.py, pipeline/reference/podcast_episodes.json" in verdict
+    note = _note_after(verdict, "publish-podcasts.yml")
+    assert "publish=true" in note and "data_environment=ua" in note
+    assert "data_environment=production" in note and "promote-data.yml never moves it" in note
+    assert "fresh  build-dem.yml" in _verdict(["pipeline/export_podcasts.py"])
+
+
+def test_an_own_uploader_entry_is_still_an_exception_the_invocation_rule_cannot_see():
+    """Each path named by hand must still publish without publish.py, through a pipeline script that writes the
+    bucket itself. One that starts invoking publish.py is derived, and its entry is a second copy to delete; one
+    that stops running such a script is no publishing path at all."""
+    scopes = _load_scopes_module()
+    for name in scopes.OWN_UPLOADERS:
+        run = scopes.run_scripts(scopes.WORKFLOWS / name)
+        assert not scopes.INVOKES_PUBLISH_RE.search(run), f"{name} now invokes publish.py, so its entry is redundant"
+        uploaders = [
+            script
+            for script in set(scopes.SCRIPT_MENTION_RE.findall(run))
+            if (scopes.PIPELINE / script).is_file() and "put_object(" in (scopes.PIPELINE / script).read_text()
+        ]
+        assert uploaders, f"{name} runs no pipeline script that writes the bucket itself"
 
 
 def test_workflows_that_only_mention_the_publisher_are_not_publishing_paths():

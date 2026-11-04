@@ -23,6 +23,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+import hash_pins
+
 ROOT = Path(__file__).resolve().parents[2]
 PIPELINE = ROOT / "pipeline"
 TEST_SH = ROOT / "scripts" / "test.sh"
@@ -51,11 +53,6 @@ INSTALL_SITES = {
 }
 
 
-def _commands(script: str) -> list[str]:
-    """One string per shell command line, a backslash continuation joined to the line it continues."""
-    return re.sub(r"\\\n\s*", " ", script).splitlines()
-
-
 def _steps():
     github = ROOT / ".github"
     for path in sorted((github / "workflows").glob("*.yml")):
@@ -72,7 +69,7 @@ def _steps():
 def _installs():
     """(where, job id, the step's command lines, the index of the one installing requirements-dbt.txt)."""
     for where, job_id, step in _steps():
-        commands = _commands(str(step.get("run", "")))
+        commands = hash_pins.commands(str(step.get("run", "")))
         for index, command in enumerate(commands):
             if INSTALLS_DBT.search(command):
                 yield where, job_id, commands, index
@@ -89,15 +86,9 @@ def _builds_with_the_pinned_requirement(commands: list[str], index: int) -> list
     return problems
 
 
-def _pins(text: str) -> list[str]:
-    """Each requirement of a compiled file, its continuation lines joined, comments and options dropped."""
-    lines = [line for line in _commands(text) if line.strip() and not line.lstrip().startswith(("#", "-"))]
-    return [line.strip() for line in lines]
-
-
 @pytest.mark.parametrize("name", sorted(COMPILED))
 def test_every_pin_lists_a_sha256(name):
-    pins = _pins((PIPELINE / name).read_text(encoding="utf-8"))
+    pins = hash_pins.pins((PIPELINE / name).read_text(encoding="utf-8"))
     assert pins, f"{name}: no requirement found, so nothing below would be checked"
     unhashed = [pin for pin in pins if not re.search(r"--hash=sha256:[0-9a-f]{64}\b", pin)]
     unpinned = [pin for pin in pins if not re.match(r"^[A-Za-z0-9_.-]+==[^\s=;]+(\s|$)", pin)]
@@ -106,7 +97,7 @@ def test_every_pin_lists_a_sha256(name):
 
 
 def test_requirements_dbt_txt_still_holds_dbt():
-    pins = _pins((PIPELINE / "requirements-dbt.txt").read_text(encoding="utf-8"))
+    pins = hash_pins.pins((PIPELINE / "requirements-dbt.txt").read_text(encoding="utf-8"))
     assert any(pin.startswith("dbt==") for pin in pins), pins
 
 

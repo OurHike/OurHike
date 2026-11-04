@@ -33,6 +33,7 @@ from export_basemap import (
 )
 from lib import http_retry
 from lib.build_regions import NYC_SOURCE_KEYS
+from lib.planetiler_sources import SOURCES, SOURCES_DIR
 
 
 def test_the_default_state_list_is_the_fourteen_at_states_with_no_duplicates():
@@ -110,13 +111,9 @@ def test_the_exclusion_is_one_comma_joined_argument():
     assert "--languages=en" in cmd
 
 
-def test_the_shipped_build_excludes_the_layers_the_app_never_draws(tmp_path, monkeypatch):
-    """#1116, asserted on what main() actually runs rather than on a default.
-
-    The saving is 12.4% of the z13 package and 34.6% of the z14 one, measured;
-    what this pins is that the build asks for it at all, and that it names
-    every layer no `source-layer` in client/src/map/liveTopo.ts does.
-    """
+def _planetiler_command_main_runs(tmp_path, monkeypatch) -> list[str]:
+    """The Planetiler command export_basemap.main() actually runs, with
+    osmium, the corridor and the state fetch stubbed out."""
     monkeypatch.setattr(export_basemap, "load_corridor_4326", lambda: box(-75, 40, -74, 41))
     monkeypatch.setattr(export_basemap, "write_shapes", lambda _corridor: None)
     monkeypatch.setattr(export_basemap, "fetch_states", lambda *a, **k: [tmp_path / "s.osm.pbf"])
@@ -150,7 +147,17 @@ def test_the_shipped_build_excludes_the_layers_the_app_never_draws(tmp_path, mon
         )
     )
 
-    planetiler = next(cmd for cmd in ran if cmd[0] == "java")
+    return next(cmd for cmd in ran if cmd[0] == "java")
+
+
+def test_the_shipped_build_excludes_the_layers_the_app_never_draws(tmp_path, monkeypatch):
+    """#1116, asserted on what main() actually runs rather than on a default.
+
+    The saving is 12.4% of the z13 package and 34.6% of the z14 one, measured;
+    what this pins is that the build asks for it at all, and that it names
+    every layer no `source-layer` in client/src/map/liveTopo.ts does.
+    """
+    planetiler = _planetiler_command_main_runs(tmp_path, monkeypatch)
     excluded = [arg for arg in planetiler if arg.startswith("--exclude-layers=")]
     assert len(excluded) == 1
     named = set(excluded[0].removeprefix("--exclude-layers=").split(","))
@@ -176,6 +183,25 @@ def test_the_shipped_build_excludes_the_layers_the_app_never_draws(tmp_path, mon
     # the layer exclusion, measured - small, and kept because it is free and
     # stops being small the moment this builds outside the United States.
     assert f"--languages={BUILD_LANGUAGES}" in planetiler
+
+
+def test_the_shipped_build_reads_the_profile_sources_fetched_before_it(tmp_path, monkeypatch):
+    """#1970: build-basemap.yml's "Fetch Planetiler's profile sources" step
+    puts the three files under SOURCES_DIR, and the build must read those
+    exact paths. If it looked anywhere else, Planetiler would queue the file,
+    wait 10 s on its host for its size, and fail the way runs 57 and 58 did."""
+    planetiler = _planetiler_command_main_runs(tmp_path, monkeypatch)
+
+    for source in SOURCES:
+        assert f"--{source.name}_path={SOURCES_DIR / source.filename}" in planetiler
+        assert f"--{source.name}_url={source.url}" in planetiler
+
+
+def test_the_command_builder_names_no_source_paths_unless_given_a_directory():
+    """spike_shard_seam.py builds with sources_dir left out, and keeps
+    Planetiler's own defaults under its own cached data/sources."""
+    bare = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
+    assert not any("_path=" in arg or "_url=" in arg for arg in bare)
 
 
 def test_the_shapes_written_are_one_clip_one_per_region_and_one_union(tmp_path, monkeypatch):
@@ -384,9 +410,10 @@ def test_main_clips_and_merges_a_synthetic_state_end_to_end(tmp_path, monkeypatc
 
 
 def test_the_http_timeout_is_only_sent_when_raised():
-    """Planetiler's own default is 30s and that is usually right; the spike
-    raises it because the profile's 1.4 GB of third-party sources timed out
-    twice mid-measurement."""
+    """Planetiler's own default is 30s per request and that is usually right;
+    the spike raises it for slow transfers. It does not reach the fixed
+    10-second size wait that ended build-basemap.yml runs 57 and 58 - that
+    is avoided by having the files on disk first (#1970)."""
     default = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
     assert not any(arg.startswith("--http-timeout") for arg in default)
 

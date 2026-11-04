@@ -12,6 +12,7 @@ dist
 # The backend-shaped build playwright.config.ts serves to its `phone-backend`
 # project - the same app with a fake API base and auth project baked in.
 dist-e2e-backend
+dist-e2e-bucket
 dist-ssr
 dev-dist
 *.local

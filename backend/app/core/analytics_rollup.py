@@ -8,9 +8,10 @@ in one transaction, and never beside another run (`_ONE_RUN_AT_A_TIME`):
    replacing what was there. A provisional month is a projection, not a
    snapshot: recomputing it is how late arrivals get counted. The current
    month is always among them, rows or none, so every run leaves a fresh
-   `computed_at` - the heartbeat `POST /usage-events` reads, and stops
-   collecting without (app/routers/analytics.py). It cannot close: today is
-   always before `closes_on` of the month it is in.
+   `computed_at` - the heartbeat (`ROLLUP_RAN_AT_SQL`, `heartbeat_stale`)
+   that `POST /usage-events` (app/routers/analytics.py) and the paid support
+   count (app/core/analytics_support.py) read, and stop collecting without.
+   It cannot close: today is always before `closes_on` of the month it is in.
 2. **Closes each month `CLOSE_AFTER_DAYS` after it ends.** A closed month is
    never recomputed again. Rows that arrive for it afterwards are counted in
    its `events_after_close` metric and nowhere else, so a published number
@@ -42,6 +43,11 @@ WHY A MONTH-END SNAPSHOT IS HARDER HERE THAN IT LOOKS, and where each answer is:
   User table's `new_month`, set once, not `first_seen_on`, which late rows move.
 - A definition that changes -> `DEFINITION_VERSION` on every month, so a
   number is never restated under a definition it was not computed with.
+- The archive retires a month's daily counts the night it passes retention,
+  before this job runs -> that month's `events_after_close` is left as it
+  stands rather than counted again (`run`): the rows the count needs are
+  gone, and a count taken without them read 0 for every archived month
+  (the release review of 2026-11-04, finding 2).
 
 Exact, unmasked figures are written. The fewer-than-25 mask is applied when a
 report is built (app/core/analytics_report.py) - the maintainer's "a mask at
@@ -58,6 +64,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.time import utc_now
 from app.models.analytics import AnalyticsAnomaly, AnalyticsIntake, AnalyticsMonth, AnalyticsMonthly, MonthStatus
 
@@ -99,6 +106,25 @@ def retention_start(today: date) -> date:
 def closes_on(month: date) -> date:
     """The first day a run may close `month`: `CLOSE_AFTER_DAYS` after it ends."""
     return add_months(month, 1) + timedelta(days=CLOSE_AFTER_DAYS)
+
+
+# The one definition of this job's heartbeat: the newest
+# `analytics_months.computed_at`, which every run leaves on the current month,
+# rows or none (step 1 above). Shared as SQL text the way ROWS_HELD_SQL
+# (app/core/analytics_storage.py) is: `rollup_paused`
+# (app/core/analytics_support.py) runs it alone, and `POST /usage-events`
+# (app/routers/analytics.py) runs it inside the intake gate's one query.
+ROLLUP_RAN_AT_SQL = "select max(computed_at) from analytics_months"
+
+
+def heartbeat_stale(ran_at: datetime | None, now: datetime) -> bool:
+    """The one rule for "the rollup is not running": no heartbeat, or one older than `analytics_rollup_stale_days`.
+
+    Both readers of `ROLLUP_RAN_AT_SQL` call it, so a change to the rule, like
+    a change to the heartbeat, reaches the intake gate and the paid support
+    count together.
+    """
+    return ran_at is None or ran_at < now - timedelta(days=settings.analytics_rollup_stale_days)
 
 
 @dataclass
@@ -470,11 +496,24 @@ def run(db: Session, *, today: date | None = None, now: datetime | None = None) 
     # would otherwise hand back its own copies, as they were before the wait.
     states = {state.month: state for state in db.query(AnalyticsMonth).populate_existing().all()}
     open_months = {month for month, state in states.items() if state.status == MonthStatus.provisional}
+    cutoff = retention_start(today)
 
     for month in sorted(set(held_months) | open_months | {month_start(today)}):
         state = states.get(month)
         if state is not None and state.status == MonthStatus.closed:
-            if state.raw_deleted_at is None:
+            # A month past retention keeps the late count it has: the archive
+            # step has already retired its rows (the module docstring's last
+            # bullet), so a count taken now would read them as 0 and the loop
+            # below would freeze that 0. Its last night is the night the figure
+            # is finished, not the night to take it again. What this gives up
+            # is the rows for that month that arrived between last night's run
+            # and 00:00 UTC today, when `_sort_rows` (app/routers/analytics.py)
+            # began refusing them: stored, never counted, and deleted with the
+            # month - about 13 h 43 min of arrivals at the `17 10 * * *`
+            # schedule (analytics-rollup.yml). From 00:00 UTC until this run
+            # nothing for that month is stored, so nothing more is lost.
+            # tests/test_analytics_archive.py's retention-night test holds it.
+            if state.raw_deleted_at is None and month >= cutoff:
                 _count_late(db, state)
                 result.late_counted.append(month)
             continue
@@ -492,7 +531,6 @@ def run(db: Session, *, today: date | None = None, now: datetime | None = None) 
             state.closed_at = now
             result.closed.append(month)
 
-    cutoff = retention_start(today)
     for month in held_months:
         if month >= cutoff:
             continue

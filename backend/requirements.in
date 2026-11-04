@@ -35,3 +35,10 @@ python-dotenv
 # cannot open what it wrote. It arrives anyway through pyjwt[crypto], which is
 # exactly why it is named here - python-dotenv's reason above, applied again.
 cryptography
+
+# app/schemas/org.py imports it directly: `normalise_domain` folds every
+# organization domain and email domain through its UTS #46 mapping before
+# any comparison (the 2026-11-04 security review). It arrives anyway through
+# httpx and anyio, which is why it is named here - python-dotenv's reason
+# above, applied again.
+idna

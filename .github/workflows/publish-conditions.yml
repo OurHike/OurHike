@@ -12,8 +12,11 @@
 # `UA_PHONE_FILES` below), since #1793 — Rebuild the data platform as dlt →
 # dbt: seven contracted marts, a monthly refresh, published docs, and
 # lighter phone downloads. `exporters` is the bake this header describes,
-# and what the schedule runs on the production leg. `dbt` is
-# pipeline/ELT.md's hourly lane, and what the schedule runs on the UA leg:
+# and the rollback path: both legs' lines below have said `dbt` since the
+# cutover (#1880 — Production still builds its notices, closures and hazard
+# areas with the exporters; 2026-10-23, run 808 the first production dbt
+# publish). `dbt` is pipeline/ELT.md's hourly lane, and what the schedule
+# runs on both legs:
 # dlt extracts each leg's closures and warnings into the private raw store,
 # dbt builds those marts and their pub_ writers, and publish.py publishes
 # the writers' files. The exporters still write the files no dbt writer

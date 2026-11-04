@@ -44,6 +44,7 @@ DISTRIBUTION_OF: dict[str, str] = {
     "fastapi": "fastapi",
     "httpcore": "httpcore",
     "httpx": "httpx",
+    "idna": "idna",
     "jwt": "pyjwt",
     "psycopg": "psycopg",
     "pydantic": "pydantic",

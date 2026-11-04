@@ -74,6 +74,7 @@ from app.models.club import Club, OrgAdmin
 from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
+from app.models.inventory import InventoryClaim, InventoryEnrollment, InventoryObservation, InventoryPass
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import RegistrySignoff
 from app.models.org_role import RoleInvite, RosterSyncRun
@@ -132,6 +133,11 @@ class DeletionSummary:
     registry_signatures_withdrawn: int = 0
     workday_signups_released: int = 0
     commitments_deleted: int = 0
+    #: The structure survey (#1983): a standing in a club's programme, with its
+    #: waiver signature, and the days they had claimed on a section. What they
+    #: logged stays, and is counted in `contributions_kept`.
+    survey_enrollments_deleted: int = 0
+    survey_claims_released: int = 0
     org_rows_unlinked: int = 0
     app_failures_unlinked: int = 0
     #: Challenges (#1780) - see the reasoning at each query in `delete_account`.
@@ -261,6 +267,35 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     commitments = (
         db.query(RidgeRunnerCommitment).filter(RidgeRunnerCommitment.person_id == profile_id).delete(synchronize_session=False)
     )
+
+    # THE STRUCTURE SURVEY (#1983, features/STRUCTURE_INVENTORY.md).
+    #
+    # An enrolment is a standing in one club's programme and the volunteer's
+    # signature on its waiver: a permission, like a seat above, and a
+    # signature, like a registry sign-off - it cannot outlive its signer.
+    # Whether a club needs a signed waiver kept as its legal record after the
+    # account is gone is the design doc's open question 3, which is counsel's
+    # call; until it is answered the row goes, which is the answer that keeps
+    # no typed name nobody asked to keep.
+    survey_enrollments = (
+        db.query(InventoryEnrollment).filter(InventoryEnrollment.person_id == profile_id).delete(synchronize_session=False)
+    )
+    # A claim tells other volunteers that somebody means to walk a section on
+    # a day. From an account that is gone it is a claim by nobody, steering
+    # people away from a section nobody will walk - the assignment argument
+    # above, where showing a stretch as covered by somebody who is gone is
+    # worse than showing it as uncovered.
+    survey_claims = db.query(InventoryClaim).filter(InventoryClaim.volunteer_id == profile_id).delete(synchronize_session=False)
+
+    # What they LOGGED stays: every observation, the walks it came from, and
+    # any structure they were first to log. Each is the club's survey record
+    # from the moment it uploads - in the review queue, in coverage, and for
+    # an Unsafe one already a report and an email - so other people are
+    # relying on it, which is this module's rule for keeping a row. They
+    # point at the scrubbed profile, as a condition report does, and are
+    # counted in `_contributions_kept`. A review decision they made as a club
+    # admin (`reviewed_by`) stays too: it is the club's decision about
+    # somebody else's record, the precedent `reports.dismissed_by` sets.
 
     # A challenge tag is the hiker's own record of where they have been -
     # "the hiker's record is theirs" is the design's sixth principle
@@ -436,6 +471,8 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         registry_signatures_withdrawn=registry_signatures,
         workday_signups_released=signups,
         commitments_deleted=commitments,
+        survey_enrollments_deleted=survey_enrollments,
+        survey_claims_released=survey_claims,
         org_rows_unlinked=unlinked,
         challenge_tags_deleted=challenge_tags,
         challenge_entries_deleted=challenge_entries,
@@ -477,4 +514,10 @@ def _contributions_kept(db: Session, profile_id: str) -> dict[str, int]:
         # back below the three it needed, which is a decision about that
         # closure rather than about this account.
         "closures you helped confirm": db.query(ClosureApproval).filter(ClosureApproval.person_id == profile_id).count(),
+        # The structure survey (#1983): records a club is relying on from the
+        # moment they upload - see `delete_account`.
+        "structure records you logged for a club": db.query(InventoryObservation)
+        .filter(InventoryObservation.volunteer_id == profile_id)
+        .count(),
+        "survey walks you recorded for a club": db.query(InventoryPass).filter(InventoryPass.volunteer_id == profile_id).count(),
     }

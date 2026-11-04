@@ -160,9 +160,9 @@ def test_a_held_registration_cannot_post_a_workday_and_the_public_list_shows_non
 
 def test_a_held_registrations_workdays_are_never_listed_and_every_other_states_still_are(client, db_session):
     """A row a `pending` org posted before `create_workday` refused it is
-    still in the table. Nothing about a held registration is published, with
-    or without `?org=`; a maintainer's `unclaimed` org, a `claimed` one and a
-    `frozen` one list exactly as they did."""
+    still in the table. Nothing about a held registration is published - and
+    `?org=` naming one is a 404, the test below; a maintainer's `unclaimed`
+    org, a `claimed` one and a `frozen` one list exactly as they did."""
     make_workday(db_session, make_org(db_session, slug="held-conference", state=OrgState.pending), title="Held")
     for slug, state in [
         ("ramapo-trail-conference", OrgState.unclaimed),
@@ -174,8 +174,25 @@ def test_a_held_registrations_workdays_are_never_listed_and_every_other_states_s
     listed = sorted(workday["title"] for workday in client.get("/workdays").json())
 
     assert listed == ["claimed", "frozen", "unclaimed"]
-    assert client.get("/workdays", params={"org": "held-conference"}).json() == []
     assert [w["title"] for w in client.get("/workdays", params={"org": "ramapo-trail-conference"}).json()] == ["unclaimed"]
+
+
+def test_a_held_registrations_slug_lists_no_workdays_and_answers_as_an_unknown_slug(client, db_session):
+    """The 2026-11-04 security review: `list_workdays` resolved `org` with
+    `club_by_slug`, which finds a held registration, and only then filtered
+    its rows out - so an anonymous `GET /workdays?org=` answered 200 `[]` for
+    a held slug and 404 for one nobody registered, which told anybody the
+    slug was held. It is now that 404, word for word. The console reads this
+    list as optional (`useOrgData` in client/src/org/OrgConsole.tsx falls
+    back to an empty one), and the embed draws nothing on a 404."""
+    make_workday(db_session, make_org(db_session, slug="held-conference", state=OrgState.pending), title="Held")
+    nobody_registered = client.get("/workdays", params={"org": "no-such-organization"})
+
+    response = client.get("/workdays", params={"org": "held-conference"})
+
+    assert nobody_registered.status_code == 404
+    assert response.status_code == 404, response.text
+    assert response.json() == nobody_registered.json()
 
 
 def test_a_supervisor_at_a_maintainer_written_organization_still_posts_a_workday(client, db_session):

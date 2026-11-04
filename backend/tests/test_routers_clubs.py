@@ -25,7 +25,7 @@ from app.models.org_role import RoleInvite
 from app.models.profile import Role
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
 from app.schemas.org import PUBLIC_EMAIL_DOMAINS, address_is_at_domain, normalise_domain, why_domain_proves_nothing
-from tests.factories import make_admin, make_org, make_profile, make_section
+from tests.factories import make_admin, make_assignment, make_org, make_profile, make_section
 from tests.tokens import auth_headers
 
 _REGISTRATION = {
@@ -312,9 +312,13 @@ _GMAIL_IN_DISGUISE = [
 
 @pytest.mark.parametrize(("typed", "stored_before"), _NOT_A_HOSTNAME)
 def test_a_domain_that_is_not_a_bare_hostname_proves_nothing(typed, stored_before):
-    """`why_domain_proves_nothing` returned None for all four, so every door
-    that asks it - registering, nominating, claiming, releasing a held
-    registration - took a path, a port, a tab or a scheme as a domain."""
+    """`why_domain_proves_nothing` returned None for all four, and
+    `OrgCreate` stored each one; claiming and releasing a held registration
+    then compared addresses against what it stored. Nominating never reached
+    these: its old `_domain_of` read the host with `urlsplit`, which drops a
+    path, a port and a scheme and deletes a tab, so a tab inside the name
+    came back as `ramapotrails.orgfoo` (both replayed against the code
+    before `normalise_domain`, 2026-11-04)."""
     assert normalise_domain(typed) is None
     assert normalise_domain(stored_before) is None
     assert "is not a bare domain name" in (why_domain_proves_nothing(typed) or "")
@@ -467,12 +471,18 @@ def test_an_organization_whose_stored_domain_proves_nothing_cannot_be_claimed(cl
 @pytest.mark.parametrize("stored", ["GMAIL.COM", "Gmail.com", "gmail.com ", " gmail.com", "gmail.com\n", *_GMAIL_IN_DISGUISE])
 def test_a_stored_webmail_domain_in_another_spelling_still_cannot_be_claimed(client, db_session, stored):
     """`claim_org` asks `why_domain_proves_nothing` about the domain AS
-    STORED, and then `_somebody_holds_the_domain` strips and lowercases it
-    before matching the caller's address. A rule that read the row as stored
-    passed all five of these, and `mallory@gmail.com` matched each one and was
-    seated as codeowner. Today's writers normalise, so a row like this is
-    hand-written or older than they are - which is the row this check is
-    for."""
+    STORED, and then `_somebody_holds_the_domain` matches the caller's
+    address against it, both sides folded through `normalise_domain` now
+    (`address_is_at_domain`). The first five spellings are the ones a rule
+    that read the row as stored passed while the address check stripped and
+    lowercased: `mallory@gmail.com` matched each one and was seated as
+    codeowner. The other five are gmail.com in disguise, which the rule and
+    the address check both missed before `normalise_domain`, so nobody was
+    seated but each was refused for the wrong reason: a 403 "Claiming this
+    organization needs an email at" the disguised spelling, or for
+    `gmail。com` a 409 calling it a top-level domain (replayed 2026-11-04).
+    Today's writers normalise, so a row like this is hand-written or older
+    than they are - which is the row this check is for."""
     make_org(db_session, domain=stored)
     claimer = make_profile(db_session)
 
@@ -1340,6 +1350,122 @@ def test_an_invited_admin_reads_a_held_registration_before_their_seat_is_written
     assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == secretary.id).count() == 0, "no seat written yet"
     uninvited = auth_headers(make_profile(db_session).id, email="treasurer@ramapotrails.org")
     assert client.get("/clubs/ramapo-trail-conference", headers=uninvited).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "invitation",
+    [{"grants_admin_seat": False}, {"claimed_at": utc_now()}],
+    ids=["offers-no-seat", "claimed-and-no-seat-written"],
+)
+def test_an_invitation_that_will_write_no_seat_does_not_read_a_held_registration(client, db_session, invitation):
+    """An invitation reads a held registration only as the seat `_seat_from`
+    is about to write. One with `grants_admin_seat` false writes no seat
+    (`_seat_from` returns early on it), and a claimed one has already written
+    whatever it was going to, so neither reads - a 404, where with
+    `_reads_a_held_registration`'s two filters on them deleted each read the
+    org whole."""
+    _register(client, str(uuid.uuid4()), email="chair@gmail.com", admins=[{"email": "sec@ramapotrails.org"}])
+    db_session.query(RoleInvite).update(invitation)
+    db_session.commit()
+    secretary = make_profile(db_session)  # an account from before the invitation
+
+    read = client.get("/clubs/ramapo-trail-conference", headers=auth_headers(secretary.id, email="sec@ramapotrails.org"))
+
+    assert read.status_code == 404, read.text
+    assert db_session.query(OrgAdmin).filter(OrgAdmin.person_id == secretary.id).count() == 0
+
+
+def test_a_volunteer_at_a_held_registration_reads_it_as_their_console_does(client, db_session):
+    """`org_access` lets in anybody `resolve_access` gives a seat, and a live
+    assignment is one (`is_volunteer`), so a volunteer can step back from it.
+    The console fetches `GET /clubs/{slug}` beside `/access`, so the slug read
+    has to agree, or the console fails for them while `/access` says yes."""
+    _register(client, str(uuid.uuid4()), email="chair@gmail.com", admins=[{"email": "sec@ramapotrails.org"}])
+    club = db_session.query(Club).filter(Club.slug == "ramapo-trail-conference").one()
+    volunteer = make_profile(db_session)
+    make_assignment(db_session, club, volunteer)
+    headers = auth_headers(volunteer.id, email="hiker@example.org")
+
+    assert client.get("/clubs/ramapo-trail-conference/access", headers=headers).status_code == 200
+    read = client.get("/clubs/ramapo-trail-conference", headers=headers)
+    assert read.status_code == 200, read.text
+
+
+def test_a_held_registrations_access_answers_a_stranger_as_an_unknown_slug(client, db_session):
+    """The 2026-11-04 security review: `GET /clubs/{slug}/access` resolved a
+    held registration with `club_by_slug` and answered any signed-in account
+    200 with every flag false, where a slug nobody registered is a 404 - so
+    it told a stranger the slug was held. `org_access` now answers a caller
+    with no seat that 404, word for word, and so does every route behind it
+    (`/roster` here). It decides after `apply_pending_invites`, so the
+    invited secretary's first `/access` - which
+    `_a_seat_declined_with_a_reason` makes before their seat exists - still
+    answers 200. A seat in any state, a live assignment and a moderator still
+    read it."""
+    registrant, secretary, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+    stranger = auth_headers(str(uuid.uuid4()), email="hiker@example.org")
+
+    for path in ("access", "roster"):
+        nobody_registered = client.get(f"/clubs/no-such-organization/{path}", headers=stranger)
+        response = client.get(f"/clubs/ramapo-trail-conference/{path}", headers=stranger)
+        assert nobody_registered.status_code == 404
+        assert response.status_code == 404, response.text
+        assert response.json() == nobody_registered.json()
+
+    volunteer = make_profile(db_session)
+    make_assignment(db_session, db_session.query(Club).one(), volunteer)
+    for viewer in (registrant, secretary, volunteer.id, make_profile(db_session, Role.maintainer).id):
+        read = client.get("/clubs/ramapo-trail-conference/access", headers=auth_headers(viewer))
+        assert read.status_code == 200, read.text
+
+
+def test_a_claim_on_a_held_registration_answers_a_stranger_as_an_unknown_slug(client, db_session):
+    """The 2026-11-04 security review: `claim_org` found a held registration
+    with `club_by_slug` and answered an account with no address at its domain
+    403 "Claiming this organization needs an email at ramapotrails.org." - the
+    domain `GET /clubs/{slug}` hides - and a held row whose stored domain
+    proves nothing a 409 naming that domain, to anybody. Each is now the 404 a
+    slug nobody registered gets, word for word, and nothing is written;
+    somebody at the domain still claims it."""
+    _, secretary, _ = _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+    make_org(db_session, slug="held-on-webmail", domain="gmail.com", state=OrgState.pending)
+    stranger = auth_headers(str(uuid.uuid4()), email="hiker@example.org")
+    nobody_registered = client.post("/clubs/no-such-organization/claim", json={}, headers=stranger)
+    assert nobody_registered.status_code == 404
+
+    for slug, headers in [
+        ("ramapo-trail-conference", stranger),
+        ("held-on-webmail", stranger),
+        ("held-on-webmail", auth_headers(str(uuid.uuid4()), email="mallory@gmail.com")),
+    ]:
+        response = client.post(f"/clubs/{slug}/claim", json={}, headers=headers)
+        assert response.status_code == 404, response.text
+        assert response.json() == nobody_registered.json()
+
+    db_session.expire_all()
+    assert {club.state for club in db_session.query(Club)} == {OrgState.pending}
+    claimed = client.post(
+        "/clubs/ramapo-trail-conference/claim", json={}, headers=auth_headers(secretary, email="sec@ramapotrails.org")
+    )
+    assert claimed.status_code == 200, claimed.text
+
+
+@pytest.mark.parametrize("answer", ["approve", "decline"])
+def test_answering_a_seat_that_is_not_there_at_a_held_registration_answers_as_an_unknown_slug(client, answer):
+    """The 2026-11-04 security review: `approve_seat` and `decline_seat` look
+    the org up with `club_by_slug`, so a seat id that matched nothing
+    answered "No such admin seat" at a held registration and "No such
+    organization" at a slug nobody registered. At a held registration the
+    miss is now the second, word for word."""
+    _a_seat_declined_with_a_reason(client, founder_email="stranger@gmail.com")
+    stranger = auth_headers(str(uuid.uuid4()), email="hiker@example.org")
+    nobody_registered = client.post(f"/clubs/no-such-organization/admins/{uuid.uuid4()}/{answer}", json={}, headers=stranger)
+    assert nobody_registered.status_code == 404
+
+    response = client.post(f"/clubs/ramapo-trail-conference/admins/{uuid.uuid4()}/{answer}", json={}, headers=stranger)
+
+    assert response.status_code == 404, response.text
+    assert response.json() == nobody_registered.json()
 
 
 def test_a_held_registrations_registrant_cannot_read_the_other_holders_from_the_org_export(client):

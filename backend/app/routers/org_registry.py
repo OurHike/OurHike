@@ -125,8 +125,8 @@ def read_registry(
     elsewhere.
 
     A held (`pending`) registration has published nothing, so its registry
-    is a 404 except to a moderator and the people holding a seat on it
-    (`club_for_a_public_read`) - the console reads it for them.
+    is a 404 to all but the readers `club_for_a_public_read` names - the
+    console reads it for them.
     """
     return _read_registry(db, club_for_a_public_read(db, slug, viewer, email).id)
 

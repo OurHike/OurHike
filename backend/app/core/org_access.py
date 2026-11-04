@@ -152,30 +152,10 @@ def club_by_slug(db: Session, slug: str) -> Club:
     an org ever existed learns nothing from a 404, and the only people
     entitled to know it was deleted already have its export.
 
-    **A HELD (`pending`) REGISTRATION IS FOUND HERE AND HIDDEN FROM THE
-    PUBLIC READS**, which ask `club_for_a_public_read` below instead: `GET
-    /clubs/{slug}`, `GET /clubs/{slug}/scoreboard` and `GET
-    /clubs/{slug}/registry`. They served a `pending` org's name, domain,
-    website and typed links to anybody with the slug (the 2026-11-04
-    security review), while `list_orgs` and `list_workdays` hid it because
-    listing it "puts our word behind a row a stranger typed" - and a slug is
-    no secret: it is in the embed snippet and the console's address. A
-    `pending` org is one whose only address at its domain was typed by the
-    registrant for somebody else (`OrgState`), so the organization may not
-    know it exists here, and nothing about it is published until somebody
-    at the domain agrees.
-
-    Not hidden in this function itself, because the paths that end a held
-    registration have to find it for people who hold nothing there yet:
-    `claim_org` (the real organization claiming over a stranger's
-    registration), `approve_seat` and `org_access`, which turns a waiting
-    invitation into a seat. Two kinds of caller still read it through the
-    public routes: **a moderator**, because a held registration is what
-    "a person has to pick it up" hands them; and **somebody holding a seat
-    on it** - the registrant, and every admin they named, who needs the
-    console to see the seat waiting for them and say yes or no - which is
-    the same `OrgAdmin` row `_as_viewer_reads_it` in routers/clubs.py reads
-    as "own seat", approved or not.
+    A held (`pending`) registration is found here on purpose, because the
+    paths that end one have to find it for people who hold nothing there
+    yet; a read anybody may make asks `club_for_a_public_read` instead,
+    which says who else may learn it exists.
     """
     club = db.query(Club).filter(Club.slug == slug).one_or_none()
     if club is None or club.state == OrgState.deleted:
@@ -184,13 +164,55 @@ def club_by_slug(db: Session, slug: str) -> Club:
 
 
 def club_for_a_public_read(db: Session, slug: str, viewer: Profile | None, email: str | None) -> Club:
-    """`club_by_slug` for a read anybody may make, with a held registration answering 404 to most.
+    """`club_by_slug` for a read anybody may make, with a held registration answering 404 to all but four kinds of reader.
 
-    `viewer` is None when anonymous; `email` is the caller's verified
-    address from the token, or None. `club_by_slug`'s docstring says why
-    `pending` is hidden and who still sees it. The 404 is the same status
-    and sentence as a slug nobody registered, so it does not tell a stranger
-    that a held registration exists.
+    `viewer` is None when anonymous; `email` is the address on the caller's
+    token, or None.
+
+    **A HELD (`pending`) REGISTRATION HAS PUBLISHED NOTHING.** Its only
+    address at its domain was typed by the registrant for somebody else
+    (`OrgState`), so the organization may not know it exists here, and
+    nothing about it is published until somebody at the domain agrees. `GET
+    /clubs/{slug}`, `GET /clubs/{slug}/scoreboard` and `GET
+    /clubs/{slug}/registry` served its name, domain, website and typed links
+    to anybody with the slug (the 2026-11-04 security review), while
+    `list_orgs` and `list_workdays` hid it because listing it "puts our word
+    behind a row a stranger typed" - and a slug is no secret: it is in the
+    embed snippet and the console's address. Those three reads ask this now.
+
+    THE FOUR KINDS OF READER, which `_reads_a_held_registration` below
+    decides:
+
+    - **A moderator**, because a held registration is what "a person has to
+      pick it up" hands them.
+    - **Somebody holding a seat on it, approved or not**: the registrant, and
+      every admin they named who has signed in, who need the console to see
+      the seat waiting for them and say yes or no. It is the same `OrgAdmin`
+      row `_as_viewer_reads_it` in routers/clubs.py reads as "own seat".
+    - **Somebody an unclaimed admin invitation names**, at the address on
+      their token, because that is the seat `org_access` is about to write
+      (`_reads_a_held_registration` says why the console needs it).
+      `get_current_email` takes that address as the provider verified it,
+      the trust `apply_pending_invites` already names as a limit on where
+      this backend may be deployed.
+    - **Somebody with a live assignment there**, a volunteer, because
+      `org_access` lets them in (`resolve_access` counts the assignment as a
+      seat, so they can step back from it), and the console's read of the
+      slug has to agree with its `/access` or the console fails for them.
+
+    **To anybody else the 404 is the one a slug nobody registered gets**:
+    the same status and body. Nothing evens out the response time, and the
+    security review's one timing (signed in, 10.5 ms held against 8.5 ms
+    unknown) was taken before this. The other routes that find a held
+    registration answer such a caller the same way: `org_access`, and so
+    `GET /clubs/{slug}/access` and every route behind it, when the caller
+    holds no seat; `claim_org` when the caller cannot claim it;
+    `approve_seat` and `decline_seat` when the seat named is not there; and
+    `list_workdays` when `org` names one, to everybody. **Two doors still tell that the
+    slug is taken**, held or not: `POST /clubs` answers 409 for it, and a
+    nomination's `_slug_for` in routers/nominations.py passes over it and
+    returns the slug it took instead. Neither can stop without letting a
+    second organization take the slug.
     """
     club = club_by_slug(db, slug)
     if club.state == OrgState.pending and not _reads_a_held_registration(db, club, viewer, email):
@@ -199,7 +221,7 @@ def club_for_a_public_read(db: Session, slug: str, viewer: Profile | None, email
 
 
 def _reads_a_held_registration(db: Session, club: Club, viewer: Profile | None, email: str | None) -> bool:
-    """A moderator, a seat holder, or somebody an admin invitation is about to seat.
+    """A moderator, a seat holder, somebody an admin invitation is about to seat, or a volunteer (`club_for_a_public_read`).
 
     **THE INVITATION COUNTS BECAUSE THE CONSOLE RACES ITS OWN SEAT.**
     `useOrgData` in client/src/org/OrgConsole.tsx fetches `GET
@@ -220,6 +242,18 @@ def _reads_a_held_registration(db: Session, club: Club, viewer: Profile | None, 
         return True
     seat = db.query(OrgAdmin.id).filter(OrgAdmin.club_id == club.id, OrgAdmin.person_id == viewer.id).first()
     if seat is not None:
+        return True
+    # `resolve_access`'s `is_volunteer`: any live assignment, so this read and `org_access` agree.
+    assigned = (
+        db.query(MaintainerAssignment.id)
+        .filter(
+            MaintainerAssignment.club_id == club.id,
+            MaintainerAssignment.maintainer_id == viewer.id,
+            MaintainerAssignment.effective_to.is_(None),
+        )
+        .first()
+    )
+    if assigned is not None:
         return True
     if not email:
         return False
@@ -244,11 +278,21 @@ def org_access(
 ) -> OrgAccess:
     """FastAPI dependency: the caller's access at the org in the path.
 
-    Deliberately does NOT refuse anybody - it resolves, and the endpoint
-    decides. A signed-in hiker with no seat gets an `OrgAccess` with every
-    flag false, which is what the public org page and the claim flow both
-    need, and what the console's own sidebar reads to decide which sections
-    to render at all.
+    Deliberately refuses nobody at a published org - it resolves, and the
+    endpoint decides. A signed-in hiker with no seat gets an `OrgAccess` with
+    every flag false, which is what the public org page and the claim flow
+    both need, and what the console's own sidebar reads to decide which
+    sections to render at all.
+
+    **A HELD (`pending`) REGISTRATION IS THE EXCEPTION**: a caller who holds
+    no seat there gets the 404 a slug nobody registered gets
+    (`club_for_a_public_read`), because a 200 with every flag false told any
+    signed-in account the slug was held (the 2026-11-04 security review).
+    Decided after `apply_pending_invites`, so a waiting invitation has
+    already become the seat that lets its holder in, and the console's race
+    (`_reads_a_held_registration`) cannot refuse them. A seat here is
+    anything `resolve_access` counts as one - a live assignment included, so
+    a volunteer can still step back from it - or a moderator's role.
 
     **WAITING INVITES ARE CLAIMED HERE, WHICH IS A WRITE ON A READ PATH.**
     `core/auth.py` claims them when it provisions a profile, and that is the
@@ -265,7 +309,15 @@ def org_access(
     the seat needs to exist.
     """
     apply_pending_invites(db, current_user, email)
-    return resolve_access(db, club_by_slug(db, slug), current_user.id)
+    club = club_by_slug(db, slug)
+    access = resolve_access(db, club, current_user.id)
+    if (
+        club.state == OrgState.pending
+        and not access.is_volunteer
+        and not _reads_a_held_registration(db, club, current_user, email)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_SUCH_ORGANIZATION)
+    return access
 
 
 def require_org_admin(access: OrgAccess = Depends(org_access)) -> OrgAccess:

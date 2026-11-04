@@ -48,16 +48,20 @@ from app.config import settings
 from app.core import photos as photos_core
 from app.core.auth import ACCOUNT_DELETED_DETAIL
 from app.core.photos import poi_photo_key
+from app.core.time import utc_now
 from app.db.session import get_db
 from app.main import app
+from app.models.club import OrgState
 from app.models.field_note import FieldNote
+from app.models.inventory import InventoryEnrollment
 from app.models.poi_photo import PoiPhoto
 from app.models.profile import Role
 from app.models.report import Report, ReporterType, ReportType, Visibility
 from app.routers import field_notes as field_notes_router
+from app.routers import inventory as inventory_router
 from app.routers import poi_photos as poi_photos_router
 from app.routers import reports as reports_router
-from tests.factories import make_profile
+from tests.factories import make_org, make_profile
 from tests.tokens import auth_headers
 
 _BUCKET = "ourhike-test"
@@ -189,6 +193,39 @@ def _withdraw(client, hiker: str):
     return withdraw
 
 
+def _survey_record(client, db_session) -> tuple[str, str]:
+    """A trained survey volunteer's record, and the photo URL under it, for
+    #1986 — Observation photos use the report pipeline with a key of their own and no table.
+
+    The rows are written and the test's own session closed before the
+    request, so the pool counts below see only the request.
+    """
+    org = make_org(db_session, slug="survey-club", state=OrgState.claimed)
+    volunteer = make_profile(db_session)
+    db_session.add(
+        InventoryEnrollment(
+            club_id=org.id, person_id=volunteer.id, waiver_version="1", typed_name="Pat R.", training_completed_at=utc_now()
+        )
+    )
+    db_session.commit()
+    volunteer_id, slug = volunteer.id, org.slug
+    db_session.close()
+    record_id = str(uuid.uuid4())
+    body = {
+        "id": record_id,
+        "structure_id": str(uuid.uuid4()),
+        "kind": "bridge",
+        "captured_at": "2026-11-02T10:14:00Z",
+        "readings": [{"lat": 41.43, "lon": -73.88, "acc": 4.3, "t": 0}],
+        "readings_seconds": 1,
+        "condition": "poor",
+        "repair": "major",
+    }
+    url = f"/clubs/{slug}/inventory/observations"
+    assert client.post(url, json=body, headers=auth_headers(volunteer_id)).status_code == 201
+    return volunteer_id, f"{url}/{record_id}/photos/1"
+
+
 # --- No connection while the bytes arrive ------------------------------------
 
 
@@ -276,6 +313,27 @@ def test_a_waypoint_photo_holds_no_connection_while_r2_stores_it(client, db_engi
 
 
 # --- The record step, on the row as it is after the put ----------------------
+
+
+def test_a_survey_record_photo_holds_no_connection_while_its_bytes_arrive(client, db_engine, db_session, r2, monkeypatch):
+    volunteer, url = _survey_record(client, db_session)
+    seen = _watch_the_body_read(monkeypatch, inventory_router, db_engine)
+
+    response = client.put(url, content=_JPEG, headers=_jpeg(volunteer))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["photo_count"] == 1
+    assert seen == [0], "a connection was checked out while the route waited for the photo"
+
+
+def test_a_survey_record_photo_holds_no_connection_while_r2_stores_it(client, db_engine, db_session, r2, monkeypatch):
+    volunteer, url = _survey_record(client, db_session)
+    seen = _watch_the_put(monkeypatch, db_engine)
+
+    response = client.put(url, content=_JPEG, headers=_jpeg(volunteer))
+
+    assert response.status_code == 200, response.text
+    assert seen == [0], "a connection was checked out while R2 stored the photo"
 
 
 def test_a_slow_put_does_not_take_the_photo_count_back(client, db_engine, r2, monkeypatch):

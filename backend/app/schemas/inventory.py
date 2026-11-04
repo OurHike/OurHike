@@ -4,9 +4,11 @@ First written for #1984 — A club's enrolment, settings and waiver have
 endpoints, and an enrolled volunteer is a person `org_access` did not know
 about.
 
-features/STRUCTURE_INVENTORY.md is the design. Only enrolment and the club's
-settings live here so far; observations, photos, areas, claims, passes, the
-review queue and the exports arrive with their own issues.
+features/STRUCTURE_INVENTORY.md is the design. Enrolment and the club's
+settings (#1984 — A club's enrolment, settings and waiver have endpoints, and an enrolled volunteer is a person `org_access` did not know about), an
+observation's upload (#1985 — An observation uploads once, idempotent on its id, creates its structure when the structure is new, and keeps every GPS reading it was given) and its photos (#1986 — Observation photos use the report pipeline with a key of their own and no table);
+areas, claims, passes, the review queue and the exports arrive with their
+own issues.
 
 **What the wire refuses to carry is part of the design.** `EnrollmentCreate`
 has no time field: the server stamps the signature, so a phone's clock can
@@ -19,11 +21,25 @@ nothing yet would be a switch that lies.
 
 from __future__ import annotations
 
+import enum
+import uuid
+from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from app.core.time import UtcDatetime
+from app.models.inventory import (
+    Condition,
+    Connection,
+    FixSource,
+    Repair,
+    RepairTiming,
+    ReviewState,
+    SizeMethod,
+    StructureKind,
+)
+from app.schemas.common import FiniteFloat, NoteText, refuse_a_future_time
 
 # A name as typed under the club's waiver. Long enough for anybody's full
 # name, short enough that the field cannot be used to store something else.
@@ -108,3 +124,150 @@ class InventorySettingsIn(BaseModel):
     coverage_window_days: int = Field(ge=7, le=730)
     coverage_min_records: int = Field(ge=1, le=50)
     stale_days: int = Field(ge=30, le=3650)
+
+
+# --- An observation's upload ------------------------------------------------
+#
+# #1985 — An observation uploads once, idempotent on its id, creates its structure when the structure is new, and keeps every GPS reading it was given.
+
+# Bounds on input, not findings. The phone samples for up to 40 seconds
+# (the design doc's numbers table, @unvalidated); 600 readings is ten a
+# second for a minute, far past anything that sampling produces, and still a
+# ceiling on a JSON column a phone fills.
+MAX_READINGS = 600
+MAX_READINGS_SECONDS = 3600
+MAX_PROBLEMS = 20
+
+# A tag key from a type's field card, or a count's name: `abutment_eroded`,
+# `sleeps`. Lowercase words, so a key can never carry a sentence.
+TagKey = Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[a-z0-9_]+$")]
+ShortLabel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+Latitude = Annotated[FiniteFloat, Field(ge=-90, le=90)]
+Longitude = Annotated[FiniteFloat, Field(ge=-180, le=180)]
+
+
+class SizeBucket(str, enum.Enum):
+    """The four buckets on the "About how long?" screen (2e), and no others.
+
+    An enum rather than free text so a number cannot pose as a bucket -
+    `size_bucket: "18.5 ft"` would be stored as an estimate and printed like
+    a measurement, the exact confusion rule 3 exists to prevent - and so
+    every client's buckets group. The column stays a VARCHAR holding the
+    value: a bucket is a label on the wire, not a type in the database.
+    """
+
+    under_10_ft = "under_10_ft"
+    ten_to_25_ft = "10_to_25_ft"
+    twenty_five_to_50_ft = "25_to_50_ft"
+    over_50_ft = "over_50_ft"
+
+
+class Reading(BaseModel):
+    """One GPS sample, as the phone took it. Every one is kept (rule 2)."""
+
+    lat: Latitude
+    lon: Longitude
+    acc: Annotated[FiniteFloat, Field(ge=0)]
+    t: FiniteFloat
+
+
+class ObservationCreate(BaseModel):
+    """One visit to one structure, as the outbox sends it.
+
+    **`id` is the client's**, so a retry is the same row: the outbox names
+    the record before the server has seen it. `structure_id` is the client's
+    too when the structure is new, and then `kind` says what it is.
+
+    **There is no position on the wire, and no `readings_count`.** The server
+    derives both from `readings` (app/routers/inventory.py's `_middle_of`):
+    the saved point is the median of the readings and its accuracy the median
+    of theirs, so the point a record carries and the readings kept beside it
+    cannot disagree. Rule 2 says the phone saves the middle of what it read;
+    a client-sent point could be anywhere, and nothing could tell. There is no
+    `mile` and no distance to the line either: those are the server's,
+    computed from the club's own section line (the design doc's conflict 1).
+
+    **A size is a bucket or a measurement, never both** (rule 3). A bucket
+    carries no number, so nothing a volunteer estimated can come back out of
+    the database in the voice of a tape measure.
+    """
+
+    id: uuid.UUID
+    structure_id: uuid.UUID
+    kind: StructureKind | None = None
+    subkind: ShortLabel | None = None
+    pass_id: uuid.UUID | None = None
+
+    captured_at: datetime
+    offline: bool = False
+
+    readings: Annotated[list[Reading], Field(min_length=1, max_length=MAX_READINGS)]
+    readings_seconds: Annotated[int, Field(ge=0, le=MAX_READINGS_SECONDS)]
+    fix_source: FixSource = FixSource.sampled
+    gps_lock: bool | None = None
+    satellites: Annotated[int, Field(ge=0, le=200)] | None = None
+    connection: Connection = Connection.unknown
+
+    same_as_structure_id: uuid.UUID | None = None
+
+    condition: Condition
+    problems: Annotated[list[TagKey], Field(max_length=MAX_PROBLEMS)] = []
+    repair: Repair
+    timing: RepairTiming | None = None
+
+    size_method: SizeMethod | None = None
+    size_bucket: SizeBucket | None = None
+    size_measured: Annotated[FiniteFloat, Field(gt=0)] | None = None
+    size_unit: Literal["ft", "m"] | None = None
+    counts: dict[TagKey, Annotated[int, Field(ge=0, le=10_000)]] | None = None
+    railings: bool | None = None
+
+    notes: NoteText | None = None
+
+    @field_validator("captured_at")
+    @classmethod
+    def _reject_a_future_capture(cls, value: datetime) -> datetime:
+        """`ReportCreate`'s skew rule, from one shared copy."""
+        return refuse_a_future_time(value, "captured_at")
+
+    @model_validator(mode="after")
+    def _a_size_says_how_it_was_arrived_at(self) -> "ObservationCreate":
+        if self.size_method is None:
+            if self.size_bucket is not None or self.size_measured is not None or self.size_unit is not None:
+                raise ValueError("a size needs its size_method: bucket or tape")
+        elif self.size_method is SizeMethod.bucket:
+            if self.size_bucket is None:
+                raise ValueError("a bucket size needs its size_bucket")
+            if self.size_measured is not None or self.size_unit is not None:
+                raise ValueError("a bucket is an estimate and carries no number")
+        elif self.size_measured is None or self.size_unit is None:
+            raise ValueError("a measured size needs its number and its unit")
+        return self
+
+    @model_validator(mode="after")
+    def _leaving_it_has_no_how_soon(self) -> "ObservationCreate":
+        if self.repair is Repair.leave and self.timing is not None:
+            raise ValueError("timing says how soon a repair is needed, and 'leave' asks for none")
+        return self
+
+
+class ObservationReceipt(BaseModel):
+    """What the outbox needs back: which rows hold the record, and its state.
+
+    `mile` and `off_line_ft` are null until the server has computed them on
+    accept, by #1987 — The server computes an observation's mile and distance to the line from the club's own section geometry, and stores both beside the raw point;
+    the phone never sends them.
+    """
+
+    observation_id: str
+    structure_id: str
+    review_state: ReviewState
+    mile: float | None
+    off_line_ft: float | None
+
+
+class InventoryPhotoReceipt(BaseModel):
+    """What a photo upload tells the outbox: how far the record's set now runs."""
+
+    observation_id: str
+    photo_count: int

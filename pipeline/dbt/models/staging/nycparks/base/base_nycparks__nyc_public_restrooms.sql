@@ -14,6 +14,16 @@
 -- lowest `_socrata_id` survives: it is the POI's published id (the registry's
 -- `id_field` is `:id`), and it is the copy parity.py's _exact_copy_reasons
 -- expects kept.
+--
+-- Key: geometry and facility_name since #1976. Measured live 2026-11-04:
+-- 998 rows at 994 points. Carl Schurz Main Lawn and Catbird Playground are
+-- two restrooms at one point, so the point alone would drop one; with the
+-- name, 995 keys. The 3 repeated keys are Tompkins Square Park, Heckscher
+-- Playground and Ancient Playground, each listed twice, the copies differing
+-- only in `changing_stations` (blank on one, Yes on the other), which
+-- duplicates_are_exact leaves out (`skip_columns`). No model reads that
+-- column, so the copy kept, the lowest `_socrata_id` as before, loses
+-- nothing a hiker sees; a model that reads it must revisit this.
 with source as (
     -- dlt lands geometry as GeoJSON text (extract/_kinds.py's JSON
     -- hint); cast here, as staging models do.
@@ -28,6 +38,7 @@ renamed as (
         {{ dbt_utils.generate_surrogate_key([
             "'nyc_public_restrooms'",
             geometry_key('geom'),
+            'facility_name',
         ]) }} as poi_key,
         source.*
     from source

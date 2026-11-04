@@ -45,8 +45,8 @@ WHAT EACH sources.json ROW GIVES IT:
   run and is named, so no table is staged without a measured key.
 - `part_fields`: a layer that serves one feature as several rows, one per polygon part (BLM's national
   monuments, #1947). Rows sharing the key are then that feature's parts, not copies: the base model gives the row
-  it keeps the union of their shapes, duplicates_are_exact holds every column but the shape and these fields equal
-  across the parts, and equal_rowcount_to_raw counts the raw table's distinct keys, so the dissolve still leaves
+  it keeps the union of their shapes, duplicates_are_exact holds every column but the shape and these fields (its
+  `skip_columns`) equal across the parts, and equal_rowcount_to_raw counts the raw table's distinct keys, so the dissolve still leaves
   exactly one row per key. The fields are the ones that differ per part beside the shape. A key holding the shape
   is refused, since each part would then be its own feature.
 - `date_fields`: the layer's esriFieldTypeDate fields, which land as epoch milliseconds (extract/_kinds.py's
@@ -1027,7 +1027,7 @@ def sources_yaml(folder: str, folder_tables: list[Table]) -> str:
             "              arguments:",
             f"                key_columns: {_yaml_list(_raw_key_columns(table.key_inputs()))}",
             *([f"                row_id_columns: {_yaml_list(FILE_ROW_IDS)}"] if table.entry.get("kind") in FILE_KINDS else []),
-            *([f"                part_columns: {_yaml_list(['geometry', *table.part_columns])}"] if table.parts else []),
+            *([f"                skip_columns: {_yaml_list(['geometry', *table.part_columns])}"] if table.parts else []),
             "          # Elementary's checks (raw_table_checks()), each at warn and run after the writers.",
             *raw_table_checks_yaml(10),
             "        description: >",

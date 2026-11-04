@@ -275,7 +275,7 @@ def test_a_layer_of_parts_unions_their_shapes_and_counts_its_raw_keys_rather_tha
     sql = make_dbt_staging.base_sql(parts)
     assert "st_union_agg(source.geom) over (partition by source.name) as geom" in sql
     assert sql.rstrip().endswith("relation='renamed', partition_by='place_key', order_by='_dlt_id'\n) }}")
-    assert 'part_columns: ["geometry", "globalid", "shape_starea"]' in make_dbt_staging.sources_yaml("club", [parts])
+    assert 'skip_columns: ["geometry", "globalid", "shape_starea"]' in make_dbt_staging.sources_yaml("club", [parts])
     assert """compare_keys: ["'a'", "name"]""" in make_dbt_staging.base_yaml("club", [parts])
 
 
@@ -283,7 +283,7 @@ def test_a_layer_whose_rows_are_features_unions_nothing_and_counts_every_raw_row
     features = _table({"key": "a", "id_field": "NAME"})
 
     assert "st_union_agg" not in make_dbt_staging.base_sql(features)
-    assert "part_columns" not in make_dbt_staging.sources_yaml("club", [features])
+    assert "skip_columns" not in make_dbt_staging.sources_yaml("club", [features])
     assert "compare_keys" not in make_dbt_staging.base_yaml("club", [features])
 
 

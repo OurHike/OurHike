@@ -687,20 +687,21 @@ match_checked as (
                             then 'min_fraction must be in (0, 1]'
                     end
                 )
-            when checked.kind = 'workday' then case
-                when
-                    checked.workday_org_json is not null
-                    and json_type(checked.workday_org_json) != 'NULL'
-                    and not coalesce(
-                        list_contains(
-                            known_orgs.orgs, checked.workday_org_text
-                        ),
-                        false
-                    )
-                    then
-                        'workday org ' || checked.workday_org_repr
-                        || ' is not a known organization'
-            end
+            when checked.kind = 'workday'
+                then case
+                    when
+                        checked.workday_org_json is not null
+                        and json_type(checked.workday_org_json) != 'NULL'
+                        and not coalesce(
+                            list_contains(
+                                known_orgs.orgs, checked.workday_org_text
+                            ),
+                            false
+                        )
+                        then
+                            'workday org ' || checked.workday_org_repr
+                            || ' is not a known organization'
+                end
             when
                 checked.kind = 'self_report'
                 and checked.on_trail_type not in ('NULL', 'BOOLEAN')

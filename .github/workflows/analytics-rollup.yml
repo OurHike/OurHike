@@ -48,6 +48,24 @@
 # ciphertext under a key no server holds. Each environment's R2 token reaches
 # only that environment's bucket, so the UA job cannot touch production's files.
 #
+# PRODUCTION RUNS FROM MAIN ONLY. A dispatch can name any branch, and the
+# production job would hand that branch's code PRODUCTION_ANALYTICS_DATABASE_URL
+# - the rollup's role holds DELETE on analytics_events and the frozen months,
+# the risk EVENTING.md §0's "left open" list names ("The rollup's credential
+# can delete the frozen history") - and the production archive's bucket
+# token. A schedule always runs from main. So the production job carries the
+# two locks publish-conditions.yml and extract-notices.yml put on their
+# production legs: its `if:` leaves it out of a run whose ref is not main,
+# and its first step, before the checkout and before any step that reads a
+# secret, refuses the ref again with bash's case-sensitive `=`, because
+# GitHub's `==` ignores case and a branch named `Main` passes the first lock.
+# The UA job stays dispatchable from any ref, as the siblings' UA legs are: a
+# dispatch from a branch is how that branch tries the rollup on UA before it
+# merges. What the locks cannot do is the limit backup-database.yml's guard
+# names: a branch that edits this file can delete them, because repository
+# secrets reach every branch's runs. The environment limited to main that
+# EVENTING.md's entry asks for is a repository setting no file here can make.
+#
 # A MISSED NIGHT COSTS NOTHING: every run closes every month that is due, not
 # "last month". GitHub runs schedules only from the default branch and turns
 # them off after 60 days of repository inactivity - after a quiet spell, the
@@ -183,6 +201,10 @@ jobs:
 
   production:
     name: Production
+    # Lock 1 (the header, "PRODUCTION RUNS FROM MAIN ONLY"): left out of a
+    # dispatch naming any other ref. GitHub compares ignoring case, which is
+    # what the first step below is for.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # 15 for the rollup and checks, plus the archive step's own 10.
     timeout-minutes: 25
@@ -201,6 +223,23 @@ jobs:
       run:
         working-directory: backend
     steps:
+      # Lock 2, first: before the checkout and every step that reads a
+      # secret, with bash's case-sensitive `=`. Through env, never
+      # interpolated: git allows quotes and semicolons in a branch name.
+      # Every later step is skipped once this fails - none of them asks to
+      # run regardless without also asking for a step a refused run never
+      # reaches (test_analytics_rollup_workflow.py holds that).
+      - name: Refuse any ref but main
+        id: ref
+        working-directory: .
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error title=Production rollup refused::$REF is not refs/heads/main, and only main's code may read production's usage database. Nothing was archived, rolled up or checked, and the tracking issue was left alone."
+            exit 1
+          fi
+
       - name: Is there a production database to roll up
         id: can
         working-directory: .

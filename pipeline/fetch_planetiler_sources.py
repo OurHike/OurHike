@@ -11,8 +11,8 @@ them itself: a 10-second wait it cannot be told to extend, which ended runs
 57 and 58 after 12 to 19 minutes of work.
 
 Exits 1, with the source and the reason, when a source has no copy and
-cannot be fetched. That happens in this step, seconds into the job, rather
-than after the state extracts. Writes `fetched=true` to $GITHUB_OUTPUT as
+cannot be fetched. That happens in this step, about two minutes into the
+job, rather than after the state extracts. Writes `fetched=true` to $GITHUB_OUTPUT as
 soon as anything new lands, so the save step keeps it.
 """
 

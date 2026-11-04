@@ -174,8 +174,10 @@ jobs:
       # state extracts. So the files are restored from the cache and
       # fetch_planetiler_sources.py fetches only what is missing or older
       # than lib/planetiler_sources.py's MAX_AGE_DAYS, with lib/http_retry.py's
-      # retries, seconds into the job. With all three present Planetiler
-      # sends their hosts nothing. A refetch that fails keeps the older copy.
+      # retries, about two minutes into the job (after the ArcGIS fetch and
+      # the jar) rather than after the state extracts. With all three present
+      # Planetiler sends their hosts nothing. A refetch that fails keeps the
+      # older copy.
       #
       # The primary key never matches (one per run), so restore-keys hands
       # back the newest saved set.

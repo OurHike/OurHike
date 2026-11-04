@@ -150,7 +150,7 @@ From the handoff's decisions table; the dated rows changed during design review.
 
 The handoff checked its plan against `main` on 2026-11-04 and found six places where the
 design asks for something the code does not do. Each is carried here with its resolution.
-**One of them is blocked on the maintainer** (conflict 2); the others are resolved on paper.
+Conflict 2 was the maintainer's call and was decided on 2026-11-04; the others are resolved on paper.
 The file references below were re-checked against `main` at ff829580 on 2026-11-04; two of the handoff's details had drifted and are corrected where they fall.
 
 ### 1. The backend holds no centerline, and rule 2 asks it to compute a mile
@@ -178,14 +178,28 @@ The design computes areas parking lot to parking lot. The backend has `org_secti
 club's own division of each trail, with `start_anchor` and `end_anchor` as free text, and no
 parking points: those live in the pipeline's published POI files.
 
-**Proposed for v1: the area is the `org_section`.** The coverage rule runs per section over
-the observations conflict 1 places in it. Parking-to-parking areas wait until the backend
-reads published POIs.
+**Decided 2026-11-04, by the maintainer by poll: for v1, the area is the `org_section`.**
+The coverage rule runs per section over the observations conflict 1 places in it. The
+Coverage screen's note changes from "areas are computed from the records, parking lot to
+parking lot" to say that areas are the club's own sections. Parking-to-parking areas stay a
+later comparison, once the backend reads published POIs.
 
-**Blocked: this is the maintainer's call**, and is the first open question below. If the
-pilot club's registered sections run road to road, a section is the same thing as an area
-under a better name. If they do not, the coverage map colours maintainer sections rather
-than walks. Nobody has looked at one club's sections to say which.
+**What the alternative would have drawn, measured for the poll.** ATC's own layers, fetched
+2026-11-04: the A.T. centerline (`ANST_Centerline`) and official parking areas
+(`ANST_Facilities` layer 2), clipped to NYNJTC's polygon in `APPA_Trail_Club_Sections`.
+The 367 centerline segments chain into 156.2 mi; ATC's own `Length_Ft` sums to 155.9 mi.
+Of the 59 parking areas, 49 sit within 500 ft of the line (median 75 ft away), making 43
+trailheads once lots within 0.1 mi of each other are merged. That gives 44
+parking-to-parking areas, median 2.7 mi, from 0.1 mi to 14.8 mi (Elk Pen to Seven Lakes
+Drive). The 500 ft and 0.1 mi cut-offs were picks for that picture, not findings. One
+difference was already visible: the handoff's sample area "Dennytown Road to Canopus Hill
+Road" ends at a road with no ATC parking area, so a parking-to-parking rule would never
+draw it.
+
+**Still unmeasured:** whether the pilot club's registered sections start and end at those
+trailheads. If they do, sections and parking-to-parking areas colour the same map. If they
+do not, the coverage map colours maintainer sections rather than walks, and the later
+comparison is where that shows.
 
 ### 3. "Alerts the Local Chair" and a daily reminder, against no notifications
 
@@ -195,8 +209,8 @@ screen offers a daily reminder. `noNotifications.test.ts` enforces the privacy p
 kind".
 
 **Resolution: neither is a push.** Unsafe puts the record first in the queue and, when
-`settings.mail_enabled` is on (`backend/app/config.py`, default off), sends the Chair one
-email through `backend/app/core/mail.py` with a new `MailPurpose.inventory_unsafe`; the
+`settings.mail_enabled` is on (`backend/app/config.py`, default off), sends one email to
+each approved club admin, the Local Chair as decided under Permissions, through `backend/app/core/mail.py` with a new `MailPurpose.inventory_unsafe`; the
 suppression list and `List-Unsubscribe` are already handled there. The reminder is a
 banner the survey app shows on open when anything has waited more than a day, plus a flush
 of the outbox when the app comes back to the foreground. Nothing does that today: the
@@ -342,7 +356,7 @@ so the first migration holds only what a pilot needs.
 | --- | --- | --- |
 | Enrol, sign the waiver, do the training | Any signed-in person | `get_current_user` |
 | See priority areas, claim a day, start a walk, submit observations and photos | Enrolled at that club, waiver signed and training done | New `require_inventory_volunteer(slug)` |
-| See the queue; accept, send back, merge, not ours; assign a code; edit a structure | The Local Chair for everything; a section supervisor for observations in sections under their role | New `require_inventory_reviewer(slug)` on `resolve_access`; the section narrowing is the one new piece |
+| See the queue; accept, send back, merge, not ours; assign a code; edit a structure | The Local Chair, meaning any approved club admin (decided 2026-11-04), for everything; a section supervisor for observations in sections under their role | New `require_inventory_reviewer(slug)` on `resolve_access`; the section narrowing is the one new piece |
 | See the inventory list and map | Admin, supervisor, any enrolled volunteer, any maintainer with an assignment on that trail | `OrgAccess` flags, read-only |
 | Export CSV and GeoJSON, change settings, publish locations | Club admin | `require_org_admin`, as `download_entries` in `backend/app/routers/trail_challenges.py` |
 | Read a published location without an account | Anyone | Only when `publish_locations` is on, and only `kind`, `lat`, `lon`, `code`: never condition, notes or photos |
@@ -353,9 +367,12 @@ enrollment row, who need not hold a maintainer assignment. Every row above becom
 `backend/tests/test_org_permission_matrix.py`, over its `EVERYBODY` plus one new person who
 holds an enrollment and no assignment.
 
-**Who "the Local Chair" is in code is not settled.** The screens say Local Chair
-everywhere; the table above reads it as `is_admin`. Whether it is instead a named role is
-the second open question.
+**Decided 2026-11-04, by the maintainer by poll: the Local Chair is any approved club
+admin** (`is_admin`: an approved seat in `club_admins`, codeowners included). It is the
+check that already gates exports and settings, so the reviewer dependency needs no new
+column. The consequence, chosen with it: when mail is on, the Unsafe email goes to every
+approved admin at the club. The alternative offered was the holders of one role the club
+picks in the survey's settings.
 
 ---
 
@@ -458,15 +475,13 @@ is held to the standard in `CLAUDE.md`'s "Four ways this app can hurt somebody".
 
 ## Open questions
 
-The first two block any code; the handoff and the kickoff both say so. They are the
-maintainer's decisions and are written here as questions, not answers.
+The first two blocked any code and were answered by the maintainer on 2026-11-04.
+The rest are still the maintainer's decisions, written here as questions, not answers.
 
-1. **The area unit (blocking).** Are sections the areas for v1, or does this wait for
-   parking-to-parking areas? Turns on whether the pilot club's registered sections run road
-   to road (conflict 2).
-2. **Who the Local Chair is in code (blocking).** A club admin seat (`is_admin`), or a named
-   role whose holders accept? If a role, the reviewer check reads `org_roles.name`, which is
-   free text today.
+1. ~~**The area unit.**~~ **Decided 2026-11-04, by poll: sections are the areas for v1**
+   (conflict 2, with the parking-to-parking measurement it was decided against).
+2. ~~**Who the Local Chair is in code.**~~ **Decided 2026-11-04, by poll: any approved club
+   admin** (Permissions).
 3. **The waiver as a legal record.** Whether a typed name against a recorded version is
    enough, or the app links to the club's own form. Counsel's answer, not this repository's.
 4. **Notifications.** Whether one email to the Chair on Unsafe and an on-open banner fit the

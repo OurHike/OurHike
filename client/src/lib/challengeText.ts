@@ -106,11 +106,14 @@ export function statusLine(
   club: Pick<Challenge, 'orgShort'>,
   state: { apiConfigured: boolean; signedIn: boolean },
 ): string {
+  // Every state promises the same two things: it is kept on this phone, and
+  // the club is told a count, never a name (review of #1969: the no-server
+  // line used to say neither, and read as if saving stopped with a server).
   if (!state.apiConfigured)
-    return `Saved on this phone until OurHike’s server is running.`
+    return `Saved on this phone, and counted for the ${club.orgShort} once OurHike’s server is running, never by name.`
   if (!state.signedIn)
-    return `Saved on this phone · counted for the ${club.orgShort} once you sign in, never by name.`
-  return `Saved on this phone · counted for the ${club.orgShort} with signal, never by name.`
+    return `Saved on this phone, and counted for the ${club.orgShort} once you sign in, never by name.`
+  return `Saved on this phone, and counted for the ${club.orgShort} with signal, never by name.`
 }
 
 /**

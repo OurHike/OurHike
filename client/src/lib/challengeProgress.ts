@@ -665,8 +665,8 @@ export function autoTags(
         ).length
         done = days.size > answered
         // Stamped on the day worked rather than the day the phone noticed:
-        // August 31's hours first seen on September 5 still happened inside
-        // a window that closed September 1.
+        // September 6's hours first seen on September 10 still happened inside
+        // a window that closed September 7.
         if (done) workedOn = [...days].sort()[answered]
         place = { poi: '', name: item.title ?? '', mile: 0 }
       }

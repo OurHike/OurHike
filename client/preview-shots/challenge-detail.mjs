@@ -5,8 +5,8 @@
 // summary line, 3 of 25 and the bar - and the strip laying every place on
 // the list along the trail in mile order, Springer to Katahdin, the earned
 // ones filled. Under it the pills in the ATC's own order (Learn · Experience
-// · Protect · Mystery, then Done) and the Learn rows, numbered as the ATC's
-// paper list numbers them: a place with its published mile, "done" where the
+// · Protect · Mystery, then Done) and the Learn rows, numbered 1-100 in the
+// list's published order: a place with its published mile, "done" where the
 // day's walk earned it, Earn it where a hand tag is allowed, the towns saying
 // they are off the trail, and no sub-line at all under an at-home item.
 // Under the list, the one status line.

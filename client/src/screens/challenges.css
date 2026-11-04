@@ -393,11 +393,11 @@ div.challenge-row__open {
   gap: 2px;
 }
 
-/* 1-100 in the club's order, the number on the ATC's paper list. Three
-   digits wide so the diamonds line up down the list. */
+/* 1-100 in the club's published order. Three digits wide so the diamonds
+   line up down the list, row 100 included. */
 .challenge-row__number {
   flex: none;
-  min-width: 2.2ch;
+  min-width: 3ch;
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;

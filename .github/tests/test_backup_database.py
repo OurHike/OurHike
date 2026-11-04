@@ -10,8 +10,18 @@ which is safe, but `pg_dump --enable-row-security` succeeds with zero rows. The
 tests at the end run the real `main(["dump"])`, `verify` and `seal` against a
 real Postgres: a good backup comes back row for row, and an empty, a one-row-
 short and a statistics-less one are each refused. They skip where no Postgres
-is reachable, which includes CI's settings job; measured 2026-10-29 on the
-session's local Postgres 16.15 with age 1.1.1.
+is reachable, which includes CI's settings jobs; measured 2026-10-29 on the
+session's local Postgres 16.15 with age 1.1.1. In CI they run in
+backend-tests.yml's `pytest-postgres` job, against a postgres:17 that job
+starts with TLS (since 2026-11-04 - the release review found they had skipped
+on every CI run before), and a test below keeps that step there.
+
+THE LOG CARRIES NO ROW COUNT. Actions logs on this repository are public, and
+a production table's row count is its size - how many hikers, reports and
+closures there are. `backend/scripts/analytics_rollup.py`, `analytics_archive.py`
+and `analytics_quality.py` each refuse to print a count for that reason, and
+`test_no_row_count_reaches_the_log` holds this script to the same rule on a good
+night and on a bad one, while the counts still travel inside the sealed file.
 """
 
 from __future__ import annotations
@@ -37,6 +47,9 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backup-database.yml"
 SCRIPT = REPO_ROOT / ".github" / "scripts" / "backup_database.py"
+BACKEND_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "backend-tests.yml"
+#: The variable the Postgres-backed tests read their server from; backend-tests.yml sets it.
+ADMIN_URL_VARIABLE = "OURHIKE_BACKUP_TEST_ADMIN_URL"
 
 POOLER = "postgresql://ourhike_backup.abcdefghijklmnopqrst:p%40ss%2Fw0rd@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
 
@@ -622,6 +635,32 @@ def test_the_tracking_issue_hears_every_outcome_of_a_run_from_main_and_nothing_f
     assert _steps()["Open, update, or close the tracking issue"]["if"] == "always() && steps.ref.outcome == 'success'"
 
 
+# --- Where the Postgres-backed tests run in CI ---------------------------------
+
+
+def test_backend_tests_yml_runs_this_file_against_a_postgres_that_speaks_tls():
+    """The tests below need pg_dump, pg_restore, age and a server that takes
+    `sslmode=require`, which `dump` insists on. The settings jobs have none of
+    those, so until 2026-11-04 every one of them skipped on every CI run (the
+    release review's finding 6). backend-tests.yml's service container speaks
+    no TLS either - the postgres image ships no certificate - so that job
+    starts a second postgres:17 with a certificate of its own, and its scope
+    list names what this file reads, so a change to any of it runs the step."""
+    steps = yaml.safe_load(BACKEND_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["pytest-postgres"]["steps"]
+    [tests] = [step for step in steps if Path(__file__).name in str(step.get("run", ""))]
+    [server] = [step for step in steps if "ssl=on" in str(step.get("run", ""))]
+
+    assert tests["working-directory"] == ".github/tests" and tests["if"] == "steps.scope.outputs.run == 'true'"
+    url = urlsplit(tests["env"][ADMIN_URL_VARIABLE])
+    assert url.scheme == "postgresql" and url.hostname == "localhost"
+    assert steps.index(server) < steps.index(tests)
+    assert f"--publish {url.port}:5432" in server["run"], "the Postgres with TLS must be the one the URL names"
+    assert "apt-get install -y -qq age" in server["run"]
+    scope = next(step for step in steps if "changed-paths" in str(step.get("uses", "")))["with"]["paths"].split()
+    for path in (SCRIPT, Path(__file__), WORKFLOW):
+        assert path.relative_to(REPO_ROOT).as_posix() in scope, f"a change to {path.name} alone would not run the step"
+
+
 # --- Against a real Postgres --------------------------------------------------
 #
 # One source and one scratch database per module (per xdist worker), reset
@@ -629,7 +668,7 @@ def test_the_tracking_issue_hears_every_outcome_of_a_run_from_main_and_nothing_f
 # which took 3m35s on this session's loaded Postgres 16.15 (measured
 # 2026-10-29), against well under a second for the reset.
 
-ADMIN_URL = os.environ.get("OURHIKE_BACKUP_TEST_ADMIN_URL", "postgresql://ourhike:ourhike@localhost:5432/ourhike_dev")
+ADMIN_URL = os.environ.get(ADMIN_URL_VARIABLE, "postgresql://ourhike:ourhike@localhost:5432/ourhike_dev")
 
 #: The two Supabase Auth tables `dump` reads, as a stand-in `auth` schema.
 AUTH_SQL = (

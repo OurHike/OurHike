@@ -235,10 +235,14 @@ def seam_between(shapes: list) -> object:
     return seam
 
 
-# Planetiler's own default is 30s, and that is what expired. Its internal
-# --http-retries=5 did not outlast the host either, so the outer retry here
-# is a third belt rather than a duplicate: Planetiler retries the request,
-# this retries the whole invocation minutes later.
+# Raises Planetiler's 30s per-request default for slow transfers. It is NOT
+# what expired on the water polygons, which an earlier version of this
+# comment said: "Error getting size of ... TimeoutException" is a fixed
+# 10-second wait for each queued source's size (Planetiler v0.10.2's
+# Downloader.java, line 177) that no argument reaches (#1970). What
+# actually defends against that here is run_planetiler()'s outer retry
+# below, which reruns the whole invocation, and shard-seam-spike.yml's cache
+# of pipeline/data/sources, which leaves Planetiler nothing to queue.
 HTTP_TIMEOUT_SECONDS = 300
 
 

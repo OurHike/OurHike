@@ -165,6 +165,48 @@ jobs:
           echo "$JAR_SHA256  planetiler.jar" | sha256sum -c -
           ls -la planetiler.jar
 
+      # PLANETILER'S PROFILE SOURCES, FETCHED HERE AND KEPT (#1970). Left to
+      # itself, Planetiler fetches its three non-OSM sources (water polygons,
+      # Natural Earth, lake centerlines, about 1.4 GB) whenever they are
+      # missing, and first waits a fixed 10 s for each one's size, a wait
+      # --http-timeout does not reach. Runs 57 and 58 (2026-11-03) both died
+      # in it on osmdata.openstreetmap.de, 12 to 19 minutes in, after the
+      # state extracts. So the files are restored from the cache and
+      # fetch_planetiler_sources.py fetches only what is missing or older
+      # than lib/planetiler_sources.py's MAX_AGE_DAYS, with lib/http_retry.py's
+      # retries, seconds into the job. With all three present Planetiler
+      # sends their hosts nothing. A refetch that fails keeps the older copy.
+      #
+      # The primary key never matches (one per run), so restore-keys hands
+      # back the newest saved set.
+      - name: Restore Planetiler's profile sources
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/data/sources
+          key: basemap-planetiler-sources-v1-${{ github.run_id }}
+          restore-keys: basemap-planetiler-sources-v1-
+
+      - name: Fetch Planetiler's profile sources that are missing or stale
+        id: planetiler_sources
+        run: python fetch_planetiler_sources.py
+
+      # Saved only when this run fetched something, so an unchanged set adds
+      # no new ~1.4 GB entry; and saved even when the fetch step failed part
+      # way (always()), so the files that did arrive are not fetched again.
+      # Keyed on the hash of the manifest beside the files, which records
+      # each source's URL, size and fetch date, so the key changes exactly
+      # when the contents do (test_cache_keys_are_content_addressed.py's
+      # rule) without hashing 1.4 GB. Before the build, because nothing the
+      # build does changes them. continue-on-error: the cache service having
+      # a moment must not fail a run that already has its files.
+      - name: Save Planetiler's profile sources
+        if: always() && steps.planetiler_sources.outputs.fetched == 'true' && hashFiles('pipeline/data/sources/planetiler_sources.json') != ''
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/data/sources
+          key: basemap-planetiler-sources-v1-${{ hashFiles('pipeline/data/sources/planetiler_sources.json') }}
+
       # Through env, never pasted into the script: a free-text dispatch input
       # interpolated into `run:` is shell the dispatcher wrote (#660's rule,
       # held by .github/tests/test_run_steps_take_inputs_through_env.py).

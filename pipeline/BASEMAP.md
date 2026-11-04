@@ -288,6 +288,18 @@ invoke them:
   [onthegomap/planetiler](https://github.com/onthegomap/planetiler/releases)
   (Java 21+). Not on Maven Central; the workflow takes the jar URL as a
   dispatch input so a bad pin is fixable without a commit.
+- **Planetiler's profile sources** — three third-party files the OpenMapTiles
+  profile reads besides the OSM extract: water polygons from
+  osmdata.openstreetmap.de, Natural Earth from naciscdn.org, and lake
+  centerlines from a GitHub release (931M, 434M and 80M in run 55,
+  2026-11-03). `fetch_planetiler_sources.py` puts them in
+  `pipeline/data/sources/` before the build, `build-basemap.yml` keeps them
+  in the Actions cache, and `lib/planetiler_sources.py` says why Planetiler is
+  not left to fetch them: it waits a fixed 10 s on each host for the file's
+  size, a wait no argument extends, and that wait ended runs 57 and 58 after
+  12 to 19 minutes of work (#1970). A source older than `MAX_AGE_DAYS` (30,
+  unvalidated) is fetched again, and a refetch that fails keeps the older
+  copy.
 
 ## Licensing
 

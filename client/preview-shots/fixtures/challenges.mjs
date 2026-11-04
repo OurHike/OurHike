@@ -68,6 +68,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'trivia-quiz',
       section: 'learn',
+      icon: 'quiz',
       title: 'Take our A.T. trivia quiz.',
       note: null,
       note_by: null,
@@ -79,6 +80,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'harpers-ferry-visitor-center',
       section: 'learn',
+      icon: 'museum',
       title: 'Visit the Harpers Ferry Visitor Center.',
       note: null,
       note_by: null,
@@ -102,6 +104,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'damascus-trail-center',
       section: 'learn',
+      icon: 'museum',
       title: 'Visit the Damascus Trail Center.',
       note: null,
       note_by: null,
@@ -125,6 +128,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'monson-visitor-center',
       section: 'learn',
+      icon: 'museum',
       title: 'Visit the Monson Visitor Center.',
       note: null,
       note_by: null,
@@ -148,6 +152,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'at-museum',
       section: 'learn',
+      icon: 'museum',
       title:
         'Learn about the history of the Trail at the Appalachian Trail Museum in Pennsylvania.',
       note: null,
@@ -172,6 +177,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'pct-hang',
       section: 'learn',
+      icon: 'tent',
       title: 'Learn how to do a PCT hang.',
       note: null,
       note_by: null,
@@ -183,6 +189,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'green-tunnel-podcast',
       section: 'learn',
+      icon: 'podcast',
       title: 'Listen to an episode of the Green Tunnel podcast about A.T. history.',
       note: null,
       note_by: null,
@@ -194,6 +201,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'read-a-biography',
       section: 'learn',
+      icon: 'book',
       title: 'Read The Appalachian Trail: A Biography.',
       note: null,
       note_by: null,
@@ -205,6 +213,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'white-blaze-photo',
       section: 'experience',
+      icon: 'blaze',
       title: 'Take a photo of a white blaze.',
       note: null,
       note_by: null,
@@ -216,6 +225,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'shelter-logbook',
       section: 'experience',
+      icon: 'shelter',
       title: 'Hike to an A.T. shelter and sign the shelter logbook.',
       note: null,
       note_by: null,
@@ -229,6 +239,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'find-a-vista',
       section: 'experience',
+      icon: 'mountain',
       title:
         'Use the “A.T. Vistas” layer of the Appalachian Trail Conservancy’s interactive map to find one of the Trail’s stunning vistas.',
       note: null,
@@ -243,6 +254,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'sunrise',
       section: 'experience',
+      icon: 'sunrise',
       title: 'Watch the sunrise from the Trail. Don’t forget to take a photo!',
       note: null,
       note_by: null,
@@ -254,6 +266,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'mcafee-knob',
       section: 'experience',
+      icon: 'mountain',
       title:
         'Take the McAfee Knob shuttle to hike to one of the most photographed spots on the A.T.',
       note: null,
@@ -278,6 +291,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'springer-mountain',
       section: 'experience',
+      icon: 'mountain',
       title: 'Visit the A.T.’s southern terminus at Springer Mountain.',
       note: null,
       note_by: null,
@@ -301,6 +315,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'katahdin',
       section: 'experience',
+      icon: 'mountain',
       title: 'Hike to the A.T.’s northern terminus at Katahdin.',
       note: null,
       note_by: null,
@@ -324,6 +339,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'harpers-ferry-halfway',
       section: 'experience',
+      icon: 'blaze',
       title: 'Visit the A.T.’s psychological halfway point at Harpers Ferry.',
       note: null,
       note_by: null,
@@ -347,6 +363,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'summit-4000',
       section: 'experience',
+      icon: 'mountain',
       title: 'Summit a 4,000+ foot peak.',
       note: null,
       note_by: null,
@@ -359,6 +376,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'meal-in-a-community',
       section: 'experience',
+      icon: 'food',
       title: 'Visit an A.T. Community and have a meal at a local restaurant.',
       note: null,
       note_by: null,
@@ -372,6 +390,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'priest-confession',
       section: 'experience',
+      icon: 'shelter',
       title: 'Write a confession in the logbook at the Priest Shelter.',
       note: null,
       note_by: null,
@@ -395,6 +414,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'james-river-footbridge',
       section: 'experience',
+      icon: 'bridge',
       title: 'Cross the James River Footbridge—the longest footbridge on the A.T.',
       note: null,
       note_by: null,
@@ -418,6 +438,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'virginia-triple-crown',
       section: 'experience',
+      icon: 'mountain',
       title:
         'Hike the “Triple Crown” of Virginia: McAfee Knob, Tinker Cliffs, and Dragon’s Tooth.',
       note: null,
@@ -458,6 +479,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'pine-grove-ice-cream',
       section: 'experience',
+      icon: 'food',
       title:
         'Eat all (or some) of a half-gallon of ice cream at Pine Grove Furnace State Park.',
       note: null,
@@ -482,6 +504,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'kennebec-ferry',
       section: 'experience',
+      icon: 'water',
       title: 'Ride the Kennebec River ferry.',
       note: null,
       note_by: null,
@@ -505,6 +528,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'kuwohi',
       section: 'experience',
+      icon: 'mountain',
       title: 'Hike to the summit of Kuwohi, the highest point on the A.T.',
       note: null,
       note_by: null,
@@ -528,6 +552,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'volunteer-event',
       section: 'protect',
+      icon: 'tools',
       title:
         'Sign up for a volunteer event and spend a day doing essential Trail maintenance.',
       note: null,
@@ -542,6 +567,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'become-a-member',
       section: 'protect',
+      icon: 'heart',
       title: 'Become a member of the ATC to support ongoing conservation work.',
       note: null,
       note_by: null,
@@ -553,6 +579,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'pick-up-litter',
       section: 'protect',
+      icon: 'trash',
       title: 'Pick up litter on a hike.',
       note: null,
       note_by: null,
@@ -564,6 +591,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'trail-crew',
       section: 'protect',
+      icon: 'tools',
       title: 'Join a Trail Crew.',
       note: null,
       note_by: null,
@@ -577,6 +605,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'invasive-species-workday',
       section: 'protect',
+      icon: 'trash',
       title: 'Participate in an invasive species removal workday.',
       note: null,
       note_by: null,
@@ -590,6 +619,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'hiker-pledge',
       section: 'protect',
+      icon: 'heart',
       title: 'Take the long-distance hiker pledge.',
       note: null,
       note_by: null,
@@ -601,6 +631,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'mystery-1',
       section: 'mystery',
+      icon: 'mystery',
       title: null,
       note: null,
       note_by: null,
@@ -616,6 +647,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'mystery-2',
       section: 'mystery',
+      icon: 'mystery',
       title: null,
       note: null,
       note_by: null,
@@ -631,6 +663,7 @@ export const ATC_CHALLENGE = {
     {
       id: 'mystery-3',
       section: 'mystery',
+      icon: 'mystery',
       title: null,
       note: null,
       note_by: null,

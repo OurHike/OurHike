@@ -92,6 +92,9 @@ export interface ChallengeItem {
   note: string | null
   noteBy: string | null
   photo: string | null
+  /** The blaze card's glyph for this item (chrome/blazeIcons.ts), the
+   *  reviewer's judgement copied through the exporter; null draws `learn`. */
+  icon: string | null
   match: ChallengeMatch
   mystery: { number: number; revealOn: string | null } | null
 }

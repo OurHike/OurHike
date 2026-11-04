@@ -681,6 +681,18 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
   },
+  // The blaze card and its tile (#1962): the picture in the challenge's
+  // header. Unit tests hold the one rule a flow would (no tile is a button
+  // under 44 px); the flow that reaches the header is challenges.spec.ts's,
+  // which does not yet assert on the card.
+  'chrome/BlazeCard.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'chrome/BlazeTile.tsx': {
+    step: 'F13 More',
+    flow: {
+      status: 'unit-only',
+      why: 'a leaf with no state of its own: BlazeCard.test.tsx proves the tile is never a button below the expanded size',
+    },
+  },
   // The camp card is Today's (F2); the place-card section and Plan's card
   // are driven by unit tests and recipes, not yet by a flow.
   'chrome/ChallengeCampCard.tsx': {

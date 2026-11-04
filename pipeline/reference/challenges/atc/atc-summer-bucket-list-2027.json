@@ -100,6 +100,7 @@
     {
       "id": "plan-with-hiker-resource-library",
       "section": "learn",
+      "icon": "map",
       "title": "Plan an adventure with the Appalachian Trail Conservancy’s Hiker Resource Library.",
       "match": {
         "kind": "self_report"
@@ -108,6 +109,7 @@
     {
       "id": "library-book",
       "section": "learn",
+      "icon": "book",
       "title": "Check out a book about the Appalachian Trail from your local library.",
       "match": {
         "kind": "self_report"
@@ -116,6 +118,7 @@
     {
       "id": "map-or-guidebook",
       "section": "learn",
+      "icon": "map",
       "title": "Plan a trip with a map or guidebook from the ATC Trail Store.",
       "match": {
         "kind": "self_report"
@@ -124,6 +127,7 @@
     {
       "id": "trivia-quiz",
       "section": "learn",
+      "icon": "quiz",
       "title": "Take our A.T. trivia quiz.",
       "match": {
         "kind": "self_report"
@@ -132,6 +136,7 @@
     {
       "id": "conservation-film",
       "section": "learn",
+      "icon": "film",
       "title": "Watch one of the ATC’s short films about conservation.",
       "match": {
         "kind": "self_report"
@@ -140,6 +145,7 @@
     {
       "id": "inaturalist-seek",
       "section": "learn",
+      "icon": "leaf",
       "title": "Download the iNaturalist Seek app and catalogue species you find on the Trail.",
       "match": {
         "kind": "self_report"
@@ -148,6 +154,7 @@
     {
       "id": "harpers-ferry-visitor-center",
       "section": "learn",
+      "icon": "museum",
       "title": "Visit the Harpers Ferry Visitor Center.",
       "match": {
         "kind": "place",
@@ -159,6 +166,7 @@
     {
       "id": "damascus-trail-center",
       "section": "learn",
+      "icon": "museum",
       "title": "Visit the Damascus Trail Center.",
       "match": {
         "kind": "place",
@@ -170,6 +178,7 @@
     {
       "id": "monson-visitor-center",
       "section": "learn",
+      "icon": "museum",
       "title": "Visit the Monson Visitor Center.",
       "match": {
         "kind": "place",
@@ -181,6 +190,7 @@
     {
       "id": "at-museum",
       "section": "learn",
+      "icon": "museum",
       "title": "Learn about the history of the Trail at the Appalachian Trail Museum in Pennsylvania.",
       "match": {
         "kind": "place",
@@ -191,6 +201,7 @@
     {
       "id": "purify-water",
       "section": "learn",
+      "icon": "water",
       "title": "Learn to purify water using a filter or chemical treatment.",
       "match": {
         "kind": "self_report"
@@ -199,6 +210,7 @@
     {
       "id": "pct-hang",
       "section": "learn",
+      "icon": "tent",
       "title": "Learn how to do a PCT hang.",
       "match": {
         "kind": "self_report"
@@ -207,6 +219,7 @@
     {
       "id": "bear-canister",
       "section": "learn",
+      "icon": "tent",
       "title": "Learn how to use a bear canister.",
       "match": {
         "kind": "self_report"
@@ -215,6 +228,7 @@
     {
       "id": "wfa-wfr",
       "section": "learn",
+      "icon": "learn",
       "title": "Get WFA/WFR certified.",
       "match": {
         "kind": "self_report"
@@ -223,6 +237,7 @@
     {
       "id": "follow-on-social",
       "section": "learn",
+      "icon": "megaphone",
       "title": "Follow the ATC on social media.",
       "match": {
         "kind": "self_report"
@@ -231,6 +246,7 @@
     {
       "id": "green-tunnel-podcast",
       "section": "learn",
+      "icon": "podcast",
       "title": "Listen to an episode of the Green Tunnel podcast about A.T. history.",
       "match": {
         "kind": "self_report"
@@ -239,6 +255,7 @@
     {
       "id": "read-a-biography",
       "section": "learn",
+      "icon": "book",
       "title": "Read The Appalachian Trail: A Biography.",
       "match": {
         "kind": "self_report"
@@ -247,6 +264,7 @@
     {
       "id": "read-thru-hikers-companion",
       "section": "learn",
+      "icon": "book",
       "title": "Read The Appalachian Trail Thru-Hiker’s Companion.",
       "match": {
         "kind": "self_report"
@@ -255,6 +273,7 @@
     {
       "id": "national-park-visitor-center",
       "section": "learn",
+      "icon": "museum",
       "title": "Stop by a national park visitor center to learn about the local landscape.",
       "match": {
         "kind": "self_report"
@@ -263,6 +282,7 @@
     {
       "id": "roan-mountain-visitor-center",
       "section": "learn",
+      "icon": "museum",
       "title": "Stop by the Roan Mountain State Park Visitor Center for high-elevation ecology.",
       "match": {
         "kind": "self_report"
@@ -271,6 +291,7 @@
     {
       "id": "virginia-creeper-exhibits",
       "section": "learn",
+      "icon": "museum",
       "title": "Check out the Virginia Creeper Trail exhibits on rail-to-trail history.",
       "match": {
         "kind": "self_report"
@@ -279,6 +300,7 @@
     {
       "id": "birdwatching-hike",
       "section": "learn",
+      "icon": "leaf",
       "title": "Take a birdwatching hike with a local Audubon chapter or an ATC Visitor Center.",
       "match": {
         "kind": "self_report"
@@ -287,6 +309,7 @@
     {
       "id": "civil-war-battlefields",
       "section": "learn",
+      "icon": "museum",
       "title": "Follow the footsteps of history—visit sections of the Trail that cross Civil War battlefields.",
       "match": {
         "kind": "self_report"
@@ -295,6 +318,7 @@
     {
       "id": "benton-mackaye-proposal",
       "section": "learn",
+      "icon": "book",
       "title": "Read Benton MacKaye’s original Appalachian Trail proposal.",
       "match": {
         "kind": "self_report"
@@ -303,6 +327,7 @@
     {
       "id": "identify-five-species",
       "section": "learn",
+      "icon": "leaf",
       "title": "Identify 5 different species on a hike.",
       "match": {
         "kind": "self_report"
@@ -311,6 +336,7 @@
     {
       "id": "talk-with-a-maintainer",
       "section": "learn",
+      "icon": "people",
       "title": "Have a conversation with a Trail maintainer or Trail Crew member who builds and repairs sections of the A.T.",
       "match": {
         "kind": "self_report"
@@ -319,6 +345,7 @@
     {
       "id": "meal-with-a-thru-hiker",
       "section": "learn",
+      "icon": "food",
       "title": "Share a meal with someone who has completed a thru-hike and hear their story.",
       "match": {
         "kind": "self_report"
@@ -327,6 +354,7 @@
     {
       "id": "native-lands",
       "section": "learn",
+      "icon": "leaf",
       "title": "Learn about the native lands the A.T. passes through.",
       "match": {
         "kind": "self_report"
@@ -335,6 +363,7 @@
     {
       "id": "keep-the-trail-alive",
       "section": "learn",
+      "icon": "book",
       "title": "Learn about A.T. history at keepthetrailalive.org.",
       "match": {
         "kind": "self_report"
@@ -343,6 +372,7 @@
     {
       "id": "usgs-geology",
       "section": "learn",
+      "icon": "leaf",
       "title": "Visit USGS.gov to learn about the geology of the Appalachian Mountains.",
       "match": {
         "kind": "self_report"
@@ -351,6 +381,7 @@
     {
       "id": "usgs-survey-marker",
       "section": "learn",
+      "icon": "blaze",
       "title": "Find a USGS A.T. survey marker.",
       "match": {
         "kind": "self_report"
@@ -359,6 +390,7 @@
     {
       "id": "white-blaze-photo",
       "section": "experience",
+      "icon": "blaze",
       "title": "Take a photo of a white blaze.",
       "match": {
         "kind": "self_report"
@@ -367,6 +399,7 @@
     {
       "id": "shelter-logbook",
       "section": "experience",
+      "icon": "shelter",
       "title": "Hike to an A.T. shelter and sign the shelter logbook.",
       "match": {
         "kind": "poi_type",
@@ -377,6 +410,7 @@
     {
       "id": "find-a-vista",
       "section": "experience",
+      "icon": "mountain",
       "title": "Use the “A.T. Vistas” layer of the Appalachian Trail Conservancy’s interactive map to find one of the Trail’s stunning vistas.",
       "match": {
         "kind": "poi_type",
@@ -387,6 +421,7 @@
     {
       "id": "sunrise",
       "section": "experience",
+      "icon": "sunrise",
       "title": "Watch the sunrise from the Trail. Don’t forget to take a photo!",
       "match": {
         "kind": "self_report"
@@ -395,6 +430,7 @@
     {
       "id": "hike-together",
       "section": "experience",
+      "icon": "people",
       "title": "Take a partner, friend, or family member with you on a hike to experience the Trail together.",
       "match": {
         "kind": "self_report"
@@ -403,6 +439,7 @@
     {
       "id": "mcafee-knob",
       "section": "experience",
+      "icon": "mountain",
       "title": "Take the McAfee Knob shuttle to hike to one of the most photographed spots on the A.T.",
       "match": {
         "kind": "place",
@@ -413,6 +450,7 @@
     {
       "id": "springer-mountain",
       "section": "experience",
+      "icon": "mountain",
       "title": "Visit the A.T.’s southern terminus at Springer Mountain.",
       "match": {
         "kind": "place",
@@ -423,6 +461,7 @@
     {
       "id": "amicalola-arch",
       "section": "experience",
+      "icon": "museum",
       "title": "Visit the stone arch at Amicalola Falls State Park.",
       "match": {
         "kind": "self_report"
@@ -431,6 +470,7 @@
     {
       "id": "katahdin",
       "section": "experience",
+      "icon": "mountain",
       "title": "Hike to the A.T.’s northern terminus at Katahdin.",
       "match": {
         "kind": "place",
@@ -441,6 +481,7 @@
     {
       "id": "harpers-ferry-halfway",
       "section": "experience",
+      "icon": "blaze",
       "title": "Visit the A.T.’s psychological halfway point at Harpers Ferry.",
       "match": {
         "kind": "place",
@@ -452,6 +493,7 @@
     {
       "id": "postcard-with-at-stamp",
       "section": "experience",
+      "icon": "pen",
       "title": "Send a postcard with an A.T. stamp.",
       "match": {
         "kind": "self_report"
@@ -460,6 +502,7 @@
     {
       "id": "summit-4000",
       "section": "experience",
+      "icon": "mountain",
       "title": "Summit a 4,000+ foot peak.",
       "match": {
         "kind": "elevation_min_ft",
@@ -469,6 +512,7 @@
     {
       "id": "meal-in-a-community",
       "section": "experience",
+      "icon": "food",
       "title": "Visit an A.T. Community and have a meal at a local restaurant.",
       "match": {
         "kind": "poi_type",
@@ -480,6 +524,7 @@
     {
       "id": "trail-story",
       "section": "experience",
+      "icon": "pen",
       "title": "Write your own trail story or poem.",
       "match": {
         "kind": "self_report"
@@ -488,6 +533,7 @@
     {
       "id": "full-state-section",
       "section": "experience",
+      "icon": "boots",
       "title": "Hike a full state section of the Trail.",
       "match": {
         "kind": "self_report"
@@ -496,6 +542,7 @@
     {
       "id": "all-14-states",
       "section": "experience",
+      "icon": "map",
       "title": "Hike in all 14 Trail states.",
       "match": {
         "kind": "self_report"
@@ -504,6 +551,7 @@
     {
       "id": "priest-confession",
       "section": "experience",
+      "icon": "shelter",
       "title": "Write a confession in the logbook at the Priest Shelter.",
       "match": {
         "kind": "place",
@@ -514,6 +562,7 @@
     {
       "id": "new-way-to-cover-distance",
       "section": "experience",
+      "icon": "boots",
       "title": "Cover distance in a new way by trail running or aqua blazing.",
       "match": {
         "kind": "self_report"
@@ -522,6 +571,7 @@
     {
       "id": "say-hello-to-a-ridgerunner",
       "section": "experience",
+      "icon": "people",
       "title": "Say hello to a Ridgerunner.",
       "match": {
         "kind": "self_report"
@@ -530,6 +580,7 @@
     {
       "id": "national-park-unit",
       "section": "experience",
+      "icon": "museum",
       "title": "Visit one of the six National Park Service units along the A.T.",
       "match": {
         "kind": "self_report"
@@ -538,6 +589,7 @@
     {
       "id": "junior-ranger",
       "section": "experience",
+      "icon": "learn",
       "title": "Become a Junior Ranger (open to all ages).",
       "match": {
         "kind": "self_report"
@@ -546,6 +598,7 @@
     {
       "id": "at-inspired-art",
       "section": "experience",
+      "icon": "pen",
       "title": "Make a piece of art inspired by the A.T. and share it on social media with the hashtag #ATInspired.",
       "match": {
         "kind": "self_report"
@@ -554,6 +607,7 @@
     {
       "id": "blue-blaze",
       "section": "experience",
+      "icon": "blaze",
       "title": "Follow a blue blaze trail.",
       "match": {
         "kind": "self_report"
@@ -562,6 +616,7 @@
     {
       "id": "public-transportation",
       "section": "experience",
+      "icon": "town",
       "title": "Take public transportation to the Trail.",
       "match": {
         "kind": "self_report"
@@ -570,6 +625,7 @@
     {
       "id": "trail-playlist",
       "section": "experience",
+      "icon": "podcast",
       "title": "Make a playlist inspired by the Trail.",
       "match": {
         "kind": "self_report"
@@ -578,6 +634,7 @@
     {
       "id": "james-river-footbridge",
       "section": "experience",
+      "icon": "bridge",
       "title": "Cross the James River Footbridge—the longest footbridge on the A.T.",
       "match": {
         "kind": "place",
@@ -588,6 +645,7 @@
     {
       "id": "at-passport-stamps",
       "section": "experience",
+      "icon": "blaze",
       "title": "Collect A.T. passport stamps along the Trail.",
       "match": {
         "kind": "self_report"
@@ -596,6 +654,7 @@
     {
       "id": "hiker-hostel",
       "section": "experience",
+      "icon": "tent",
       "title": "Stay in a hiker hostel or A.T.-friendly accommodation.",
       "match": {
         "kind": "self_report"
@@ -604,6 +663,7 @@
     {
       "id": "trail-festival",
       "section": "experience",
+      "icon": "town",
       "title": "Attend an Appalachian Trail festival in a Trail town.",
       "match": {
         "kind": "self_report"
@@ -612,6 +672,7 @@
     {
       "id": "solo-hike",
       "section": "experience",
+      "icon": "boots",
       "title": "Hike a portion of the Trail completely solo to deepen your connection with nature.",
       "match": {
         "kind": "self_report"
@@ -620,6 +681,7 @@
     {
       "id": "live-music",
       "section": "experience",
+      "icon": "podcast",
       "title": "Listen to live music in an A.T. Community.",
       "match": {
         "kind": "self_report"
@@ -628,6 +690,7 @@
     {
       "id": "fire-tower",
       "section": "experience",
+      "icon": "tower",
       "title": "Visit an old fire tower along the Trail and learn about its history.",
       "match": {
         "kind": "self_report"
@@ -636,6 +699,7 @@
     {
       "id": "virginia-triple-crown",
       "section": "experience",
+      "icon": "mountain",
       "title": "Hike the “Triple Crown” of Virginia: McAfee Knob, Tinker Cliffs, and Dragon’s Tooth.",
       "match": {
         "kind": "places_all",
@@ -650,6 +714,7 @@
     {
       "id": "pine-grove-ice-cream",
       "section": "experience",
+      "icon": "food",
       "title": "Eat all (or some) of a half-gallon of ice cream at Pine Grove Furnace State Park.",
       "match": {
         "kind": "place",
@@ -660,6 +725,7 @@
     {
       "id": "care-package",
       "section": "experience",
+      "icon": "town",
       "title": "Mail yourself a care package to an A.T. post office and pick it up mid-hike.",
       "match": {
         "kind": "self_report"
@@ -668,6 +734,7 @@
     {
       "id": "journal-entry",
       "section": "experience",
+      "icon": "pen",
       "title": "Write a journal entry from the Trail.",
       "match": {
         "kind": "self_report"
@@ -676,6 +743,7 @@
     {
       "id": "trail-name",
       "section": "experience",
+      "icon": "pen",
       "title": "Find your Trail name.",
       "match": {
         "kind": "self_report"
@@ -684,6 +752,7 @@
     {
       "id": "original-trail-marker",
       "section": "experience",
+      "icon": "blaze",
       "title": "Spot an original Trail marker. Look for a metal diamond with the A.T. symbol and the words “Maine to Georgia.”",
       "match": {
         "kind": "self_report"
@@ -692,6 +761,7 @@
     {
       "id": "kennebec-ferry",
       "section": "experience",
+      "icon": "water",
       "title": "Ride the Kennebec River ferry.",
       "match": {
         "kind": "place",
@@ -702,6 +772,7 @@
     {
       "id": "kuwohi",
       "section": "experience",
+      "icon": "mountain",
       "title": "Hike to the summit of Kuwohi, the highest point on the A.T.",
       "match": {
         "kind": "place",
@@ -712,6 +783,7 @@
     {
       "id": "waterfall",
       "section": "experience",
+      "icon": "water",
       "title": "Hike to a waterfall.",
       "match": {
         "kind": "self_report"
@@ -720,6 +792,7 @@
     {
       "id": "film-camera",
       "section": "experience",
+      "icon": "camera",
       "title": "Take photos of your adventure with a disposable or film camera.",
       "match": {
         "kind": "self_report"
@@ -728,6 +801,7 @@
     {
       "id": "camp-stove-meal",
       "section": "experience",
+      "icon": "food",
       "title": "Cook a meal on a camp stove.",
       "match": {
         "kind": "self_report"
@@ -736,6 +810,7 @@
     {
       "id": "hike-in-silence",
       "section": "experience",
+      "icon": "leaf",
       "title": "Hike in silence to truly listen to nature.",
       "match": {
         "kind": "self_report"
@@ -744,6 +819,7 @@
     {
       "id": "local-trail-club",
       "section": "protect",
+      "icon": "people",
       "title": "Identify and learn about your local Trail Club.",
       "match": {
         "kind": "self_report"
@@ -752,6 +828,7 @@
     {
       "id": "volunteer-event",
       "section": "protect",
+      "icon": "tools",
       "title": "Sign up for a volunteer event and spend a day doing essential Trail maintenance.",
       "match": {
         "kind": "workday"
@@ -760,6 +837,7 @@
     {
       "id": "leave-no-trace-online",
       "section": "protect",
+      "icon": "learn",
       "title": "Brush up on your Leave No Trace knowledge with the ATC’s online resources.",
       "match": {
         "kind": "self_report"
@@ -768,6 +846,7 @@
     {
       "id": "become-a-member",
       "section": "protect",
+      "icon": "heart",
       "title": "Become a member of the ATC to support ongoing conservation work.",
       "match": {
         "kind": "self_report"
@@ -776,6 +855,7 @@
     {
       "id": "pick-up-litter",
       "section": "protect",
+      "icon": "trash",
       "title": "Pick up litter on a hike.",
       "match": {
         "kind": "self_report"
@@ -784,6 +864,7 @@
     {
       "id": "gift-a-membership",
       "section": "protect",
+      "icon": "heart",
       "title": "Gift a membership to a friend or family member.",
       "match": {
         "kind": "self_report"
@@ -792,6 +873,7 @@
     {
       "id": "legacy-gift",
       "section": "protect",
+      "icon": "heart",
       "title": "Leave a legacy gift to the A.T. in your will",
       "match": {
         "kind": "self_report"
@@ -800,6 +882,7 @@
     {
       "id": "advocate",
       "section": "protect",
+      "icon": "megaphone",
       "title": "Advocate for the Trail with your members of Congress.",
       "match": {
         "kind": "self_report"
@@ -808,6 +891,7 @@
     {
       "id": "at-hero",
       "section": "protect",
+      "icon": "heart",
       "title": "Become an A.T. Hero.",
       "match": {
         "kind": "self_report"
@@ -816,6 +900,7 @@
     {
       "id": "donate",
       "section": "protect",
+      "icon": "heart",
       "title": "Donate to the ATC help protect the Trail experience for future generations.",
       "match": {
         "kind": "self_report"
@@ -824,6 +909,7 @@
     {
       "id": "employer-match",
       "section": "protect",
+      "icon": "heart",
       "title": "Ask your employer to match your donation to the ATC.",
       "match": {
         "kind": "self_report"
@@ -832,6 +918,7 @@
     {
       "id": "fundraiser",
       "section": "protect",
+      "icon": "megaphone",
       "title": "Organize a fundraiser on Facebook or Instagram for the ATC.",
       "match": {
         "kind": "self_report"
@@ -840,6 +927,7 @@
     {
       "id": "trail-crew",
       "section": "protect",
+      "icon": "tools",
       "title": "Join a Trail Crew.",
       "match": {
         "kind": "workday"
@@ -848,6 +936,7 @@
     {
       "id": "invasive-species-workday",
       "section": "protect",
+      "icon": "trash",
       "title": "Participate in an invasive species removal workday.",
       "match": {
         "kind": "workday"
@@ -856,6 +945,7 @@
     {
       "id": "leave-no-trace-course",
       "section": "protect",
+      "icon": "learn",
       "title": "Take a Leave No Trace training course.",
       "match": {
         "kind": "self_report"
@@ -864,6 +954,7 @@
     {
       "id": "register-on-atcamp",
       "section": "protect",
+      "icon": "map",
       "title": "Register your upcoming A.T. trips on ATCamp.org to help reduce crowding on the Trail.",
       "match": {
         "kind": "self_report"
@@ -872,6 +963,7 @@
     {
       "id": "helene-recovery",
       "section": "protect",
+      "icon": "tools",
       "title": "Contribute to the Hurricane Helene recovery effort.",
       "match": {
         "kind": "self_report"
@@ -880,6 +972,7 @@
     {
       "id": "national-trails-day",
       "section": "protect",
+      "icon": "tools",
       "title": "Participate in National Trails Day activities.",
       "match": {
         "kind": "self_report"
@@ -888,6 +981,7 @@
     {
       "id": "report-graffiti",
       "section": "protect",
+      "icon": "megaphone",
       "title": "Report graffiti, vandalism, or dumping via the ATC’s incident report form.",
       "match": {
         "kind": "self_report"
@@ -896,6 +990,7 @@
     {
       "id": "waterway-litter",
       "section": "protect",
+      "icon": "water",
       "title": "Remove litter from A.T. waterways.",
       "match": {
         "kind": "self_report"
@@ -904,6 +999,7 @@
     {
       "id": "hiker-pledge",
       "section": "protect",
+      "icon": "heart",
       "title": "Take the long-distance hiker pledge.",
       "match": {
         "kind": "self_report"
@@ -912,6 +1008,7 @@
     {
       "id": "tell-someone",
       "section": "protect",
+      "icon": "people",
       "title": "Tell a partner, friend, or family member about why the A.T. is meaningful to you.",
       "match": {
         "kind": "self_report"
@@ -920,6 +1017,7 @@
     {
       "id": "mystery-1",
       "section": "mystery",
+      "icon": "mystery",
       "mystery": {
         "number": 1,
         "reveal_on": null
@@ -931,6 +1029,7 @@
     {
       "id": "mystery-2",
       "section": "mystery",
+      "icon": "mystery",
       "mystery": {
         "number": 2,
         "reveal_on": null
@@ -942,6 +1041,7 @@
     {
       "id": "mystery-3",
       "section": "mystery",
+      "icon": "mystery",
       "mystery": {
         "number": 3,
         "reveal_on": null

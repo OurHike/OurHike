@@ -45,6 +45,7 @@ function challenge(id: string, trail: string): Challenge {
         note: null,
         noteBy: null,
         photo: null,
+        icon: null,
         match: {
           kind: 'place',
           radiusM: 150,

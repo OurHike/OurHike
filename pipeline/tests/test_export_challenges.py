@@ -501,6 +501,18 @@ class TestTheCommittedFiles:
         raw = json.loads((exporter.REFERENCE_DIR / "atc" / "atc-summer-bucket-list-2027.json").read_text(encoding="utf-8"))
         assert raw["status"] == "draft"
 
+    def test_every_atc_item_names_one_of_the_cards_icons(self):
+        # The blaze card draws one glyph per item (#1962). The judgement is
+        # features/design/blaze-card/item-icons.json, copied into the file,
+        # and this holds every one of the 100 to a name the shell draws.
+        from lib.challenges import ICON_NAMES
+
+        raw = json.loads((exporter.REFERENCE_DIR / "atc" / "atc-summer-bucket-list-2027.json").read_text(encoding="utf-8"))
+        icons = {entry["id"]: entry.get("icon") for entry in raw["items"]}
+        assert len(icons) == 100
+        unknown = {item_id: icon for item_id, icon in icons.items() if icon not in ICON_NAMES}
+        assert unknown == {}
+
     def test_the_anchors_block_names_exactly_the_pois_the_items_use(self):
         # `anchors` is a reviewer aid the resolver ignores - so nothing but
         # this keeps the names a reviewer reads in step with the ids that

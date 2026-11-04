@@ -10,6 +10,8 @@
 // seventy-six of a hundred rows said nothing a hiker did not know from the
 // title, and read as a grade.
 
+import { CHALLENGE_WORDS } from './challengeWords'
+import { isItemDone, type ChallengeTag } from './challengeProgress'
 import {
   isPlaceItem,
   isSelfReport,
@@ -109,6 +111,32 @@ export function statusLine(
   if (!state.signedIn)
     return `Saved on this phone · counted for the ${club.orgShort} once you sign in, never by name.`
   return `Saved on this phone · counted for the ${club.orgShort} with signal, never by name.`
+}
+
+/**
+ * The one sentence a screen reader hears for the blaze card (#1962): what is
+ * earned, by section, and never what is not. "12 blazes earned: 3 Learn, 7
+ * Experience, 2 Protect." A card with nothing earned yet says so in four
+ * words rather than printing a hundred.
+ */
+export function cardSummary(challenge: Challenge, tags: readonly ChallengeTag[]): string {
+  const parts: string[] = []
+  let total = 0
+  for (const section of challenge.sections) {
+    const earned = challenge.items.filter(
+      (item) => item.section === section.id && isItemDone(item, challenge.id, tags),
+    ).length
+    if (earned === 0) continue
+    total += earned
+    parts.push(`${earned} ${section.short}`)
+  }
+  if (total === 0)
+    return `${capitalise(CHALLENGE_WORDS.nounPlural)} you earn appear here.`
+  return `${total} ${total === 1 ? CHALLENGE_WORDS.noun : CHALLENGE_WORDS.nounPlural} ${CHALLENGE_WORDS.past}: ${parts.join(', ')}.`
+}
+
+function capitalise(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1)
 }
 
 const MONTHS = [

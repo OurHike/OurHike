@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { formatDay, formatMoment, itemMeta, statusLine } from './challengeText'
+import {
+  cardSummary,
+  formatDay,
+  formatMoment,
+  itemMeta,
+  statusLine,
+} from './challengeText'
 import { ATC_CHALLENGE } from './challenges.fixtures'
+import { EMPTY_CHALLENGE_STATE, join, tag, tagsFor } from './challengeProgress'
 
 // The suite runs in UTC (vite.config.ts), where a UTC date and the hiker's
 // own date agree and a day read off the wrong clock cannot show. These run
@@ -71,5 +78,40 @@ describe('the one status line under a joined list (#1961)', () => {
     const line = statusLine(ATC_CHALLENGE, { apiConfigured: true, signedIn: true })
     expect(line).toMatch(/counted for the ATC/)
     expect(line).toMatch(/never by name/)
+  })
+})
+
+describe('the blaze card’s one sentence (#1962)', () => {
+  const earned = (...ids: string[]) => {
+    let state = join(
+      EMPTY_CHALLENGE_STATE,
+      ATC_CHALLENGE.id,
+      new Date('2027-06-01T12:00:00Z'),
+    )
+    for (const id of ids)
+      state = tag(state, ATC_CHALLENGE, item(id), {
+        at: new Date('2027-07-02T15:00:00Z'),
+        how: 'hand',
+      }).state
+    return tagsFor(state, ATC_CHALLENGE.id)
+  }
+
+  it('counts what is earned by section, in the club’s order, and nothing else', () => {
+    expect(
+      cardSummary(
+        ATC_CHALLENGE,
+        earned('trivia-quiz', 'mcafee-knob', 'springer-mountain'),
+      ),
+    ).toBe('3 blazes earned: 1 Learn, 2 Experience.')
+    expect(cardSummary(ATC_CHALLENGE, earned('katahdin'))).toBe(
+      '1 blaze earned: 1 Experience.',
+    )
+  })
+
+  it('says in four words that nothing is earned yet, with no hundred and no zero', () => {
+    const line = cardSummary(ATC_CHALLENGE, earned())
+    expect(line).toBe('Blazes you earn appear here.')
+    expect(line).not.toMatch(/\d/)
+    expect(line).not.toMatch(FORBIDDEN)
   })
 })

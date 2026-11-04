@@ -369,6 +369,7 @@ describe('autoTags - the items that tag themselves', () => {
       note: null,
       noteBy: null,
       photo: null,
+      icon: null,
       mystery: null,
       match: { kind: 'workday' as const, org: null, trail: 'AT' },
     })

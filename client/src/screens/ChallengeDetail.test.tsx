@@ -161,6 +161,39 @@ describe('one challenge', () => {
   })
 })
 
+describe('the blaze card in the header (#1962)', () => {
+  it('draws the card with no tile button at its own size, and a section tap picks that pill', async () => {
+    const { container } = detail()
+    expect(container.querySelector('.blaze-card--card')).not.toBeNull()
+    expect(container.querySelectorAll('button.blaze-tile')).toHaveLength(0)
+    expect(container.querySelector('.challenge-strip')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /^Protect the A\.T\., / }))
+    expect(screen.getByRole('button', { name: 'Protect' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  it('makes the tiles buttons only when made bigger, and a tile opens its own row', async () => {
+    const { container } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Bigger tiles' }))
+    expect(container.querySelector('.blaze-card--expanded')).not.toBeNull()
+    expect(container.querySelectorAll('button.blaze-tile').length).toBe(
+      ATC_CHALLENGE.items.length,
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /^Take the McAfee Knob shuttle/ }),
+    )
+    expect(screen.getByRole('button', { name: 'Experience' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(document.getElementById('challenge-item-mcafee-knob')).toHaveFocus()
+    await userEvent.click(screen.getByRole('button', { name: 'Smaller tiles' }))
+    expect(container.querySelectorAll('button.blaze-tile')).toHaveLength(0)
+  })
+})
+
 describe('the finish', () => {
   const finished = () =>
     joinedWith(

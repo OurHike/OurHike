@@ -36,6 +36,7 @@ function placeItem(
     note: null,
     noteBy: null,
     photo: null,
+    icon: null,
     match: {
       kind: places.length > 1 ? 'places_all' : 'place',
       radiusM: 150,

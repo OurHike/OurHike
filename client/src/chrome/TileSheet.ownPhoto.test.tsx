@@ -74,7 +74,9 @@ describe('the tile’s own photo (maintainer, poll 2026-11-04)', () => {
     )
   })
 
-  it('shows the own photo first with its chip, and takes it back with one tap', async () => {
+  it('shows the own photo first with its chip, and removes it only on a second tap', async () => {
+    // One tap deleted it, from the waypoint card too, and a camera photo's
+    // 640 px copy may be the only one (review of #2015). PoiCard's two taps.
     store.photos = [{ id: 'p1', url: 'blob:own', taken: '2027-07-14', source: 'library' }]
     const { container } = { container: document.body }
     sheet()
@@ -85,7 +87,39 @@ describe('the tile’s own photo (maintainer, poll 2026-11-04)', () => {
     ).toContain('blob:own')
     expect(screen.queryByRole('button', { name: /Use my own photo/ })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Not this photo' }))
+    expect(store.remove).not.toHaveBeenCalled()
+    await userEvent.click(
+      screen.getByRole('button', { name: /Tap again to remove it · the waypoint card/ }),
+    )
     expect(store.remove).toHaveBeenCalledWith('p1')
+  })
+
+  it('says so when the phone cannot remove the photo, rather than going quiet', async () => {
+    store.photos = [{ id: 'p1', url: 'blob:own', taken: '2027-07-14', source: 'library' }]
+    store.remove.mockImplementationOnce(async () => {
+      throw new Error('quota')
+    })
+    sheet()
+    await userEvent.click(screen.getByRole('button', { name: 'Not this photo' }))
+    await userEvent.click(screen.getByRole('button', { name: /Tap again to remove it/ }))
+    expect(
+      await screen.findByText('This phone could not remove the photo.'),
+    ).toBeInTheDocument()
+  })
+
+  it('names storage, not the photo, when the phone refuses to keep a prepared photo', async () => {
+    store.add.mockImplementationOnce(async () => {
+      throw new Error('quota')
+    })
+    sheet()
+    const input = screen.getByTestId('tile-sheet-library-input') as HTMLInputElement
+    await userEvent.upload(input, new File(['bytes'], 'knob.jpg', { type: 'image/jpeg' }))
+    expect(
+      await screen.findByText(
+        'This phone could not store the photo, so nothing was kept.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/could not be prepared/)).toBeNull()
   })
 
   it('offers no photo for an item with no place - there is no waypoint to keep it against', () => {

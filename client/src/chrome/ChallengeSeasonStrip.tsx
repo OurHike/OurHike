@@ -56,11 +56,19 @@ export function ChallengeSeasonStrip({
       <p className="challenges__eyebrow" id={`season-${challenge.id}`}>
         Your {seasonWord(challenge.window)} on the {trailLabel(challenge.trail)}
       </p>
-      <button type="button" className="season__strip" onClick={onOpen}>
+      {/* Named by the eyebrow and the text together: the eyebrow labels the
+          section, and a hiker tabbing to the button skipped it (review of
+          #2020). */}
+      <button
+        type="button"
+        className="season__strip"
+        aria-labelledby={`season-${challenge.id} season-text-${challenge.id}`}
+        onClick={onOpen}
+      >
         <span className="season__card">
           <BlazeCard challenge={challenge} tags={tags} today={today} size="mini" />
         </span>
-        <span className="season__text">
+        <span className="season__text" id={`season-text-${challenge.id}`}>
           <span className="season__count">
             <strong>{earned}</strong> {CHALLENGE_WORDS.noun}
           </span>
@@ -80,8 +88,9 @@ export function ChallengeSeasonStrip({
 }
 
 /**
- * One strip per joined challenge with a finish line, in the order joined -
- * what the shell hands Today. The loop lives here, in the deferred chunk,
+ * One strip per joined challenge with a finish line, in the published order
+ * (lib/useChallenges.ts `joined`, which follows challenges.json) - what the
+ * shell hands Today. The loop lives here, in the deferred chunk,
  * rather than in App.tsx, because the launch budget is measured in bytes and
  * App.tsx is in every first frame (features/LAUNCH_BUDGET.md).
  */

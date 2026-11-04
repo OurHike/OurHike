@@ -14,7 +14,7 @@ export async function before(page) {
 export const caption =
   'Today, once joined: the season strip is the last thing on the page (#1964, seeded hiker)'
 export const alt =
-  'The foot of the Today screen with an eyebrow reading Your summer on the A.T. and a dark green strip holding a tiny card of tiles, 4 trail karma, the states, and the list’s name and finish line'
+  'The foot of the Today screen with an eyebrow reading Your summer on the A.T. and a dark green strip holding a tiny card of tiles, 3 trail karma, the states, and the list’s name and finish line'
 
 export default async function drive(page) {
   await seedChallenges(page)

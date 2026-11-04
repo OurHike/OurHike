@@ -87,6 +87,21 @@ describe('where your trail karma is (#1965)', () => {
     expect(still.textContent).not.toMatch(/\+\d|\d+ (more|left|to go)/)
   })
 
+  it('puts what the walk earned with no state on the phone under "On the trail", never at home (review of #2020)', () => {
+    where(
+      earned([
+        { id: 'shelter-logbook', how: 'gps' },
+        { id: 'summit-4000', how: 'gps' },
+      ]),
+    )
+    const trail = screen.getByRole('heading', { name: 'On the trail' }).parentElement!
+    expect(within(trail).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.queryByRole('heading', { name: 'Not on the trail' })).toBeNull()
+    expect(
+      screen.getByText('2 earned on the trail, 0 at home. Where stays on this phone.'),
+    ).toBeInTheDocument()
+  })
+
   it('says so plainly when nothing is earned, and draws no map until something is on the trail', () => {
     held.map = fixtureMap()
     where()

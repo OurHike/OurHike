@@ -53,6 +53,21 @@ describe('the season strip at the bottom of Today (#1964)', () => {
     expect(onOpen).toHaveBeenCalledOnce()
   })
 
+  it('names its button with the eyebrow too, and holds no block inside the button (review of #2020)', () => {
+    const { container } = render(
+      <ChallengeSeasonStrip
+        challenge={ATC_CHALLENGE}
+        state={earned('springer-mountain')}
+        today={TODAY}
+        onOpen={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getByRole('button', { name: /^Your summer on the A\.T\. 1 trail karma/ }),
+    ).toBeInTheDocument()
+    expect(container.querySelector('.season__strip div, .season__strip p')).toBeNull()
+  })
+
   it('carries no numeral for what is missing, and nothing comparative', () => {
     const { container } = render(
       <ChallengeSeasonStrip

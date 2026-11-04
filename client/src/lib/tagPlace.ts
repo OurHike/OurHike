@@ -37,7 +37,8 @@ export function isTrailStateCode(value: unknown): value is TrailStateCode {
 export type TagPlace =
   /** The fix's snapped mile when it was earned. */
   | { kind: 'here'; mile: number }
-  /** Somewhere in the miles walked today - the day's extent, no finer. */
+  /** Somewhere in the miles walked on the day it was earned - the day’s
+   *  extent, no finer. */
   | { kind: 'walked'; fromMile: number; toMile: number }
   /** A place picked by name from the phone's own waypoints. */
   | { kind: 'poi'; poi: string; name: string; mile: number | null }

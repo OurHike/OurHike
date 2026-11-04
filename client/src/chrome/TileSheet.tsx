@@ -15,10 +15,20 @@
 // lib/wherePlace.ts asksWhere), and an earned tile offers "Take it back".
 // Nothing here waits on the network.
 //
+// "TAKE IT BACK" ONLY WHERE A HAND COULD HAVE EARNED IT. A section walked, a
+// height reached and a workday logged earn themselves (lib/challengeProgress.ts
+// autoTags), and autoTags put the same tag straight back after a take-back,
+// queueing a tag, an untag and a tag again (review of #2015). The maintainer
+// chose, by poll on 2026-11-04, to hide the button on those kinds rather than
+// remember a refusal - the brief's "every blaze has a one-tap Take it back"
+// is narrowed to the items a tap can earn (lib/challengeText.ts handTaggable).
+//
 // "NEAR YOU" says only what the phone knows for certain: that today's walk
 // covered the place's mile, or how far along the trail the fix is from it.
 // It never says how far the hiker is from anything when there is no fix,
-// and never asks for one.
+// and never asks for one. A place off the trail (a town, a visitor centre)
+// gets neither: its mile is where the trail passes nearest, and walking that
+// mile says nothing about having been there (lib/challenges.ts `offTrail`).
 //
 // "USE MY OWN PHOTO INSTEAD · STAYS ON THIS PHONE" (maintainer, poll
 // 2026-11-04: build it now rather than with slice 7's photos) is the place
@@ -45,6 +55,7 @@ import { isItemDone, itemDoneAt, type ChallengeTag } from '../lib/challengeProgr
 import {
   formatDay,
   formatMoment,
+  handTaggable,
   mileLabel,
   mysteryTeaser,
   placeWords,
@@ -63,19 +74,27 @@ export interface TileSheetProps {
   number: number
   today: string
   tags: readonly ChallengeTag[]
-  /** Whether a tap here may earn it: joined, inside the window, and a kind
-   *  a hand may earn. */
+  /** Whether a tap here may earn it: joined, inside the window, not sealed,
+   *  and a kind a hand may earn. */
   earnable: boolean
+  /** Out of reach while the Where sheet is over it: one modal at a time. */
+  inert?: boolean
   /** Today's walked miles (lib/passedToday.ts), for "Near you". */
   todayRanges?: readonly MileRange[]
   /** The fix snapped to the trail, or null; never asked for here. */
   fixMile?: number | null
   /** The hiker's unit system (Settings), for how far "Near you" is. */
   units?: UnitSystem
-  onEarn: () => void
+  /** `from` is the Earn button, where focus returns if the Where sheet is
+   *  backed out of. */
+  onEarn: (from: HTMLElement) => void
   /** Takes the earned item back - `poi` for one peak of a Triple Crown. */
   onTakeBack?: (poi?: string) => void
   onSetNote: (note: string) => void
+  /** "Workdays on this section", under the club's note on an item with a
+   *  place - the tagged-place sheet's link (#1780), kept when the tile sheet
+   *  replaced it (review of #2015 found it dropped). */
+  onOpenWorkdays?: () => void
   onClose: () => void
 }
 
@@ -86,12 +105,14 @@ export function TileSheet({
   today,
   tags,
   earnable,
+  inert = false,
   todayRanges = [],
   fixMile = null,
   units = 'imperial',
   onEarn,
   onTakeBack,
   onSetNote,
+  onOpenWorkdays,
   onClose,
 }: TileSheetProps) {
   const closeButton = useRef<HTMLButtonElement | null>(null)
@@ -100,12 +121,30 @@ export function TileSheet({
   }, [])
   const done = isItemDone(item, challenge.id, tags)
   const doneTag = itemDoneAt(item, challenge.id, tags)
+  // Earning in place swaps the focused Earn button for the earned line, and
+  // focus fell to <body> with it (review of #2015): it goes to Take it back,
+  // or to the earned line where there is none.
+  const takeBackButton = useRef<HTMLButtonElement | null>(null)
+  const earnedLine = useRef<HTMLSpanElement | null>(null)
+  const wasDone = useRef(done)
+  useEffect(() => {
+    if (done && !wasDone.current) (takeBackButton.current ?? earnedLine.current)?.focus()
+    wasDone.current = done
+  }, [done])
   const places = isPlaceItem(item) ? item.match.places : []
+  // The place the tile is about: the one it was earned at, else - for a
+  // Triple Crown - the first peak not yet earned, rather than always the
+  // last (review of #2015).
   const place =
     places.find((candidate) => candidate.poi === doneTag?.poi) ??
+    places.find(
+      (candidate) =>
+        !tags.some((tag) => tag.itemId === item.id && tag.poi === candidate.poi),
+    ) ??
     places[places.length - 1]
   // The hiker's own photos of this place, the same store as the waypoint
-  // card's; an item with no place has no store, and the hook reads none.
+  // card's. A hook cannot be skipped, so an item with no place reads the
+  // store under the empty id, which holds nothing, and shows none of it.
   const ownPhotos = useOwnPhotos(place?.poi ?? '')
   const own = place !== undefined ? (ownPhotos.photos[0] ?? null) : null
   const photo = own?.url ?? item.photo
@@ -113,26 +152,50 @@ export function TileSheet({
   const libraryInput = useRef<HTMLInputElement | null>(null)
   const [photoNote, setPhotoNote] = useState<string | null>(null)
   const [preparing, setPreparing] = useState(false)
+  // Removing is two taps, as on the waypoint card (chrome/PoiCard.tsx): it
+  // deletes the 640 px copy from the store both screens read, and a camera
+  // photo's copy may be the only one (review of #2015).
+  const [removeArmed, setRemoveArmed] = useState(false)
   const pickOwnPhoto = async (file: File | null) => {
     if (file === null) return
     setPhotoNote(null)
     setPreparing(true)
     try {
-      // The capture date comes off the original, beside the re-encode that
-      // destroys it (lib/exifDate.ts), as the waypoint card does it.
-      const [blob, taken] = await Promise.all([
-        preparePhoto(file, CARD_PHOTO_EDGE),
-        exifCaptureDate(file),
-      ])
-      await ownPhotos.add({ blob, taken, source: 'library' })
-    } catch (error) {
-      setPhotoNote(
-        error instanceof PhotoUnusable
-          ? error.message
-          : 'That photo could not be prepared. Try another.',
-      )
+      let blob: Blob
+      let taken: string | null
+      try {
+        // The capture date comes off the original, beside the re-encode that
+        // destroys it (lib/exifDate.ts), as the waypoint card does it.
+        ;[blob, taken] = await Promise.all([
+          preparePhoto(file, CARD_PHOTO_EDGE),
+          exifCaptureDate(file),
+        ])
+      } catch (error) {
+        setPhotoNote(
+          error instanceof PhotoUnusable
+            ? error.message
+            : 'That photo could not be prepared. Try another.',
+        )
+        return
+      }
+      try {
+        await ownPhotos.add({ blob, taken, source: 'library' })
+      } catch {
+        // Storage refused - quota, private browsing, no IndexedDB - the
+        // waypoint card's sentence for the same failure.
+        setPhotoNote('This phone could not store the photo, so nothing was kept.')
+      }
     } finally {
       setPreparing(false)
+    }
+  }
+  const removeOwnPhoto = async (id: string) => {
+    setRemoveArmed(false)
+    setPhotoNote(null)
+    try {
+      await ownPhotos.remove(id)
+    } catch {
+      setPhotoNote('This phone could not remove the photo.')
     }
   }
   const section = challenge.sections.find((entry) => entry.id === item.section)
@@ -143,7 +206,7 @@ export function TileSheet({
 
   // What the phone knows about the place, said only when it knows it.
   let nearYou: string | null = null
-  if (place !== undefined) {
+  if (place !== undefined && !(isPlaceItem(item) && item.match.offTrail)) {
     const passedToday = todayRanges.some(
       (range) => range.startMile <= place.mile && place.mile <= range.endMile,
     )
@@ -180,6 +243,7 @@ export function TileSheet({
       role="dialog"
       aria-modal="true"
       aria-labelledby="tile-sheet-title"
+      inert={inert}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
           event.stopPropagation()
@@ -245,15 +309,22 @@ export function TileSheet({
         <div className="challenge-actions tile-sheet__actions">
           {done ? (
             <>
-              <span className="tile-sheet__earned" role="status">
+              <span
+                className="tile-sheet__earned"
+                role="status"
+                ref={earnedLine}
+                tabIndex={-1}
+              >
                 {CHALLENGE_WORDS.done}
                 {doneTag !== null ? ` · ${formatDay(doneTag.at)}` : ''}
               </span>
-              {onTakeBack !== undefined && doneTag !== null && (
+              {onTakeBack !== undefined && doneTag !== null && handTaggable(item) && (
                 // One tap, for the hiker who pressed Earn all after walking
                 // past the junction without going up. A tag already sent is
-                // taken back on the server too (lib/useChallenges.ts).
+                // taken back on the server too (lib/useChallenges.ts). Not
+                // on the kinds that earn themselves - see the header.
                 <button
+                  ref={takeBackButton}
                   type="button"
                   className="challenge-button challenge-button--ghost"
                   onClick={() =>
@@ -270,7 +341,11 @@ export function TileSheet({
             </>
           ) : (
             earnable && (
-              <button type="button" className="challenge-button" onClick={onEarn}>
+              <button
+                type="button"
+                className="challenge-button"
+                onClick={(event) => onEarn(event.currentTarget)}
+              >
                 {CHALLENGE_WORDS.verb.charAt(0).toUpperCase()}
                 {CHALLENGE_WORDS.verb.slice(1)} {CHALLENGE_WORDS.some}
               </button>
@@ -294,9 +369,13 @@ export function TileSheet({
               <button
                 type="button"
                 className="challenge-link"
-                onClick={() => void ownPhotos.remove(own.id)}
+                onClick={() =>
+                  removeArmed ? void removeOwnPhoto(own.id) : setRemoveArmed(true)
+                }
               >
-                Not this photo
+                {removeArmed
+                  ? 'Tap again to remove it · the waypoint card loses it too'
+                  : 'Not this photo'}
               </button>
             )}
             <input
@@ -340,6 +419,11 @@ export function TileSheet({
               From {item.noteBy ?? challenge.orgName}
             </span>
             <p>{item.note}</p>
+            {place !== undefined && onOpenWorkdays !== undefined && (
+              <button type="button" className="challenge-link" onClick={onOpenWorkdays}>
+                Workdays on this section
+              </button>
+            )}
           </div>
         )}
         {done && (

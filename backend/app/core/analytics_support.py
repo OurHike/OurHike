@@ -56,22 +56,50 @@ WHAT IT DOES NOT CLAIM
   figures can read lower than the number of payments; the money is in
   `support_charges`, not here. A payment with no account behind it (a link
   used straight from the website) has no switch to read, and is counted.
-- **The intake gates do not apply.** The day's row budget and the "rollup
-  stopped" pause exist to bound what strangers can post
-  (app/routers/analytics.py); this row is written by the server, at most once
-  per choice.
+- **The row budget does not apply; the pause does.** The day's row budget
+  exists to bound what strangers can post (app/routers/analytics.py), and
+  this row is written by the server, at most once per choice. The "rollup
+  stopped" pause is a different promise - the Privacy Policy's "If the
+  deletion job stops, we stop collecting within three days" - and it covers
+  this row like any other: while the rollup's heartbeat is stale
+  (`rollup_paused`, the route's own rule) nothing is written and
+  `counted_at` stays unset, so a confirmation Stripe redelivers once the
+  rollup is back is counted then, once, and one it does not redeliver is
+  never counted. Until the release review of 2026-11-04 (finding 9) the row
+  was written regardless, and the policy's sentence was stronger than the
+  code.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.analytics import AnalyticsEvent, SealState, UsageEvent, UsagePlatform
 from app.models.preferences import UserPreferences
 from app.models.support import SupportChoice
+
+# The rollup's heartbeat: the newest `analytics_months.computed_at`, which
+# every nightly run leaves on the current month, rows or none
+# (app/core/analytics_rollup.py, step 1).
+_ROLLUP_RAN_AT = text("select max(computed_at) from analytics_months")
+
+
+def rollup_paused(db: Session, now: datetime) -> bool:
+    """The nightly rollup has not run for `analytics_rollup_stale_days`, or never has.
+
+    The rule `POST /usage-events` turns a batch away by (`_gate_outcome` in
+    app/routers/analytics.py, which reads the same heartbeat inside its one
+    intake query), so the paid count keeps the Privacy Policy's "within
+    three days" too. The comparison is written twice, there and here; a
+    change to the rule has to reach both.
+    """
+    ran_at = db.execute(_ROLLUP_RAN_AT).scalar()
+    return ran_at is None or ran_at < now - timedelta(days=settings.analytics_rollup_stale_days)
 
 
 def _measurement_off(db: Session, profile_id: str | None) -> bool:
@@ -89,10 +117,18 @@ def count_paid_choice(db: Session, choice: SupportChoice, *, cents: int | None, 
     `choice` must be locked by the caller. Does not commit: it rides in the
     transaction that recorded the payment, so the count and the payment land
     together or not at all.
+
+    Counts nothing while the rollup is paused (`rollup_paused`): the choice
+    is still recorded as paid by the caller, only this row is not written,
+    and `counted_at` is left unset so the next delivery of the same
+    confirmation, once the rollup is back, counts it - once, as it would
+    have.
     """
     if choice.counted_at is not None or cents is None or cents <= 0:
         return False
     if choice.uncounted or _measurement_off(db, choice.profile_id):
+        return False
+    if rollup_paused(db, now):
         return False
     db.add(
         AnalyticsEvent(

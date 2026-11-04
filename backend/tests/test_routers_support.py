@@ -43,12 +43,12 @@ from app.core.support_providers import PROVIDERS
 from app.core.support_providers import stripe as stripe_provider
 from app.core.support_providers.stripe import MARKER
 from app.core.time import utc_now
-from app.models.analytics import AnalyticsEvent, UsageEvent
+from app.models.analytics import AnalyticsEvent, AnalyticsMonth, UsageEvent
 from app.models.mail import EmailSend, MailPurpose, SuppressionReason
 from app.models.profile import Profile
 from app.models.support import SupportCharge, SupportChoice, SupportEvent, SupportStatus
 from app.routers.support import clear_total_cache
-from tests.factories import make_usage_consent
+from tests.factories import make_rollup_heartbeat, make_usage_consent
 from tests.tokens import auth_headers
 
 SECRET = "whsec_test"
@@ -129,6 +129,16 @@ def _fresh_total():
     clear_total_cache()
     yield
     clear_total_cache()
+
+
+@pytest.fixture(autouse=True)
+def _rollup_has_run(db_session):
+    """The paid count writes nothing while the six-month delete is not running,
+    as `POST /usage-events` collects nothing then (`rollup_paused` in
+    app/core/analytics_support.py); every test but the two about that needs
+    the rollup to look alive. tests/test_routers_usage_events.py has the same
+    fixture, and tests/test_support_review4.py imports this one."""
+    make_rollup_heartbeat(db_session)
 
 
 @pytest.fixture
@@ -1267,6 +1277,51 @@ def test_an_account_that_turned_usage_statistics_off_is_not_counted(client, conf
 
     assert _support_rows(db_session) == []
     assert db_session.query(SupportChoice).filter(SupportChoice.status == SupportStatus.active).count() == 1
+
+
+def _rollup_stale(db_session) -> None:
+    """Only a heartbeat a minute past `analytics_rollup_stale_days`, as
+    tests/test_routers_usage_events.py `_only_heartbeat` leaves one."""
+    db_session.query(AnalyticsMonth).delete()
+    db_session.commit()
+    make_rollup_heartbeat(db_session, now=utc_now() - timedelta(days=settings.analytics_rollup_stale_days, minutes=1))
+
+
+def test_a_payment_confirmed_while_the_rollup_is_stale_is_not_counted(client, configured, db_session):
+    """The Privacy Policy: "If the deletion job stops, we stop collecting
+    within three days." `POST /usage-events` kept that; the paid count did
+    not, writing its row with the intake gates bypassed, until the release
+    review of 2026-11-04 (finding 9). Red on 5c5d899e: one row written. The
+    choice is still recorded as paid - only the usage count is skipped - and
+    `counted_at` stays unset, which the next test is about."""
+    _rollup_stale(db_session)
+    user_id = str(uuid.uuid4())
+
+    _paying(client, user_id)
+
+    assert _support_rows(db_session) == []
+    [choice] = db_session.query(SupportChoice).filter(SupportChoice.profile_id == user_id).all()
+    assert choice.status == SupportStatus.active
+    assert choice.counted_at is None
+
+
+def test_a_confirmation_redelivered_once_the_rollup_is_back_is_counted_once(client, configured, db_session):
+    """Nothing here dedupes a delivery by its event id (`apply_delivery` logs
+    every one after applying it), so a confirmation Stripe resends - or the
+    founder resends from its dashboard, which keeps events 30 days - reaches
+    the count again. Skipped during the pause, counted once after it, and
+    `counted_at` then keeps a third delivery from counting it twice."""
+    _rollup_stale(db_session)
+    choice = _choice_id(_choose(client, str(uuid.uuid4())))
+    envelope = _session(choice=choice)
+    _deliver(client, envelope)
+    assert _support_rows(db_session) == []
+
+    make_rollup_heartbeat(db_session)
+    _deliver(client, envelope)
+    _deliver(client, envelope)
+
+    assert [row.support_cents for row in _support_rows(db_session)] == [6000]
 
 
 def test_a_move_between_providers_is_not_counted_as_a_new_choice(client, configured, monkeypatch, db_session):

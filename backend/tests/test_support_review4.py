@@ -43,6 +43,7 @@ from tests.test_routers_support import (  # noqa: F401 - the fixtures are used b
     _me,
     _paying,
     _refund,
+    _rollup_has_run,
     _save_switches,
     _session,
     _stop,

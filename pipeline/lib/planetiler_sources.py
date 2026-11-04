@@ -42,6 +42,9 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+import requests
+
+from lib.atomic_write import write_text_atomically
 from lib.http_retry import download_with_retry
 
 #: Where Planetiler looks for its profile sources when run from pipeline/
@@ -140,10 +143,19 @@ def _read_manifest(sources_dir: Path) -> dict:
 
 
 def _write_manifest(sources_dir: Path, manifest: dict) -> None:
-    path = sources_dir / MANIFEST_NAME
-    part = path.with_name(path.name + ".part")
-    part.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    part.replace(path)
+    write_text_atomically(sources_dir / MANIFEST_NAME, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+
+
+#: What a fetch interrupted by a killed job leaves behind: this module's
+#: `.incoming` file and download_with_retry's `.part` beside it. Neither is
+#: ever read, but the save step runs on always(), so either can end up in
+#: a cache entry and come back on the next restore.
+LEFTOVER_PATTERNS = ("*.incoming", "*.part", "*.tmp")
+
+#: The failures a fetch is allowed to survive by keeping an older copy:
+#: the network (requests' own exceptions), the disk, and an answer that is
+#: not a zip archive. Anything else is a bug, and fails the run.
+FETCH_FAILURES = (requests.RequestException, OSError, ValueError)
 
 
 def _vouched_age_days(source: Source, path: Path, entry: dict | None, today: date) -> int | None:
@@ -178,6 +190,9 @@ def ensure_sources(
     fails. A download that is not a zip archive never replaces anything.
     """
     sources_dir.mkdir(parents=True, exist_ok=True)
+    for pattern in LEFTOVER_PATTERNS:
+        for leftover in sources_dir.glob(pattern):
+            leftover.unlink(missing_ok=True)
     manifest = _read_manifest(sources_dir)
     outcomes: list[Outcome] = []
     unavailable: list[str] = []
@@ -196,7 +211,7 @@ def ensure_sources(
             if not zipfile.is_zipfile(incoming):
                 raise ValueError(f"{source.url} did not answer with a zip archive")
             incoming.replace(path)
-        except Exception as error:  # every failure is reported, then judged by whether a copy stands
+        except FETCH_FAILURES as error:
             incoming.unlink(missing_ok=True)
             if age is not None:
                 outcomes.append(

@@ -72,8 +72,11 @@ def test_the_save_follows_a_partial_fetch_only_when_something_landed_and_cannot_
     the save here is the one the restore above will find."""
     save = _steps()[_at(_steps(), SAVE)]
     manifest = "hashFiles('pipeline/data/sources/planetiler_sources.json')"
+    condition = " ".join(str(save["if"]).split())
     assert save["uses"].startswith("actions/cache/save@")
-    assert save["if"] == f"always() && steps.planetiler_sources.outputs.fetched == 'true' && {manifest} != ''"
+    assert "always()" in condition, "a fetch that failed part way must still save what arrived"
+    assert "steps.planetiler_sources.outputs.fetched == 'true'" in condition, "save only when something was fetched"
+    assert f"{manifest} != ''" in condition, "guard on the same file the key hashes"
     assert save["continue-on-error"] is True
     assert save["with"]["path"] == CACHED
     assert save["with"]["key"] == PREFIX + "${{ " + manifest + " }}"

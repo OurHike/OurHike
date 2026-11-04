@@ -234,6 +234,37 @@ def test_a_file_nobody_vouches_for_is_not_kept_when_its_refetch_fails(tmp_path):
         ensure_sources(tmp_path, today=TODAY, download=FakeDownload(failing=("water_polygons",)))
 
 
+def test_what_a_killed_fetch_left_behind_is_cleared_before_anything_else(tmp_path):
+    """A job killed mid-download skips download_with_retry's own cleanup,
+    and the save step runs on always(), so a cache entry can carry the
+    half-written files back into the next run."""
+    _seed(tmp_path, fetched=TODAY - timedelta(days=1))
+    leftovers = [
+        tmp_path / "water-polygons-split-3857.zip.incoming",
+        tmp_path / "water-polygons-split-3857.zip.incoming.part",
+        tmp_path / f"{MANIFEST_NAME}.tmp",
+    ]
+    for leftover in leftovers:
+        leftover.write_bytes(b"half")
+
+    ensure_sources(tmp_path, today=TODAY, download=FakeDownload())
+
+    assert [p.name for p in leftovers if p.exists()] == []
+
+
+def test_a_bug_in_a_fetch_fails_the_run_rather_than_keeping_a_stale_copy(tmp_path):
+    """Kept-on-failure covers the network, the disk and a non-zip answer.
+    A TypeError is a defect in this code, and a green run with a warning
+    would hide it for a month."""
+    _seed(tmp_path, fetched=TODAY - timedelta(days=45))
+
+    def broken(url, dest, **_kwargs):
+        raise TypeError("download() got an unexpected keyword argument")
+
+    with pytest.raises(TypeError):
+        ensure_sources(tmp_path, today=TODAY, download=broken)
+
+
 def test_the_save_marker_is_written_once_however_many_sources_land(tmp_path):
     output = tmp_path / "github_output"
     mark = github_output_marker(str(output))

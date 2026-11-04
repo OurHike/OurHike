@@ -271,6 +271,14 @@ export const CrewsSection = screen(
   () => import('../chrome/CrewsSection').then((m) => m.CrewsSection),
   'CrewsSection',
 )
+// The season strips at the bottom of Today (#1964), deferred for
+// FieldNoteSection's reason: they carry the card of tiles and its icon set,
+// and Today is the first frame.
+export const ChallengeSeasonStrips = screen(
+  () => import('../chrome/ChallengeSeasonStrip').then((m) => m.ChallengeSeasonStrips),
+  'ChallengeSeasonStrips',
+)
+
 export const FieldNoteSection = screen(
   () => import('../chrome/FieldNoteSection').then((m) => m.FieldNoteSection),
   'FieldNoteSection',

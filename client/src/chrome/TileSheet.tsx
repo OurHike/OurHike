@@ -46,6 +46,7 @@ import {
   formatDay,
   formatMoment,
   mileLabel,
+  mysteryTeaser,
   placeWords,
   titleOrSealed,
 } from '../lib/challengeText'
@@ -221,6 +222,11 @@ export function TileSheet({
           <h2 className="challenge-sheet__name" id="tile-sheet-title">
             {titleOrSealed(item, challenge, today)}
           </h2>
+          {mysteryTeaser(item, today) !== null && (
+            <span className="challenge-sheet__moment tile-sheet__line">
+              {mysteryTeaser(item, today)}
+            </span>
+          )}
           {place !== undefined && (
             <span className="challenge-sheet__moment tile-sheet__line">
               ◆ {place.name} · {mileLabel(place.mile)}

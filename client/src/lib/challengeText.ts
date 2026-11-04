@@ -139,6 +139,13 @@ function capitalise(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1)
 }
 
+/** The club's one line about a sealed mystery item, or null: shown under
+ *  "Sealed until Jul 20" before its day, never in place of the title. */
+export function mysteryTeaser(item: ChallengeItem, today: string): string | null {
+  if (item.mystery === null || itemTitle(item, today) !== null) return null
+  return item.mystery.teaser
+}
+
 const MONTHS = [
   'Jan',
   'Feb',

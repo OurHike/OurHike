@@ -177,7 +177,11 @@ export const ATC_ARTIFACT = {
       icon: 'mystery',
       title: null,
       sealed_title: btoa('Watch the sun set from Jefferson Rock.'),
-      mystery: { number: 1, reveal_on: '2027-07-20' },
+      mystery: {
+        number: 1,
+        reveal_on: '2027-07-20',
+        teaser: 'Something to do before the sun is up.',
+      },
       match: { kind: 'self_report' },
     },
     {

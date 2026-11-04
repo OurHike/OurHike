@@ -59,6 +59,7 @@ import {
   itemMeta,
   itemTrailing,
   mileLabel,
+  mysteryTeaser,
   statusLine,
   titleOrSealed,
   trailLabel,
@@ -275,14 +276,23 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           </p>
         </div>
       ) : (
-        eligible && (
+        // Reachable from the day of joining (#1964): what the club receives
+        // and its rule are worth reading before a single blaze, not after
+        // twenty-five. A record with no finish line has nothing to open.
+        (finish !== null || eligible) && (
           <div className="challenge-actions">
             <button
               type="button"
               className="challenge-button"
               onClick={() => setView('finish')}
             >
-              {challenge.reward === null ? 'See your finish' : 'Your finish'}
+              {challenge.reward === null
+                ? eligible
+                  ? 'See your finish'
+                  : 'Your finish line'
+                : eligible
+                  ? 'Your finish'
+                  : 'Your entry'}
             </button>
           </div>
         )
@@ -486,12 +496,14 @@ function ItemRow({
   const places = item.match.kind === 'places_all' ? item.match.places : []
   // A place or a walk under the title, and the day it was earned; an at-home
   // item has no sub-line at all (lib/challengeText.ts).
-  const meta = [
-    itemMeta(item),
-    doneTag !== null ? `${CHALLENGE_WORDS.past} ${formatDay(doneTag.at)}` : '',
-  ]
-    .filter((part) => part !== '')
-    .join(' · ')
+  const meta = sealed
+    ? (mysteryTeaser(item, today) ?? '')
+    : [
+        itemMeta(item),
+        doneTag !== null ? `${CHALLENGE_WORDS.past} ${formatDay(doneTag.at)}` : '',
+      ]
+        .filter((part) => part !== '')
+        .join(' · ')
   const text = (
     <>
       <span className="challenge-row__number">{number}</span>
@@ -506,7 +518,7 @@ function ItemRow({
           </span>
         )}
         <span className="challenge-row__title">{title}</span>
-        {!sealed && meta !== '' && <span className="challenge-row__meta">{meta}</span>}
+        {meta !== '' && <span className="challenge-row__meta">{meta}</span>}
       </span>
       {trailing !== undefined && !sealed && (
         <span className="challenge-row__trailing">{trailing}</span>
@@ -594,6 +606,10 @@ const ADDRESS_MAX_CHARS = 1000
 function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
   const { challenge, state, today } = props
   const done = doneItems(challenge, state)
+  const { finish: finishCount, eligible } = progress(challenge, state)
+  // The ATC's own rules, said as rules: one entry per person, and each
+  // mystery item with a drawing of its own (features/CHALLENGES_BLAZE_CARD.md).
+  const hasMystery = challenge.items.some((item) => item.mystery !== null)
   // The hiker's own days: a tag at 9 pm and one at 7 am the next morning are
   // two days on the trail, which their UTC dates were not.
   const days = new Set(done.map((entry) => localDay(new Date(entry.tag.at)))).size
@@ -817,8 +833,45 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
         </span>
       </div>
 
+      {reward.kind === 'drawing' && (
+        <p className="challenges__note">
+          One entry per person — use the email you signed up with.
+          {hasMystery ? ' Each mystery item has a drawing of its own.' : ''}
+        </p>
+      )}
       {sent !== null ? (
         sentLine
+      ) : !eligible && finishCount !== null ? (
+        // Day one (#1964): what the club will receive, before anything can
+        // be sent. The count is the club's rule, the finish line it set. A
+        // draft's "nobody to send it to" is said under it, not instead of it.
+        <>
+          <div className="challenge-receives">
+            <span className="challenges__eyebrow">
+              What the {challenge.orgShort} receives
+            </span>
+            <ul>
+              <li>Your name</li>
+              <li>
+                {words.physical
+                  ? 'Your mailing address, to send ' + words.thing
+                  : 'Your email, for ' + words.thing}
+              </li>
+              <li>
+                The items you {CHALLENGE_WORDS.past}, and whether each was from your walk
+                or by hand
+              </li>
+            </ul>
+            <span>
+              No GPS track, no photos, no register lines. Nothing has been sent.
+            </span>
+          </div>
+          <p className="challenges__note">
+            The entry opens at {finishCount} {challenge.finish?.label ?? ''} — the{' '}
+            {challenge.orgShort}’s rule.
+          </p>
+          {refusal !== null && <p className="challenges__empty">{refusal}</p>}
+        </>
       ) : refusal !== null ? (
         <p className="challenges__empty">{refusal}</p>
       ) : !challenge.takesEntries ? (

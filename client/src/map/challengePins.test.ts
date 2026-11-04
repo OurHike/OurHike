@@ -149,7 +149,7 @@ describe('challengePinFeatures', () => {
     const mystery = placeItem('mystery-1', [MONSON], {
       title: null,
       sealedTitle: btoa('Visit Monson'),
-      mystery: { number: 1, revealOn: '2027-07-20' },
+      mystery: { number: 1, revealOn: '2027-07-20', teaser: null },
     })
     const withMystery = challenge('bucket', [mystery])
     const state = joinedState('bucket')
@@ -163,7 +163,7 @@ describe('challengePinFeatures', () => {
   it('never draws a mystery the club has given no date, which stays sealed', () => {
     const undated = placeItem('mystery-2', [MONSON], {
       title: null,
-      mystery: { number: 2, revealOn: null },
+      mystery: { number: 2, revealOn: null, teaser: null },
     })
     expect(
       pins([challenge('bucket', [undated])], joinedState('bucket'), '2099-01-01'),

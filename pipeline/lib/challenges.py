@@ -89,6 +89,46 @@ REWARD_KINDS = ("patch", "postcard", "sticker", "drawing")
 #: behind its own list.
 STATUSES = ("draft", "published")
 
+#: The blaze card's icon set (features/CHALLENGES_BLAZE_CARD.md, slice 2): one
+#: stroke glyph per kind of item, drawn by client/src/chrome/blazeIcons.ts,
+#: whose test holds the client's names to this tuple. An item's `icon` is the
+#: reviewer's judgement - features/design/blaze-card/item-icons.json for the
+#: ATC's list, copied into the reviewed file rather than re-derived - and an
+#: item with none draws the `learn` glyph on the phone. Twenty-six from the
+#: design frame (BlazeCard.dc.html) plus `pen`, which the frame's mapping
+#: used for six writing items without drawing a glyph for it (the frame fell
+#: back to `learn`); a pencil is the honest glyph for "write a journal
+#: entry", kept by the maintainer's poll of 2026-11-04 once seen on the card.
+ICON_NAMES = (
+    "blaze",
+    "book",
+    "boots",
+    "bridge",
+    "camera",
+    "film",
+    "food",
+    "heart",
+    "leaf",
+    "learn",
+    "map",
+    "megaphone",
+    "mountain",
+    "museum",
+    "mystery",
+    "pen",
+    "people",
+    "podcast",
+    "quiz",
+    "shelter",
+    "sunrise",
+    "tent",
+    "tools",
+    "tower",
+    "town",
+    "trash",
+    "water",
+)
+
 #: Tag radius, in metres from the POI, when a match does not give its own.
 #:
 #: WHAT IT DOES TODAY: only this exporter reads it. A named place farther from
@@ -405,6 +445,12 @@ def resolve_item(
     photo, photo_ok = _https_or_none(raw.get("photo"))
     if not photo_ok:
         return None, "photo must be an https URL"
+    # The card's glyph: absent is allowed (the phone draws `learn`), a name
+    # this build does not draw is refused rather than shipped to a shell that
+    # would draw nothing for it.
+    icon = raw.get("icon")
+    if icon is not None and icon not in ICON_NAMES:
+        return None, f"icon must be one of {', '.join(ICON_NAMES)}"
 
     out: dict = {
         "id": raw["id"],
@@ -413,6 +459,7 @@ def resolve_item(
         "note": _text(raw.get("note")) or None,
         "note_by": _text(raw.get("note_by")) or None,
         "photo": photo,
+        "icon": icon,
         "match": match,
     }
     if mystery is not None:

@@ -110,6 +110,7 @@ fields as (
         json_extract(item_json, '$.note') as note_json,
         json_extract(item_json, '$.note_by') as note_by_json,
         json_extract(item_json, '$.photo') as photo_json,
+        json_extract(item_json, '$.icon') as icon_json,
         json_extract(item_json, '$.match') as match_json,
         json_extract(item_json, '$.match.kind') as kind_json,
         json_extract(item_json, '$.match.radius_m') as radius_json,
@@ -195,7 +196,22 @@ typed as (
         {{ challenges_text('note_json') }} as note_text,
         {{ challenges_text('note_by_json') }} as note_by_text,
         {{ challenges_https_ok('photo_json') }} as photo_ok,
-        {{ challenges_https('photo_json') }} as photo_url
+        {{ challenges_https('photo_json') }} as photo_url,
+        -- The card's glyph (#1962): absent or JSON null publishes null and
+        -- the phone draws `learn`; anything else must be one of the names
+        -- the shell draws, as resolve_item() holds it to ICON_NAMES.
+        case
+            when json_type(icon_json) = 'VARCHAR'
+                then json_extract_string(icon_json, '$')
+        end as icon_text,
+        coalesce(json_type(icon_json), 'NULL') = 'NULL'
+        or (
+            json_type(icon_json) = 'VARCHAR'
+            and list_contains(
+                {{ var('challenges_icon_names') }},
+                json_extract_string(icon_json, '$')
+            )
+        ) as icon_ok
     from fields
 ),
 
@@ -751,6 +767,12 @@ resolved as (
             when match_checked.match_problem is not null
                 then match_checked.match_problem
             when not match_checked.photo_ok then 'photo must be an https URL'
+            when not match_checked.icon_ok
+                then
+                    'icon must be one of '
+                    || array_to_string(
+                        {{ var('challenges_icon_names') }}, ', '
+                    )
         end as problem,
         -- Sealed through the reveal day itself, against the build's date.
         coalesce(
@@ -783,6 +805,7 @@ select
                 'note', nullif(note_text, ''),
                 'note_by', nullif(note_by_text, ''),
                 'photo', photo_url,
+                'icon', icon_text,
                 'match', published_match
             )
         when sealed
@@ -793,6 +816,7 @@ select
                 'note', nullif(note_text, ''),
                 'note_by', nullif(note_by_text, ''),
                 'photo', photo_url,
+                'icon', icon_text,
                 'match', published_match,
                 'mystery', json_object(
                     'number', mystery_number,
@@ -807,6 +831,7 @@ select
             'note', nullif(note_text, ''),
             'note_by', nullif(note_by_text, ''),
             'photo', photo_url,
+            'icon', icon_text,
             'match', published_match,
             'mystery', json_object(
                 'number', mystery_number,

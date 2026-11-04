@@ -21,6 +21,7 @@ import pytest
 
 from lib.challenges import (
     DEFAULT_RADIUS_M,
+    ICON_NAMES,
     MAX_RADIUS_M,
     MIN_RADIUS_M,
     haversine_m,
@@ -401,6 +402,31 @@ class TestItems:
     def test_an_item_id_must_be_lowercase_words_joined_by_hyphens(self, item_id):
         _, dropped, _ = run(challenge(items=[item(id=item_id), item(id="kept")]))
         assert dropped[0][1] == "item id must be lowercase words joined by hyphens, at most 120 characters"
+
+
+class TestItemIcons:
+    """The blaze card's glyph per item (#1962): a reviewer's judgement the
+    exporter holds to the names the shell draws, so a tile never comes up
+    blank on a phone."""
+
+    def test_a_known_icon_publishes_and_an_absent_one_publishes_null(self):
+        published, _ = one_item(item(icon="mountain"))
+        assert published["icon"] == "mountain"
+        absent, _ = one_item(item())
+        assert absent["icon"] is None
+
+    @pytest.mark.parametrize("icon", ["rocket", "", ["mountain"], 7])
+    def test_a_name_the_shell_does_not_draw_is_refused_naming_the_set(self, icon):
+        _, why = one_item(item(icon=icon))
+        assert why.startswith("icon must be one of blaze, book, ")
+        assert "mountain" in why and "pen" in why
+
+    def test_the_set_is_the_frames_twenty_six_plus_pen(self):
+        # features/design/blaze-card/BlazeCard.dc.html draws 26; item-icons.json
+        # uses 27. The one the frame did not draw is `pen`.
+        assert len(ICON_NAMES) == 27
+        assert "pen" in ICON_NAMES
+        assert ICON_NAMES == tuple(sorted(ICON_NAMES))
 
 
 class TestSealedMysteryItems:

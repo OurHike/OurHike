@@ -160,6 +160,7 @@ function parseItem(
     note: text(value.note),
     noteBy: text(value.note_by),
     photo: httpsOnly(value.photo),
+    icon: text(value.icon),
     match,
     mystery,
   }

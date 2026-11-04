@@ -1,7 +1,12 @@
 // One challenge (#1780, frames 5, 7, 4b, 8b and 8c).
 //
 // The pine header names it, its window and - only when the club set one - the
-// finish line; a strip lays its places along the trail in mile order. Filter
+// finish line; under them the blaze card (chrome/BlazeCard.tsx, #1962): the
+// club's items as tiles in the club's sections, one white blaze per earned
+// item, in place of the strip that laid the places along the trail by mile.
+// A tap on a section of the card opens the list at that section; the card
+// can be made bigger, and only then is a tile itself a button, which opens
+// its row. Filter
 // pills are the club's own sections, in the club's order - for the ATC, Learn
 // · Experience · Protect · Mystery - and then Done, the hiker's own (#1961,
 // the blaze card brief: the list in the ATC's sections is the accessible,
@@ -30,7 +35,6 @@ import {
   windowLine,
   type Challenge,
   type ChallengeItem,
-  type ChallengePlace,
 } from '../lib/challenges'
 import {
   doneItems,
@@ -44,6 +48,7 @@ import {
 import type { MileRange } from '../lib/walkedMiles'
 import { localDay } from '../lib/passedToday'
 import { Diamond, DraftLabel, FinishBar, TagPill } from '../chrome/ChallengeParts'
+import { BlazeCard } from '../chrome/BlazeCard'
 import {
   formatDay,
   formatMoment,
@@ -99,6 +104,23 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   const [view, setView] = useState<'list' | 'finish'>('list')
   const [sheetItem, setSheetItem] = useState<string | null>(null)
   const [confirmingLeave, setConfirmingLeave] = useState(false)
+  // The card's two sizes (#1962): its own, where a section is the tap
+  // target, and bigger, where a tile is. A button rather than a pinch: the
+  // brief's open thumb question, which the maintainer answered by poll on
+  // 2026-11-04 from the two shots - one pill, usable by any hand and a screen
+  // reader; a pinch stays a possible follow-up, not a plan.
+  const [bigger, setBigger] = useState(false)
+  // A tile tapped on the big card: its row is shown under the right pill,
+  // scrolled into view and given focus, after the render that draws it.
+  const [goTo, setGoTo] = useState<string | null>(null)
+  useEffect(() => {
+    if (goTo === null) return
+    setGoTo(null)
+    const row = document.getElementById(`challenge-item-${goTo}`)
+    if (row === null) return
+    row.scrollIntoView?.({ block: 'center' })
+    row.focus()
+  }, [goTo])
   // Where focus goes back to when the sheet closes - the row that opened it,
   // or the page's title when that row is gone.
   const opener = useRef<HTMLElement | null>(null)
@@ -196,7 +218,25 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
             <FinishBar tagged={tagged} finish={finish} />
           </>
         )}
-        <PlaceStrip challenge={challenge} tags={tags} today={today} />
+        <BlazeCard
+          challenge={challenge}
+          tags={tags}
+          today={today}
+          size={bigger ? 'expanded' : 'card'}
+          onOpenSection={(sectionId) => setFilterKey(sectionId)}
+          onOpenItem={(item) => {
+            setFilterKey(item.section)
+            setGoTo(item.id)
+          }}
+        />
+        <button
+          type="button"
+          className="challenge-button challenge-button--ghost blaze-card__zoom"
+          aria-pressed={bigger}
+          onClick={() => setBigger((current) => !current)}
+        >
+          {bigger ? 'Smaller tiles' : 'Bigger tiles'}
+        </button>
       </header>
 
       {/* To everyone, not only a hiker who joined: somebody deciding whether
@@ -441,7 +481,11 @@ function ItemRow({
   )
 
   return (
-    <li className={sealed ? 'challenge-row challenge-row--sealed' : 'challenge-row'}>
+    <li
+      id={`challenge-item-${item.id}`}
+      tabIndex={-1}
+      className={sealed ? 'challenge-row challenge-row--sealed' : 'challenge-row'}
+    >
       {/* A button only when it does something: a disabled button on every
           row that cannot open yet read each one out as "unavailable". */}
       {opens ? (
@@ -486,54 +530,6 @@ function ItemRow({
         </ul>
       )}
     </li>
-  )
-}
-
-/** Every place on the list along the trail, in mile order, ends named for
- *  the first and last place - positions, never a count. */
-function PlaceStrip({
-  challenge,
-  tags,
-  today,
-}: {
-  challenge: Challenge
-  tags: readonly ChallengeTag[]
-  today: string
-}) {
-  const points: { place: ChallengePlace; done: boolean; key: string }[] = []
-  for (const item of challenge.items) {
-    if (!isPlaceItem(item) || isSealed(item, today)) continue
-    for (const place of item.match.places) {
-      const done =
-        item.match.kind === 'places_all'
-          ? tags.some((tag) => tag.itemId === item.id && tag.poi === place.poi)
-          : isItemDone(item, challenge.id, tags)
-      points.push({ place, done, key: `${item.id}/${place.poi}` })
-    }
-  }
-  if (points.length < 2) return null
-  points.sort((a, b) => a.place.mile - b.place.mile)
-  const low = points[0].place.mile
-  const high = points[points.length - 1].place.mile
-  const span = high - low || 1
-  return (
-    <div aria-hidden="true">
-      <div className="challenge-strip">
-        {points.map((point) => (
-          <span
-            key={point.key}
-            className="challenge-strip__point"
-            style={{ left: `${((point.place.mile - low) / span) * 100}%` }}
-          >
-            <Diamond done={point.done} />
-          </span>
-        ))}
-      </div>
-      <div className="challenge-strip__ends">
-        <span>{points[0].place.name}</span>
-        <span>{points[points.length - 1].place.name}</span>
-      </div>
-    </div>
   )
 }
 

@@ -106,6 +106,7 @@ def test_the_vars_are_the_pythons_constants():
     assert tuple(variables["challenges_match_kinds"]) == challenges.MATCH_KINDS
     assert tuple(variables["challenges_reward_kinds"]) == challenges.REWARD_KINDS
     assert tuple(variables["challenges_statuses"]) == challenges.STATUSES
+    assert tuple(variables["challenges_icon_names"]) == challenges.ICON_NAMES
     assert {kind: variables[f"challenges_default_radius_m_{kind}"] for kind in challenges.DEFAULT_RADIUS_M} == (
         challenges.DEFAULT_RADIUS_M
     )

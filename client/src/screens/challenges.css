@@ -988,3 +988,180 @@ div.challenge-row__open {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ---- The blaze card (#1962, features/CHALLENGES_BLAZE_CARD.md) ----
+   Tiles taller than wide, the proportion of a painted blaze; the three sizes
+   are the frames' and @unvalidated (BlazeCard.tsx says what would settle
+   them). Chrome tokens only: the card sits on the pine header, where
+   --border-chrome is the frames' pine-700 tile and --bg-canvas their paper.
+   A tile becoming earned is a 150 ms colour change and nothing else
+   (maintainer, 2026-09-30: no stamp animation). */
+
+.blaze-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  --tile-size: 26px;
+  --tile-gap: 4px;
+}
+
+.blaze-card--mini {
+  gap: 3px;
+  --tile-size: 8px;
+  --tile-gap: 2px;
+}
+
+.blaze-card--expanded {
+  gap: 12px;
+  --tile-size: 56px;
+  --tile-gap: 6px;
+}
+
+.blaze-card__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/* The card's size: each section is the tap target, never a tile. */
+.blaze-card__section--press {
+  cursor: pointer;
+  border-radius: 8px;
+  min-height: var(--min-touch-target, 44px);
+}
+
+.blaze-card__section--press:focus-visible {
+  outline: 2px solid var(--accent-blaze-yellow);
+  outline-offset: 4px;
+}
+
+.blaze-card__label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 1px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--fg-chrome-3);
+}
+
+.blaze-card--expanded .blaze-card__label {
+  font-size: 11px;
+}
+
+.blaze-card__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tile-gap);
+}
+
+.blaze-tile {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--tile-size);
+  height: calc(var(--tile-size) * 1.3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--border-chrome);
+  color: var(--fg-chrome-3);
+  transition:
+    background-color 150ms var(--ease-standard, ease),
+    color 150ms var(--ease-standard, ease);
+}
+
+.blaze-card--expanded .blaze-tile {
+  border-radius: 6px;
+}
+
+.blaze-tile svg {
+  width: 62%;
+  height: 62%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 8 px tiles: a glyph would be a smudge, so the strip draws plain tiles. */
+.blaze-card--mini .blaze-tile svg {
+  display: none;
+}
+
+.blaze-card--mini .blaze-tile {
+  border-radius: 1px;
+}
+
+/* An earned tile is karma gold (the maintainer's poll, 2026-11-04, from the
+   card as built beside this): it was paper-white, which the code called "a
+   white blaze", and blazes are official trail marking - the same poll day
+   retired "blaze" as the word for what is earned. The ink is the chrome's
+   own ground, dark under both themes as the yellow needs - the support
+   nudge's pairing (support.css). */
+.blaze-tile--done {
+  background: var(--accent-blaze-yellow);
+  color: var(--bg-chrome);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.blaze-tile--done svg {
+  stroke-width: 2;
+}
+
+.blaze-tile--sealed {
+  background: transparent;
+  border: 1.5px dashed var(--brand-primary);
+}
+
+.blaze-tile--press {
+  cursor: pointer;
+  font: inherit;
+}
+
+.blaze-tile--press:focus-visible {
+  outline: 2px solid var(--accent-blaze-yellow);
+  outline-offset: 2px;
+}
+
+/* A yellow ring round a yellow tile is no ring at all. */
+.blaze-tile--done.blaze-tile--press:focus-visible {
+  outline-color: var(--fg-chrome-1);
+}
+
+.blaze-tile--press:active {
+  transform: scale(0.97);
+}
+
+/* The toggle under the card, one ghost pill: "Bigger tiles" / "Smaller
+   tiles" - the maintainer's answer (poll, 2026-11-04) to the brief's
+   pinch-or-button question. On the pine header, so the ghost pill reads in
+   the header's own ink. */
+.blaze-card__zoom {
+  align-self: flex-start;
+}
+
+.challenge-head .blaze-card__zoom {
+  border-color: var(--fg-chrome-3);
+  color: var(--fg-chrome-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blaze-tile {
+    transition: none;
+  }
+}

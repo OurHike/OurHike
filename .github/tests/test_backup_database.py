@@ -773,13 +773,24 @@ def _tools(workdir: Path) -> backup.Tools:
     return backup.Tools(workdir=workdir, image=os.environ.get(PG_IMAGE_VARIABLE) or None)
 
 
+def _image_args() -> list[str]:
+    """`--pg-image` as backup-database.yml passes it, so CI's pg_dump matches its server; nothing locally."""
+    image = os.environ.get(PG_IMAGE_VARIABLE)
+    return ["--pg-image", image] if image else []
+
+
+def _restored_text_bytes(workdir: Path, name: str) -> int:
+    """The bytes of SQL text pg_restore writes from one archive, counted as `dump` counts them (binary, through the same tools)."""
+    argv, env = _tools(workdir).command("pg_restore", ["--file=-", str(workdir / name)], {})
+    return len(subprocess.run(argv, env=env, capture_output=True, check=True).stdout)
+
+
 @pytest.fixture
 def run(postgres, tmp_path, monkeypatch):
     """`backup_database.main` as the workflow calls it, against the module's databases."""
     monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "github_output"))
     workdir = tmp_path / "backup"
-    # `--pg-image` as backup-database.yml passes it, so CI's pg_dump matches its server.
-    image = ["--pg-image", os.environ[PG_IMAGE_VARIABLE]] if os.environ.get(PG_IMAGE_VARIABLE) else []
+    image = _image_args()
 
     def stage(name: str, *, source: str | None = None) -> int:
         if name == "dump":
@@ -885,10 +896,7 @@ def test_the_dump_logs_each_archive_and_hands_the_workflow_its_bytes(postgres, r
     assert "public.dump: " in said and "auth.dump: " in said and " uncompressed" in said
     outputs = _outputs(run)
     on_disk = sum((run.workdir / name).stat().st_size for name in backup.ARCHIVES)
-    text = sum(
-        len(subprocess.run(["pg_restore", "--file=-", str(run.workdir / name)], capture_output=True, check=True).stdout)
-        for name in backup.ARCHIVES
-    )
+    text = sum(_restored_text_bytes(run.workdir, name) for name in backup.ARCHIVES)
     assert (int(outputs["archive_bytes"]), int(outputs["egress_bytes"])) == (on_disk, text)
     assert outputs["egress_warning"] == ""
 
@@ -936,7 +944,7 @@ def test_an_empty_dump_from_row_level_security_is_refused_by_the_restore(postgre
 
     # What `dump` does now: refuse at the count, the same refusal pg_dump gives.
     refused = run.workdir.parent / "refused"
-    assert backup.main(["dump", "--workdir", str(refused)]) == 1
+    assert backup.main(["dump", "--workdir", str(refused), *_image_args()]) == 1
     assert "row-level security" in capsys.readouterr().err
 
     # The trap: a dump made with --enable-row-security succeeds and holds no closures.

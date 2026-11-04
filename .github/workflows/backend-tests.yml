@@ -247,6 +247,14 @@ jobs:
       # here, since the pooler step strips the PGDG archive apt would fetch it
       # from, and the image is what the backup job itself dumps with
       # (backup-database.yml, PG_IMAGE), so this is the production path.
+      #
+      # The tests connect as a role row-level security binds. The image's
+      # `postgres` user is a superuser, and RLS never applies to one, so the
+      # test that makes RLS apply to a table's owner and expects the count to
+      # refuse (the issue's trap) could not spring under it - its second run
+      # on #1972 showed the dump going through where the count should have
+      # stopped it. `backup_tests` has LOGIN and CREATEDB and nothing else,
+      # the shape of the local default role (ourhike) the file runs under.
       - name: Install age and start a Postgres 17 that speaks TLS, for the backup's tests
         if: steps.scope.outputs.run == 'true'
         working-directory: .
@@ -266,11 +274,13 @@ jobs:
             sleep 1
           done
           docker exec backup-postgres pg_isready -U postgres
+          docker exec backup-postgres psql -U postgres -v ON_ERROR_STOP=1 \
+            -c "create role backup_tests login createdb password 'backup'"
 
       - name: Run the backup's tests against it
         if: steps.scope.outputs.run == 'true'
         working-directory: .github/tests
         env:
-          OURHIKE_BACKUP_TEST_ADMIN_URL: postgresql://postgres:backup@localhost:5433/postgres
+          OURHIKE_BACKUP_TEST_ADMIN_URL: postgresql://backup_tests:backup@localhost:5433/postgres
           OURHIKE_BACKUP_TEST_PG_IMAGE: postgres:17
         run: python -m pytest -q -p no:cacheprovider test_backup_database.py

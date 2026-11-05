@@ -62,10 +62,17 @@ updates:
   # -------------------------------------------------------------- pipeline
   # requirements.txt here is compiled output, not a hand-written list.
   # Dependabot recognises the uv/pip-compile header and regenerates the file
-  # rather than editing the pin in place, so requirements.in stays the source
-  # of truth. A duckdb bump is the one that needs care - its spatial
-  # extension is ABI-locked to the exact version and the sandbox hook reads
-  # the pin back out. See the comment in pipeline/requirements.in.
+  # rather than editing the pin in place. #1959 (Bump the
+  # pipeline-minor-and-patch group in /pipeline with 2 updates, 2026-11-04)
+  # showed two limits to that:
+  # - It widens a range in requirements.in to reach a newer version, so a
+  #   cap held on purpose needs an ignore rule below as well.
+  # - It does not run the header's command: its files came back without the
+  #   platform markers that --universal writes. Rerunning each file's header
+  #   command puts them back.
+  # A duckdb bump is the one that needs care - its spatial extension is
+  # ABI-locked to the exact version and the sandbox hook reads the pin back
+  # out. See the comment in pipeline/requirements.in.
   - package-ecosystem: pip
     directory: /pipeline
     schedule:
@@ -73,6 +80,13 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     labels: [dependencies, python, "no-issue"]
+    # pyproj 3.8.0 bundles PROJ 9.8.1, and 7 dbt parity tests that need an
+    # exact match fail on its transforms. pipeline/requirements.in holds
+    # pyproj<3.8 and says why. Without this rule #1959 raised that cap to
+    # <3.9 by itself. Remove the rule in the change that lifts the cap.
+    ignore:
+      - dependency-name: pyproj
+        versions: [">=3.8"]
     groups:
       pipeline-minor-and-patch:
         patterns: ["*"]

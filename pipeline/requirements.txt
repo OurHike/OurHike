@@ -4,7 +4,7 @@ affine==2.4.0
     # via rasterio
 attrs==26.1.0
     # via rasterio
-boto3==1.43.122
+boto3==1.43.123
     # via -r pipeline/requirements.in
 botocore==1.43.123
     # via

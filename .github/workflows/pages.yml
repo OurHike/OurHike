@@ -663,6 +663,19 @@ jobs:
           # its naming should not silently break the deploy.
           touch _site/.nojekyll
 
+          # THE APPS' FALLBACK (#2014). A path with no file behind it gets the
+          # root 404.html, and without one GitHub Pages' own "Page not found":
+          # so every deep link into the app - /app/my/tread,
+          # /app/org/<slug>/setup, the addresses client/src/lib/orgRoute.ts
+          # reads - answered 404 here while every preview resolved it. Pages
+          # takes ONE 404.html for the whole site, so this is not the app shell
+          # copied, as the previews' is: the script writes a page that boots
+          # the shell a path is under (/app/, and /survey/ once a deploy holds
+          # one) at that same address, and is a not-found page everywhere else.
+          # Its docstring has the rest; it fails a site with no app shell, or
+          # with a 404.html of its own.
+          python .github/scripts/spa_fallback.py _site
+
           # The status page checks the bucket from the visitor's own browser
           # (#431 tier 2, #467), so it needs the same URL the app is built
           # with. Substituted here rather than committed, so site/ never holds

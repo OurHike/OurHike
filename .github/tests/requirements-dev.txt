@@ -10,7 +10,7 @@ pluggy==1.6.0
     # via pytest
 pygments==2.20.0
     # via pytest
-pytest==9.1.1
+pytest==9.2.0
     # via
     #   -r requirements-dev.in
     #   pytest-xdist
@@ -18,5 +18,5 @@ pytest-xdist==3.8.0
     # via -r requirements-dev.in
 pyyaml==6.0.3
     # via -r requirements-dev.in
-ruff==0.17.1
+ruff==0.17.3
     # via -r requirements-dev.in

@@ -273,6 +273,10 @@ the fallback.
 `/survey/?org=<slug>`, the `?org=` convention `/my/tread` already uses. Screens inside it
 are app state, as everywhere else in the client, which has no router library by design.
 
+#2014 adds the fallback to production's assembly (`.github/scripts/spa_fallback.py`): a path
+under `/app/`, or under `/survey/` once a deploy holds the survey's shell, boots that shell at
+the same address. The query-string addressing stands; it no longer depends on the gap.
+
 ### Also checked, and clear
 
 - **New tables need row-level security in their own migration.** `RLS_TABLES` and

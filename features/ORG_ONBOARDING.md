@@ -957,12 +957,13 @@ What this design does not answer, stated plainly.
   GitHub Pages to fall back to, so every deep link under `/app/` misses. That is the whole of how
   this surface is entered — [`client/src/lib/orgRoute.ts`](../client/src/lib/orgRoute.ts) exists
   because a welcome email, an organization's members area and a bookmark are the three doors, and
-  the hiker's app links to none of it. **What would settle it:** a static fallback in the published
+  the hiker's app links to none of it. **What settles it:** a static fallback in the published
   tree — a `404.html` that boots the app for a path under `/app/` and stays a not-found page for
-  everything else. It is a change to how hikers are served rather than a change to this feature, so
-  it is the maintainer's call and not this branch's. Pull-request previews carry the Cloudflare
-  equivalent (`_redirects`, in `pr-preview.yml`) so the console can be reviewed at all; that file is
-  preview-only and GitHub Pages ignores it.
+  everything else. #2014 adds it: `pages.yml`'s "Assemble the site" runs
+  `.github/scripts/spa_fallback.py`, so the gap closes in production with the first release that
+  carries it, and is to be measured again then rather than assumed. Pull-request previews carry the
+  Cloudflare equivalent (`_redirects`, in `pr-preview.yml`) so the console can be reviewed at all;
+  that file is preview-only and GitHub Pages ignores it.
 - **One admin's click is the whole of an organization's consent, and that is a judgement call rather
   than a finding.** Three codeowners approve a registry change because a registry reaches a hiker's
   phone; agreeing that a model may read that registry takes the ordinary admin gate that

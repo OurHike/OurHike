@@ -294,7 +294,50 @@ def test_fetch_layer_geojson_gives_up_at_a_page_of_one_with_the_servers_words(re
         "7",
         "3",
         "1",
+        "1",  # the floor is asked a second time before it fails (#1794)
     ]
+
+
+def test_a_refusal_at_a_page_of_one_is_asked_once_more_and_a_second_answer_is_read(requests_mock):
+    """#1794: PASDA refused and then served the identical request, in strict
+    alternation. A page of 1 that is refused once must not fail the read."""
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(
+        query_url,
+        [
+            {"json": _page(1)},
+            {"text": HTML_ERROR_PAGE, "headers": {"Content-Type": "text/html"}},
+            {"json": _page(1, start=1)},
+            {"json": {"features": []}},
+        ],
+    )
+
+    fc = fetch_layer_geojson(LAYER_URL, page_size=1)
+
+    assert [f["properties"]["id"] for f in fc["features"]] == [0, 1]
+    asked = [(r.qs["resultoffset"][0], r.qs["resultrecordcount"][0]) for r in _page_requests(requests_mock)]
+    assert asked == [("0", "1"), ("1", "1"), ("1", "1"), ("2", "1")]
+
+
+def test_every_page_is_parsed_once(requests_mock, monkeypatch):
+    """#1794: the refusal check and the feature read shared one parse, not two.
+    Read through iter_layer_pages, which asks nothing but pages."""
+    calls = {"n": 0}
+    original = requests.Response.json
+
+    def counted_json(self, *args, **kwargs):
+        calls["n"] += 1
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(requests.Response, "json", counted_json)
+    requests_mock.get(LAYER_URL + "/query", [{"json": _page(3)}, {"json": {"features": []}}])
+
+    pages = list(arcgis.iter_layer_pages(LAYER_URL))
+
+    assert [len(p) for p in pages] == [3]
+    assert calls["n"] == 2, (
+        "one json() for each of the 2 answers, where it was 6 before #1794 (is_throttled, page_refusal, the loop)"
+    )
 
 
 def test_an_answer_with_no_features_key_is_a_stop_and_not_a_refusal(requests_mock):

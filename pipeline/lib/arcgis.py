@@ -359,6 +359,7 @@ def iter_layer_pages(
     answered_in_a_row = 0  # pages answered at `records` since it last changed (GROW_AFTER_PAGES)
     wait = GROW_AFTER_PAGES  # pages in a row the next growth needs; doubles when a grown size is refused
     probing = False  # `records` was just grown, and this page is the first asked at it
+    floor_asked_again = False  # a refusal at a page of 1 has already been asked a second time at this position
 
     def halved() -> int:
         """The next size after `records` was refused; a grown size refused at once makes the next growth wait longer."""
@@ -423,15 +424,22 @@ def iter_layer_pages(
                 print(f"  {query_url} answered {status} for the feature {at}; asking it at {PRECISION_FALLBACK} decimals")
                 rounded = True
             continue
-        refusal = page_refusal(resp)
+        refusal, body = read_page(resp)
         if refusal is not None:
             if records <= 1:
+                # PASDA refused and then served the identical request, in strict alternation (6 tries,
+                # 2026-10-01, #1794), so a refusal at the floor is asked once more before it fails the read.
+                if not floor_asked_again:
+                    floor_asked_again = True
+                    print(f"  {query_url} {refusal} at a page of 1 feature; asking the same page once more")
+                    continue
                 raise RuntimeError(f"{query_url} {refusal} at a page of 1 feature")
             smaller = halved()
             print(f"  {query_url} {refusal} at a page of {records}; retrying at {smaller}")
             records = smaller
             continue
-        batch = resp.json().get("features", [])
+        floor_asked_again = False
+        batch = body.get("features", [])
         if return_z:
             batch = [esri_feature_to_geojson(feature) for feature in batch]
         if not batch:
@@ -506,10 +514,9 @@ def iter_pages_by_object_id(
         ),
         query_url,
     )
-    refusal = page_refusal(answer)
+    refusal, body = read_page(answer)
     if refusal is not None:
         raise RuntimeError(f"{query_url} {refusal} when asked for its object ids")
-    body = answer.json()
     oid_field = body.get("objectIdFieldName")
     ids = sorted(body.get("objectIds") or [])
     size = batch_size
@@ -526,14 +533,14 @@ def iter_pages_by_object_id(
             lambda: request_with_retry(query_url, session=session, method="post", data=form, timeout=60, backoff=backoff),
             query_url,
         )
-        refusal = page_refusal(resp)
+        refusal, body = read_page(resp)
         if refusal is not None:
             if size <= 1:
                 raise RuntimeError(f"{query_url} {refusal} for 1 object id")
             print(f"  {query_url} {refusal} for {size} object ids; retrying at {size // 2}")
             size //= 2
             continue
-        features = resp.json().get("features", [])
+        features = body.get("features", [])
         if return_z:
             features = [esri_feature_to_geojson(feature) for feature in features]
         asked = set(batch)
@@ -651,10 +658,27 @@ def layer_count(
 THROTTLE_WAITS_SECONDS = (30, 60, 120, 240)
 
 
+def parsed_json(resp):
+    """`resp.json()`, parsed once per response: `requests` does not cache it, and is_throttled, read_page and the loop each asked.
+
+    Raises ValueError as `.json()` does, and does not cache that.
+    """
+    try:
+        return resp._ourhike_json
+    except AttributeError:
+        pass
+    body = resp.json()
+    try:
+        resp._ourhike_json = body
+    except AttributeError:  # a response object that takes no new attribute is parsed each time, as before
+        pass
+    return body
+
+
 def is_throttled(resp) -> bool:
     """Whether this answer is ArcGIS's rate limit, an error object of code 429 in the body, whatever the HTTP status."""
     try:
-        body = resp.json()
+        body = parsed_json(resp)
     except ValueError:
         return False
     error = body.get("error") if isinstance(body, dict) else None
@@ -677,24 +701,35 @@ def ask_until_let_in(ask: Callable[[], requests.Response], what: str) -> request
     raise AssertionError("unreachable")
 
 
-def page_refusal(resp) -> str | None:
-    """Why this answer is not a page of features, or None when it is one.
+def read_page(resp) -> tuple[str | None, dict]:
+    """(why this answer is not a page of features or None, its parsed body), parsing the answer once.
 
-    Two shapes, both seen from the same servers on 2026-10-01 (see
+    Two refusal shapes, both seen from the same servers on 2026-10-01 (see
     fetch_layer_geojson): a body that is not JSON at all - an HTML error
     page sent with HTTP 200, which `request_with_retry` cannot tell from a
     good answer - and a JSON error object in place of a feature collection.
     A collection with no `features` key is NOT a refusal: that is a server
-    saying "nothing here", and the caller's stop condition owns it.
+    saying "nothing here", and the caller's stop condition owns it. The body
+    is `{}` when it was refused or was not a JSON object.
+
+    Returned together because `requests` does not cache `.json()`: parsing in
+    the refusal check and again for the features cost a second parse of every
+    page (1.1 s for a 17.8 MB body, three parses timed 2026-10-01, #1794). It was three parses, not two,
+    because is_throttled parsed it as well; parsed_json now shares one between the three.
     """
     try:
-        body = resp.json()
+        body = parsed_json(resp)
     except ValueError:
-        return f"answered {resp.headers.get('content-type', 'no content type')} rather than JSON"
+        return f"answered {resp.headers.get('content-type', 'no content type')} rather than JSON", {}
     error = body.get("error") if isinstance(body, dict) else None
     if error:
-        return f"answered error {error.get('code')}: {error.get('message')}"
-    return None
+        return f"answered error {error.get('code')}: {error.get('message')}", {}
+    return None, body if isinstance(body, dict) else {}
+
+
+def page_refusal(resp) -> str | None:
+    """Why this answer is not a page of features, or None when it is one (read_page's first half)."""
+    return read_page(resp)[0]
 
 
 def fetch_layer_to_file(

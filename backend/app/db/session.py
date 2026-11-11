@@ -20,7 +20,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 
 
-def engine_options(database_url: str, *, prepared_statements: bool) -> dict[str, Any]:
+def engine_options(
+    database_url: str,
+    *,
+    prepared_statements: bool,
+    pool_size: int | None = None,
+    max_overflow: int | None = None,
+    pool_timeout: float | None = None,
+) -> dict[str, Any]:
     """The keyword arguments `create_engine` gets, and why each one is there.
 
     A pure function of the URL so the reasoning is testable without opening a
@@ -70,18 +77,34 @@ def engine_options(database_url: str, *, prepared_statements: bool) -> dict[str,
     `DETAIL` (tests/test_engine_options.py pins the cast). That is a single
     value at the site of a bug, where the dump was every value of every
     failing statement.
+
+    **`pool_size`, `max_overflow`, `pool_timeout`** come from the
+    `DATABASE_POOL_*` settings (#1764), and app/config.py says where each
+    default comes from. Each is passed only when given, so a caller that
+    builds its own pool (tests/test_pooler.py passes `pool_size=1`) gets
+    SQLAlchemy's defaults for the rest rather than a duplicate keyword.
     """
     options: dict[str, Any] = {"pool_pre_ping": True, "hide_parameters": True}
 
     if not prepared_statements and make_url(database_url).get_driver_name() == "psycopg":
         options["connect_args"] = {"prepare_threshold": None}
 
+    for name, value in (("pool_size", pool_size), ("max_overflow", max_overflow), ("pool_timeout", pool_timeout)):
+        if value is not None:
+            options[name] = value
+
     return options
 
 
 engine = create_engine(
     settings.database_url,
-    **engine_options(settings.database_url, prepared_statements=settings.database_prepared_statements),
+    **engine_options(
+        settings.database_url,
+        prepared_statements=settings.database_prepared_statements,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_timeout=settings.database_pool_timeout_seconds,
+    ),
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from app.config import settings
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
@@ -155,6 +156,24 @@ async def _validation_error_survives_its_own_payload(request: Request, exc: Requ
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": _json_safe(jsonable_encoder([_without_input(error) for error in exc.errors()]))},
+    )
+
+
+@app.exception_handler(PoolTimeoutError)
+async def _pool_exhausted(request: Request, exc: PoolTimeoutError) -> JSONResponse:
+    """503, not 500, when no pooled connection came free in time (#1764).
+
+    SQLAlchemy raises `sqlalchemy.exc.TimeoutError` when a checkout waits
+    `DATABASE_POOL_TIMEOUT_SECONDS` and the pool is still full - the server is
+    busy, not broken, and the same request a moment later is expected to
+    succeed. 503 says exactly that to the phone's outbox, which retries it
+    (client/src/lib/api.ts's `permanentFailureReason` lists no 503). The exception's own text names the
+    pool's sizes and nothing a hiker sent, but it is not echoed regardless:
+    the body is the one sentence a caller needs.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": "The server is busy. Try again shortly."},
     )
 
 

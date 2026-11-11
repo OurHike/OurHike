@@ -8,7 +8,7 @@ from pydantic.networks import HttpUrl
 
 from app.core.time import UtcDatetime
 from app.models.closure import ClosureStatus, ModerationStatus, ReasonType
-from app.schemas.common import FiniteFloat, NoteText
+from app.schemas.common import FiniteFloat, NoteText, on_globe_or_none
 from app.schemas.partial import reject_explicit_null
 
 # Validates scheme and shape without changing the stored type. `HttpUrl`
@@ -240,6 +240,15 @@ class ClosureOut(BaseModel):
     """
 
     model_config = ConfigDict(from_attributes=True)
+
+    # Applied to every instance however it is built - `for_viewer`, FastAPI's
+    # response validation, or `model_validate` on a row - so no route can
+    # serve an off-globe point by building it another way (#1861).
+    @model_validator(mode="after")
+    def _off_globe_is_no_location(self) -> "ClosureOut":
+        self.start_lat, self.start_lon = on_globe_or_none(self.start_lat, self.start_lon)
+        self.end_lat, self.end_lon = on_globe_or_none(self.end_lat, self.end_lon)
+        return self
 
     id: str
     reported_at: UtcDatetime

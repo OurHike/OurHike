@@ -11,7 +11,7 @@ from app.core.time import UtcDatetime
 from app.models.field_note import FieldNote, Observation, note_photo_held
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import ReporterType
-from app.schemas.common import FiniteFloat, NoteText
+from app.schemas.common import FiniteFloat, NoteText, on_globe_or_none
 
 
 class FieldNoteCreate(BaseModel):
@@ -108,6 +108,14 @@ class FieldNoteOut(BaseModel):
     """
 
     model_config = ConfigDict(from_attributes=True)
+
+    # Applied to every instance however it is built - `for_viewer`, FastAPI's
+    # response validation, or `model_validate` on a row - so no route can
+    # serve an off-globe point by building it another way (#1861).
+    @model_validator(mode="after")
+    def _off_globe_is_no_location(self) -> "FieldNoteOut":
+        self.lat, self.lon = on_globe_or_none(self.lat, self.lon)
+        return self
 
     id: str
     poi_id: str | None

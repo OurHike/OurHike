@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.time import UtcDatetime
 from app.models.profile import MODERATOR_ROLES, Profile
@@ -18,7 +18,7 @@ from app.models.report import (
     SignedNameKind,
     Visibility,
 )
-from app.schemas.common import FiniteFloat, NoteText, refuse_a_future_time
+from app.schemas.common import FiniteFloat, NoteText, on_globe_or_none, refuse_a_future_time
 
 # A name is short. Bounded for NoteText's reason - the compounding failure of
 # an unbounded text field on a row that is stored for good - and at a length
@@ -274,6 +274,14 @@ class ReportOut(BaseModel):
     """
 
     model_config = ConfigDict(from_attributes=True)
+
+    # Applied to every instance however it is built - `for_viewer`, FastAPI's
+    # response validation, or `model_validate` on a row - so no route can
+    # serve an off-globe point by building it another way (#1861).
+    @model_validator(mode="after")
+    def _off_globe_is_no_location(self) -> "ReportOut":
+        self.lat, self.lon = on_globe_or_none(self.lat, self.lon)
+        return self
 
     id: str
     type: ReportType

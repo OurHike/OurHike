@@ -596,9 +596,9 @@ def release_only(name: str) -> bool:
     return version is not None and version >= 2
 
 
-def _release_only_entries(s3_client, bucket: str, prefix: str, release_id: str | None) -> dict[str, dict]:
-    """The release-only artifacts (release_only()) `release_id`'s folder holds,
-    as its own manifest lists them, or {} when latest.json names no release.
+def _release_entries(s3_client, bucket: str, prefix: str, release_id: str | None) -> dict[str, dict]:
+    """Every artifact `release_id`'s folder holds, as its own manifest lists
+    them, or {} when latest.json names no release.
 
     Raises when latest.json names a release whose manifest is not there: its
     release-only files could then be neither compared nor carried forward,
@@ -613,7 +613,7 @@ def _release_only_entries(s3_client, bucket: str, prefix: str, release_id: str |
             f"latest.json names release {release_id}, and {key} is not there, so the release-only files that "
             "folder holds can be neither compared nor carried forward. No artifact was uploaded."
         )
-    return {name: entry for name, entry in (manifest.get("artifacts") or {}).items() if release_only(name)}
+    return dict(manifest.get("artifacts") or {})
 
 
 def release_only_manifest_entries(held: dict[str, dict], local: dict[str, dict], changes: dict[str, dict]) -> dict[str, dict]:
@@ -2262,6 +2262,7 @@ def _stage_release(
     *,
     uploaded_here: frozenset[str] | set[str] = frozenset(),
     previous_release: str | None = None,
+    previous_entries: dict[str, dict] | None = None,
 ) -> list[str]:
     """Copy this version's bytes into `releases/<id>/` and return what landed.
 
@@ -2293,6 +2294,28 @@ def _stage_release(
     named, which holds each one its own manifest lists. With no such folder
     there is nowhere to copy one from, and the run fails before the first
     copy, for the half-a-folder reason above.
+
+    A FLAT ARTIFACT IS COPIED FROM THE PREVIOUS FOLDER WHEN THAT FOLDER HOLDS
+    THE SAME BYTES (#1732 - A release folder is frozen by copying flat keys
+    whose bytes are never checked against the manifest hash). The flat key is
+    the one place whose bytes nothing here checks. Uploads overwrite the flat
+    keys before latest.json is rewritten, so a publish that dies part-way
+    leaves a flat key holding new bytes under a latest.json that still names
+    the old sha256. A later publish that did not rebuild that artifact (a
+    partial checkout), or rebuilt it to the old bytes, does not upload it -
+    and copying it from the flat key would freeze the new bytes into a folder
+    whose manifest names the old sha256. A folder's bytes are written by
+    this function or by stage_release.py, and both write the folder's
+    manifest after every copy has returned. So when `previous_entries` (that folder's manifest, read by the
+    caller) lists a name with the sha256 this folder's manifest gives it, the
+    previous folder's copy is those bytes, and it is the copy source.
+    Otherwise the flat key is still used: an artifact this run uploaded, a
+    sidecar, a name the previous folder does not hold or holds at another
+    sha256, and every name when there is no previous folder. The first two
+    are bytes this run just wrote. The last two are the gap this does not
+    close - a flat key nobody has checked - and they are rare. Reasoned from the
+    order of the writes in publish(), not from a failed publish observed in
+    the bucket.
     """
     names = [name for name in sorted([*manifest["artifacts"], *sidecar_names]) if releases.is_release_artifact(name)]
 
@@ -2310,8 +2333,14 @@ def _stage_release(
             "from. Nothing was staged."
         )
 
+    held = previous_entries or {}
+
+    def held_as_listed(name: str) -> bool:
+        listed = manifest["artifacts"].get(name)
+        return previous_release is not None and listed is not None and (held.get(name) or {}).get("sha256") == listed["sha256"]
+
     def source_key(name: str) -> str:
-        if release_only(name):
+        if release_only(name) or held_as_listed(name):
             return f"{prefix}{releases.release_key(previous_release, name)}"
         return f"{prefix}{name}"
 
@@ -2627,9 +2656,13 @@ def publish(
     # staged or a release-only file compared, so a publish of `conditions/`
     # alone - the hourly lane's - never depends on a release folder.
     flat_release_worthy = any(releases.is_release_artifact(name) for name in changed)
-    held_in_release = (
-        _release_only_entries(s3_client, bucket, prefix, remote_release) if in_release or flat_release_worthy else {}
+    # The whole of that folder's manifest is kept, not only its release-only
+    # entries: _stage_release() copies a flat artifact from the folder too,
+    # when the folder lists it at the same sha256 (#1732).
+    previous_release_entries = (
+        _release_entries(s3_client, bucket, prefix, remote_release) if in_release or flat_release_worthy else {}
     )
+    held_in_release = {name: entry for name, entry in previous_release_entries.items() if release_only(name)}
     skipped_in_release = sorted(
         name for name, entry in in_release.items() if (held_in_release.get(name) or {}).get("sha256") == entry["sha256"]
     )
@@ -2803,6 +2836,7 @@ def publish(
             sorted(sidecars),
             uploaded_here={name for name in uploaded if release_only(name)},
             previous_release=remote_release,
+            previous_entries=previous_release_entries,
         )
 
         s3_client.put_object(

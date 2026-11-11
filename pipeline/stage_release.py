@@ -12,10 +12,13 @@ reused for it, for two reasons rather than one:
 
   - It has no CLI at all. `main()` takes no arguments and every decision comes
     from the environment, because it has exactly one caller shape.
-  - `_stage_release`'s `CopySource` is the FLAT key - the artifact this run
-    just uploaded to the bucket root. That is right for a publish, which is
-    making those flat keys current. It is wrong here: staging must copy
-    forward from `releases/<previous>/`, and must not write a flat key at all.
+  - `_stage_release`'s `CopySource` is the FLAT key for an artifact the
+    previous folder does not hold at the same sha256, which includes every
+    artifact the publish itself just uploaded to the bucket root (#1732
+    moved the rest to the previous folder). That is right for a publish,
+    which is making those flat keys current. It is wrong here: staging must
+    copy forward from `releases/<previous>/`, and must not write a flat key
+    at all.
 
 WHAT COPY-FORWARD BUYS, and why every folder is still complete. An artifact
 whose sha256 matches the previous release is `copy_object`'d across, server

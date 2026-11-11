@@ -9,6 +9,7 @@ mocks S3/R2 (R2 is S3-compatible) instead of hitting a real bucket.
 """
 
 import gzip
+import hashlib
 import json
 import pathlib
 import re
@@ -2665,3 +2666,84 @@ def test_r2_client_opens_the_public_bucket_unless_handed_another_key_pair(monkey
         ("raw-id", "raw-secret"),
     ]
     assert {kwargs["endpoint_url"] for kwargs in opened} == {"https://r2.invalid"}
+
+
+# --- #1732: a release folder freezes the bytes its manifest names ------------
+#
+# #1732 - A release folder is frozen by copying flat keys whose bytes are
+# never checked against the manifest hash. Uploads overwrite the flat keys
+# before latest.json is rewritten, so a publish that dies part-way leaves a
+# flat key holding new bytes under the old sha256. Each test below plays that
+# failure by overwriting a flat key directly, then runs a publish that does not
+# re-upload it.
+
+
+def _folder_bytes(s3_client, release_id: str, name: str) -> bytes:
+    """The decoded bytes, since publish() stores text artifacts gzipped."""
+    stored = s3_client.get_object(Bucket=BUCKET, Key=f"releases/{release_id}/{name}")["Body"].read()
+    return gzip.decompress(stored) if stored[:2] == b"\x1f\x8b" else stored
+
+
+def _folder_sha(s3_client, release_id: str, name: str) -> str:
+    return _stored_json(s3_client, f"releases/{release_id}/manifest.json")["artifacts"][name]["sha256"]
+
+
+def test_an_artifact_a_partial_checkout_did_not_build_is_frozen_from_the_last_folder_not_the_root(
+    s3_client, local_artifacts, tmp_path
+):
+    first = publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+    shelters_bytes = (tmp_path / "shelters.geojson").read_bytes()
+
+    # A publish that died after this upload and before latest.json.
+    s3_client.put_object(Bucket=BUCKET, Key="shelters.geojson", Body=b'{"half": "of a failed publish"}')
+
+    # A later publish from a checkout that only rebuilt trails.
+    rebuilt = tmp_path / "rebuilt"
+    rebuilt.mkdir()
+    trails = _entry(rebuilt / "trails.geojson", '{"type": "FeatureCollection", "features": [{"id": "new"}]}')
+    second = publish.publish({"trails.geojson": trails}, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["release"] != first["release"]
+    assert _folder_bytes(s3_client, second["release"], "shelters.geojson") == shelters_bytes
+    assert hashlib.sha256(shelters_bytes).hexdigest() == _folder_sha(s3_client, second["release"], "shelters.geojson")
+
+
+def test_an_artifact_rebuilt_to_the_bytes_already_published_is_frozen_from_the_last_folder(s3_client, local_artifacts, tmp_path):
+    """The full-checkout half: shelters is rebuilt, hashes the same as
+    latest.json says, so it is skipped rather than uploaded - and the flat
+    key it is skipped in favour of holds something else."""
+    publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+    shelters_bytes = (tmp_path / "shelters.geojson").read_bytes()
+    s3_client.put_object(Bucket=BUCKET, Key="shelters.geojson", Body=b'{"half": "of a failed publish"}')
+
+    (tmp_path / "trails.geojson").write_text('{"type": "FeatureCollection", "features": [{"id": "new"}]}')
+    local_artifacts["trails.geojson"]["sha256"] = publish.sha256_file(tmp_path / "trails.geojson")
+    second = publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert second["skipped"] == ["shelters.geojson"]
+    assert _folder_bytes(s3_client, second["release"], "shelters.geojson") == shelters_bytes
+
+
+def test_an_artifact_this_publish_uploaded_is_frozen_from_the_root_it_just_wrote(s3_client, local_artifacts, tmp_path):
+    """The previous folder holds the OLD bytes of a changed artifact, so the
+    new folder must not take them from there."""
+    first = publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    (tmp_path / "trails.geojson").write_text('{"type": "FeatureCollection", "features": [{"id": "new"}]}')
+    local_artifacts["trails.geojson"]["sha256"] = publish.sha256_file(tmp_path / "trails.geojson")
+    second = publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert _folder_bytes(s3_client, second["release"], "trails.geojson") == (tmp_path / "trails.geojson").read_bytes()
+    assert _folder_bytes(s3_client, first["release"], "trails.geojson") != (tmp_path / "trails.geojson").read_bytes()
+
+
+def test_a_carried_forward_artifact_the_last_folder_does_not_hold_is_still_copied_from_the_root(s3_client, local_artifacts):
+    """The gap #1732's fix leaves open, held so that narrowing it is a decision
+    and not an accident: with no folder holding the bytes, the flat key is the
+    only copy there is, and a folder without it would be incomplete."""
+    s3_client.put_object(Bucket=BUCKET, Key="elsewhere.geojson", Body=b"{}")
+    _seed_latest(s3_client, {"elsewhere.geojson": {"sha256": hashlib.sha256(b"{}").hexdigest()}})
+
+    result = publish.publish(local_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert _folder_bytes(s3_client, result["release"], "elsewhere.geojson") == b"{}"

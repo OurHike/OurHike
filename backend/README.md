@@ -63,6 +63,24 @@ python -m pytest tests/test_pooler.py -v
 
 pgbouncer is not Supavisor. What it reproduces is the constraint they share - a transaction may land anywhere - which is the part the driver has to be configured for. Whether the *real* pooler behaves identically is still unverified, and needs the production connection string (see the open half of [#95](https://github.com/OurHike/OurHike/issues/95)).
 
+## Sizing the connection pool
+
+Each API process keeps its own SQLAlchemy pool of connections *to the pooler*, and three settings size it ([#1764](https://github.com/OurHike/OurHike/issues/1764)):
+
+| setting | default | what it is |
+|---|---|---|
+| `DATABASE_POOL_SIZE` | 5 | connections the process keeps open |
+| `DATABASE_MAX_OVERFLOW` | 10 | extra connections it may open under load, and close afterwards |
+| `DATABASE_POOL_TIMEOUT_SECONDS` | 5 | how long a request waits for a free connection before it is answered **503** |
+
+The first two are SQLAlchemy's own defaults, so leaving them unset changes nothing. The timeout was SQLAlchemy's 30 s until #1764; a request that waits it out is now answered 503 by `app/main.py`'s `_pool_exhausted` rather than 500, and the phone's outbox retries a 503 rather than marking the report failed.
+
+**Why the pool is smaller than the request pool (reasoned from the defaults, not observed).** FastAPI runs every `def` route on anyio's thread pool, 40 threads by default, so up to 40 requests can be in flight against at most `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW` = 15 connections. The 16th concurrent database-bound request waits - the shape of a cold-start outbox burst, when every phone that queued reports overnight sends them at once.
+
+**Raise the two sizes together with the pooler's, never past it.** One process opens at most `DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW` client connections to Supavisor, and every running instance opens its own. Supavisor has its own pool size and its own client-connection cap, set per project on Supabase's side, and a client connection past that cap is refused there rather than queued here. Nobody has recorded production's values for either in this repository, so check them before raising these.
+
+**Nobody has measured what a burst needs.** The defaults, including the 5 s timeout, are `@unvalidated`. What would settle them is a burst of concurrent requests through the pgbouncer rig above (`tests/test_pooler.py`), recording how long checkouts wait as concurrency passes the pool's size.
+
 ## Auth
 
 Supabase Auth issues the JWTs this backend verifies - see [../features/AUTHENTICATION.md](../features/AUTHENTICATION.md) for the full design and why Supabase specifically.

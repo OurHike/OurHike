@@ -94,6 +94,31 @@ class Settings(BaseSettings):
     # caching.
     database_prepared_statements: bool = False
 
+    # The SQLAlchemy connection pool's three sizes (#1764 - The connection pool
+    # is the default five plus ten overflow under a forty-thread request pool,
+    # and no figure exists for what a cold-start outbox burst needs).
+    #
+    # Size and overflow default to SQLAlchemy's own 5 and 10, the values every
+    # deployment has run on so far, so leaving them unset changes nothing.
+    # They are settings so they can be raised together with the pooler's own
+    # pool size rather than past it: backend/README.md, "Sizing the
+    # connection pool", says how the two numbers relate. Nobody has measured
+    # what a burst needs, so neither default is a recommendation.
+    #
+    # The timeout is the one default that moves: 5 s, down from SQLAlchemy's
+    # 30. A request that cannot get a connection within it is answered 503
+    # (app/main.py's `_pool_exhausted`), which the phone's outbox treats as
+    # "try again later" rather than as a refusal (client/src/lib/api.ts's
+    # `permanentFailureReason` has no entry for 503). Holding the phone's
+    # request for 30 s buys nothing a retry does not, and keeps one more
+    # request thread blocked behind the pool. @unvalidated: 5 is a round
+    # number, not a measurement - what would settle it is a burst through the
+    # pgbouncer rig in tests/test_pooler.py, timing how long a checkout
+    # actually waits at the point the pool saturates.
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
+    database_pool_timeout_seconds: float = 5.0
+
     # No defaults below - these are real credentials/identifiers for the
     # Supabase project this backend talks to, and must come from the
     # environment (or a local, gitignored .env file), never be hardcoded.
@@ -467,6 +492,31 @@ class Settings(BaseSettings):
     def mail_allowed(self) -> tuple[str, ...]:
         """The suffix list as `app/core/mail.py` wants it."""
         return tuple(part.strip().lower() for part in self.mail_allowed_suffixes.split(",") if part.strip())
+
+    @field_validator("database_pool_size")
+    @classmethod
+    def _pool_holds_a_connection(cls, value: int) -> int:
+        # SQLAlchemy reads 0 as "no limit", which is the opposite of what
+        # somebody writing 0 to shrink the pool would mean.
+        if value < 1:
+            raise ValueError("DATABASE_POOL_SIZE must be at least 1")
+        return value
+
+    @field_validator("database_max_overflow")
+    @classmethod
+    def _overflow_is_not_negative(cls, value: int) -> int:
+        # -1 is SQLAlchemy's "unlimited overflow", which is how a pool walks
+        # past the pooler's client cap - refused rather than passed through.
+        if value < 0:
+            raise ValueError("DATABASE_MAX_OVERFLOW must be 0 or more")
+        return value
+
+    @field_validator("database_pool_timeout_seconds")
+    @classmethod
+    def _timeout_is_positive(cls, value: float) -> float:
+        if not value > 0:
+            raise ValueError("DATABASE_POOL_TIMEOUT_SECONDS must be more than 0")
+        return value
 
     @field_validator("supabase_url")
     @classmethod

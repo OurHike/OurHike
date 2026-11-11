@@ -100,10 +100,10 @@ from pathlib import Path
 
 import requests
 
-# The one home of the source name (#671): the ledger id this file is keyed
-# by is `{SHELTER_SOURCE}:{GlobalID}`, and spelling it locally would be the
-# second copy that drifts.
-from export_poi import SHELTER_SOURCE
+# The one home of the source name (#671), and of the ledger reader the export
+# publishes ids from (#1864): spelling either locally would be the second copy
+# that drifts.
+from export_poi import LEDGER_PATH, SHELTER_SOURCE, live_ledger_ids
 from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
@@ -350,14 +350,38 @@ def index_rows(rows: list[dict]) -> dict[str, dict]:
     return index
 
 
-def resolve(shelters: list[dict], rows: list[dict]) -> list[dict]:
+def poi_id_for(global_id: str, ledger_ids: dict[tuple[str, str], str]) -> str:
+    """The id export_poi.py publishes this shelter under: its live ledger row
+    where there is one, else `{SHELTER_SOURCE}:{GlobalID}`, the id
+    reconcile_poi_identity.py mints for a shelter the ledger has not seen.
+
+    build_water_distance.py's poi_id_for, for this file (#1864 - Nothing runs
+    build_water_distance.py --check or build_shelter_capacity.py --check, the
+    CSI water figure carries no as-of date, and shelter capacity still
+    composes its id from a GlobalID). Composing the id from the GlobalID
+    worked only while the two spellings agree. When ATC re-keys a shelter,
+    reconcile_poi_identity.py carries the old ledger id onto the new
+    GlobalID and the export keeps publishing the old id, so a composed id
+    would name a POI nothing publishes and the card would lose its capacity.
+    That fails toward "no capacity" rather than a wrong number, but silently.
+
+    The same ORDER as the water file: the ledger must already carry the
+    re-key when this runs. main() prints how many shelters had no live row."""
+    return ledger_ids.get((SHELTER_SOURCE, global_id), f"{SHELTER_SOURCE}:{global_id}")
+
+
+def resolve(shelters: list[dict], rows: list[dict], ledger_ids: dict[tuple[str, str], str] | None = None) -> list[dict]:
     """One output record per ATC shelter, in ATC name order.
 
     Every shelter appears, with or without a capacity, so that the file is a
     complete statement about the layer rather than only its good news - and
     so a shelter that loses its match on a later run shows up in the diff as
     a change rather than a disappearance.
+
+    `ledger_ids` is export_poi.live_ledger_ids()'s map; without one every
+    record gets the composed `{SHELTER_SOURCE}:{GlobalID}` (poi_id_for).
     """
+    ledger_ids = ledger_ids or {}
     by_normalised = index_rows(rows)
     by_name_state = {(row["name"], row["state"]): row for row in rows}
 
@@ -385,13 +409,9 @@ def resolve(shelters: list[dict], rows: list[dict]) -> list[dict]:
         if row is None:
             row = by_normalised.get(normalise(name))
 
-        # Keyed by the LEDGER id, not the bare GlobalID (#671): the ledger
-        # owns published identity across upstream refreshes, so this file
-        # stops depending on GlobalID stability the day the two diverge.
-        # The spelling matches at seeding (a ledger id is minted as
-        # `atc_shelters:{GlobalID}` and kept as a birthmark), which is what
-        # made the re-key a no-op diff on published bytes.
-        record = {"poi_id": f"{SHELTER_SOURCE}:{shelter['global_id']}", "atc_name": name}
+        # Keyed by the LEDGER id, not the bare GlobalID (#671), looked up in
+        # the ledger rather than composed (#1864): poi_id_for says why.
+        record = {"poi_id": poi_id_for(shelter["global_id"], ledger_ids), "atc_name": name}
         if row is None:
             record.update({"capacity": None, "listed_as": None, "listed_capacity": None, "unresolved": NO_ROW})
             records.append(record)
@@ -442,8 +462,8 @@ README = [
 ]
 
 
-def build(page: str, atc_shelters: list[dict]) -> dict:
-    records = resolve(atc_shelters, parse_rows(page))
+def build(page: str, atc_shelters: list[dict], ledger_ids: dict[tuple[str, str], str] | None = None) -> dict:
+    records = resolve(atc_shelters, parse_rows(page), ledger_ids)
     known = [r for r in records if r["capacity"] is not None]
     return {
         "_README": README,
@@ -477,9 +497,18 @@ def main(argv: list[str] | None = None) -> int:
     print("Fetching the ATC shelters layer ...")
     atc_shelters = fetch_atc_shelters()
 
-    document = build(page, atc_shelters)
+    ledger_ids = live_ledger_ids()
+    document = build(page, atc_shelters, ledger_ids)
     counts = document["counts"]
     print(f"  {counts['with_capacity']}/{counts['shelters']} ATC shelters resolved to a capacity.")
+    unledgered = [s["global_id"] for s in atc_shelters if (SHELTER_SOURCE, s["global_id"]) not in ledger_ids]
+    if unledgered:
+        # Either new to ATC, or re-keyed before the ledger caught up - this
+        # script cannot tell which (poi_id_for).
+        print(
+            f"  {len(unledgered)} shelter(s) have no live row in {LEDGER_PATH.name} and are keyed "
+            f"`{SHELTER_SOURCE}:{{GlobalID}}`; if any is a re-key, reconcile the ledger first and re-run."
+        )
 
     rendered = render(document)
     if args.check:

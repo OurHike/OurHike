@@ -229,3 +229,45 @@ def test_reference_file_still_covers_most_of_the_layer(reference):
     and far above what a broken join would produce."""
     counts = reference["counts"]
     assert counts["with_capacity"] / counts["shelters"] > 0.8
+
+
+# --- #1864: the id comes from the ledger, not from the GlobalID --------------
+
+
+def test_a_re_keyed_shelter_keeps_the_id_the_ledger_carried_onto_it():
+    """ATC re-keyed Springer: its new GlobalID `glob-0` carries the ledger's
+    old id forward, and that id is what export_poi.py publishes. Composing
+    `atc_shelters:glob-0` would key the capacity to an id nothing publishes."""
+    ledger = {(build.SHELTER_SOURCE, "glob-0"): f"{build.SHELTER_SOURCE}:the-old-globalid"}
+
+    records = _by_name(build.resolve(_shelters("Springer Mtn Shelter"), build.parse_rows(_page()), ledger))
+
+    assert records["Springer Mtn Shelter"]["poi_id"] == f"{build.SHELTER_SOURCE}:the-old-globalid"
+
+
+def test_a_shelter_the_ledger_has_not_seen_takes_the_id_reconcile_would_mint():
+    records = _by_name(build.resolve(_shelters("Springer Mtn Shelter"), build.parse_rows(_page()), {}))
+
+    assert records["Springer Mtn Shelter"]["poi_id"] == f"{build.SHELTER_SOURCE}:glob-0"
+
+
+def test_a_ledger_row_from_another_source_is_not_this_shelters():
+    ledger = {("atc_campsites", "glob-0"): "atc_campsites:somewhere-else"}
+
+    records = _by_name(build.resolve(_shelters("Springer Mtn Shelter"), build.parse_rows(_page()), ledger))
+
+    assert records["Springer Mtn Shelter"]["poi_id"] == f"{build.SHELTER_SOURCE}:glob-0"
+
+
+def test_the_checked_in_file_is_keyed_by_live_ledger_ids():
+    """The file as committed, against the ledger as committed: every record's
+    id is a live row of the shelter source. Measured true on 2026-11-11 for
+    all 280 records, which is why moving to the ledger lookup changed no
+    byte of reference/shelter_capacity.json."""
+    from export_poi import live_ledger_ids
+
+    live = set(live_ledger_ids().values())
+    records = json.loads(build.OUT_PATH.read_text(encoding="utf-8"))["shelters"]
+
+    assert records
+    assert [r["poi_id"] for r in records if r["poi_id"] not in live] == []

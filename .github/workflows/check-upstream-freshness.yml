@@ -147,6 +147,53 @@ jobs:
               ;;
           esac
 
+      # THE TWO REFERENCE JOINS A HIKER READS ON THE CARD (#1864 - Nothing runs
+      # build_water_distance.py --check or build_shelter_capacity.py --check,
+      # the CSI water figure carries no as-of date, and shelter capacity still
+      # composes its id from a GlobalID). reference/water_distance.json and
+      # reference/shelter_capacity.json are checked in, and each script's
+      # --check re-derives its file from the live sources and says whether it
+      # still matches. Nothing called either one, so a spring ATC re-measured
+      # or a shelter's changed listing stayed on the card until somebody
+      # happened to re-run a script by hand.
+      #
+      # WARNINGS, NOT FAILURES, for the reason the job header gives: the
+      # sources changing is news, not a broken check. Drift is told apart from
+      # a crash by the line each script prints for it, not by the exit code,
+      # because an unhandled exception (an upstream that did not answer)
+      # also exits 1. A crash is a warning that the join went unchecked
+      # today, never a silent pass.
+      #
+      # Order (build_water_distance.py's poi_id_for): both scripts key their
+      # records by the identity ledger as committed on main, so a re-key ATC
+      # made that reconcile_poi_identity.py has not yet carried shows up here
+      # as drift, which is the right answer - the file needs a re-run after
+      # the ledger does.
+      - name: Re-derive the water-distance and shelter-capacity joins
+        if: always()
+        run: |
+          for script in build_water_distance.py build_shelter_capacity.py; do
+            set +e
+            python "$script" --check > check.txt 2>&1
+            status=$?
+            set -e
+            cat check.txt
+            if [ "$status" -eq 0 ]; then
+              verdict="matches the live sources"
+            elif grep -q "differs from what the sources now say" check.txt; then
+              verdict="differs from the live sources"
+              echo "::warning title=${script} --check::Its reference file no longer matches what the sources say. Re-run python ${script} without --check, review the diff, and open a pull request."
+            else
+              verdict="could not be checked (exit ${status})"
+              echo "::warning title=${script} --check could not run::It exited ${status} without reaching a verdict, so this join was not checked today. See this step's log."
+            fi
+            {
+              echo "### \`${script} --check\`: ${verdict}"
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+          rm -f check.txt
+
       # THE 35-DAY ALARM. 35 days is a 31-day month plus the worst lateness
       # measured on a weekly cron here (8.1 h, smoke-published.yml), rounded
       # up to a margin: @unvalidated until a year of monthly firings shows the

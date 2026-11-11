@@ -21,6 +21,7 @@ legitimate note observed in test data - and is @unvalidated: real reports
 from real hikers would settle where the ceiling belongs.
 """
 
+import math
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -28,6 +29,42 @@ from typing import Annotated
 from pydantic import AfterValidator, Field
 
 FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
+
+
+def on_globe_or_none(lat: float | None, lon: float | None) -> tuple[float | None, float | None]:
+    """A coordinate pair as a response may serve it: unchanged when it is a
+    point on Earth, both halves null when it is not (#1861).
+
+    #1861 - The backend still stores, moderates and serves off-globe
+    coordinates: five request schemas, the moderation queue, and GET /reports,
+    /closures and /field-notes. The request schemas still accept any finite
+    float (item 1 there waits for a contract boundary), so a row at
+    (1000, -5000) can be stored. This is the rule at the other end, on the
+    way out. It is the same rule as pipeline/export_conditions.py's
+    `_null_off_globe()`, which #1815 applied to the baked conditions files,
+    so the live read and the baked file agree about a row:
+
+      - a pair outside -90..90 / -180..180, or with one half missing, is
+        nulled whole, because one good half of a bad pair places nothing;
+      - the row, its mile and its text are kept;
+      - a NaN or infinite half is left alone. FiniteFloat refuses those at
+        the request schemas, so a stored row cannot hold one through this
+        API, and nulling one here would hide a fault rather than surface it.
+
+    Why null rather than the stored values: #1763 reasons that MapLibre wraps
+    an off-globe longitude and clamps the latitude, drawing a confident dot
+    in the wrong place. That is @unvalidated - nobody has tried it on a
+    device - and the point is nulled whichever way it falls. Null is a shape
+    every response that calls this already allows.
+    """
+    if lat is None and lon is None:
+        return lat, lon
+    if not all(math.isfinite(half) for half in (lat, lon) if half is not None):
+        return lat, lon
+    if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+        return lat, lon
+    return None, None
+
 
 NOTE_MAX_CHARS = 4000
 NoteText = Annotated[str, Field(max_length=NOTE_MAX_CHARS)]

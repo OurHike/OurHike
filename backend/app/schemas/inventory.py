@@ -33,6 +33,7 @@ from app.models.inventory import (
     Condition,
     Connection,
     FixSource,
+    PassState,
     Repair,
     RepairTiming,
     ReviewState,
@@ -271,3 +272,99 @@ class InventoryPhotoReceipt(BaseModel):
 
     observation_id: str
     photo_count: int
+
+
+# --- A survey pass: one walk of one stretch ---------------------------------
+#
+# #1991 - A survey pass records where a walk really started and ended,
+# including when it ended early.
+
+# An org_trails id is a UUID string; the bound is on input, not a finding.
+TrailId = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+
+
+def _a_pair_or_neither(lat: float | None, lon: float | None, end: str) -> None:
+    """One half of a position places nothing, so it is refused rather than
+    stored (ClosureCreate's #674 rule, for a walk's two ends)."""
+    if (lat is None) != (lon is None):
+        raise ValueError(f"{end}_lat and {end}_lon must be sent together or not at all")
+
+
+class PassCreate(BaseModel):
+    """Starting a walk, as the outbox sends it.
+
+    **`id` is the client's.** A record logged on this walk names it
+    (`ObservationCreate.pass_id`) before the server has seen either one, so
+    the phone has to be able to mint it with no signal. A retry is the same
+    row, as it is for an observation.
+
+    **`from_lat`/`from_lon` are optional**, and absent means the phone had no
+    fix when the walk began (`InventoryPass`'s own rule). Unlike the older
+    request schemas, they are bounded to the globe from the start: a new
+    endpoint has no contract to keep with an unbounded float.
+    """
+
+    id: uuid.UUID
+    trail_id: TrailId
+    started_at: datetime
+    from_lat: Latitude | None = None
+    from_lon: Longitude | None = None
+    note: NoteText | None = None
+
+    @field_validator("started_at")
+    @classmethod
+    def _reject_a_future_start(cls, value: datetime) -> datetime:
+        return refuse_a_future_time(value, "started_at")
+
+    @model_validator(mode="after")
+    def _the_start_is_a_pair_or_absent(self) -> "PassCreate":
+        _a_pair_or_neither(self.from_lat, self.from_lon, "from")
+        return self
+
+
+class PassFinish(BaseModel):
+    """Finishing a walk, and where it really ended.
+
+    **`ended_early` with the point the volunteer placed** is what lets the
+    pass say what was walked rather than what was meant to be (the Finish
+    this walk screen, 2k in the design doc). The point stays optional: a
+    phone with no fix and a volunteer who placed nothing is an unknown end,
+    stored as one, never a guess.
+
+    `finished_at` is the phone's, required, for the same reason `id` is: the
+    outbox may send this long after the walk ended, and a retry must be
+    recognisable as the same finish.
+    """
+
+    finished_at: datetime
+    to_lat: Latitude | None = None
+    to_lon: Longitude | None = None
+    ended_early: bool = False
+
+    @field_validator("finished_at")
+    @classmethod
+    def _reject_a_future_finish(cls, value: datetime) -> datetime:
+        return refuse_a_future_time(value, "finished_at")
+
+    @model_validator(mode="after")
+    def _the_end_is_a_pair_or_absent(self) -> "PassFinish":
+        _a_pair_or_neither(self.to_lat, self.to_lon, "to")
+        return self
+
+
+class PassOut(BaseModel):
+    """One walk, as its volunteer reads it back."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    trail_id: str
+    started_at: UtcDatetime
+    finished_at: UtcDatetime | None
+    from_lat: float | None
+    from_lon: float | None
+    to_lat: float | None
+    to_lon: float | None
+    ended_early: bool
+    state: PassState
+    note: str | None

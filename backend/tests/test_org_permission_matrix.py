@@ -871,6 +871,41 @@ def test_only_an_enrolled_volunteer_can_upload_a_survey_record(client, survey_wo
     assert response.status_code == (201 if expected is None else expected)
 
 
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_only_an_enrolled_volunteer_can_start_a_survey_walk(client, survey_world, who):
+    """#1991 — A survey pass records where a walk really started and ended, including when it ended early.
+
+    A walk is the frame records are logged in, so it takes what logging a
+    record takes: the waiver and the field guide, for the admin too."""
+    body = {"id": str(uuid.uuid4()), "trail_id": survey_world["trail_id"], "started_at": "2026-11-02T08:00:00Z"}
+    response = _call(client, survey_world, who, "post", "/clubs/{slug}/inventory/passes", body)
+    expected = _expected({ENROLLED_VOLUNTEER}, who)
+
+    assert response.status_code == (201 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_only_the_volunteer_who_started_a_walk_can_finish_it(client, survey_world, who):
+    """#1991. Everybody else here is refused at the door, since only the
+    walker is enrolled. Another enrolled volunteer gets past the door and
+    finds no walk (404); test_routers_inventory_passes.py holds that case."""
+    volunteer = survey_world["people"][ENROLLED_VOLUNTEER]
+    pass_id = str(uuid.uuid4())
+    started = client.post(
+        f"/clubs/{survey_world['org'].slug}/inventory/passes",
+        json={"id": pass_id, "trail_id": survey_world["trail_id"], "started_at": "2026-11-02T08:00:00Z"},
+        headers=auth_headers(volunteer.id),
+    )
+    assert started.status_code == 201
+
+    response = _call(
+        client, survey_world, who, "patch", f"/clubs/{{slug}}/inventory/passes/{pass_id}", {"finished_at": "2026-11-02T11:00:00Z"}
+    )
+    expected = _expected({ENROLLED_VOLUNTEER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
 @pytest.fixture
 def survey_photo(client, db_session, survey_world, photo_bucket):
     """`survey_world` with a bucket, and one record of the enrolled

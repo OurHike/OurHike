@@ -61,8 +61,10 @@ from app.models.inventory import (
     InventoryObservation,
     InventoryPass,
     InventoryStructure,
+    PassState,
     StructureStatus,
 )
+from app.models.org_registry import OrgPark, OrgTrail
 from app.routers.reports import read_capped_body, refuse_an_out_of_sequence_photo
 from app.schemas.inventory import (
     EnrollmentCreate,
@@ -73,6 +75,9 @@ from app.schemas.inventory import (
     InventorySettingsOut,
     ObservationCreate,
     ObservationReceipt,
+    PassCreate,
+    PassFinish,
+    PassOut,
 )
 from app.schemas.report import ReportPhotoLink
 
@@ -516,6 +521,151 @@ def upload_inventory_observation(
         return _receipt(existing)
     db.refresh(row)
     return _receipt(row)
+
+
+# --- A survey pass: one walk of one stretch ----------------------------------
+#
+# #1991 - A survey pass records where a walk really started and ended,
+# including when it ended early. The `SurveyPass` features/INVASIVE_SPECIES.md
+# sketched, on the `inventory_passes` table the structure-inventory migration
+# already made. Both routes are the outbox's: the start and the finish may
+# each arrive long after the fact, more than once, and a retry is the same
+# write rather than a second one.
+
+
+def _own_pass_or_none(db: Session, pass_id: str, enrollment: InventoryEnrollment) -> InventoryPass | None:
+    """This volunteer's walk at this club, or None.
+
+    Somebody else's walk and no walk at all look the same from outside, for
+    `_already_uploaded`'s reason: a walk id is a client's UUID, and nobody
+    should learn anything by guessing one."""
+    walk = db.get(InventoryPass, pass_id)
+    if walk is None or walk.club_id != enrollment.club_id or walk.volunteer_id != enrollment.person_id:
+        return None
+    return walk
+
+
+def _trail_is_the_clubs(db: Session, trail_id: str, club_id: str) -> bool:
+    return (
+        db.query(OrgTrail.id)
+        .join(OrgPark, OrgPark.id == OrgTrail.park_id)
+        .filter(OrgTrail.id == trail_id, OrgPark.club_id == club_id)
+        .first()
+        is not None
+    )
+
+
+@router.post("/clubs/{slug}/inventory/passes", response_model=PassOut, status_code=status.HTTP_201_CREATED)
+def start_inventory_pass(
+    payload: PassCreate,
+    response: Response,
+    enrollment: InventoryEnrollment = Depends(require_inventory_volunteer),
+    db: Session = Depends(get_db),
+) -> InventoryPass:
+    """Start a walk of one of this club's trails. Idempotent on its id.
+
+    A second POST with the same id answers the walk as it stands, with 200,
+    and changes nothing - including a walk that has since been finished, so
+    a late retry of the start cannot reopen it. An id already used by
+    somebody else is a 409 that says nothing about whose it is.
+    """
+    pass_id = str(payload.id)
+
+    def answered_again() -> InventoryPass | None:
+        existing = db.get(InventoryPass, pass_id)
+        if existing is None:
+            return None
+        if _own_pass_or_none(db, pass_id, enrollment) is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That walk id is already taken")
+        response.status_code = status.HTTP_200_OK
+        return existing
+
+    existing = answered_again()
+    if existing is not None:
+        return existing
+
+    if not _trail_is_the_clubs(db, payload.trail_id, enrollment.club_id):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="That trail is not one of this organization's",
+        )
+
+    walk = InventoryPass(
+        id=pass_id,
+        club_id=enrollment.club_id,
+        volunteer_id=enrollment.person_id,
+        trail_id=payload.trail_id,
+        started_at=to_naive_utc(payload.started_at),
+        from_lat=payload.from_lat,
+        from_lon=payload.from_lon,
+        note=payload.note,
+        state=PassState.in_progress,
+    )
+    db.add(walk)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two sends of one start racing past the read above (the observation
+        # route's case, and its answer).
+        db.rollback()
+        existing = answered_again()
+        if existing is None:
+            raise
+        return existing
+    db.refresh(walk)
+    return walk
+
+
+def _the_same_finish(walk: InventoryPass, payload: PassFinish) -> bool:
+    return (
+        walk.finished_at == to_naive_utc(payload.finished_at)
+        and walk.to_lat == payload.to_lat
+        and walk.to_lon == payload.to_lon
+        and walk.ended_early == payload.ended_early
+    )
+
+
+@router.patch("/clubs/{slug}/inventory/passes/{pass_id}", response_model=PassOut)
+def finish_inventory_pass(
+    pass_id: str,
+    payload: PassFinish,
+    enrollment: InventoryEnrollment = Depends(require_inventory_volunteer),
+    db: Session = Depends(get_db),
+) -> InventoryPass:
+    """Finish a walk, with where it really ended, and whether that was early.
+
+    **Once.** The same finish sent again answers the walk unchanged, because
+    the outbox retries until it hears back. A different finish of a walk
+    already finished is a 409: the first one is what the volunteer said when
+    they stopped, and a later copy on a phone must not rewrite it.
+
+    A finish before the start is refused, since the two are the phone's own
+    clock on one device and cannot honestly cross.
+    """
+    walk = _own_pass_or_none(db, pass_id, enrollment)
+    if walk is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No walk of yours with that id here")
+
+    if walk.state is not PassState.in_progress:
+        if _the_same_finish(walk, payload):
+            return walk
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That walk is already finished")
+
+    finished_at = to_naive_utc(payload.finished_at)
+    if finished_at < walk.started_at:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A walk cannot finish before it started",
+        )
+
+    walk.finished_at = finished_at
+    walk.to_lat = payload.to_lat
+    walk.to_lon = payload.to_lon
+    walk.ended_early = payload.ended_early
+    walk.state = PassState.completed
+    db.commit()
+    db.refresh(walk)
+    return walk
 
 
 # --- A record's photos ------------------------------------------------------

@@ -930,3 +930,18 @@ def test_a_records_photo_reaches_its_volunteer_and_its_reviewers_and_is_a_404_to
         assert response.status_code == 200
     else:
         assert response.status_code == 404
+
+
+@pytest.mark.parametrize("path", ["/clubs/{slug}/inventory/export.csv", "/clubs/{slug}/inventory/export.geojson"])
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_the_inventory_exports_reach_admins_only(client, survey_world, who, path):
+    """#1993 — The inventory exports as CSV and GeoJSON for the club's GIS,
+    admin-only, with every estimate labelled as one.
+
+    The permissions table in features/STRUCTURE_INVENTORY.md: a club admin,
+    as `download_entries`. Not a supervisor, and not the volunteers who
+    walked the records."""
+    response = _call(client, survey_world, who, "get", path)
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)

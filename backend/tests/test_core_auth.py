@@ -48,11 +48,16 @@ def _credentials(token: str) -> HTTPAuthorizationCredentials:
     return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
 
+def _token(token: str) -> auth_module.VerifiedToken | None:
+    """What FastAPI hands `get_current_user` for this bearer token."""
+    return auth_module.verified_token(credentials=_credentials(token))
+
+
 def test_get_current_user_accepts_a_validly_signed_token(db_session):
     user_id = "11111111-1111-1111-1111-111111111111"
     token = make_token(user_id)
 
-    profile = get_current_user(credentials=_credentials(token), db=db_session)
+    profile = get_current_user(token=_token(token), db=db_session)
 
     assert profile.id == user_id
 
@@ -69,7 +74,7 @@ def test_get_current_user_accepts_the_audience_supabase_actually_issues(db_sessi
     user_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     token = make_token(user_id, audience="authenticated")
 
-    profile = get_current_user(credentials=_credentials(token), db=db_session)
+    profile = get_current_user(token=_token(token), db=db_session)
 
     assert profile.id == user_id
 
@@ -80,7 +85,7 @@ def test_get_current_user_rejects_a_token_minted_for_a_different_audience(db_ses
     token = make_token("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", audience="some-other-service")
 
     with pytest.raises(HTTPException) as exc_info:
-        get_current_user(credentials=_credentials(token), db=db_session)
+        get_current_user(token=_token(token), db=db_session)
 
     assert exc_info.value.status_code == 401
 
@@ -92,7 +97,7 @@ def test_get_current_user_rejects_a_token_carrying_no_audience_at_all(db_session
     token = make_token("cccccccc-cccc-cccc-cccc-cccccccccccc", audience=None)
 
     with pytest.raises(HTTPException) as exc_info:
-        get_current_user(credentials=_credentials(token), db=db_session)
+        get_current_user(token=_token(token), db=db_session)
 
     assert exc_info.value.status_code == 401
 
@@ -104,7 +109,7 @@ def test_verify_supabase_jwt_skips_the_audience_check_when_none_is_configured(mo
     user_id = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 
     for token in (make_token(user_id, audience=None), make_token(user_id, audience="anything")):
-        profile = get_current_user(credentials=_credentials(token), db=db_session)
+        profile = get_current_user(token=_token(token), db=db_session)
         assert profile.id == user_id
 
 
@@ -112,7 +117,7 @@ def test_get_current_user_rejects_a_token_signed_with_the_wrong_secret(db_sessio
     token = make_token("22222222-2222-2222-2222-222222222222", secret="a-completely-different-secret")
 
     with pytest.raises(HTTPException) as exc_info:
-        get_current_user(credentials=_credentials(token), db=db_session)
+        get_current_user(token=_token(token), db=db_session)
 
     assert exc_info.value.status_code == 401
 
@@ -121,7 +126,7 @@ def test_get_current_user_rejects_an_expired_token(db_session):
     token = make_token("33333333-3333-3333-3333-333333333333", expires_delta=timedelta(hours=-1))
 
     with pytest.raises(HTTPException) as exc_info:
-        get_current_user(credentials=_credentials(token), db=db_session)
+        get_current_user(token=_token(token), db=db_session)
 
     assert exc_info.value.status_code == 401
 
@@ -130,7 +135,7 @@ def test_get_current_user_provisions_a_profile_row_on_first_request_for_a_new_us
     user_id = "44444444-4444-4444-4444-444444444444"
     token = make_token(user_id)
 
-    profile = get_current_user(credentials=_credentials(token), db=db_session)
+    profile = get_current_user(token=_token(token), db=db_session)
 
     assert profile.id == user_id
     assert profile.role == Role.hiker
@@ -144,8 +149,8 @@ def test_get_current_user_does_not_duplicate_a_profile_row_on_repeat_requests(db
     user_id = "55555555-5555-5555-5555-555555555555"
     token = make_token(user_id)
 
-    get_current_user(credentials=_credentials(token), db=db_session)
-    get_current_user(credentials=_credentials(token), db=db_session)
+    get_current_user(token=_token(token), db=db_session)
+    get_current_user(token=_token(token), db=db_session)
 
     rows = db_session.execute(select(Profile).where(Profile.id == user_id)).scalars().all()
     assert len(rows) == 1
@@ -184,7 +189,7 @@ def test_require_role_allows_a_matching_role_through(db_session):
 
 
 def test_verify_accepts_the_es256_token_a_hosted_project_issues(published_key, db_session):
-    profile = get_current_user(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session)
+    profile = get_current_user(token=_token(make_es256_token("hiker-es256")), db=db_session)
 
     assert profile.id == "hiker-es256"
 
@@ -224,7 +229,7 @@ def test_hs256_still_works_because_self_hosted_supabase_signs_that_way(db_sessio
     # Not a legacy path being tolerated. OurHikeValues.md leans on self-hosting
     # as the thing that keeps this project inheritable, and self-hosted
     # Supabase signs HS256 against JWT_SECRET.
-    profile = get_current_user(credentials=_credentials(make_token("hiker-hs256")), db=db_session)
+    profile = get_current_user(token=_token(make_token("hiker-hs256")), db=db_session)
 
     assert profile.id == "hiker-hs256"
 
@@ -266,7 +271,7 @@ def test_a_malformed_token_fails_as_an_auth_error_not_a_crash(db_session):
     # get_unverified_header runs before any key lookup, so garbage has to come
     # back 401 rather than 500.
     with pytest.raises(HTTPException) as raised:
-        get_current_user(credentials=_credentials("not-a-jwt"), db=db_session)
+        get_current_user(token=_token("not-a-jwt"), db=db_session)
 
     assert raised.value.status_code == 401
 
@@ -285,7 +290,7 @@ def test_a_jwks_outage_is_a_503_not_an_invalid_token(db_session, monkeypatch):
     monkeypatch.setattr(auth_module, "signing_key_for", unreachable)
 
     with pytest.raises(HTTPException) as raised:
-        get_current_user(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session)
+        get_current_user(token=_token(make_es256_token("hiker-es256")), db=db_session)
 
     assert raised.value.status_code == 503
     assert raised.value.headers["Retry-After"]
@@ -300,7 +305,7 @@ def test_a_key_the_jwks_does_not_hold_is_still_an_invalid_token(db_session, monk
     monkeypatch.setattr(auth_module, "signing_key_for", unknown)
 
     with pytest.raises(HTTPException) as raised:
-        get_current_user(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session)
+        get_current_user(token=_token(make_es256_token("hiker-es256")), db=db_session)
 
     assert raised.value.status_code == 401
 
@@ -313,7 +318,7 @@ def test_the_optional_dependency_reads_a_jwks_outage_as_anonymous(db_session, mo
 
     monkeypatch.setattr(auth_module, "signing_key_for", unreachable)
 
-    assert get_current_user_optional(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session) is None
+    assert get_current_user_optional(token=_token(make_es256_token("hiker-es256")), db=db_session) is None
 
 
 def test_a_token_with_no_expiry_is_refused(db_session):
@@ -324,7 +329,7 @@ def test_a_token_with_no_expiry_is_refused(db_session):
     token = jwt.encode(claims, settings.supabase_jwt_secret, algorithm="HS256")
 
     with pytest.raises(HTTPException) as raised:
-        get_current_user(credentials=_credentials(token), db=db_session)
+        get_current_user(token=_token(token), db=db_session)
 
     assert raised.value.status_code == 401
 
@@ -396,3 +401,54 @@ def test_the_jwks_client_is_built_with_the_short_fetch_timeout():
 
     assert isinstance(client, auth_module._ThrottledJWKClient)
     assert client.timeout == auth_module.JWKS_FETCH_TIMEOUT_SECONDS == 5.0
+
+
+# ---------------------------------------------------------------------------
+# One verification per request (#1767 item 4).
+# ---------------------------------------------------------------------------
+
+
+def _count_verifications(monkeypatch) -> list[str]:
+    """Wrap `verify_supabase_jwt` so each call is recorded, and still verifies."""
+    calls: list[str] = []
+    real = auth_module.verify_supabase_jwt
+
+    def counting(token: str) -> dict:
+        calls.append(token)
+        return real(token)
+
+    monkeypatch.setattr(auth_module, "verify_supabase_jwt", counting)
+    return calls
+
+
+def test_an_org_access_route_verifies_the_token_once_not_once_per_dependency(client, db_session, monkeypatch):
+    """`org_access` depends on `get_current_user` and `get_current_email`, and
+    each used to verify the bearer token itself - two signature checks, and on
+    an ES256 project two JWKS lookups, for one request."""
+    from tests.factories import make_org, make_profile
+    from tests.tokens import auth_headers
+
+    org = make_org(db_session)
+    person = make_profile(db_session)
+    calls = _count_verifications(monkeypatch)
+
+    response = client.get(f"/clubs/{org.slug}/inventory/settings", headers=auth_headers(person.id))
+
+    assert response.status_code == 200, response.text
+    assert len(calls) == 1
+
+
+def test_a_public_org_read_verifies_the_token_once(client, db_session, monkeypatch):
+    """`GET /clubs/{slug}` takes `get_current_user_optional` and
+    `get_current_email` side by side, the other pair that verified twice."""
+    from tests.factories import make_org, make_profile
+    from tests.tokens import auth_headers
+
+    org = make_org(db_session)
+    person = make_profile(db_session)
+    calls = _count_verifications(monkeypatch)
+
+    response = client.get(f"/clubs/{org.slug}", headers=auth_headers(person.id, email="dana@example.org"))
+
+    assert response.status_code == 200, response.text
+    assert len(calls) == 1

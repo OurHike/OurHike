@@ -38,6 +38,7 @@ import re
 import threading
 import time
 from collections.abc import Iterable
+from dataclasses import dataclass
 from functools import lru_cache
 
 import jwt
@@ -252,8 +253,49 @@ def _get_or_create_profile(db: Session, user_id: str, email: str | None = None) 
 ACCOUNT_DELETED_DETAIL = "This account has been deleted"
 
 
-def get_current_user(
+@dataclass(frozen=True)
+class VerifiedToken:
+    """One bearer token, verified once: its claims, or why it was refused.
+
+    Exactly one of `claims` and `error` is set. A refusal is carried rather
+    than raised so each dependency that reads the token can answer it its own
+    way: `get_current_user` with a 401 or 503, `get_current_email` and
+    `get_current_user_optional` by treating it as no token at all.
+    """
+
+    claims: dict | None
+    error: jwt.PyJWTError | None
+
+
+def verified_token(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> VerifiedToken | None:
+    """FastAPI dependency: the request's bearer token, verified, or None if it sent none.
+
+    **WHY THIS IS A DEPENDENCY OF ITS OWN** (#1767 item 4). `org_access`
+    depends on both `get_current_user` and `get_current_email`, and
+    `GET /clubs/{slug}` on `get_current_user_optional` and `get_current_email`.
+    Each used to call `verify_supabase_jwt` itself, so every org route checked
+    one signature twice - and on an ES256 project asked the JWKS cache twice.
+    FastAPI resolves a dependency once per request and hands every dependant
+    the same value (`use_cache=True`, its default), so routing all of them
+    through this one makes the verification happen once.
+    `test_an_org_access_route_verifies_the_token_once_not_once_per_dependency`
+    holds it.
+
+    `get_current_github_login` still verifies on its own: #1938 is rewriting
+    it, and a route that takes it does so once.
+    """
+    if credentials is None:
+        return None
+    try:
+        return VerifiedToken(claims=verify_supabase_jwt(credentials.credentials), error=None)
+    except jwt.PyJWTError as exc:
+        return VerifiedToken(claims=None, error=exc)
+
+
+def get_current_user(
+    token: VerifiedToken | None = Depends(verified_token),
     db: Session = Depends(get_db),
 ) -> Profile:
     """Resolve the current Profile from a bearer JWT, provisioning one if needed.
@@ -267,17 +309,15 @@ def get_current_user(
     A row carrying `deleted_at` is refused rather than returned; see the
     comment at the check, which is the load-bearing half of #895.
     """
-    if credentials is None:
+    if token is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-    try:
-        claims = verify_supabase_jwt(credentials.credentials)
-    except jwt.PyJWKClientConnectionError as exc:
+    if isinstance(token.error, jwt.PyJWKClientConnectionError):
         # The token was never examined: this is `PyJWKClient` failing to
         # FETCH the project's JWKS - a timeout, a DNS miss, Supabase's key
         # endpoint answering 5xx - which it does synchronously on the first
         # request after its five-minute cache lapses. It subclasses
-        # PyJWTError, so the branch below used to catch it and answer 401
+        # PyJWTError, so the 401 branch below used to catch it and answer 401
         # "Invalid or expired token" for a token that was neither, and the
         # server log said the same. 503 is what happened: this service
         # cannot verify anyone right now, and the client should keep the
@@ -290,10 +330,11 @@ def get_current_user(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The signing keys could not be fetched, so this token could not be checked. Try again shortly.",
             headers={"Retry-After": "30"},
-        ) from exc
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
+        ) from token.error
+    if token.error is not None or token.claims is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from token.error
 
+    claims = token.claims
     user_id = claims.get("sub")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject claim")
@@ -345,7 +386,7 @@ def still_signed_in(db: Session, profile_id: str) -> Profile:
 
 
 def get_current_email(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    token: VerifiedToken | None = Depends(verified_token),
 ) -> str | None:
     """The caller's verified email address, from the token, or None.
 
@@ -365,13 +406,9 @@ def get_current_email(
     else - see `_get_or_create_profile`'s @unvalidated note on whether a real
     Supabase access token carries it at all.
     """
-    if credentials is None:
+    if token is None or token.claims is None:
         return None
-    try:
-        claims = verify_supabase_jwt(credentials.credentials)
-    except jwt.PyJWTError:
-        return None
-    email = claims.get("email")
+    email = token.claims.get("email")
     return email.strip().lower() if isinstance(email, str) and email.strip() else None
 
 
@@ -456,7 +493,7 @@ def get_current_github_login(
 
 
 def get_current_user_optional(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    token: VerifiedToken | None = Depends(verified_token),
     db: Session = Depends(get_db),
 ) -> Profile | None:
     """Like `get_current_user`, but returns None instead of raising.
@@ -484,10 +521,10 @@ def get_current_user_optional(
     is the right degradation for a request that never needed the token,
     where a 503 would take the public list down with the key server.
     """
-    if credentials is None:
+    if token is None:
         return None
     try:
-        return get_current_user(credentials=credentials, db=db)
+        return get_current_user(token=token, db=db)
     except HTTPException:
         return None
 

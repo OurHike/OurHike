@@ -41,6 +41,7 @@ from collections.abc import Iterable
 from functools import lru_cache
 
 import jwt
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import IntegrityError
@@ -57,6 +58,19 @@ from app.models.profile import Profile, Role
 # settings offer it and a project switched to it should not need a code change
 # to keep working.
 ASYMMETRIC_ALGORITHMS = ("ES256", "RS256")
+
+# The public-key type each asymmetric algorithm can verify with. PyJWT does not
+# check this pairing before it uses the key: handed an EC key under RS256 (or an
+# RSA key under ES256) it raises a bare `TypeError` from inside its own key
+# preparation, which is not a `PyJWTError`, so it escaped `get_current_user`'s
+# 401 branch as a 500 - on public reads too, through
+# `get_current_user_optional` (#1918 item 3, measured 2026-10-27 and again by
+# `test_core_auth.py`'s mismatched-key tests). The header's `alg` and the JWKS
+# key's `kid` are both the caller's to choose, so this pairing is checked here.
+_KEY_TYPE_FOR_ALGORITHM = {
+    "ES256": ec.EllipticCurvePublicKey,
+    "RS256": rsa.RSAPublicKey,
+}
 
 # auto_error=False so a missing/malformed Authorization header doesn't short
 # -circuit into FastAPI's own default response - `HTTPBearer`'s built-in
@@ -169,6 +183,11 @@ def verify_supabase_jwt(token: str) -> dict:
 
     if algorithm in ASYMMETRIC_ALGORITHMS:
         key: object = signing_key_for(token)
+        if not isinstance(key, _KEY_TYPE_FOR_ALGORITHM[algorithm]):
+            # A refusal, in the PyJWTError family, so it reads as "not signed
+            # in" (401) rather than as a crash. Nothing is learned by the
+            # caller that the JWKS does not already publish.
+            raise jwt.InvalidKeyError(f"The key this token names cannot verify {algorithm}.")
     elif algorithm == "HS256":
         if not settings.supabase_jwt_secret:
             # A hosted project has no shared secret to configure, so this is

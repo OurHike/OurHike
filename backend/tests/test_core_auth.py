@@ -17,10 +17,13 @@ defaults are only meaningful when FastAPI's own DI resolves them for a real
 route, so a direct call just passes real values as keyword arguments instead.
 """
 
+import base64
+import json
 from datetime import timedelta
 
 import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
@@ -396,3 +399,45 @@ def test_the_jwks_client_is_built_with_the_short_fetch_timeout():
 
     assert isinstance(client, auth_module._ThrottledJWKClient)
     assert client.timeout == auth_module.JWKS_FETCH_TIMEOUT_SECONDS == 5.0
+
+
+# #1918 item 3. The header's `alg` and the key its `kid` names are both the
+# caller's to choose, and PyJWT does not check that they agree before using the
+# key: an EC key under RS256 raised a bare TypeError, which is not a PyJWTError,
+# so get_current_user answered it as a 500 - on public reads too.
+
+
+def _with_alg(token: str, algorithm: str) -> str:
+    """The same token with only its header's `alg` rewritten. The signature
+    no longer matches, which is fine: the failure under test happens before
+    any signature is checked."""
+    header, payload, signature = token.split(".")
+    claims = json.loads(base64.urlsafe_b64decode(header + "=" * (-len(header) % 4)))
+    claims["alg"] = algorithm
+    rewritten = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b"=").decode()
+    return ".".join([rewritten, payload, signature])
+
+
+def test_an_rs256_header_naming_the_projects_ec_key_is_a_401_not_a_500(published_key, db_session):
+    token = _with_alg(make_es256_token("hiker-es256"), "RS256")
+
+    with pytest.raises(HTTPException) as raised:
+        get_current_user(credentials=_credentials(token), db=db_session)
+
+    assert raised.value.status_code == 401
+
+
+def test_an_es256_header_naming_an_rsa_key_is_a_401_not_a_500(monkeypatch, db_session):
+    rsa_public = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key()
+    monkeypatch.setattr(auth_module, "signing_key_for", lambda _token: rsa_public)
+
+    with pytest.raises(HTTPException) as raised:
+        get_current_user(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session)
+
+    assert raised.value.status_code == 401
+
+
+def test_a_mismatched_key_reads_as_anonymous_on_a_public_read(published_key, db_session):
+    token = _with_alg(make_es256_token("hiker-es256"), "RS256")
+
+    assert get_current_user_optional(credentials=_credentials(token), db=db_session) is None

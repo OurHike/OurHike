@@ -1001,3 +1001,31 @@ def test_a_storage_failure_does_not_tell_the_uploader_where_the_bucket_is(client
     # And the row is untouched: the object never landed, so nothing claims it did.
     db_session.refresh(report)
     assert (report.photo_count, report.photo_url) == (0, None)
+
+
+# #1918 item 12. Every signed photo URL used to build its own boto3 client,
+# which is most of what signing one costs. One client per set of R2_PHOTO_*
+# values, so a list of photo notes signs against one client, and a changed
+# credential still gets a client of its own rather than the stale one.
+
+
+def test_every_signed_photo_url_is_signed_by_one_shared_client(monkeypatch):
+    monkeypatch.setattr(settings, "r2_photo_endpoint_url", "https://example.r2.cloudflarestorage.com")
+    monkeypatch.setattr(settings, "r2_photo_access_key_id", "key-a")
+    monkeypatch.setattr(settings, "r2_photo_secret_access_key", "secret-a")
+
+    assert photos_module._client() is photos_module._client()
+
+
+def test_a_rotated_photo_key_gets_a_new_client_rather_than_the_cached_one(monkeypatch):
+    monkeypatch.setattr(settings, "r2_photo_endpoint_url", "https://example.r2.cloudflarestorage.com")
+    monkeypatch.setattr(settings, "r2_photo_access_key_id", "key-a")
+    monkeypatch.setattr(settings, "r2_photo_secret_access_key", "secret-a")
+    before = photos_module._client()
+
+    monkeypatch.setattr(settings, "r2_photo_access_key_id", "key-b")
+    monkeypatch.setattr(settings, "r2_photo_secret_access_key", "secret-b")
+    after = photos_module._client()
+
+    assert after is not before
+    assert after._request_signer._credentials.access_key == "key-b"

@@ -86,6 +86,7 @@ not change when a Worker replaces the redirect behind it.
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 
 import boto3
 from botocore.config import Config
@@ -324,21 +325,41 @@ def photo_uploads_enabled() -> bool:
 
 
 def _client():
-    """A fresh S3 client for R2.
+    """The S3 client for R2 under today's four R2_PHOTO_* values.
 
-    Not cached: this is called once per upload, an upload is already a network
-    round trip, and a module-level client would capture credentials at import
-    time - which makes the settings above untestable and a rotated key
-    unnoticed until a restart.
+    Shared rather than built per call (#1918 item 12). Building one is the
+    expensive part of signing a URL: 4.7 ms a call with a fresh client against
+    0.24 ms with a shared one, measured by the 2026-10-27 review in a sandbox,
+    so a GET /field-notes carrying 500 photo notes spent about 2.4 s just
+    building clients. botocore documents a low-level client as safe to share
+    across threads, which every `def` route here needs it to be.
+
+    Keyed on the values, not built once at import, which is what the earlier
+    "not cached" answer was protecting: a client captured at import ignores a
+    setting changed afterwards, so tests could not reconfigure it and a
+    rotated key went unnoticed until a restart. Here a changed value is a
+    different key and gets a client of its own.
 
     Its timeouts and retries are the constants above, never botocore's
     defaults; tests/test_upload_releases_connection.py holds that.
     """
+    return _client_for(
+        settings.r2_photo_endpoint_url,
+        settings.r2_photo_access_key_id,
+        settings.r2_photo_secret_access_key,
+    )
+
+
+# Four, not one: a key rotation, or a test suite reconfiguring the settings,
+# keeps the previous client briefly reachable rather than thrashing. The
+# number is small because only one set of values is live at a time.
+@lru_cache(maxsize=4)
+def _client_for(endpoint_url: str | None, access_key_id: str | None, secret_access_key: str | None):
     return boto3.client(
         "s3",
-        endpoint_url=settings.r2_photo_endpoint_url,
-        aws_access_key_id=settings.r2_photo_access_key_id,
-        aws_secret_access_key=settings.r2_photo_secret_access_key,
+        endpoint_url=endpoint_url,
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
         # R2 ignores the region but boto3 insists on one; `auto` is what
         # Cloudflare's own documentation uses.
         region_name="auto",

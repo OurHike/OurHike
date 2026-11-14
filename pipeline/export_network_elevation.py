@@ -24,7 +24,7 @@ relaxation.
 
 WHAT IS PUBLISHED PER EDGE, AND WHY IT IS TWO SCALARS RATHER THAN A PROFILE
 
-`[gain_ft, loss_ft]`, rounded to whole feet, or `null`.
+`[gain_ft, loss_ft]`, each rounded UP to the whole foot, or `null`.
 
 Two scalars because the alternative is the one shape that would cost a hiker
 battery. If the client had to walk a dense sampled profile to sum a route's
@@ -91,6 +91,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -200,13 +201,25 @@ def edge_climb(elevations_m: list[float | None], threshold_ft: float = DEFAULT_T
     (`cumulative_gain_over_gaps`), which under-counts by whatever happened
     inside the gap: the honest direction, and visible in the manifest's
     coverage counts rather than only described here.
+
+    BOTH FIGURES ROUND UP to the whole foot, toward caution, as
+    int_elevation__edge_climbs does (the maintainer's poll of 2026-10-14): the
+    phone sums a route edge by edge and more climb only adds time to its
+    estimate, so an edge read a foot high errs the safe way and one read half
+    a foot low does not. This rounded to the nearest foot until #1854, and the
+    two lanes publishing UA - this file from publish-vector-data.yml, the dbt
+    writer from build-reference.yml - disagreed by a foot on every figure
+    whose fraction was under a half. Going from the dbt lane's release to
+    this file's, 572,646 edges' climb changed and none went up (#1854,
+    Measured 2026-10-18); that the rounding is the cause of all but three of
+    them is Reasoned from the two rules, not re-measured edge by edge.
     """
     if not any(value is not None for value in elevations_m):
         return None
     feet = [None if value is None else value / METERS_PER_FOOT for value in elevations_m]
     gain = cumulative_gain_over_gaps(feet, threshold_ft)
     loss = loss_over_gaps(feet, threshold_ft)
-    return [round(gain), round(loss)]
+    return [math.ceil(gain), math.ceil(loss)]
 
 
 def build(graph: dict, geometry: list[list[list[float]]], sampler: ElevationSampler) -> tuple[list, dict]:

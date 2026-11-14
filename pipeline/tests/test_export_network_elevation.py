@@ -14,6 +14,7 @@ somebody recorded once.
 """
 
 import json
+import math
 
 import numpy as np
 import pytest
@@ -134,7 +135,9 @@ class TestEdgeClimb:
         # A hill up and back down: frame `1l` prints its own signs, so the
         # artifact carries magnitudes.
         climb = network_elevation.edge_climb([100.0, 200.0, 100.0])
-        assert climb == [round(100 / METERS_PER_FOOT), round(100 / METERS_PER_FOOT)]
+        # Each rounds UP to the whole foot, toward caution (#1854): 328.08 ft
+        # reads 329, not the nearest foot's 328.
+        assert climb == [math.ceil(100 / METERS_PER_FOOT), math.ceil(100 / METERS_PER_FOOT)] == [329, 329]
 
     def test_noise_below_the_dead_band_is_not_climbing(self):
         # Half a metre of jitter is what the dead band exists to drop - the
@@ -147,7 +150,7 @@ class TestEdgeClimb:
         # honest direction, and is what the manifest's `partial` count exists
         # to make visible.
         climb = network_elevation.edge_climb([100.0, 130.0, None, 200.0, 230.0])
-        assert climb == [round(60 / METERS_PER_FOOT), 0]
+        assert climb == [math.ceil(60 / METERS_PER_FOOT), 0]
 
 
 class TestBuild:

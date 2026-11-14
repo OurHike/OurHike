@@ -38,12 +38,10 @@
 -- are both 10 ft, Measured 2026-10-14). A figure the double puts a hair over
 -- a whole foot rounds up a whole foot, which errs the cautious way.
 -- export_network_elevation.edge_climb, today's exporter until the cutover,
--- rounds to the nearest foot (Python's round()), so the two files differ by
--- one foot wherever that rounding went down, and by nothing else: parity.py's
--- trail_graph_elevation family explains that difference
--- (CLIMB_ROUNDED_UP_REASON) and no other. On UA's 685,963 climbing edges it
--- is about +0.5 ft each, 0.63% of all gain (Reasoned: uniform fractional
--- parts, since the unrounded figures are not published).
+-- rounds up the same way since #1854. Until then it rounded to the nearest
+-- foot, and UA's releases moved a foot down on 572,646 edges whenever the
+-- vector lane published after this one (Measured 2026-10-18), so parity.py's
+-- trail_graph_elevation family now explains no difference at all.
 --
 -- WITHIN AN EDGE, NEVER ACROSS A NODE JOIN. Each edge is measured from its
 -- own samples only; the phone sums edges. There is no concatenated profile

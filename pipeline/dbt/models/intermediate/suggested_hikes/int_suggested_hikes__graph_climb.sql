@@ -14,9 +14,8 @@
 -- as it is there, and pub_trail_graph_elevation's parity against
 -- export_network_elevation.py (no differences on 30,004 edges cut from ATC's
 -- live centerline, el, 2026-10-02) is what holds these values to today's,
--- apart from the rounding: each figure rounds up to the whole
--- foot here and to the nearest foot there (int_elevation__edge_climbs), so
--- a walk's climb can only price higher than today's, never lower.
+-- including the rounding: each figure rounds up to the whole foot on both
+-- sides since #1854 (int_elevation__edge_climbs).
 select
     edge_index,
     case when gain_ft is not null and may_publish then gain_ft end as gain_ft,

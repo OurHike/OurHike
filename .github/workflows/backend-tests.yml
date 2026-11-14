@@ -160,6 +160,29 @@ jobs:
             .github/workflows/backend-tests.yml
             .github/actions/changed-paths/
 
+      # A MIGRATION THAT HAS REACHED MAIN IS NEVER DELETED (#1918, item 15).
+      # Reverting the pull request that added one, after migrate.yml has run
+      # it against production, leaves production stamped with a revision main
+      # cannot name, and every later migrate.yml run fails. The way back is a
+      # new migration that reverses it. The script's docstring has the
+      # measurement and the rename rule.
+      #
+      # Unconditional, not behind the scope step: it is one shallow fetch and
+      # one diff, and a check that skips itself cannot refuse anything. The
+      # base is the event's own, as pipeline-tests.yml's contract step reads
+      # it, fetched alone because the checkout is one commit deep. A base that
+      # cannot be fetched fails the step rather than passing it unchecked.
+      - name: Refuse deleting or renaming a migration
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          if [ -z "$BASE_SHA" ] || ! git fetch --quiet --depth=1 origin "$BASE_SHA"; then
+            echo "::error::Could not fetch the base commit ('$BASE_SHA') to check for deleted migrations against."
+            exit 1
+          fi
+          git diff --name-status --no-renames "$BASE_SHA" HEAD -- ':/backend/alembic/versions/' \
+            | python3 ../.github/scripts/check_migrations_kept.py
+
       - uses: actions/setup-python@v7
         if: steps.scope.outputs.run == 'true'
         with:

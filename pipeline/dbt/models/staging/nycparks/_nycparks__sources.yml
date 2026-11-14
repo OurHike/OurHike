@@ -106,10 +106,12 @@ sources:
           Socrata's row id, `_socrata_id`, which duplicates_are_exact skips.
       - name: raw_nycparks__nyc_public_restrooms
         data_tests:
-          # Rows sharing base_nycparks__nyc_public_restrooms's key must be exact copies.
+          # Rows sharing base_nycparks__nyc_public_restrooms's key must be exact copies, changing_stations aside.
           - duplicates_are_exact:
               arguments:
-                key_columns: ["'nyc_public_restrooms'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))"]
+                key_columns: ["'nyc_public_restrooms'", "md5(st_astext(st_geomfromgeojson(cast(geometry as varchar))))", "facility_name"]
+                # The one column a restroom listed twice differs in (#1976); the model's header says why.
+                skip_columns: ["changing_stations"]
           # Elementary's checks (make_dbt_staging.py's raw_table_checks()), each with its two thresholds.
           - elementary.volume_anomalies:
               config:
@@ -132,4 +134,7 @@ sources:
           `nyc_public_restrooms`). Key: geometry, 973 of 973 live rows after 2
           exact copies. Re-measured 2026-10-03: 975 rows, and each copy
           differs from the row it repeats only in Socrata's row id,
-          `_socrata_id`, which duplicates_are_exact skips.
+          `_socrata_id`, which duplicates_are_exact skips. Keyed by geometry and
+          facility_name since 2026-11-04 (#1976): 998 rows at 994 points, two
+          restrooms at one point, and three listed twice whose copies differ
+          only in changing_stations, which duplicates_are_exact skips too.

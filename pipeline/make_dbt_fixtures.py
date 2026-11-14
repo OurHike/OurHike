@@ -6855,11 +6855,10 @@ CLUB_POINT_FIXTURES = {
             "minor_struc_type",
             "dimensions",
             "material",
-            "GlobalID",
         ),
         {
             "OBJECTID": (1, 2),
-            "GlobalID": ("{fixture-ncta_points-0}", "{fixture-ncta_points-1}"),
+            "waypointID": ("nct_fixture_parking_0", "nct_fixture_parking_1"),
             "waypointName": ("Fixture ncta points 0", "Fixture ncta points 1"),
             "wptType": ("POI", "Parking"),
             "source": ("fixture person", "fixture person"),

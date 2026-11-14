@@ -29,15 +29,19 @@
     and `_dlt_id`. pipeline/spike_table_keys.py, which counted those copies
     on 2026-10-01, already treated `:id` as a row id; this list had not.
 
-    `part_columns` are, for a layer that serves one feature as several rows
-    (make_dbt_staging.py's `part_fields`), the raw shape and the columns
-    that differ per part. They are left out beside the row ids, so the parts
-    must still agree on everything else: BLM's national monuments split
-    into 1,078 rows of 57 names, and its parts differ only in GlobalID,
-    OBJECTID and the measured area and length (measured 2026-11-03, #1947).
+    `skip_columns` are left out beside the row ids: columns that rows on one
+    key may differ in by design, each named by its caller with the reason.
+    For a layer that serves one feature as several rows (make_dbt_staging.py's
+    `part_fields`), they are the raw shape and the columns that differ per
+    part, so the parts must still agree on everything else: BLM's national
+    monuments split into 1,078 rows of 57 names, whose parts differ only in
+    GlobalID, OBJECTID and the measured area and length (measured 2026-11-03,
+    #1947). NYC's restrooms skip `changing_stations`, the one column a
+    restroom listed twice differs in and no model reads (measured 2026-11-04,
+    #1976).
 -#}
 {% test duplicates_are_exact(
-    model, key_columns, row_id_columns=none, part_columns=none
+    model, key_columns, row_id_columns=none, skip_columns=none
 ) %}
 
 {#- A raw table that does not exist in this warehouse has no rows to
@@ -59,7 +63,7 @@ where false
 with keyed as (
     select
         {{ dbt_utils.generate_surrogate_key(key_columns) }} as key_value,
-        {{ row_hash(model, row_ids + (part_columns or [])) }}
+        {{ row_hash(model, row_ids + (skip_columns or [])) }}
             as row_hash
     from {{ model }}
 )

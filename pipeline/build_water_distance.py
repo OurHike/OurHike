@@ -149,7 +149,17 @@ OUT_PATH = ROOT / "reference" / "water_distance.json"
 # the terms conversation happens. This script's docstring is where the layer's
 # provenance and licence position live, exactly as build_shelter_capacity.py
 # holds greenbelly's.
-CSI_LAYER_URL = "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services/Campsite_Sustainability_Index/FeatureServer/0"
+#
+# LAYER 1, NOT 0, since #2045. By 2026-11-11 the service had dropped layer 0
+# and listed `Overnight_Site` as layer 1, with all seven fields read below.
+# Nobody has established why it was renumbered. Rebuilt from layer 1 on
+# 2026-11-14 against the file layer 0 wrote on 2026-10-20: 1,023 official
+# rows, every one of the 305 published distances unchanged in whole feet, and
+# 4 sites newly matched (Measured; the pull request for #2045 lists them).
+# So this is read as the same layer renumbered (Reasoned from that diff, not
+# confirmed by ATC). An index can move again, and `--check` is what notices:
+# PR #2047 proposes running it daily.
+CSI_LAYER_URL = "https://services9.arcgis.com/Nb3RpWJ36xRlYQj2/arcgis/rest/services/Campsite_Sustainability_Index/FeatureServer/1"
 
 # The two official site types, spelled exactly as the layer spells them. The
 # third value, "User Created Campsite", is never requested - see the module

@@ -21,6 +21,14 @@
 -- is not finite. The phone keeps its last file, and publish.py fails the run
 -- after publishing the rest.
 --
+-- HOW SURE THE PHONE WAS ABOUT WHERE IT STOOD rides out with each report
+-- (#1584 — A pin baked from a ±800 m fix reads like one at a surveyed
+-- shelter: the provenance stops at the moderation queue): `location_source`,
+-- `location_accuracy_m` and `location_fix_age_s`, as PUBLIC_REPORTS_SQL
+-- selects them and ReportOut serves them. Null where the report has none,
+-- never filled in. A radius that is not a finite number holds the file
+-- (int_closures__gate), as a NaN coordinate does.
+--
 -- `generated_at` is dbt's run_started_at: one clock for this file and
 -- conditions/closures.json, as export_conditions.py's main() keeps one.
 --
@@ -61,7 +69,10 @@ published as (
                     'status', report_status,
                     'visibility', visibility,
                     'severity', report_severity,
-                    'verified_at', {{ python_utc_isoformat('verified_at') }}
+                    'verified_at', {{ python_utc_isoformat('verified_at') }},
+                    'location_source', location_source,
+                    'location_accuracy_m', location_accuracy_m,
+                    'location_fix_age_s', location_fix_age_s
                 ) order by reported_at, report_uuid
             ),
             []

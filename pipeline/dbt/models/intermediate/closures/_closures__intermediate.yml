@@ -1621,7 +1621,9 @@ unit_tests:
 
   - name: int_closures__gate_holds_back_each_file_no_notice_feeds_on_its_own
     description: >
-      OurHike's reports with a coordinate that is not finite, an hour in
+      OurHike's reports with a coordinate or a fix radius that is not
+      finite (#1584 — A pin baked from a ±800 m fix reads like one at a
+      surveyed shelter: the provenance stops at the moderation queue), an hour in
       which no NWS alert landed, and a reviewed work-projects file with a bad
       row each hold back their own file and nothing else, so the notice
       sources' files are still written.
@@ -1663,11 +1665,13 @@ unit_tests:
       - input: ref('base_ourhike__reports')
         format: sql
         rows: |
-          select 'verified' as report_status, 'public' as visibility, cast('nan' as double) as lat, -74.0 as lon, cast(null as double) as mile
+          select 'verified' as report_status, 'public' as visibility, cast('nan' as double) as lat, -74.0 as lon, cast(null as double) as mile, cast(null as double) as location_accuracy_m
           union all
-          select 'resolved' as report_status, 'public' as visibility, 41.0 as lat, -74.0 as lon, 10.5 as mile
+          select 'resolved' as report_status, 'public' as visibility, 41.0 as lat, -74.0 as lon, 10.5 as mile, 12.5 as location_accuracy_m
           union all
-          select 'verified' as report_status, 'private' as visibility, cast('inf' as double) as lat, -74.0 as lon, 1.0 as mile
+          select 'verified' as report_status, 'private' as visibility, cast('inf' as double) as lat, -74.0 as lon, 1.0 as mile, cast(null as double) as location_accuracy_m
+          union all
+          select 'verified' as report_status, 'public' as visibility, 41.2 as lat, -74.1 as lon, 11.0 as mile, cast('nan' as double) as location_accuracy_m
       - input: ref('base_nws__alerts')
         format: sql
         rows: |
@@ -1710,7 +1714,7 @@ unit_tests:
         - {source_key: nynjtc_trail_alerts, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
         - {source_key: oprhp_trail_closures, rows_total: 0, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
         - {source_key: ourhike_closures, rows_total: 1, rows_invalid: 0, passed: true, held_because: null, awaiting_review: false}
-        - {source_key: ourhike_reports, rows_total: 2, rows_invalid: 1, passed: false, held_because: '1 row(s) carry a coordinate or a mile that is not a finite number, and JSON.parse on a phone rejects the whole document', awaiting_review: false}
+        - {source_key: ourhike_reports, rows_total: 3, rows_invalid: 2, passed: false, held_because: '2 row(s) carry a coordinate, a mile or a fix radius that is not a finite number, and JSON.parse on a phone rejects the whole document', awaiting_review: false}
         - {source_key: nws_alerts, rows_total: 0, rows_invalid: 0, passed: false, held_because: 'no NWS alert landed, so nothing says when NWS was asked', awaiting_review: false}
         - {source_key: 'reference/work_projects.json', rows_total: 1, rows_invalid: 0, passed: false, held_because: '1 problem(s) in reference/work_projects.json, the first: rows[0]: date is not a date', awaiting_review: false}
 

@@ -13,7 +13,7 @@ ones worth keeping:
 import uuid
 from datetime import date, timedelta
 
-from tests.factories import make_profile
+from tests.factories import make_org, make_profile
 from tests.tokens import auth_headers
 
 
@@ -145,3 +145,26 @@ def test_the_tasks_come_back_as_a_list(client, db_session):
     body = client.post("/ridge-runner", json=payload, headers=auth_headers(person.id)).json()
 
     assert body["tasks"] == ["cleanup_packout", "trail_clearance"]
+
+
+def test_an_unknown_club_is_refused_as_a_bad_request_not_a_server_error(client, db_session):
+    """#1767 item 7: `club_id` is a foreign key, and an id no club holds used to
+    reach the INSERT and fail there as a 500. It is the caller's mistake, so
+    the answer is a 422 that says which field."""
+    person = make_profile(db_session)
+    payload = {**_window(3), "club_id": str(uuid.uuid4())}
+
+    response = client.post("/ridge-runner", json=payload, headers=auth_headers(person.id))
+
+    assert response.status_code == 422
+    assert "club_id" in str(response.json())
+
+
+def test_a_window_for_a_real_club_records_the_club(client, db_session):
+    person = make_profile(db_session)
+    club = make_org(db_session)
+
+    response = client.post("/ridge-runner", json={**_window(3), "club_id": club.id}, headers=auth_headers(person.id))
+
+    assert response.status_code == 201
+    assert response.json()["club_id"] == club.id

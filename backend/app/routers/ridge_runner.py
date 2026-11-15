@@ -27,6 +27,7 @@ from app.core.auth import get_current_user
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
 from app.db.session import get_db
+from app.models.club import Club
 from app.models.profile import Profile
 from app.models.ridge_runner import RidgeRunnerCommitment
 from app.schemas.ridge_runner import CommitmentCreate, CommitmentOut
@@ -81,6 +82,15 @@ def open_commitment(
                 f"You already have a window open until {overlapping.ends_on.isoformat()}. "
                 "Close it first, or start the new one after it."
             ),
+        )
+
+    # `club_id` is a foreign key, and an id no club holds used to reach the
+    # INSERT and fail there as a 500 (#1767 item 7). It is the caller's
+    # mistake, so it is answered as one, naming the field.
+    if payload.club_id is not None and db.get(Club, payload.club_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"club_id {payload.club_id!r} is not an organization here",
         )
 
     commitment = RidgeRunnerCommitment(

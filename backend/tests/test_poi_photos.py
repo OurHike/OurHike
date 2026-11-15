@@ -596,6 +596,38 @@ def test_pinning_is_the_human_glance(client, db_session, r2, no_cooling_off):
     assert gallery[0]["pinned"] is True
 
 
+def test_new_bytes_under_a_pin_clear_the_pin_and_the_glance(client, db_session, r2, no_cooling_off):
+    """#1918 item 1: `PUT .../photos/mine` replaced the bytes under a
+    moderator's pin, and the pin stayed. Here the pin is also the human
+    glance that released a nudity-flagged photo, so keeping it would serve
+    unseen bytes publicly. New bytes clear both, and the photo is held again."""
+    moderator = _moderator(db_session)
+    hiker = _hiker(db_session)
+    client.post(f"/waypoints/{_POI}/photos", json={"flagged": "nudity"}, headers=auth_headers(hiker.id))
+    _upload(client, hiker)
+    queue = client.get("/moderation/poi-photos", headers=auth_headers(moderator.id)).json()
+    client.post(f"/moderation/poi-photos/{queue[0]['id']}/pin", headers=auth_headers(moderator.id))
+    assert _gallery(client)[0]["pinned"] is True
+
+    assert _upload(client, hiker, body=_JPEG + b"different bytes").status_code == 200
+
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    db_session.refresh(row)
+    assert (row.pinned_at, row.pinned_by, row.reviewed_at, row.reviewed_by) == (None, None, None, None)
+    assert _gallery(client) == []
+
+
+def test_the_first_bytes_of_a_share_clear_nothing(client, db_session, r2, no_cooling_off):
+    """Only bytes over bytes clear a pin: the first upload after a share has
+    nothing under it to have been judged."""
+    hiker = _hiker(db_session)
+    _share(client, hiker)
+
+    assert _upload(client, hiker).status_code == 200
+
+    assert len(_gallery(client)) == 1
+
+
 def test_dismiss_takes_the_photo_down_and_deletes_the_bytes(client, db_session, r2, no_cooling_off):
     moderator = _moderator(db_session)
     hiker = _hiker(db_session)

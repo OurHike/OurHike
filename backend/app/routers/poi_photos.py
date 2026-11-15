@@ -375,6 +375,22 @@ def _record_stored_share(db: Session, poi_id: str, key: str, uploader_id: str) -
             discard_refused_upload(key)
         raise
 
+    if photo.uploaded_at is not None:
+        # New bytes over bytes that had already landed: the key is one per
+        # hiker per waypoint, so the put above has already replaced the
+        # photograph a moderator may have pinned or glanced at. Neither
+        # judgement was about these bytes, so neither carries, as a fresh
+        # share (`share_photo`) already clears them. Without this the pin
+        # stayed on a photograph nobody had seen (#1918 — Backend findings
+        # the 2026-10-27 pre-launch review filed together, item 1, measured
+        # there). A dismissal is left standing: it hides the photo, and new
+        # bytes do not earn it back. A retry of the same bytes clears a pin
+        # as well, which costs a moderator one more pin and never shows an
+        # unseen photo.
+        photo.pinned_at = None
+        photo.pinned_by = None
+        photo.reviewed_at = None
+        photo.reviewed_by = None
     photo.uploaded_at = utc_now()
     return commit_and_refresh(db, photo)
 

@@ -56,6 +56,13 @@ def _report(db_session, reporter, **kwargs) -> Report:
     return report
 
 
+def _decide(db_session, report: Report, decided: ReportStatus) -> None:
+    """A moderator's decision, made after the photos landed: the order a real
+    report goes through, since a decided report takes no photo (#1918 item 1)."""
+    report.status = decided
+    db_session.commit()
+
+
 def _put(client, report_id: str, index: int, reporter_id: str, body: bytes = _JPEG):
     return client.put(
         f"/reports/{report_id}/photos/{index}",
@@ -227,9 +234,10 @@ def test_the_single_photo_endpoint_still_writes_the_first(client, db_session, r2
 
 def test_serves_each_photo_of_the_set(client, db_session, r2):  # noqa: F811
     reporter = _reporter(db_session)
-    report = _report(db_session, reporter, status=ReportStatus.verified)
+    report = _report(db_session, reporter)
     _put(client, report.id, 1, reporter.id)
     _put(client, report.id, 2, reporter.id)
+    _decide(db_session, report, ReportStatus.verified)
 
     for index in (1, 2):
         redirect = client.get(f"/reports/{report.id}/photos/{index}", follow_redirects=False)
@@ -246,8 +254,9 @@ def test_serves_each_photo_of_the_set(client, db_session, r2):  # noqa: F811
 
 def test_an_index_past_the_end_is_not_found(client, db_session, r2):  # noqa: F811
     reporter = _reporter(db_session)
-    report = _report(db_session, reporter, status=ReportStatus.verified)
+    report = _report(db_session, reporter)
     _put(client, report.id, 1, reporter.id)
+    _decide(db_session, report, ReportStatus.verified)
 
     assert client.get(f"/reports/{report.id}/photos/2", follow_redirects=False).status_code == 404
     assert client.get(f"/reports/{report.id}/photos/2/link").status_code == 404
@@ -263,10 +272,10 @@ def test_every_photo_of_a_report_has_the_reports_audience(client, db_session, r2
         reporter,
         type=ReportType.bad_hikers,
         visibility=Visibility.internal_only,
-        status=ReportStatus.verified,
     )
     _put(client, report.id, 1, reporter.id)
     _put(client, report.id, 2, reporter.id)
+    _decide(db_session, report, ReportStatus.verified)
 
     for index in (1, 2):
         assert client.get(f"/reports/{report.id}/photos/{index}", follow_redirects=False).status_code == 404
@@ -354,3 +363,26 @@ def test_the_bucket_put_for_a_report_photo_runs_off_the_event_loop(client, db_se
 
     assert _put(client, report.id, 1, reporter.id).status_code == 200
     assert on_loop == [False]
+
+
+@pytest.mark.parametrize("decided", [ReportStatus.verified, ReportStatus.resolved, ReportStatus.dismissed])
+def test_a_reviewed_report_takes_no_new_photo_and_keeps_the_one_it_was_reviewed_with(client, db_session, r2, decided):  # noqa: F811
+    """#1918 item 1: the reporter waited for `verified`, replaced photo 1 and
+    added photo 2, and the verification stayed on bytes nobody had seen.
+    Once a moderator has decided, the set is closed: both a replacement and
+    an append are refused before a byte is stored, and photo 1 is still the
+    bytes the moderator looked at."""
+    reporter = _reporter(db_session)
+    report = _report(db_session, reporter)
+    assert _put(client, report.id, 1, reporter.id).status_code == 200
+    _decide(db_session, report, decided)
+
+    replaced = _put(client, report.id, 1, reporter.id, _JPEG + b"different bytes")
+    appended = _put(client, report.id, 2, reporter.id, _JPEG + b"a second photo")
+
+    assert (replaced.status_code, appended.status_code) == (409, 409)
+    db_session.refresh(report)
+    assert report.photo_count == 1
+    assert r2.get_object(Bucket=_BUCKET, Key=photo_key(report.id, 1))["Body"].read() == _JPEG
+    keys = [o["Key"] for o in r2.list_objects_v2(Bucket=_BUCKET)["Contents"]]
+    assert photo_key(report.id, 2) not in keys

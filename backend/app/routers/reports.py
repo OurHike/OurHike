@@ -751,8 +751,36 @@ def _upload_target(report: Report | None, index: int, uploader_id: str) -> Repor
     is in the bucket (`_record_stored_photo`).
     """
     report = _report_this_caller_may_upload_to(report, uploader_id)
+    refuse_a_photo_after_moderation(report)
     refuse_an_out_of_sequence_photo(index, report.photo_count, "report")
     return report
+
+
+def refuse_a_photo_after_moderation(report: Report) -> None:
+    """A report's photos are closed once a moderator has decided on it, or the 409 that says so.
+
+    A moderator verifies a report WITH the photos it held at that moment, and
+    `photo_url`'s key is derived, so a replacement overwrites the very object
+    they looked at. Without this, the reporter could wait for `verified`,
+    then replace photo 1 and add photo 2, and the verification stayed on bytes
+    nobody had reviewed; photo 2 was then served anonymously (#1918 —
+    Backend findings the 2026-10-27 pre-launch review filed together, item 1,
+    measured there). Any status but `submitted` closes the set: `dismissed`
+    as well, since adding to a dismissed report would put new bytes behind a
+    decision made without them.
+
+    Checked before the body is read and again on the locked row
+    (`_record_stored_photo`). The window between the first check and the put
+    is not closed by this: a verification landing while the bytes stream
+    still lets a replacement overwrite the object, and the second check can
+    refuse the record but cannot put the old bytes back. Reasoned from the
+    order of the steps, not reproduced.
+    """
+    if report.status != ReportStatus.submitted:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This report has been reviewed, so its photos can no longer change.",
+        )
 
 
 def refuse_an_out_of_sequence_photo(index: int, photo_count: int, holder: str) -> None:

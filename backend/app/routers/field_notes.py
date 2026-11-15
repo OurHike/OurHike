@@ -303,8 +303,28 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     # verdict - `test_core_disputes.py` pins the rule - and keeps the scan from
     # growing with every note ever written.
     window_start = now - timedelta(days=DISPUTE_DECAY_DAYS)
-    hidden_excluded = db.query(FieldNote).filter(FieldNote.hidden_at.is_(None), FieldNote.poi_id.isnot(None))
-    notes = hidden_excluded.filter(FieldNote.observation.isnot(None), FieldNote.observed_at >= window_start).all()
+    #
+    # Only the five columns the rule reads, as plain rows rather than ORM
+    # objects (#1918 — Backend findings the 2026-10-27 pre-launch review filed
+    # together, item 11): a full FieldNote carries its text, photo key and
+    # moderation columns, none of which a verdict reads, and building one per
+    # note was most of this read's time and memory.
+    notes = (
+        db.query(
+            FieldNote.poi_id,
+            FieldNote.observation,
+            FieldNote.reporter_id,
+            FieldNote.observed_at,
+            FieldNote.mile,
+        )
+        .filter(
+            FieldNote.hidden_at.is_(None),
+            FieldNote.poi_id.isnot(None),
+            FieldNote.observation.isnot(None),
+            FieldNote.observed_at >= window_start,
+        )
+        .all()
+    )
 
     # Every current assignment, once, rather than a query per note: a
     # maintainer's word outweighs the count and the covering test is a range
@@ -315,9 +335,14 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
     # stands behind (`core/assignments.py`'s `stood_behind`, #1635): one
     # note from a covering maintainer is enough to put "reported missing" on
     # a pin, so a self-registered organization's own row must not buy it.
+    #
+    # Grouped by maintainer, so `covers` reads only the reporter's own
+    # stretches rather than every assignment for every note (#1918 item 11):
+    # the answer is the same, since an assignment of anybody else's never
+    # covered this reporter.
     today = utc_now().date()
     assignments = (
-        db.query(MaintainerAssignment)
+        db.query(MaintainerAssignment.maintainer_id, MaintainerAssignment.start_mile, MaintainerAssignment.end_mile)
         .join(Club, Club.id == MaintainerAssignment.club_id)
         .filter(
             stood_behind(),
@@ -326,6 +351,9 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
         )
         .all()
     )
+    stretches_by_maintainer: dict[str, list[tuple[float, float]]] = {}
+    for maintainer_id, start_mile, end_mile in assignments:
+        stretches_by_maintainer.setdefault(maintainer_id, []).append((start_mile, end_mile))
 
     # WHERE EACH WAYPOINT IS, not where its notes say they were written
     # (#1917 - A maintainer's note settles a water dispute anywhere on the
@@ -356,10 +384,7 @@ def list_disputes(db: Session = Depends(get_db)) -> list[DisputeOut]:
         """
         if mile is None:
             return False
-        return any(
-            assignment.maintainer_id == reporter_id and assignment.start_mile <= mile <= assignment.end_mile
-            for assignment in assignments
-        )
+        return any(start_mile <= mile <= end_mile for start_mile, end_mile in stretches_by_maintainer.get(reporter_id, ()))
 
     by_poi: dict[str, list[DisputeInput]] = {}
     for note in notes:

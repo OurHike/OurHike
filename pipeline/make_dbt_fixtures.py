@@ -2551,6 +2551,9 @@ def _ourhike_postgres() -> dict:
                 ["visibility", "varchar"],
                 ["severity", "varchar"],
                 ["verified_at", "timestamp"],
+                ["location_source", "varchar"],
+                ["location_accuracy_m", "float8"],
+                ["location_fix_age_s", "int4"],
             ],
             "rows": [
                 {
@@ -2568,6 +2571,9 @@ def _ourhike_postgres() -> dict:
                     "visibility": "public",
                     "severity": "normal",
                     "verified_at": "2026-09-21T12:00:00",
+                    "location_source": "gps",
+                    "location_accuracy_m": 12.5,
+                    "location_fix_age_s": 40,
                 },
                 {
                     "id": "00000000-0000-4000-8000-00000000a002",
@@ -2584,6 +2590,9 @@ def _ourhike_postgres() -> dict:
                     "visibility": "public",
                     "severity": "serious",
                     "verified_at": "2026-09-22T08:00:00",
+                    "location_source": "poi",
+                    "location_accuracy_m": None,
+                    "location_fix_age_s": None,
                 },
                 {
                     "id": "00000000-0000-4000-8000-00000000a003",
@@ -2600,6 +2609,9 @@ def _ourhike_postgres() -> dict:
                     "visibility": "public",
                     "severity": "serious",
                     "verified_at": None,
+                    "location_source": None,
+                    "location_accuracy_m": None,
+                    "location_fix_age_s": None,
                 },
             ],
         },

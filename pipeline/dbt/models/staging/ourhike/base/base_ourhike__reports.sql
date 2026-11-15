@@ -31,6 +31,9 @@ renamed as (
         visibility,
         severity as report_severity,
         verified_at,
+        location_source,
+        location_accuracy_m,
+        location_fix_age_s,
         _loaded_at,
         _dlt_id
     from source

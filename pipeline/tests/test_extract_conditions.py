@@ -97,6 +97,8 @@ def test_public_reports_land_with_verified_at_and_without_the_reporter(condition
     assert counts["raw_ourhike__reports"] == 1
     landed = columns(con, "raw_ourhike__reports")
     assert "verified_at" in landed
+    # #1584: how sure the phone was about where it stood lands with the row.
+    assert {"location_source", "location_accuracy_m", "location_fix_age_s"} <= set(landed)
     assert not {"reporter_id", "verified_by", "maintainer_id", "received_at", "photo_url"} & set(landed)
 
 

@@ -28,7 +28,8 @@
 --   ourhike_closures      a row that is not moderator-verified, or
 --                         whose mile or coordinate is not a finite number
 --   oprhp_trail_closures  nothing: an empty layer is a good week
---   ourhike_reports       a coordinate or mile that is not a finite number
+--   ourhike_reports       a coordinate, mile or fix radius that is not a
+--                         finite number
 --   nws_alerts            no alert landed, so nothing says when NWS was asked
 --   reference/work_projects.json
 --                         a file that did not land as one row, a file nobody
@@ -170,6 +171,7 @@ ourhike_reports as (
                 coalesce(isfinite(lat), true)
                 and coalesce(isfinite(lon), true)
                 and coalesce(isfinite(mile), true)
+                and coalesce(isfinite(location_accuracy_m), true)
             )
         ) as rows_not_finite
     from {{ ref('base_ourhike__reports') }}
@@ -480,9 +482,9 @@ judged as (
                 and ourhike_reports.rows_not_finite > 0
                 then
                     ourhike_reports.rows_not_finite
-                    || ' row(s) carry a coordinate or a mile that is not a '
-                    || 'finite number, and JSON.parse on a phone rejects the '
-                    || 'whole document'
+                    || ' row(s) carry a coordinate, a mile or a fix radius '
+                    || 'that is not a finite number, and JSON.parse on a '
+                    || 'phone rejects the whole document'
             when coalesce(wording_leaks.rows_leaking, 0) > 0
                 then
                     wording_leaks.rows_leaking || ' '

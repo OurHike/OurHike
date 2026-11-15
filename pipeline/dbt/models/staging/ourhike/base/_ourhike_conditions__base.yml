@@ -50,6 +50,20 @@ models:
         description: The report's `timestamp`, when the hiker filed it, renamed because `timestamp` is a keyword.
       - name: report_severity
         description: normal or serious (app/models/report.py's Severity).
+      - name: location_source
+        description: >
+          How the report came by its `lat`/`lon`: `poi` (a named waypoint),
+          `gps` (the phone's own fix) or `map` (a spot marked by hand),
+          app/models/report.py's LocationSource. Null on a report filed
+          before #1563 or with no coordinates; null means unknown.
+      - name: location_accuracy_m
+        description: >
+          The radius, in metres, the phone's platform stated for a `gps` fix.
+          Null where none was stated, never zero.
+      - name: location_fix_age_s
+        description: >
+          How many seconds old a `gps` fix was when the report was filed.
+          Null where unknown.
   - name: base_ourhike__notes
     data_tests:
       - equal_rowcount_to_raw:

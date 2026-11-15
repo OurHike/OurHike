@@ -192,6 +192,19 @@ PUBLIC_CLOSURES_SQL = """
 # withheld both until #1377: every serious warning read offline - the read a
 # hiker on the trail actually makes - arrived undated, and the sheet could
 # only say so.
+#
+# `location_source`, `location_accuracy_m` and `location_fix_age_s` ride out
+# for the same reason (#1584 — A pin baked from a ±800 m fix reads like one
+# at a surveyed shelter: the provenance stops at the moderation queue): how
+# sure the filing phone was about where it stood (`poi`, `gps` or `map`; the
+# radius the platform stated for the fix, in metres; how many seconds old the
+# fix was). ReportOut serves all three to an anonymous caller on purpose
+# (backend/app/schemas/report.py), so the offline copy carries no more than
+# the live wire does. Null on every report filed before #1563 — Attach every
+# report to a place, and record how sure the phone was about where it stood,
+# and for any report filed without a fix: absent means unknown, never
+# "precise". A NaN radius fails the bake as a NaN coordinate does
+# (`write_document()`'s allow_nan=False); the backend refuses one at the door.
 PUBLIC_REPORTS_SQL = """
     SELECT id,
            type,
@@ -206,7 +219,10 @@ PUBLIC_REPORTS_SQL = """
            status,
            visibility,
            severity,
-           verified_at
+           verified_at,
+           location_source,
+           location_accuracy_m,
+           location_fix_age_s
       FROM public.reports
      WHERE status IN ('verified', 'resolved')
        AND visibility = 'public'

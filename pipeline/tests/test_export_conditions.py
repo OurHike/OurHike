@@ -103,7 +103,10 @@ REPORTS_DDL = """
         verified_by   VARCHAR,
         verified_at   TIMESTAMP,
         maintainer_id VARCHAR,
-        club_id       VARCHAR
+        club_id       VARCHAR,
+        location_source     VARCHAR(20),
+        location_accuracy_m DOUBLE PRECISION,
+        location_fix_age_s  INTEGER
     )
 """
 
@@ -542,6 +545,25 @@ def test_exported_report_timestamps_are_stamped(clean_tables):
     assert row["verified_at"] == "2026-08-02T12:00:00Z"
 
 
+def test_a_report_carries_how_sure_the_phone_was_about_where_it_stood(clean_tables):
+    """#1584: a pin from a ±800 m, 40-minute-old fix must not read offline
+    like one at a surveyed shelter, so the bake carries the three fields
+    ReportOut already serves. A report filed before #1563, or with no fix,
+    carries all three as null: unknown, never zero."""
+    _insert_report(clean_tables, report_id="r-gps")
+    _insert_report(clean_tables, report_id="r-old", written=datetime(2026, 8, 2, 9, 0, 0))
+    clean_tables.execute(
+        "UPDATE public.reports SET location_source = 'gps', location_accuracy_m = 800.0,"
+        " location_fix_age_s = 2400 WHERE id = 'r-gps'"
+    )
+
+    exported = {row["id"]: row for row in read_reports(clean_tables)}
+
+    gps, old = exported["r-gps"], exported["r-old"]
+    assert (gps["location_source"], gps["location_accuracy_m"], gps["location_fix_age_s"]) == ("gps", 800.0, 2400)
+    assert (old["location_source"], old["location_accuracy_m"], old["location_fix_age_s"]) == (None, None, None)
+
+
 def test_a_report_off_the_globe_exports_with_no_location(clean_tables):
     """#1763: the schema accepts (1000, -5000); the bake must not draw it."""
     _insert_report(clean_tables, report_id="r-off")
@@ -968,6 +990,9 @@ def test_the_catalog_queries_answer_against_a_real_schema(clean_tables):
             "visibility",
             "severity",
             "verified_at",
+            "location_source",
+            "location_accuracy_m",
+            "location_fix_age_s",
         ]
 
 

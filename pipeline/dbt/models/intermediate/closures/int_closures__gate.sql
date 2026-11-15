@@ -482,9 +482,9 @@ judged as (
                 and ourhike_reports.rows_not_finite > 0
                 then
                     ourhike_reports.rows_not_finite
-                    || ' row(s) carry a coordinate, a mile or a fix radius that is not a '
-                    || 'finite number, and JSON.parse on a phone rejects the '
-                    || 'whole document'
+                    || ' row(s) carry a coordinate, a mile or a fix radius '
+                    || 'that is not a finite number, and JSON.parse on a '
+                    || 'phone rejects the whole document'
             when coalesce(wording_leaks.rows_leaking, 0) > 0
                 then
                     wording_leaks.rows_leaking || ' '

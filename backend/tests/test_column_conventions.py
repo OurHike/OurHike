@@ -42,9 +42,15 @@ are plain `DateTime`, including every one on the organization surface.
 `nomination.token_expires_at <= utc_now()` raised `can't compare
 offset-naive and offset-aware datetimes` - at runtime, inside the
 token-expiry check on an unauthenticated endpoint, rather than anywhere a
-type or a migration would have caught it. The sixteen aware columns that
-already exist are grandfathered by name below rather than silently
-tolerated, so the list can only shrink.
+type or a migration would have caught it.
+
+**THE TWO LEFT ARE NAMED, so the list can only shrink** (#1767 item 3).
+This header used to say the aware columns were "grandfathered by name
+below", and nothing below named them: only a ratio held, which a new aware
+column passes. Measured 2026-11-16: 129 timestamp columns, 2 aware -
+`assist_usage.created_at` and `registry_signoffs.signed_at`. Converting
+those two needs a migration, which nobody has decided on; until then they
+are `GRANDFATHERED_AWARE` and every other column must be naive.
 """
 
 import pytest
@@ -140,6 +146,37 @@ def test_most_timestamps_are_naive_so_the_convention_is_still_the_convention():
         f"only {len(naive)} of {len(columns)} timestamp columns are naive - "
         "app/core/time.py's utc_now() returns a naive value, so the two "
         "spellings cannot be compared to each other."
+    )
+
+
+# The aware timestamp columns that predate the rule. Remove a row when its
+# column is migrated to a plain `DateTime`; never add one.
+GRANDFATHERED_AWARE = {
+    ("assist_usage", "created_at"),
+    ("registry_signoffs", "signed_at"),
+}
+
+
+@pytest.mark.parametrize(
+    "table,column",
+    [(table, column) for table, column, _ in timestamp_columns() if (table, column) not in GRANDFATHERED_AWARE],
+)
+def test_the_timestamp_column_is_naive(table, column):
+    """Named per column so a failure says which model to fix."""
+    kind = next(k for t, c, k in timestamp_columns() if (t, c) == (table, column))
+    assert kind.timezone is False, (
+        f"{table}.{column} is DateTime(timezone=True), but app/core/time.py's "
+        "utc_now() is naive and the two cannot be compared. Use a plain "
+        "`DateTime` - see this file's header for what the mixed spelling cost."
+    )
+
+
+def test_every_grandfathered_aware_column_is_still_aware():
+    """A column migrated to naive leaves the list in the same change, so the
+    exceptions name only what is still an exception."""
+    aware = {(t, c) for t, c, kind in timestamp_columns() if kind.timezone}
+    assert GRANDFATHERED_AWARE <= aware, (
+        f"{sorted(GRANDFATHERED_AWARE - aware)} are naive or gone now - delete them from GRANDFATHERED_AWARE."
     )
 
 

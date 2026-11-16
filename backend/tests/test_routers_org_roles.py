@@ -268,6 +268,83 @@ def test_a_sync_adds_people_it_has_never_seen(client, db_session):
     assert db_session.query(RoleInvite).count() == 2
 
 
+def _role_invite_reads_during(db_session, send):
+    """The SELECTs against role_invites issued while `send()` runs."""
+    from sqlalchemy import event
+
+    statements = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        send()
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    return [s for s in statements if s.lstrip().upper().startswith("SELECT") and "FROM role_invites" in s]
+
+
+def test_a_sync_reads_role_invites_the_same_number_of_times_for_2_rows_as_for_40(client, db_session):
+    """#1767 item 6: the open-invite check ran one query per roster row whose
+    address had never signed in, so a roster's cost grew with its length."""
+    org, admin = _org_with_admin(db_session)
+
+    def sync(count):
+        entries = [{"email": f"person{index}@ramapotrails.org"} for index in range(count)]
+        return lambda: client.post(
+            "/clubs/ramapo-trail-conference/roster/sync",
+            json={"source": f"{count} rows", "entries": entries},
+            headers=auth_headers(admin.id),
+        )
+
+    two = _role_invite_reads_during(db_session, sync(2))
+    forty = _role_invite_reads_during(db_session, sync(40))
+
+    assert len(forty) == len(two), forty
+
+
+def test_a_sync_that_lists_one_address_twice_invites_it_once(client, db_session):
+    """The session does not autoflush, so the per-row query never saw an
+    invite added earlier in the same run, and a repeated row added a second."""
+    org, admin = _org_with_admin(db_session)
+
+    result = client.post(
+        "/clubs/ramapo-trail-conference/roster/sync",
+        json={
+            "source": "uploaded roster.csv",
+            "entries": [{"email": "ana@ramapotrails.org"}, {"email": "ANA@ramapotrails.org "}],
+        },
+        headers=auth_headers(admin.id),
+    ).json()
+
+    assert (result["added"], result["updated"]) == (1, 1)
+    assert db_session.query(RoleInvite).filter(RoleInvite.email == "ana@ramapotrails.org").count() == 1
+
+
+def test_a_sync_counts_an_invite_already_waiting_as_updated_not_added(client, db_session):
+    """The waiting-invite read happens once, before the loop; a weekly
+    re-upload of the same roster must still add nothing."""
+    org, admin = _org_with_admin(db_session)
+    role = make_role(db_session, org, name="Maintainer")
+    body = {
+        "source": "weekly roster",
+        "entries": [
+            {"email": "ana@ramapotrails.org", "role_name": "maintainer"},
+            {"email": "dev@ramapotrails.org"},
+        ],
+    }
+
+    first = client.post("/clubs/ramapo-trail-conference/roster/sync", json=body, headers=auth_headers(admin.id)).json()
+    again = client.post("/clubs/ramapo-trail-conference/roster/sync", json=body, headers=auth_headers(admin.id)).json()
+
+    assert (first["added"], first["updated"]) == (2, 0)
+    assert (again["added"], again["updated"]) == (0, 2)
+    assert db_session.query(RoleInvite).count() == 2
+    assert db_session.query(RoleInvite).filter(RoleInvite.role_id == role.id).count() == 1
+
+
 def test_every_sync_run_writes_an_audit_row(client, db_session):
     """The audit row is what made writing the roster over HTTP defensible."""
     org, admin = _org_with_admin(db_session)

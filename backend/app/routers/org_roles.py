@@ -508,6 +508,20 @@ def sync_roster(
         invite.email: invite.claimed_by
         for invite in db.query(RoleInvite).filter(RoleInvite.club_id == access.club.id, RoleInvite.claimed_by.isnot(None)).all()
     }
+    # Every invite still waiting, read once rather than once per roster row
+    # (#1767 item 6): a roster of N people who have never signed in used to
+    # cost N queries. The filter is the one the per-row query applied. Each
+    # invite this run adds joins the set too, so a payload that lists one
+    # address twice adds it once - the session does not autoflush, so the
+    # per-row query never saw a row added earlier in the same run.
+    waiting = {
+        (email, role_id)
+        for email, role_id in db.query(RoleInvite.email, RoleInvite.role_id).filter(
+            RoleInvite.club_id == access.club.id,
+            RoleInvite.grants_admin_seat.is_(False),
+            RoleInvite.claimed_at.is_(None),
+        )
+    }
 
     incoming_active_people: set[str] = set()
     added = updated = 0
@@ -526,18 +540,9 @@ def sync_roster(
             # than an error, because a roster re-uploaded weekly contains
             # every name every time.
             role = roles_by_name.get((entry.role_name or "").strip().lower())
-            exists = (
-                db.query(RoleInvite)
-                .filter(
-                    RoleInvite.club_id == access.club.id,
-                    RoleInvite.email == entry.email,
-                    RoleInvite.role_id == (role.id if role else None),
-                    RoleInvite.grants_admin_seat.is_(False),
-                    RoleInvite.claimed_at.is_(None),
-                )
-                .first()
-            )
-            if exists is None:
+            key = (entry.email, role.id if role else None)
+            if key not in waiting:
+                waiting.add(key)
                 db.add(
                     RoleInvite(
                         club_id=access.club.id,

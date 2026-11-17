@@ -70,7 +70,15 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="OurHike backend", lifespan=_lifespan)
+# No trailing-slash redirect (#1918 item 10). Starlette answers `GET /closures/`
+# with a 307 to `/closures`, and builds that URL from the scheme uvicorn sees.
+# Behind Render's TLS proxy that scheme is plain http, because the Dockerfile's
+# uvicorn trusts X-Forwarded-Proto only from 127.0.0.1 (its default), so the
+# redirect would send a caller to an `http://` address. Measured 2026-11-17: none
+# of this app's routes is declared with a trailing slash, and nothing in
+# client/src, pipeline/ or .github/scripts asks for one, so the redirect served
+# no caller. A slash form now answers 404.
+app = FastAPI(title="OurHike backend", lifespan=_lifespan, redirect_slashes=False)
 
 # The innermost two, added first for that reason: both act on what the routes
 # answer, and nothing outside them needs a body before it is compressed.

@@ -9,7 +9,8 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.config import settings
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
@@ -70,7 +71,45 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="OurHike backend", lifespan=_lifespan)
+# FastAPI's own /docs and /redoc load their scripts from jsdelivr pinned only to
+# a major version (`swagger-ui-dist@5`, `redoc@2` in fastapi/openapi/docs.py),
+# so whatever either package publishes next runs on this API's origin without a
+# commit here (#1918 item 9). The same two pages are mounted below with exact
+# versions instead. Turning them off in production was the review's other
+# option; nothing in app/config.py says which environment this is, so it would
+# need a new setting on the host. /openapi.json is untouched: backend/HOSTING.md's
+# release check reads it.
+#
+# Both versions were each package's newest release in that major line more than
+# two weeks old on 2026-11-17, read from registry.npmjs.org: swagger-ui-dist
+# 5.34.1 (2026-10-30) and redoc 2.5.4 (2026-09-10). Moving either is a reviewed
+# one-line change, which is the point.
+SWAGGER_UI_DIST = "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.34.1"
+REDOC_JS = "https://cdn.jsdelivr.net/npm/redoc@2.5.4/bundles/redoc.standalone.js"
+
+app = FastAPI(title="OurHike backend", lifespan=_lifespan, docs_url=None, redoc_url=None)
+
+
+@app.get("/docs", include_in_schema=False)
+def swagger_ui() -> HTMLResponse:
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+        oauth2_redirect_url=app.swagger_ui_oauth2_redirect_url,
+        swagger_js_url=f"{SWAGGER_UI_DIST}/swagger-ui-bundle.js",
+        swagger_css_url=f"{SWAGGER_UI_DIST}/swagger-ui.css",
+    )
+
+
+@app.get(app.swagger_ui_oauth2_redirect_url, include_in_schema=False)
+def swagger_ui_oauth2_redirect() -> HTMLResponse:
+    return get_swagger_ui_oauth2_redirect_html()
+
+
+@app.get("/redoc", include_in_schema=False)
+def redoc() -> HTMLResponse:
+    return get_redoc_html(openapi_url=app.openapi_url, title=f"{app.title} - ReDoc", redoc_js_url=REDOC_JS)
+
 
 # The innermost two, added first for that reason: both act on what the routes
 # answer, and nothing outside them needs a body before it is compressed.

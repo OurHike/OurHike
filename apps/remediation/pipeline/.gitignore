@@ -1,0 +1,4 @@
+# Fetched layers and scored outputs. data/raw/ and data/out/sites/ hold the
+# location of every user-created campsite in ATC's inventory, so nothing under
+# data/ is ever committed: .github/tests/test_no_committed_data.py holds it.
+data/

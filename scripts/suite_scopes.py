@@ -42,6 +42,12 @@ WORKFLOWS = {
     "pipeline": (".github/workflows/pipeline-tests.yml", "pytest"),
     "dbt": (".github/workflows/pipeline-tests.yml", "dbt"),
     "backend": (".github/workflows/backend-tests.yml", "pytest-postgres"),
+    # Site Remediation's analysis job (#1901), a separate app kept in this repository.
+    "remediation": (".github/workflows/remediation-tests.yml", "remediation"),
+    # ...and its web app (#1904), the second job in the same workflow.
+    "remediation-web": (".github/workflows/remediation-tests.yml", "remediation-web"),
+    # ...and its database schema (#1906, #1910), the third.
+    "remediation-db": (".github/workflows/remediation-tests.yml", "remediation-db"),
 }
 
 

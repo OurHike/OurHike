@@ -87,10 +87,25 @@ export const NOTICES_DOWNLOAD_TIMEOUT_MS = 3 * MANIFEST_READ_TIMEOUT_MS
  * (client/ios/App/App.xcodeproj's IPHONEOS_DEPLOYMENT_TARGET), where calling
  * it throws.
  */
-function deadline(ms: number): { signal: AbortSignal; clear: () => void } {
+function deadline(
+  ms: number,
+  cancel?: AbortSignal,
+): { signal: AbortSignal; clear: () => void } {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
-  return { signal: controller.signal, clear: () => clearTimeout(timer) }
+  // `cancel` is the caller giving up (#1870): the same abort as the timer,
+  // reached early. Listened to by hand because AbortSignal.any() is newer
+  // than the Safari 16 floor the comment above already rules out.
+  const giveUp = () => controller.abort()
+  if (cancel?.aborted) giveUp()
+  else cancel?.addEventListener('abort', giveUp, { once: true })
+  return {
+    signal: controller.signal,
+    clear: () => {
+      clearTimeout(timer)
+      cancel?.removeEventListener('abort', giveUp)
+    },
+  }
 }
 
 /** The shapes of the states a state-wide notice names: written
@@ -416,7 +431,7 @@ async function readNotices(
 export async function fetchPublishedHazardAreas(
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<OrgNotice> | null> {
-  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS)
+  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS, options?.signal)
   const published = await fetchPublished<unknown>(
     PUBLISHED_HAZARD_AREAS_KEY,
     'notices',
@@ -604,7 +619,7 @@ export function keepUncutAreas(
 export async function fetchPublishedTrailClosures(
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<TrailClosure> | null> {
-  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS)
+  const { signal, clear } = deadline(MANIFEST_READ_TIMEOUT_MS, options?.signal)
   const { published } = await readPublished<unknown>(
     PUBLISHED_TRAIL_CLOSURES_KEY,
     'closures',
@@ -686,7 +701,7 @@ export async function readPublishedNotices(
   missing: boolean
 }> {
   if (hikePlanned) {
-    const { signal, clear } = deadline(NOTICES_DOWNLOAD_TIMEOUT_MS)
+    const { signal, clear } = deadline(NOTICES_DOWNLOAD_TIMEOUT_MS, options.signal)
     const { published, notServed } = await readNotices(signal, options).finally(clear)
     return {
       published,

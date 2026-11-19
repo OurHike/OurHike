@@ -311,17 +311,24 @@ export function clubClosureStewards() {
   }
 }
 
-/** How long a drive taps a closure before it gives up: the ceiling
+/** How long a drive taps a mark before it gives up: the ceiling
  *  hazard-area-no-plan.mjs keeps for the same wait, on the same reasoning
  *  (nobody has timed it on a preview). */
 const TAP_FOR_MS = 45_000
 
-/** A lon/lat as a point on the map canvas at TRAIL_CLOSURES_CAMERA:
- *  MapLibre's world is 512 px a tile, so at zoom z a degree of longitude is
- *  512 * 2^z / 360 px, and with no map padding the camera's centre is the
- *  canvas's centre (hazard-area-no-plan.mjs's canvasPoint). */
-function canvasPoint([lon, lat], box) {
-  const { center, zoom } = TRAIL_CLOSURES_CAMERA
+/**
+ * A lon/lat as a point on the map canvas at `camera` ({ center, zoom }):
+ * MapLibre's world is 512 px a tile, so at zoom z a degree of longitude is
+ * 512 * 2^z / 360 px, and with no map padding the camera's centre is the
+ * canvas's centre (hazard-area-no-plan.mjs's canvasPoint). Exported for
+ * e2e/closureSurfaces.spec.ts, which taps a hazard area at a camera of its
+ * own, so the arithmetic has one home.
+ *
+ * @param {[number, number]} lonLat
+ * @param {{ width: number, height: number }} box
+ * @param {{ center: number[], zoom: number }} camera
+ */
+export function canvasPointAt([lon, lat], box, { center, zoom }) {
   const pxPerDegree = (512 * 2 ** zoom) / 360
   const mercator = (degrees) =>
     (Math.log(Math.tan(Math.PI / 4 + (degrees * Math.PI) / 360)) * 180) / Math.PI
@@ -329,6 +336,11 @@ function canvasPoint([lon, lat], box) {
     x: box.width / 2 + (lon - center[0]) * pxPerDegree,
     y: box.height / 2 - (mercator(lat) - mercator(center[1])) * pxPerDegree,
   }
+}
+
+/** `canvasPointAt`, at TRAIL_CLOSURES_CAMERA. */
+function canvasPoint(lonLat, box) {
+  return canvasPointAt(lonLat, box, TRAIL_CLOSURES_CAMERA)
 }
 
 /**
@@ -371,13 +383,32 @@ export async function tapUntilClosureSheet(page, lonLat, title) {
   const position = canvasPoint(lonLat, box)
 
   const sheet = page.getByRole('dialog', { name: 'Closure notice' })
+  await tapUntilOpen(page, position, sheet, 'Closure notice')
+  await sheet.getByText(title).waitFor()
+  return sheet
+}
+
+/**
+ * Tap `position` on the map canvas until `sheet` opens, for at most
+ * TAP_FOR_MS. What it waits on is the mark drawing, which nothing on screen
+ * announces; a tap before then opens nothing and costs nothing. Exported for
+ * e2e/closureSurfaces.spec.ts, which taps a hazard area the same way, so the
+ * loop and its ceiling have one home.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {{ x: number, y: number }} position
+ * @param {import('@playwright/test').Locator} sheet
+ * @param {string} what the sheet's name, for the error when none opens
+ */
+export async function tapUntilOpen(page, position, sheet, what) {
+  const canvas = page.locator('canvas.maplibregl-canvas').first()
   const deadline = Date.now() + TAP_FOR_MS
   while (!(await sheet.isVisible())) {
     if (Date.now() > deadline) {
       throw new Error(
-        `no "Closure notice" sheet after ${TAP_FOR_MS / 1000} s of taps at ` +
-          `${lonLat.join(', ')}: the closures did not draw, or something drawn ` +
-          'over the mark takes the tap',
+        `no "${what}" sheet after ${TAP_FOR_MS / 1000} s of taps at ` +
+          `${Math.round(position.x)},${Math.round(position.y)}: the mark did not ` +
+          'draw, or something drawn over it takes the tap',
       )
     }
     try {
@@ -388,6 +419,4 @@ export async function tapUntilClosureSheet(page, lonLat, title) {
     }
     await sheet.waitFor({ timeout: 1500 }).catch(() => undefined)
   }
-  await sheet.getByText(title).waitFor()
-  return sheet
 }

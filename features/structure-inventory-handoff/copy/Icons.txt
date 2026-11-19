@@ -1,0 +1,17 @@
+# Icons.dc.html — rendered text, captured 2026-11-04
+
+Structure icons
+Twelve types, in the map's own glyph language: filled silhouettes that survive 26 px in sun. Six are the map's existing pins (shelter, privy, campsite, water, parking, sign); six are new. Shown on a picker tile at 48 and 24, and as a map pin at 38 and 26.
+Shelter
+Privy
+Campsite
+Bridge
+Puncheon
+Water source
+Blaze
+Sign
+Kiosk
+Parking
+Steps
+Something else
+Logged under Something else, with a word, until the pilot shows one is common enough to earn a tile: boardwalk, stepping stones, culvert, bear box, tent platform, fire ring, picnic table, water bar, check dam, drainage dip, turnpike, timber steps, retaining wall, cairn, register box, boundary marker, trailhead, gate, stile, fence, road crossing, railroad crossing.

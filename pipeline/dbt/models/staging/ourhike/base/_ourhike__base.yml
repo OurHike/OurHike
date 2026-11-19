@@ -86,3 +86,32 @@ models:
       - name: document_json
         description: The file as its reviewer wrote it, `_README` aside, as JSON.
         data_tests: [not_null]
+  - name: base_ourhike__database_size
+    data_tests:
+      # Warns if the dedupe drops any row, which for one size never happens.
+      - equal_rowcount_to_raw:
+          arguments:
+            compare_model: source('ourhike', 'raw_ourhike__database_size')
+    description: >
+      The size of OurHike's own database as its one row, keyed, in bytes and
+      in whole megabytes, read by
+      tests/singular/assert_the_database_stays_under_its_plan.sql. No row
+      where the conditions leg has never landed the size.
+    columns:
+      - name: ourhike_database_size_key
+        description: >
+          The row's key: dbt_utils.generate_surrogate_key over
+          `ourhike_database_size` and `_dlt_load_id`, the load that read it,
+          since the table holds one row per read.
+        data_tests: [not_null, unique]
+      - name: database_bytes
+        description: >
+          The sum of pg_database_size over every database the conditions
+          reader may connect to, in bytes (pipeline/lib/database_size.py).
+        data_tests: [not_null]
+      - name: database_mb
+        description: >
+          database_bytes in megabytes of 1,048,576 bytes, rounded down, so that
+          400 is the backend's own 80% of its 500 MB `database_quota_mb` to the
+          byte.
+        data_tests: [not_null]

@@ -1,0 +1,14 @@
+# The nightly usage archive's own needs (#1923 - Move each closed month's
+# unlinked usage rows out of Postgres into a Parquet file in a private R2
+# bucket). Installed by .github/workflows/analytics-rollup.yml's archive step,
+# and on the maintainer's machine for `scripts/analytics_keys.py open` on an
+# archived month - never by the API's image, which installs requirements.txt
+# alone. requirements.in keeps this backend to one database driver and no
+# analytics engine, and the archive is the one job that writes a file format
+# the API never reads.
+-r requirements.in
+
+# Writes each part (scripts/analytics_archive.py) and reads it back for
+# `open`: zstd Parquet, typed from the `analytics_events` model, with no
+# extension downloaded at run time - which DuckDB's httpfs would have needed.
+pyarrow

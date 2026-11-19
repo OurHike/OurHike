@@ -1,0 +1,333 @@
+/* The day-5 ask, the $0 nudge and More → Your support (#1876). Semantic
+   tokens only, as themeTokens.test.ts holds every stylesheet here to. The
+   window itself is chrome/signInWindow.css's; this file styles what goes
+   inside it. */
+
+.support-ask {
+  padding: 20px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.support-ask__title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 21px;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+/* The window's views are stacks spaced by `gap`; a paragraph's own margin
+   on top of it doubled the space under every heading. */
+.support-ask > *,
+.support-nudge > *,
+.your-support__card > * {
+  margin: 0;
+}
+
+.support-ask__body,
+.support-ask__email,
+.support-ask__term {
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.support-ask__term {
+  font-size: 13.5px;
+  border-left: 3px solid var(--border-2);
+  padding-left: 10px;
+}
+
+.support-ask__tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.support-ask__tier {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--min-touch-target, 44px);
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-1);
+  border-radius: 10px;
+  color: var(--fg-1);
+  cursor: pointer;
+  font: inherit;
+}
+
+.support-ask__tier[aria-checked='true'] {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 25%, transparent);
+}
+
+.support-ask__tier--zero {
+  background: var(--bg-sunken);
+  border-style: dashed;
+}
+
+.support-ask__amount {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: 700;
+  font-size: 18px;
+  min-width: 92px;
+}
+
+.support-ask__amount small {
+  font-family: var(--font-body, system-ui, sans-serif);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.support-ask__what {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--fg-2);
+}
+
+.support-ask__primary,
+.support-ask__secondary {
+  min-height: var(--min-touch-target, 44px);
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.support-ask__primary {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border: 0;
+  margin-top: 4px;
+}
+
+.support-ask__primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.support-ask__secondary {
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+}
+
+.support-ask__fine {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--fg-3);
+  text-align: center;
+}
+
+.support-ask__error {
+  font-size: 14px;
+  color: var(--danger);
+}
+
+/* ---- The $0 nudge: the one screen in this flow on the dark ground. It is
+   meant to stop a thumb, and a change of ground is what does that without
+   raising a voice. The chrome's tokens rather than `--bg-inverse`, which
+   flips to bone under the dark theme: these stay dark under both, which is
+   the point (design-system/tokens/colors.css says the same of the chrome). ---- */
+
+.support-nudge {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+  padding: 24px 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.support-nudge__eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-chrome-2);
+}
+
+.support-nudge__title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 24px;
+  line-height: 1.2;
+  color: var(--fg-chrome-1);
+}
+
+.support-nudge__body {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+  margin-bottom: 6px;
+}
+
+.support-nudge__low,
+.support-nudge__mid {
+  min-height: 48px;
+  font-size: 15.5px;
+  font-weight: 700;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.support-nudge__low {
+  background: var(--accent-blaze-yellow);
+  /* The chrome's own ground as ink: dark under both themes, as the yellow
+     needs. */
+  color: var(--bg-chrome);
+  border: 0;
+}
+
+.support-nudge__mid {
+  background: transparent;
+  color: var(--fg-chrome-1);
+  border: 1.5px solid var(--fg-chrome-2);
+}
+
+/* Readable and always on screen: secondary, never hidden. The maintainer's
+   choice, poll 2026-10-23. */
+.support-nudge__zero {
+  min-height: var(--min-touch-target, 44px);
+  background: transparent;
+  border: 0;
+  color: var(--fg-chrome-2);
+  font-size: 14.5px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.support-nudge__fine {
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--fg-chrome-3);
+}
+
+/* ---- More → Your support ---- */
+
+.your-support__card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.your-support__amount {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--fg-1);
+}
+
+.your-support__meta {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  margin-top: 2px;
+}
+
+.your-support__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.your-support__confirm-title {
+  font-weight: 700;
+  color: var(--fg-1);
+}
+
+.your-support__stop {
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--bg-surface);
+  color: var(--danger);
+  border: 2px solid var(--danger);
+}
+
+.your-support__why {
+  margin-top: 10px;
+}
+
+.your-support__stop--confirm {
+  background: var(--danger);
+  color: var(--fg-on-brand);
+}
+
+/* "Emails about my support" (#1876): a role="switch" button, the Legend's
+   Blaze row's pattern, so assistive tech hears on and off rather than a
+   checkbox's checked. */
+.your-support__mail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-1, rgba(0, 0, 0, 0.12));
+}
+
+.your-support__mail-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--fg-1);
+}
+
+.your-support__switch {
+  flex: none;
+  position: relative;
+  width: 48px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: var(--fg-3, #c9c2b4);
+  cursor: pointer;
+}
+
+.your-support__switch[aria-checked='true'] {
+  background: var(--brand-primary);
+}
+
+.your-support__switch:focus-visible {
+  outline: 3px solid var(--accent-blaze-orange, #b5651d);
+  outline-offset: 2px;
+}
+
+.your-support__switch:disabled {
+  opacity: 0.6;
+}
+
+.your-support__switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s ease;
+}
+
+.your-support__switch[aria-checked='true'] .your-support__switch-knob {
+  left: 23px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .your-support__switch-knob {
+    transition: none;
+  }
+}

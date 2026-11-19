@@ -16,6 +16,14 @@
     "recorded_date": "2026-08-13",
     "open_question": "ATC's own written terms remain the ideal - SOURCE_SURVEY.md §10's combined ask (capacity, Helene status, CSI, half-mile points) is now a confirmation rather than a blocker, and its answer should replace this line, the same way photo_licence's open question reads."
   },
+  "atc_bucket_list_licence": {
+    "_comment": "The basis on which the ATC's A.T. Summer Bucket List - the item lines transcribed verbatim into reference/challenges/atc/ and published to hikers as a challenge (features/CHALLENGES.md, features/CHALLENGES_BLAZE_CARD.md) - may be carried in this tree and shown on a phone. photo_licence's sibling for a DOCUMENT rather than a layer: the list is the ATC's own text, not a fact the ATC publishes as data, so atc_licence's scope ('facts ATC itself publishes') does not reach it and it needs a line of its own, which CHALLENGES.md's open question on the list's licence asked for (maintainer, poll 2026-10-01: keep the text verbatim and ask the ATC). Recorded on the maintainer's statement of 2026-11-03 that the ATC relationship is settled and no letter is needed - the ATC has agreed to run the Bucket List on OurHike. IT IS NOT A WRITTEN GRANT FROM THE ATC and must not be rendered as one: what is recorded is the maintainer's authorisation, on the basis of that agreement, as the person who carries the consequence (licence_basis_comment below: `maintainer_authorisation`). What it does NOT cover, stated so nobody widens it by reading: the ATC's marks and its sponsors' names (the welcome footer carries the hashtag alone until the ATC's letter grants them), photographs (slice 7 of the brief records those per item, as photo_licence does), and sweepstakes entries - `takes_entries` on the reviewed file is a separate switch and stays false until the ATC confirms OurHike is its submission form for 2027.",
+    "author": "Appalachian Trail Conservancy",
+    "license": "© ATC, used with permission",
+    "basis": "Maintainer authorisation, on the basis of the ATC's agreement to run the Bucket List on OurHike",
+    "recorded_date": "2026-11-03",
+    "open_question": "The ATC's written terms for sweepstakes entries collected through OurHike, and who is the data controller for an entry - features/CHALLENGES.md, 'Open questions'. Until they exist the reviewed file stays `draft` and takes no entries; when they do, they should replace this line the way photo_licence's open question reads."
+  },
   "sources": [
     {
       "key": "communities",
@@ -38,6 +46,8 @@
       "title": "A.T. Centerline",
       "provider": "ATC",
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/ANST_Centerline/FeatureServer/0",
+      "where": "Status = 'Official A.T. Route'",
+      "where_comment": "ONLY WHAT ATC MARKS AS THE ROUTE IS THE A.T. (#1920 - ATC's A.T. centerline layer gained a 'New Hampshire' state outline on 2026-10-26, and the monthly build drew it as the A.T.). Measured live 2026-10-27: 3,028 features, of which 3,027 carry Status 'Official A.T. Route' (3,026 'Appalachian National Scenic Trail' and 'Webcliff'), and OBJECTID 3072, named 'New Hampshire', carries no Status, club or dates, and is a state outline added at 2026-10-26 17:45:40 UTC (the layer's editingInfo). Unfiltered, release 2026-10-27 drew it as A.T. centerline and its elevation profile failed the null-height share. Applied by the server, so the extract, its as-landed copy and fetch_all.py all read the same 3,027 rows. A segment ATC has not marked official stays off rather than being drawn as the trail a hiker follows; if ATC renamed the value and nothing matched, the run check refuses the empty or collapsed table (this row is not may_be_empty) and the last good one stands.",
       "person_fields": ["Creator", "Editor"],
       "person_fields_comment": "Creator and Editor are ArcGIS editor tracking: the account that created or last edited each row, found on this layer by a metadata read on 2026-10-03. extract/_kinds.py's PERSON_FIELDS drops them on every layer; listed here too so this row says which of its own columns never load.",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
@@ -4858,7 +4868,9 @@
       "geometry_kind": "polygon",
       "name_field": "NCA_NAME",
       "id_field": "NCA_NAME",
-      "id_comment": "`NCA_NAME` is unique and non-null on all 57 rows read 2026-10-03.",
+      "id_comment": "`NCA_NAME` is unique and non-null on all 57 rows read 2026-10-03, and names the same 57 features the 1,078 rows read 2026-11-03 are parts of (`part_fields`).",
+      "part_fields": ["GlobalID", "Shape.STArea()", "Shape.STLength()"],
+      "part_fields_comment": "ONE ROW PER POLYGON PART since BLM republished the layer (#1947). Measured live 2026-11-03: 1,078 rows of 57 NCA_NAMEs, 26 of them repeated (California Coastal National Monument 942 rows, Bears Ears 16, El Malpais National Conservation Area 10); within a name the rows differ only in GlobalID, OBJECTID, Shape.STArea(), Shape.STLength() and the shape. The base model unions a name's parts into one row, so places.json keeps its 57 monuments.",
       "place_kind": "park",
       "place_kind_comment": "The places-mart kind (dbt/models/marts/places) this layer's rows map onto; `notes`' MART says how, and what phase C must add.",
       "discovered_via": "bcc70dd0:pipeline/reference/org_coverage.json's AVAILABLE_NOT_LOADED places row for this club (coverage audit 2026-10-01, batch b6_federal), then re-read live on 2026-10-03 for decision 54's wave 1 under lib/user_agent.py's USER_AGENT, robots.txt first (the host has no /robots.txt (404)): the layer's metadata, returnCountOnly, the item's licenseInfo and accessInformation, and an attribute-only read of every row for the key.",

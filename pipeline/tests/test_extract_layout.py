@@ -545,6 +545,7 @@ CONDITIONS_JOB_TABLES = frozenset(
         "raw_ourhike__reports",
         "raw_ourhike__notes",
         "raw_ourhike__disputes",
+        "raw_ourhike__database_size",
         "raw_ourhike__work_projects",
         "raw_atc__atc_updates",
         "raw_atc__atc_trail_updates",
@@ -635,6 +636,7 @@ YIELDS_GEOMETRY = {
     "ContentPages": False,
     "ContentPdf": False,
     "ContentSheet": False,
+    "DatabaseSize": False,  # one number, the database's size in bytes
     "DcnrParkAdvisories": False,
     "FeedNotices": False,
     "GeofabrikExtracts": False,

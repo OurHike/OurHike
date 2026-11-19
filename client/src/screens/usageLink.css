@@ -1,0 +1,31 @@
+/* "Link your usage to your account?" (screens/UsageLinkQuestion.tsx, #1902).
+   The report pages' frame, with body copy they never needed: those screens
+   are forms, and this one is a question a hiker should be able to read in
+   full before answering it. */
+.usage-link {
+  min-height: 100%;
+}
+.usage-link__body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+.usage-link__points {
+  margin: 0;
+  padding-left: var(--space-5, 20px);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+.usage-link__points li + li {
+  margin-top: var(--space-1, 4px);
+}
+.usage-link__minor {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+.usage-link__actions {
+  margin-top: auto;
+}

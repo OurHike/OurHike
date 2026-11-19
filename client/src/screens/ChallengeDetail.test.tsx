@@ -66,19 +66,64 @@ describe('one challenge', () => {
     expect(screen.getByText(/1 of 5 for the drawing/)).toBeInTheDocument()
   })
 
-  it('lists the named places south to north under On the trail', () => {
+  it('opens on the club’s first section and numbers every row 1-100 in the club’s order', async () => {
     const { container } = detail()
+    const numbersShown = () =>
+      [...container.querySelectorAll('.challenge-row__number')].map((node) =>
+        Number(node.textContent),
+      )
+    // Learn is the ATC's first section, so the first row is the first item.
+    expect(screen.getByRole('button', { name: 'Learn' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    const learn = ATC_CHALLENGE.items.filter((entry) => entry.section === 'learn')
+    expect(numbersShown()).toEqual(
+      learn.map((entry) => ATC_CHALLENGE.items.indexOf(entry) + 1),
+    )
+    // Experience keeps the published order too - never re-sorted by mile.
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
+    const experience = ATC_CHALLENGE.items.filter(
+      (entry) => entry.section === 'experience',
+    )
+    expect(numbersShown()).toEqual(
+      experience.map((entry) => ATC_CHALLENGE.items.indexOf(entry) + 1),
+    )
+    expect(screen.queryByRole('button', { name: 'On the trail' })).toBeNull()
+  })
+
+  it('lists only what is earned under Done, and draws no Done pill before anything is', async () => {
+    const { container } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
     const titles = [...container.querySelectorAll('.challenge-row__title')].map(
       (node) => node.textContent,
     )
+    expect(titles).toHaveLength(1)
     expect(titles[0]).toMatch(/Springer Mountain/)
-    expect(titles.at(-1)).toMatch(/Katahdin/)
+    cleanup()
+    detail({ state: join(EMPTY_CHALLENGE_STATE, ATC_CHALLENGE.id, new Date()) })
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull()
   })
 
-  it('hands a hand-taggable row to onTag, and names the item on its button', async () => {
+  it('prints no sub-line under an at-home item, and a place under a place', async () => {
+    const { container } = detail()
+    const row = (title: RegExp) =>
+      [...container.querySelectorAll('.challenge-row')].find((node) =>
+        title.test(node.querySelector('.challenge-row__title')?.textContent ?? ''),
+      )!
+    expect(row(/trivia quiz/).querySelector('.challenge-row__meta')).toBeNull()
+    expect(container.textContent).not.toMatch(/at home/)
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
+    expect(
+      row(/McAfee Knob shuttle/).querySelector('.challenge-row__meta'),
+    ).toHaveTextContent('McAfee Knob Summit')
+  })
+
+  it('hands a hand-earnable row to onTag, and names the item on its button', async () => {
     const { props } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
     await userEvent.click(
-      screen.getByRole('button', { name: /Tag it: Take the McAfee Knob shuttle/ }),
+      screen.getByRole('button', { name: /Earn it: Take the McAfee Knob shuttle/ }),
     )
     expect(props.onTag).toHaveBeenCalledWith(
       item(ATC_CHALLENGE, 'mcafee-knob'),
@@ -101,18 +146,44 @@ describe('one challenge', () => {
     expect(screen.getByText(/Mystery #1 · revealed Jul 20/)).toBeInTheDocument()
   })
 
-  it('offers Join, not tags, to a hiker who has not joined', () => {
+  it('offers Join, not Earn it, to a hiker who has not joined', () => {
     detail({ state: EMPTY_CHALLENGE_STATE })
     expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Tag it/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Earn it/ })).toBeNull()
   })
 
   it('never says anything comparative or about what is not done, in any filter', async () => {
     const { container } = detail()
-    for (const pill of ['On the trail', 'Learn', 'Anywhere', 'Protect', 'Mystery']) {
+    for (const pill of ['Learn', 'Experience', 'Protect', 'Mystery', 'Done']) {
       await userEvent.click(screen.getByRole('button', { name: pill }))
       expect(container.textContent).not.toMatch(FORBIDDEN)
     }
+  })
+})
+
+describe('the Done pill (#1961, review of #1969)', () => {
+  it('lets the selection go with the last item taken back, keeps focus on a pill, and does not jump back later', async () => {
+    const { props, rerender } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+    const row = screen.getByText(/Springer Mountain/).closest('li')!
+    await userEvent.click(within(row).getByRole('button', { name: /^Earned:/ }))
+    expect(props.onUntag).toHaveBeenCalledTimes(1)
+    rerender(<ChallengeDetail {...props} state={joinedWith(ATC_CHALLENGE)} />)
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull()
+    const first = screen.getByRole('button', { name: 'Learn' })
+    expect(first).toHaveAttribute('aria-pressed', 'true')
+    expect(document.activeElement).toBe(first)
+    rerender(
+      <ChallengeDetail {...props} state={joinedWith(ATC_CHALLENGE, 'trivia-quiz')} />,
+    )
+    expect(screen.getByRole('button', { name: 'Learn' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Done' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
   })
 })
 
@@ -209,7 +280,7 @@ describe('the list of joined challenges', () => {
         onBrowse={vi.fn()}
       />,
     )
-    expect(screen.getByText('ATC · until Sep 1')).toBeInTheDocument()
+    expect(screen.getByText('ATC · until Sep 7')).toBeInTheDocument()
     expect(screen.getByText('1 of 5 for the drawing')).toBeInTheDocument()
     expect(container.textContent).not.toMatch(/\bwk\b|weeks? left|days? left/i)
     expect(container.textContent).not.toMatch(FORBIDDEN)
@@ -275,25 +346,30 @@ describe('Browse', () => {
 
 // From the reviews of 2026-09-30 and 2026-10-01 (features/CHALLENGES.md, "The
 // reviews"): the places a hiker could fall through on these screens.
-describe('the window, Triple Crown peaks, the tagged-place sheet and a closed list', () => {
-  it('offers no new tag outside the window, and says when it opens', () => {
+describe('the window, Triple Crown peaks, the earned-place sheet and a closed list', () => {
+  it('offers nothing to earn outside the window, and says when it opens', () => {
     detail({ today: '2027-05-01' })
-    expect(screen.queryByRole('button', { name: /^Tag it/ })).toBeNull()
-    expect(screen.getByText(/Opens May 15\. Tags count from then\./)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Earn it/ })).toBeNull()
+    expect(
+      screen.getByText(/Opens May 13\. Trail karma counts from then\./),
+    ).toBeInTheDocument()
   })
 
   it('tells a hiker who has not joined when the list opens, too', () => {
     detail({ today: '2027-05-01', state: EMPTY_CHALLENGE_STATE })
     expect(screen.getByRole('button', { name: 'Join' })).toBeInTheDocument()
-    expect(screen.getByText(/Opens May 15\. Tags count from then\./)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Opens May 13\. Trail karma counts from then\./),
+    ).toBeInTheDocument()
   })
 
-  it('offers each peak of a Triple Crown its own Tag it, before the item is done', async () => {
+  it('offers each peak of a Triple Crown its own Earn it, before the item is done', async () => {
     const { props } = detail()
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
     const crown = item(ATC_CHALLENGE, 'virginia-triple-crown')
     const peaks = crown.match.kind === 'places_all' ? crown.match.places : []
     await userEvent.click(
-      screen.getByRole('button', { name: `Tag it: ${peaks[1].name}` }),
+      screen.getByRole('button', { name: `Earn it: ${peaks[1].name}` }),
     )
     expect(props.onTag).toHaveBeenCalledWith(crown, peaks[1].poi)
   })
@@ -308,11 +384,12 @@ describe('the window, Triple Crown peaks, the tagged-place sheet and a closed li
     expect(props.onLeave).toHaveBeenCalledTimes(1)
   })
 
-  it('opens the tagged place with focus on it, closes on Escape, and gives focus back', async () => {
+  it('opens the earned place with focus on it, closes on Escape, and gives focus back', async () => {
     detail({
       state: joinedWith(ATC_CHALLENGE, 'springer-mountain'),
       onRemoveTag: vi.fn(),
     })
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
     const row = screen
       .getAllByRole('button', { name: /Springer Mountain/ })
       .find((button) => button.classList.contains('challenge-row__open'))!
@@ -324,7 +401,7 @@ describe('the window, Triple Crown peaks, the tagged-place sheet and a closed li
     expect(row).toHaveFocus()
   })
 
-  it('takes a tag back from the tagged place, however it was made', async () => {
+  it('takes an earned item back from its place with one tap, however it was made', async () => {
     const state = tag(
       join(EMPTY_CHALLENGE_STATE, ATC_CHALLENGE.id, new Date('2027-06-01T12:00:00Z')),
       ATC_CHALLENGE,
@@ -333,10 +410,11 @@ describe('the window, Triple Crown peaks, the tagged-place sheet and a closed li
     ).state
     const onRemoveTag = vi.fn()
     detail({ state, onRemoveTag })
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
     await userEvent.click(
       screen.getByRole('button', { name: /Take the McAfee Knob shuttle/ }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Remove this tag' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Take it back' }))
     expect(onRemoveTag).toHaveBeenCalledWith(
       item(ATC_CHALLENGE, 'mcafee-knob'),
       undefined,
@@ -374,10 +452,11 @@ describe('the window, Triple Crown peaks, the tagged-place sheet and a closed li
       )
     }
     render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Experience' }))
     await userEvent.click(
       screen.getByRole('button', { name: /Take the McAfee Knob shuttle/ }),
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Remove this tag' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Take it back' }))
     expect(
       screen.getByRole('heading', { level: 1, name: ATC_CHALLENGE.name }),
     ).toHaveFocus()
@@ -527,7 +606,7 @@ describe('the list, when the published list changes under it', () => {
         onBrowse={vi.fn()}
       />,
     )
-    expect(screen.getByText('ATC · opens May 15')).toBeInTheDocument()
+    expect(screen.getByText('ATC · opens May 13')).toBeInTheDocument()
   })
 })
 

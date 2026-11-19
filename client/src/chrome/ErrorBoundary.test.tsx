@@ -120,8 +120,9 @@ describe('ErrorBoundary', () => {
   })
 
   it('logs the error rather than sending it anywhere', () => {
-    // A chosen "no telemetry", not an oversight - there is none in this client
-    // and adding some carries its own privacy weight. console is where a
+    // A chosen "no error telemetry", not an oversight - there is none in this
+    // client (the usage counts of #1902 carry no error) and adding some
+    // carries its own privacy weight. console is where a
     // developer looks and a hiker never does.
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
 

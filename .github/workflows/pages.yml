@@ -336,6 +336,11 @@ jobs:
         working-directory: site
         env:
           PUBLIC_DOCS_ORIGIN: ${{ steps.docs_host.outputs.origin }}
+          # The backend the /support/ page reads its published yearly total
+          # from (#1876) - the same variable the app is built with below.
+          # Unset, the page says the total is not available rather than
+          # printing a figure it did not read.
+          PUBLIC_API_BASE_URL: ${{ vars.API_BASE_URL }}
         run: npm run build
 
       # The data URL is not secret - Vite inlines it into a public JS bundle, so

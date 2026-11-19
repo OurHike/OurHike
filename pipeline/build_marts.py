@@ -328,11 +328,10 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-
-import tomllib
 
 import state_base
 from lib import data_env

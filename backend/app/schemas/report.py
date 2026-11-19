@@ -1,7 +1,7 @@
 """Pydantic request/response models for the `/reports` router."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -18,7 +18,7 @@ from app.models.report import (
     SignedNameKind,
     Visibility,
 )
-from app.schemas.common import FiniteFloat, NoteText
+from app.schemas.common import FiniteFloat, NoteText, refuse_a_future_time
 
 # A name is short. Bounded for NoteText's reason - the compounding failure of
 # an unbounded text field on a row that is stored for good - and at a length
@@ -182,15 +182,9 @@ class ReportCreate(BaseModel):
     def _reject_future_authoring(cls, value: datetime | None) -> datetime | None:
         if value is None:
             return None
-
-        # Phone clocks drift, so a small lead is skew rather than tampering.
-        skew = timedelta(minutes=5)
-        now = datetime.now(timezone.utc)
-        compared = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-
-        if compared > now + skew:
-            raise ValueError("authored_at cannot be in the future")
-        return value
+        # Phone clocks drift, so a small lead is skew rather than tampering
+        # (schemas/common.py's CLOCK_SKEW, shared with the survey's records).
+        return refuse_a_future_time(value, "authored_at")
 
     @field_validator("mile")
     @classmethod
@@ -260,9 +254,10 @@ class ReportCreate(BaseModel):
 class ReportOut(BaseModel):
     """One report, as much of it as the caller is entitled to (#252).
 
-    **Build these with `for_viewer`, never by returning the ORM row.** Four
-    fields are withheld from anyone who is neither the reporter nor a
-    moderator, and the withholding happens at construction so a caller cannot
+    **Build these with `for_viewer`, never by returning the ORM row.** The
+    fields below the "Withheld from the public" line are withheld from anyone
+    who is neither the reporter nor a moderator - `maintainer_id` from the
+    reporter too - and the withholding happens at construction so a caller cannot
     leak them by forgetting to check - the same posture
     app/routers/maintainer_assignments.py takes with `display_name`.
 
@@ -383,6 +378,15 @@ class ReportOut(BaseModel):
     # while only a `thanks` is forced to `club_only` - so a `blowdown`
     # carrying an arbitrary real profile id is `public`, and `maintainer_id`
     # was a second reporter_id nobody had noticed.
+    #
+    # `maintainer_id` goes to moderators only - not to the reporter either.
+    # On a thanks it is whoever the server credited, resolved from the mile
+    # and the authored date when the hiker named nobody, so handing it back
+    # to the filer let one thanks per mile rebuild the map of volunteers'
+    # account ids along the trail that #641 (GET /maintainer-assignments
+    # serves volunteer account ids to anonymous callers) took away (the
+    # review of #1926). `club_id` stays with the reporter: every club's id is
+    # public on `GET /clubs`.
     maintainer_id: str | None = None
     club_id: str | None = None
 
@@ -392,14 +396,17 @@ class ReportOut(BaseModel):
 
         Privileged means the reporter reading their own report, or a
         moderator - the two audiences that already authenticate, and the two
-        `MODERATOR_ROLES` exists to keep in step.
+        `MODERATOR_ROLES` exists to keep in step. One field narrower still:
+        `maintainer_id`, which only a moderator reads (the field's comment
+        says why).
 
         Per (row, viewer) rather than per route, which is what rules out a
         public-schema/privileged-subclass split: `GET /reports` with a token
         returns the caller's own rows AND other people's public rows in one
         response, so the decision has to be made row by row inside it.
         """
-        privileged = viewer is not None and (report.reporter_id == viewer.id or viewer.role in MODERATOR_ROLES)
+        moderator = viewer is not None and viewer.role in MODERATOR_ROLES
+        privileged = moderator or (viewer is not None and report.reporter_id == viewer.id)
 
         return cls(
             id=report.id,
@@ -427,7 +434,7 @@ class ReportOut(BaseModel):
             signed_name=report.signed_name if privileged else None,
             signed_name_kind=report.signed_name_kind if privileged else None,
             contact_ok=report.contact_ok if privileged else None,
-            maintainer_id=report.maintainer_id if privileged else None,
+            maintainer_id=report.maintainer_id if moderator else None,
             club_id=report.club_id if privileged else None,
         )
 

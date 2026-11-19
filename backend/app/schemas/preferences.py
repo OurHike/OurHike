@@ -308,6 +308,15 @@ class PreferencesIn(BaseModel):
     # DISPLAY, and every record it summarises survives it being off.
     impact_panel_shown: bool = True
 
+    # Usage measurement (#1902, features/EVENTING.md §0). "Share usage
+    # statistics" defaults ON - the maintainer's split consent (poll
+    # 2026-10-27) - and "Link them to my account" is None until the hiker has
+    # been asked, which reads as no. Both default here for the reason the keys
+    # above do: blobs synced before these existed must read back as the
+    # defaults rather than as a ValidationError.
+    measurement_enabled: bool = True
+    measurement_linked: bool | None = None
+
     # Onboarding progress
     onboarding_completed: bool = False
     download_choice_made: bool = False

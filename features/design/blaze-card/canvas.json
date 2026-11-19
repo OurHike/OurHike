@@ -1,0 +1,109 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "BlazeCard.dc.html": {
+      "h": 640,
+      "title": "Component · the blaze card",
+      "w": 420,
+      "x": 1160,
+      "y": 1360
+    },
+    "Card.dc.html": {
+      "h": 920,
+      "title": "2 · Your card",
+      "w": 390,
+      "x": 470,
+      "y": 0
+    },
+    "Home.dc.html": {
+      "h": 1000,
+      "title": "6 · Today, once joined",
+      "w": 390,
+      "x": 2350,
+      "y": 0
+    },
+    "Line.dc.html": {
+      "h": 1420,
+      "title": "5 · Where your blazes are",
+      "w": 390,
+      "x": 1880,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 1260,
+      "title": "1 · New to the challenge",
+      "w": 390,
+      "x": 0,
+      "y": 0,
+      "is_interactive": true
+    },
+    "Poster.dc.html": {
+      "h": 1350,
+      "title": "7 · Share poster (4:5)",
+      "w": 1080,
+      "x": 0,
+      "y": 1360
+    },
+    "StateStrip.dc.html": {
+      "h": 120,
+      "title": "Component · the state strip",
+      "w": 420,
+      "x": 1660,
+      "y": 1360
+    },
+    "Tile.dc.html": {
+      "h": 844,
+      "title": "3 · A tile, opened",
+      "w": 390,
+      "x": 940,
+      "y": 0
+    },
+    "Where.dc.html": {
+      "h": 990,
+      "title": "4 · Where did it happen?",
+      "w": 390,
+      "x": 1302,
+      "y": -666
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-04T01:10:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "t1": {
+      "kind": "title1",
+      "maxW": 2740,
+      "text": "Earn your blazes — the card, and where each one happened",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "t2": {
+      "kind": "title1",
+      "maxW": 2080,
+      "text": "The same card and map, as the thing people share",
+      "w": 240,
+      "x": 0,
+      "y": 1060
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Card.dc.html",
+    "Tile.dc.html",
+    "Where.dc.html",
+    "Line.dc.html",
+    "Home.dc.html",
+    "Poster.dc.html",
+    "BlazeCard.dc.html",
+    "StateStrip.dc.html"
+  ],
+  "pages": [],
+  "title": "Bucket List — visual concept"
+}

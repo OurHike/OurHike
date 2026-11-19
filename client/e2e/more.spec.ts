@@ -27,6 +27,13 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { seedPreferences, bootFreshPage } from './support/seed'
+import { CHALLENGE_WORDS } from '../src/lib/challengeWords'
+
+/** A heading matched whole and case-insensitively, from a phrase the app
+ *  itself spells - so a renamed title moves this suite with it. */
+function wholeHeading(phrase: string): RegExp {
+  return new RegExp(`^${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+}
 
 /** More's own rows, and the heading each page answers with. The headings are
  *  upper-cased by CSS and the accessible name follows the rendering, so every
@@ -36,8 +43,10 @@ const PAGES = [
   { row: 'The map', heading: /^the map$/i },
   { row: 'Safety & privacy', heading: /^safety & privacy$/i },
   { row: 'Volunteer & report', heading: /^contribute$/i },
-  // #1780. Its page draws its own title rather than a settings heading.
-  { row: 'Challenges', heading: /^your challenges$/i },
+  // #1780. Its page draws its own title rather than a settings heading, and
+  // that title is lib/challengeWords.ts's to choose (#1961 renamed it once
+  // and this line was missed, which is why it is read rather than typed).
+  { row: 'Challenges', heading: wholeHeading(CHALLENGE_WORDS.yours) },
   { row: 'Where this map comes from', heading: /^your data$/i },
 ] as const
 

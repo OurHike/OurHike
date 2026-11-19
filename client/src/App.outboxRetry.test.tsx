@@ -43,6 +43,7 @@ vi.mock('./lib/api', () => ({
   // a backend configured, which this file is; they are irrelevant to the
   // retry path but a mock missing them makes App throw on mount.
   fetchReports: vi.fn(async () => []),
+  fetchMyReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
   // Disputes ride the same read as the notes they are computed from (#876).

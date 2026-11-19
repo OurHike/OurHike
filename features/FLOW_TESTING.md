@@ -630,6 +630,25 @@ the HTML report, traces included, for a fortnight when it fails.
   that file: with `context.setOffline(true)` in force, a request still reaches `page.route`,
   so the stub keeps its own offline flag (`setBackendSignal`).
 
+  **And the bucket-shaped build.** The `@bucket` tests run against a third build, with
+  `VITE_DATA_BASE_URL` pointing at a path on the build's own origin, and
+  `e2e/support/bucket.ts` answers every artifact under it with `page.route` — 404 unless a
+  test names the file — so they reach nothing external either. It exists because
+  `lib/publishedConditions.ts`'s `readPublished` asks for nothing without that variable: in
+  the hermetic build `conditions/notices.json`, `hazard_areas.json` and
+  `trail_closures.json` are never requested, so a route on them answers nothing, and the
+  surfaces drawn from them — the planned-hike notices, a hazard area's sheet, a club
+  closure's sheet, RELEASING.md §8b's safety set — could not be driven even after
+  **#1880 — Production still builds its notices, closures and hazard areas with the
+  exporters, so 78 organizations' notices reach UA only** published the files.
+  `e2e/closureSurfaces.spec.ts` drives them. `@bucket` is **Chromium-only, at phone width**,
+  in its own `phone-bucket` project, and `phone`, `desktop` and `phone-webkit` each
+  `grepInvert` the tag: the tests tap marks drawn on the map canvas, and **#1467 — WebKit
+  draws no trail line where Chromium draws one, and nobody knows yet whether that is the
+  engine or the sandbox** is still open. `playwright.config.ts`'s `BUCKET_COMMAND` carries
+  the rest, including why it is always built and previewed rather than served by the dev
+  server.
+
 - **Vitest owns `src/`, Playwright owns `e2e/`.** `vite.config.ts` scopes vitest's include to
   `src/` — its default glob does not stop there and swept up `e2e/*.spec.ts`, running
   `@playwright/test`'s `test` through vitest's runner.

@@ -108,8 +108,14 @@ def load_settings():
     try:
         from app.config import settings
     except ValidationError as error:
-        missing = ", ".join(str(item["loc"][0]).upper() for item in error.errors())
-        raise SettingsMissing(missing) from None
+        problems = error.errors(include_input=False)
+        missing = [str(item["loc"][0]).upper() for item in problems if item["type"] == "missing"]
+        if missing:
+            raise SettingsMissing(", ".join(missing)) from None
+        # A guard in app/config.py refused the settings it was given (one that
+        # checks them together has no field to name). Its own message is
+        # written to name no credential, so it is the one part repeated.
+        raise SettingsRefused(" ".join(item["msg"] for item in problems)) from None
     return settings
 
 
@@ -117,6 +123,10 @@ class SettingsMissing(Exception):
     """Named rather than a bare exit, so main() reports it in one place and
     the tests can assert on which settings were missing without parsing a
     message."""
+
+
+class SettingsRefused(Exception):
+    """Every setting is present and app/config.py refused them anyway."""
 
 
 def alembic_config() -> Config:
@@ -251,6 +261,9 @@ def main(argv: list[str] | None = None) -> int:
             f"setting can be read - including DATABASE_URL. A migration job does not use them, but Settings() will "
             f"not build without them, and neither will alembic/env.py. The workflows pass them; see migrate.yml."
         )
+        return 2
+    except SettingsRefused as refused:
+        print(f"::error::{args.label}: app/config.py refused these settings. {refused}")
         return 2
 
     # Before anything reaches the network, because both of these fail in ways

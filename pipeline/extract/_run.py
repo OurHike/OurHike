@@ -190,6 +190,9 @@ HOURLY_JOB_TABLES: dict[str, str] = {
     "raw_ourhike__reports": "OurHike's own verified reports, moderated as the closures are",
     "raw_ourhike__notes": "OurHike's own field notes, read by the same queries as the closures",
     "raw_ourhike__disputes": "OurHike's own disputes, read by the same queries as the closures",
+    "raw_ourhike__database_size": (
+        "OurHike's own database's size, which only these legs can read: the data-quality page's storage check"
+    ),
     "raw_ourhike__work_projects": "the reviewed volunteer work projects (#760), a file in git the bake has published since",
     "raw_atc__atc_updates": "ATC's reviewed trail updates file, reference/atc_updates.json (#460)",
     "raw_atc__atc_trail_updates": "ATC's reviewed trail updates, one row per update (#460)",
@@ -222,8 +225,9 @@ def job_of(resource: Resource) -> str:
 # has never been written. The limit came from soak run 506
 # (publish-conditions.yml 37154645937, 2026-10-03), which met 70 new hourly
 # layers at once and overran its step; those layers are the notices job's
-# since the split into two jobs, and a conditions leg carries twelve tables.
-# Run 505, an hour before 506, read 13 and loaded them inside 58 s, so twelve
+# since the split into two jobs, and a conditions leg carries thirteen tables
+# since raw_ourhike__database_size joined them (2026-10-28).
+# Run 505, an hour before 506, read 13 and loaded them inside 58 s, so thirteen
 # at once fit the step (Reasoned from that one run).
 #
 # The notices job's 150, Reasoned from run 506 and @unvalidated. In 506 the
@@ -254,8 +258,8 @@ NEW_TABLES_PER_LEG_RUN: dict[str, int | None] = {CONDITIONS_JOB: None, NOTICES_J
 # budget that followed ran past the extract step's 4-minute cap. Run 510's 89
 # checks, a folder per thread, took well under this (Reasoned from its 2 m
 # 49 s whole step). 45 is @unvalidated: the step summary's "change checks"
-# timing settles whether it is too tight. Its twelve tables since the split
-# hold no page behind a Crawl-delay.
+# timing settles whether it is too tight. Its thirteen tables hold no page
+# behind a Crawl-delay.
 #
 # The notices job's 600, Reasoned from the registry at 377e981a and
 # @unvalidated. A page or feed notice's change check IS its one request a run

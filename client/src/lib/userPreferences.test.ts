@@ -79,6 +79,8 @@ describe('UserPreferences schema', () => {
         'location_permission_requested',
         'map_style',
         'max_background_zoom',
+        'measurement_enabled',
+        'measurement_linked',
         'onboarding_completed',
         'real_name',
         'red_light_enabled',

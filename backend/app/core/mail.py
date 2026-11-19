@@ -130,15 +130,50 @@ def suppress(
     are replayed; a second bounce must not fail the handler recording it. The
     first reason is kept because why somebody originally said stop is the more
     useful fact - a complaint followed by a bounce is still a complaint.
+
+    Except over `unsubscribed`, which any other reason replaces. That one is
+    the address owner's own, and the only one `lift_unsubscribe` lets them
+    undo; kept over a later complaint or a manual entry, it let the email
+    page's switch lift those too (the fourth #1885 review).
     """
     address = normalise(address)
     existing = db.query(EmailSuppression).filter(EmailSuppression.address == address).first()
     if existing is not None:
+        if existing.reason == SuppressionReason.unsubscribed and reason != SuppressionReason.unsubscribed:
+            existing.reason = reason
+            existing.note = note
+            db.flush()
         return existing
     row = EmailSuppression(address=address, reason=reason, note=note)
     db.add(row)
     db.flush()
     return row
+
+
+def suppression_reason(db: Session, address: str) -> SuppressionReason | None:
+    """Why this address is suppressed, or None when it is not."""
+    row = db.query(EmailSuppression).filter(EmailSuppression.address == normalise(address)).first()
+    return row.reason if row is not None else None
+
+
+def lift_unsubscribe(db: Session, address: str) -> bool:
+    """Undo the address owner's own unsubscribe. True when nothing now stops mail.
+
+    The one way off the list, and only for `unsubscribed`: a hiker who turned
+    "Every other email from OurHike" off from a link sent to that address
+    can turn it back on from the same link (the maintainer's switches, poll
+    2026-10-27). A bounce, a complaint, a club's refusal or a manual entry is
+    a fact about delivery or somebody else's decision, and stays.
+    """
+    address = normalise(address)
+    row = db.query(EmailSuppression).filter(EmailSuppression.address == address).first()
+    if row is None:
+        return True
+    if row.reason != SuppressionReason.unsubscribed:
+        return False
+    db.delete(row)
+    db.flush()
+    return True
 
 
 def _sanitise_header(value: str) -> str:
@@ -176,7 +211,13 @@ def _build(
     message.set_content(body_text)
     if body_html:
         message.add_alternative(body_html, subtype="html")
-    return message.as_bytes()
+    # RFC 5322's 998-character line rather than the library's 78. At 78 a
+    # header with no space to fold at is rewritten as RFC 2047 encoded words,
+    # and `List-Unsubscribe: =?utf-8?q?=3Chttps...` is not a URL any mail
+    # client will offer: measured 2026-10-27, every unsubscribe URL over
+    # about 60 characters came out that way, which a real 43-character link
+    # token always is (#1885).
+    return message.as_bytes(policy=message.policy.clone(max_line_length=998))
 
 
 def send(

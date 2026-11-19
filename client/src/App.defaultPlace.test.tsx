@@ -186,7 +186,7 @@ describe('More → You, "Where you hike"', () => {
     render(<App />)
 
     await user.click(await screen.findByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('button', { name: /^You/ }))
+    await user.click(await screen.findByRole('button', { name: /^You(?!r support)/ }))
     const row = (await screen.findByText('Where you hike')).parentElement!
     expect(row).toHaveTextContent('Harriman State Park, NY')
 
@@ -210,7 +210,7 @@ describe('More → You, "Where you hike"', () => {
     render(<App />)
 
     await user.click(await screen.findByRole('tab', { name: 'More' }))
-    await user.click(await screen.findByRole('button', { name: /^You/ }))
+    await user.click(await screen.findByRole('button', { name: /^You(?!r support)/ }))
     await user.click(await screen.findByRole('button', { name: 'Set' }))
 
     const sheet = await screen.findByRole('dialog', { name: 'Where you hike' })

@@ -159,11 +159,17 @@ def _scheduled_supabase_workflows():
 SCHEDULED_ROSTER = {
     KEEPALIVE: "the keepalive itself - PostgREST reads, the database activity Supabase measures",
     "publish-conditions.yml": "bakes verified closures and reports daily, through the conditions reader credentials",
+    "analytics-rollup.yml": "closes each month of usage events and deletes raw events past six months, daily, "
+    "through the analytics rollup's own credentials (#1902) - a role that cannot read the sealed column, so the "
+    "scheduled road carries no position or account; database activity all the same",
     "schema-drift.yml": "reads both databases' schemas daily through the migration pooler URLs; deliberately not a "
     "keepalive (its SUPABASE_URL is a placeholder), but scheduled database activity all the same",
     "check-auth-redirects.yml": "GET /auth/v1/verify daily (#488) - GoTrue queries its own auth schema tables to "
     "reject the junk token, which is real database activity even though the point of the probe is the redirect "
     "allow-list, not keeping the project awake",
+    "backup-database.yml": "dumps production nightly as the dedicated backup role (#1908 - Back production's "
+    "database up nightly to a private R2 bucket, because Supabase Free keeps no backups) - scheduled database "
+    "activity, though not a keepalive: it reaches Postgres through the session pooler and never the project's API",
     "settings-configured.yml": "not a road at all, and on the roster to say so: it reads every declared setting by "
     "name - the Supabase URL, the migration and conditions connection strings among them - and its first step "
     "reduces the values to the names that came back non-empty, before anything could connect. Nothing in it "

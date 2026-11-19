@@ -20,8 +20,6 @@ expected and missed.
 
 from __future__ import annotations
 
-from datetime import date
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -124,5 +122,5 @@ def close_commitment(
         commitment.ended_early_at = utc_now()
         # The window is over, so its end date is today rather than a date in
         # the future that would keep the app in monitor mode.
-        commitment.ends_on = min(commitment.ends_on, date.today())
+        commitment.ends_on = min(commitment.ends_on, utc_now().date())
     return commit_and_refresh(db, commitment)

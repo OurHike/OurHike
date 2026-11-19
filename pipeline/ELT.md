@@ -61,6 +61,7 @@ A change to an extractor, or a new upstream answer, needs a new pin: dispatch `r
 |---|---|---|
 | Raw store | every resource's rows as Parquet (zstd), each lane its own dlt pipeline, plus `_extract_runs`, the run log | private bucket `our-hike-raw`, under `raw/` |
 | Step cache | pins (`steps/raw_inputs/<raw_run>/`), stored warehouses (`steps/dbt_warehouse/<env>/<raw_run>/`), expensive Python steps' outputs as GeoParquet | same bucket, under `steps/`, write-once |
+| Planetiler's sources | the basemap build's three non-OSM inputs (about 1.4 GB of zips) and their manifest, for when the Actions cache has dropped them (`lib/planetiler_sources.py`) | same bucket, under `planetiler_sources/`, replaced when a source is fetched again; one writer, `build-basemap.yml`'s fetch step; the retention step lists it and never deletes from it |
 | Row history | each mart's snapshot, saved between runs | the history store; the monthly store keeps its newest 3 saves, the hourly stores 24 |
 | Warehouse | every dbt model | one `warehouse.duckdb` per build, rebuilt each run |
 | Phone files | what phones download | the public bucket `our-hike`, served at `data.ourhike.org`; only `publish.py` writes it |
@@ -131,7 +132,7 @@ Seeds hold every rule that is data rather than code: `notice_words.csv` (the clo
 
 ### One key per table
 
-Every model has one key column, unique and not null, tested at error. A key of several columns is built with `dbt_utils.generate_surrogate_key`. The key's inputs are the registry key, then the upstream's own id where it is unique (GlobalID, else the layer's object id), else the smallest set of current values measured unique. Never a row's position in the file. Two closures models that cut areas keep their key test at warn, a recorded exception. A publisher's reload can renumber an object id, so anything that joins across releases (the POI identity ledger, graph cells) checks the release too.
+Every model has one key column, unique and not null, tested at error. A key of several columns is built with `dbt_utils.generate_surrogate_key`. The key's inputs are the registry key, then the upstream's own id where it is unique (GlobalID, else the layer's object id), else the smallest set of current values measured unique. Never a row's position in the file. A layer that serves one feature as several polygon parts names the fields that differ per part (`part_fields` in `sources.json`), and its base model keeps one row per key carrying the union of the parts' shapes (#1947). Two closures models that cut areas keep their key test at warn, a recorded exception. A publisher's reload can renumber an object id, so anything that joins across releases (the POI identity ledger, graph cells) checks the release too.
 
 ### Python steps, outside dbt
 
@@ -232,6 +233,8 @@ Every mart carries `club` (the folder that extracted the row), `source_key` (tes
 **Elementary's checks** (volume, schema, dimension and column anomalies) run in one pass after the writers and never change a build's exit. An anomaly warns where Elementary flags a point and errors past 6 deviations and 50% from the usual value (`@unvalidated`); a removed or retyped column is an error, an added one a warning. No failing row ever leaves the warehouse (`test_sample_row_count: 0`), because the hourly lane carries hikers' reports. A pull request runs only the checks on what it changed and everything downstream; a change dbt's state comparison cannot see (a macro, a var, a package pin) runs every check.
 
 **The data-quality page** at `/data/quality/` is OurHike's own page, built from Elementary's tables: every failure listed, warnings folded one line per kind, and a chart of each mart's row counts drawn against the band from the builds before each point. Each lane writes its own `data_quality.json` sidecar. `edr`, Elementary's own CLI, is not used: it brings a second dbt and sends usage events.
+
+**OurHike's own database's size is on the page too**, by the maintainer's poll of 2026-10-28: each conditions leg reads it (`extract/_shared/ourhike/database_size.py`), a dbt test under Volume warns from 400 MB and fails from 475 MB of the Free plan's 500, and the page charts its week against those two lines rather than a band, since no range is learned. A failed read stops nothing but itself. `macros/data_quality.sql`'s "A MEASURED TEST" says how the file carries it.
 
 **Hourly parity** compares the six `conditions/*` files with today's exporters on the same hour's upstream answers, recorded once (`extract/_answers.py`) so no upstream is asked twice. An unexplained difference turns that hour's checks run red after everything has published; a store with no comparison bundle for 2.5 hours does too.
 

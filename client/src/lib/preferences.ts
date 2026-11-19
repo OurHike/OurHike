@@ -119,6 +119,14 @@ export async function loadPreferences(): Promise<UserPreferences> {
   )
 }
 
+/**
+ * The hiker's two answers about usage measurement (#1902): "Share usage
+ * statistics" and "Link them to my account". A sync treats them unlike every
+ * other preference - see `consentTouched`.
+ */
+export const CONSENT_KEYS = ['measurement_enabled', 'measurement_linked'] as const
+export type ConsentKey = (typeof CONSENT_KEYS)[number]
+
 /** What this device knows about its own sync with the account (#891). */
 export interface PreferencesSyncState {
   /**
@@ -148,9 +156,26 @@ export interface PreferencesSyncState {
    * `planPreferencesSync`.
    */
   syncedAt: string | null
+  /**
+   * The consent answers the hiker changed ON THIS DEVICE since the last sync
+   * - and a sync carries a consent answer only from here (#1903's review).
+   *
+   * Whole-blob sync let a value nobody chose overwrite one somebody did: a
+   * phone signing in for the first time adopted the account's "on" over the
+   * "off" just set on it, and a phone pushing a units change sent its stale
+   * "on" over the "off" another phone had put on the account. For a theme
+   * that is a toggle to flip back; for consent it is counting a hiker who
+   * said stop. So an answer given here survives a pull and is pushed, and an
+   * answer not given here is never pushed - the account's stands.
+   */
+  consentTouched: ConsentKey[]
 }
 
-const NEVER_SYNCED: PreferencesSyncState = { dirty: false, syncedAt: null }
+const NEVER_SYNCED: PreferencesSyncState = {
+  dirty: false,
+  syncedAt: null,
+  consentTouched: [],
+}
 
 export async function preferencesSyncState(): Promise<PreferencesSyncState> {
   const stored = (await get(PREFERENCES_SYNC_KEY)) as
@@ -159,6 +184,9 @@ export async function preferencesSyncState(): Promise<PreferencesSyncState> {
   return {
     dirty: stored.dirty === true,
     syncedAt: typeof stored.syncedAt === 'string' ? stored.syncedAt : null,
+    consentTouched: Array.isArray(stored.consentTouched)
+      ? CONSENT_KEYS.filter((key) => stored.consentTouched?.includes(key))
+      : [],
   }
 }
 
@@ -173,13 +201,17 @@ export async function preferencesSyncState(): Promise<PreferencesSyncState> {
 export async function savePreferences(
   preferences: UserPreferences,
 ): Promise<UserPreferences> {
+  const before = await loadPreferences()
   await set(PREFERENCES_KEY, preferences)
   // After the blob, never before. A crash between the two leaves a saved
   // preference that has not been marked for sync, which costs one push; the
   // other order leaves a device claiming to have changed something it did
   // not, and pushing it over the account.
   const state = await preferencesSyncState()
-  await set(PREFERENCES_SYNC_KEY, { ...state, dirty: true })
+  const consentTouched = CONSENT_KEYS.filter(
+    (key) => state.consentTouched.includes(key) || before[key] !== preferences[key],
+  )
+  await set(PREFERENCES_SYNC_KEY, { ...state, dirty: true, consentTouched })
   return preferences
 }
 
@@ -195,13 +227,13 @@ export async function adoptPreferences(
   syncedAt: string,
 ): Promise<UserPreferences> {
   await set(PREFERENCES_KEY, preferences)
-  await set(PREFERENCES_SYNC_KEY, { dirty: false, syncedAt })
+  await set(PREFERENCES_SYNC_KEY, { dirty: false, syncedAt, consentTouched: [] })
   return preferences
 }
 
 /** Record a successful push: this device is level with the account again. */
 export async function recordPreferencesPush(syncedAt: string): Promise<void> {
-  await set(PREFERENCES_SYNC_KEY, { dirty: false, syncedAt })
+  await set(PREFERENCES_SYNC_KEY, { dirty: false, syncedAt, consentTouched: [] })
 }
 
 /**
@@ -216,4 +248,21 @@ export async function recordPreferencesPush(syncedAt: string): Promise<void> {
  */
 export async function forgetPreferencesSync(): Promise<void> {
   await set(PREFERENCES_SYNC_KEY, NEVER_SYNCED)
+}
+
+/**
+ * Forget the answer to "Link your usage to your account?", keeping the rest.
+ *
+ * What sign-out and account deletion also do (#1903's review). A yes was
+ * given by one account, and left in place it linked the next account to sign
+ * in on this phone without asking - and, that account being new, was pushed
+ * into it as its own answer. Written as the store's own fact rather than as
+ * a change made here, so it is neither pushed nor kept over the next
+ * account's answer: that account's sync, or its sign-in's question, decides.
+ */
+export async function forgetMeasurementLink(): Promise<UserPreferences> {
+  const stored = await loadPreferences()
+  const forgotten = { ...stored, measurement_linked: null }
+  await set(PREFERENCES_KEY, forgotten)
+  return forgotten
 }

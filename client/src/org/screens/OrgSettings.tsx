@@ -22,7 +22,7 @@
 
 import { useState } from 'react'
 import { PageHeader } from '../components'
-import type { AssistConsent, Org } from '../orgApi'
+import { seatName, type AssistConsent, type Org } from '../orgApi'
 
 export interface ExportPiece {
   readonly key: string
@@ -184,9 +184,7 @@ export function OrgSettings({
           {org.admins.map((seat) => (
             <div className="org-card" key={seat.id}>
               <div className="org-inline">
-                <span className="org-table__name">
-                  {names[seat.person_id] ?? seat.person_id}
-                </span>
+                <span className="org-table__name">{seatName(seat, names)}</span>
                 <span className="org-mono">
                   {seat.title ?? 'Admin'}
                   {seat.is_codeowner ? ' · codeowner' : ''}
@@ -206,7 +204,7 @@ export function OrgSettings({
                   below three and keep publishing.
                 </p>
               ) : null}
-              {heldRoles[seat.person_id] ? (
+              {seat.person_id && heldRoles[seat.person_id] ? (
                 <p className="org-mono">
                   Holds {heldRoles[seat.person_id]} supervisor{' '}
                   {heldRoles[seat.person_id] === 1 ? 'role' : 'roles'}. Those stay with

@@ -14,6 +14,7 @@
 
 import { API_CONFIGURED } from '../lib/api'
 import { CHALLENGE_WORDS } from '../lib/challengeWords'
+import { statusLine } from '../lib/challengeText'
 import {
   isOpen,
   isSealed,
@@ -82,6 +83,12 @@ export function PoiChallenges(props: PoiChallengesProps) {
       {joinedRows.length > 0 && (
         <>
           <h3 className="poi-card__section-title">{heading}</h3>
+          {/* One draft banner per draft list, above its rows (#1961). */}
+          {joinedChallenges
+            .filter((challenge) => challenge.status === 'draft')
+            .map((challenge) => (
+              <DraftLabel key={challenge.id} challenge={challenge} />
+            ))}
           <ul className="challenge-rows">
             {joinedRows.map(({ challenge, item, poi }) => {
               const tags = tagsFor(state, challenge.id)
@@ -106,7 +113,6 @@ export function PoiChallenges(props: PoiChallengesProps) {
                     <span className="challenge-row__meta">
                       {challenge.name} · {challenge.orgShort}
                     </span>
-                    <DraftLabel challenge={challenge} />
                   </span>
                   {done && fromWalk ? (
                     <span className="challenge-row__done">done</span>
@@ -134,12 +140,13 @@ export function PoiChallenges(props: PoiChallengesProps) {
               )
             })}
           </ul>
-          <p className="challenges__note">
-            {!API_CONFIGURED
-              ? 'Saved on this phone. It waits here until OurHike’s server is running.'
-              : props.signedIn === false
-                ? 'Saved on this phone. Once you sign in and have signal, OurHike counts it for the club - never your name.'
-                : 'Saved on this phone. With signal, OurHike counts it for the club - never your name.'}
+          {/* The one status line (#1961), the same sentence the challenge's
+              own page prints; "the club" where two clubs' lists meet here. */}
+          <p className="challenge-status">
+            {statusLine(
+              joinedChallenges.length === 1 ? joinedChallenges[0] : { orgShort: 'club' },
+              { apiConfigured: API_CONFIGURED, signedIn: props.signedIn !== false },
+            )}
           </p>
         </>
       )}

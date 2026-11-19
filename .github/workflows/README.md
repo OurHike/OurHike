@@ -153,7 +153,7 @@ job needs to hold `concurrency: publish-data` or wait on the reviewer.
 
 ### Watches a live system
 
-Scheduled. Five of them report by opening, updating and closing a **tracking
+Scheduled. Most of them report by opening, updating and closing a **tracking
 issue** rather than by failing the run, because GitHub emails on every failure
 of a scheduled workflow and a week-long outage would send seven identical
 emails before the eighth was filtered. Alert on transitions, not on runs.
@@ -171,18 +171,22 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 | `supabase-keepalive.yml` | failing the run | keeps a free-plan project from being paused; also reads all seven tables with the anon key |
 | `protections-check.yml` | failing the run | branch protection, environments and labels |
 | `settings-configured.yml` | failing the run | that the secrets and variables really exist |
+| `analytics-rollup.yml` | tracking issue (production), failing the run | not only a watcher: the nightly usage job (#1902 — Count six usage events with a sealed account id and GPS fix, keep them six months, close each month into a table, and report them per club; [features/EVENTING.md](../../features/EVENTING.md)) moves closed months to each environment's private bucket, recomputes and closes months, deletes raw events past six months, then checks the numbers — names, slices and days in the issue, never a figure. One job per database; production from `main` only, UA from any ref |
+| `backup-database.yml` | tracking issue, failing the run | not only a watcher either: production's nightly dump (#1908 — Back production's database up nightly to a private R2 bucket, because Supabase Free keeps no backups), restored into a throwaway Postgres and compared table by table before it is encrypted with `age` and uploaded to its own private bucket; from `main` only, and the log names tables and never a row count |
 
-**All five share one routine** — `.github/scripts/tracking-issue.js`, required
-from each monitor's `github-script` step. It owns finding the issue by label
+**Every monitor that reports by tracking issue shares one routine** —
+`.github/scripts/tracking-issue.js`, required from each monitor's
+`github-script` step. It owns finding the issue by label
 *and* title, opening, updating in place, commenting and closing, and the
 "first seen" map. What stays with each caller is the verdict — whether this run
 is green — and the rendered body.
 
-`check-pending-approvals.yml` is the one that alerts on more than the first
-transition, through the module's optional `announce`. The other four each watch
-a single ongoing condition, where a body update carrying the same outage into
-its second week is genuinely not news; its keys are *workflow runs*, one
-decision each, queued behind one another by `concurrency: publish-data`. So a
+`check-pending-approvals.yml` alerts on more than the first transition, through
+the module's optional `announce` (`analytics-rollup.yml` and
+`route-disputes.yml` pass it too). Most of the others watch a single ongoing
+condition, where a body update carrying the same outage into its second week is
+genuinely not news; `check-pending-approvals.yml`'s keys are *workflow runs*,
+one decision each, queued behind one another by `concurrency: publish-data`. So a
 new key is itself a transition and gets a comment, and a key that was already
 there still does not. #431's rule did not change — what widened is what counts
 as a transition.
@@ -257,7 +261,8 @@ gathered rather than restated.
 | When | | |
 |---|---|---|
 | `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the tightest cadence here, because its worst case is a production publish expiring unapproved at 30 days |
-| `15 5 3 * *` | the 3rd of each month | `refresh-reference.yml` — the 05:00 hour holds no other daily or weekly job, `:15` misses the four hourly slots, and the 3rd is off the 1st by analogy with the `:00` rule only. The `build-reference.yml` run it dispatches has no schedule of its own |
+| `12 5 * * *` | daily | `backup-database.yml` — production's nightly dump, in the middle of the night across the US; `:12` is a minute nothing else here uses |
+| `15 5 3 * *` | the 3rd of each month | `refresh-reference.yml` — the 05:00 hour's only other daily or weekly job is `backup-database.yml` at `:12`, which shares nothing with it, `:15` misses the four hourly slots, and the 3rd is off the 1st by analogy with the `:00` rule only. The `build-reference.yml` run it dispatches has no schedule of its own |
 | `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned; gives way once the monthly lane's build has refreshed UA |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
@@ -274,6 +279,7 @@ gathered rather than restated.
 | `40 9 * * 1` | Mondays | `smoke-published.yml` |
 | `40 9 * * 2` | Tuesdays | `check-note-anchors.yml` — the same minute as `smoke-published.yml`, a day later, which is what keeps them off each other |
 | `50 9 * * 3` | Wednesdays | `route-disputes.yml` — behind both of the above, so a bucket that is simply down is reported by them first |
+| `17 10 * * *` | daily | `analytics-rollup.yml` — the usage archive, rollup and checks (#1902 — Count six usage events with a sealed account id and GPS fix, keep them six months, close each month into a table, and report them per club), after midnight in every US time zone so the UTC date it closes is the day hikers just finished; `:17` is a minute nothing else here uses, and the 10:00 hour is clear of the 09:15–09:50 monitors above. Production from `main` only |
 | `50 */20 * * *` | 00:50 and 20:50 | `supabase-keepalive.yml` |
 
 ## The shared actions

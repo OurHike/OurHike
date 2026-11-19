@@ -57,6 +57,14 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 # on a class of failure rather than a claim about ordinary traffic.
 MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024
 
+# Tighter ceilings for routes whose largest honest body is known, by path.
+# `POST /usage-events` takes at most 200 rows, and 200 of the largest rows the
+# schema accepts measured 219 KiB (#1903's second review); a phone's own
+# batch of 200 is nearer 75 KB. Anyone may call it, so the general 16 MiB
+# was 16 MiB of work - and, before 422s stopped echoing their input
+# (app/main.py), 16 MiB back out - for any stranger.
+PATH_MAX_BODY_BYTES = {"/usage-events": 256 * 1024}
+
 TOO_LARGE_DETAIL = "Request body is too large."
 
 
@@ -72,8 +80,9 @@ class BodyLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
+        max_bytes = PATH_MAX_BODY_BYTES.get(scope.get("path", ""), self.max_bytes)
         declared = _declared_length(scope)
-        if declared is not None and declared > self.max_bytes:
+        if declared is not None and declared > max_bytes:
             # Refused before a byte of body is read - the cheap half. The
             # shape matches FastAPI's own error body so a client reads one
             # `detail` whichever half refused it.
@@ -88,7 +97,7 @@ class BodyLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > self.max_bytes:
+                if received > max_bytes:
                     # Raised into whatever is awaiting the body - Starlette's
                     # request parsing, inside its exception middleware - which
                     # turns it into the same 413 the header check answers.

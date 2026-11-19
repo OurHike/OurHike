@@ -113,6 +113,10 @@ export const IdentitySetup = screen(
   () => import('./IdentitySetup').then((m) => m.IdentitySetup),
   'IdentitySetup',
 )
+export const UsageLinkQuestion = screen(
+  () => import('./UsageLinkQuestion').then((m) => m.UsageLinkQuestion),
+  'UsageLinkQuestion',
+)
 export const SignInPrompt = screen(
   () => import('./SignInPrompt').then((m) => m.SignInPrompt),
   'SignInPrompt',
@@ -120,6 +124,59 @@ export const SignInPrompt = screen(
 export const EmailSignIn = screen(
   () => import('./EmailSignIn').then((m) => m.EmailSignIn),
   'EmailSignIn',
+)
+// Tap-opened surfaces deferred in #1903 to pay for usage measurement's wiring
+// (#1902), the part of it App has to build before any import(): the props,
+// the plan calls and the link question's branch. The account panel opens
+// inside the sign-in window; "Which long hike?" and add-a-day-hike open over
+// whatever screen is up; the other five live on the map, which is itself
+// deferred. Measured 2026-10-27 by check-build-output.mjs, one build each:
+// `main` at aad6cd17 245,489 bytes compressed; the branch with these eight
+// deferred 244,846. CI's preview build inlines five VITE_ variables and has
+// read 266 bytes above a plain build of the same commit (ced035f4).
+//
+// NOTHING THAT TAKES FOCUS WHEN IT OPENS IS ON THIS LIST, and that is a rule
+// learned here rather than a preference. chrome/SignInWindow.tsx focuses its
+// panel on mount so Escape works at once; chrome/BailSheet.tsx and
+// chrome/PlaceSheet.tsx autofocus a button. Deferred, all three mount when
+// their chunk lands rather than inside the tap, and on WebKit that focus did
+// not take: e2e/identityRooms.spec.ts's "Escape closes the window" failed on
+// phone-webkit twice at ced035f4, where the window was on this list. That
+// mechanism is reasoned rather than reproduced - WebKit is not in the
+// sandbox, and Chromium honoured the late focus in a probe that held the
+// window's module back 2.5 s - but the iOS shell is WebKit, so all three
+// stay eager.
+export const AccountPanel = screen(
+  () => import('../chrome/AccountPanel').then((m) => m.AccountPanel),
+  'AccountPanel',
+)
+export const HikePickSheet = screen(
+  () => import('../chrome/HikePickSheet').then((m) => m.HikePickSheet),
+  'HikePickSheet',
+)
+export const AddDayHikeSheet = screen(
+  () => import('../chrome/AddDayHikeSheet').then((m) => m.AddDayHikeSheet),
+  'AddDayHikeSheet',
+)
+export const DayHikesHere = screen(
+  () => import('../chrome/DayHikesHere').then((m) => m.DayHikesHere),
+  'DayHikesHere',
+)
+export const SectionPlanner = screen(
+  () => import('../chrome/SectionPlanner').then((m) => m.SectionPlanner),
+  'SectionPlanner',
+)
+export const ReportPickBar = screen(
+  () => import('../chrome/ReportPickBar').then((m) => m.ReportPickBar),
+  'ReportPickBar',
+)
+export const PressPlate = screen(
+  () => import('../chrome/PressPlate').then((m) => m.PressPlate),
+  'PressPlate',
+)
+export const RouteHoverPlate = screen(
+  () => import('../chrome/RouteHover').then((m) => m.RouteHoverPlate),
+  'RouteHoverPlate',
 )
 export const AppFailureReport = screen(
   () => import('./AppFailureReport').then((m) => m.AppFailureReport),
@@ -206,10 +263,18 @@ export const HikeFinish = screen(
 // with the crew-against-a-walk helpers split into lib/crews.ts so they stop
 // riding on the eager lib/workProjects.ts, brought it back to 255,844.
 //
-// chrome/ReportPickBar.tsx was tried here too and is deliberately NOT: it is
-// small enough that the registry entry and the import stub cost 21 bytes MORE
-// than the module weighed. A lazy boundary that makes the bundle bigger is a
-// boundary bought for its own sake.
+// chrome/ReportPickBar.tsx was tried here first and kept eager on purpose
+// (2026-09-15): it was small enough that the registry entry and the import
+// stub cost 21 bytes MORE than the module weighed, and a lazy boundary that
+// makes the bundle bigger is a boundary bought for its own sake. That held
+// until 8b25ab44 (2026-10-27, merged 2026-10-28 in #1903 - Count six usage
+// events with the account and fix sealed, check every metric nightly for
+// anomalies, and report it per club), which brought SignInWindow back into
+// the eager closure for WebKit's sake and deferred this bar with four other
+// map surfaces to pay for it - the `ReportPickBar` entry above, among the
+// surfaces that pull request deferred, is the current one. The 21 bytes were
+// measured against a module that has grown since; nobody has re-measured the
+// bar on its own.
 export const CrewsSection = screen(
   () => import('../chrome/CrewsSection').then((m) => m.CrewsSection),
   'CrewsSection',
@@ -233,6 +298,21 @@ export const FinishedHike = screen(
 export const ShareHike = screen(
   () => import('./ShareHike').then((m) => m.ShareHike),
   'ShareHike',
+)
+// Supporting OurHike (#1876): the gate that counts days and opens the
+// day-5 window, and the Your support page. Eager, they put the launch 4,341
+// bytes over §3's line: 250,101 against 245,760 in CI's `check:build` on
+// bff389d1 (2026-10-24). screens/SupportGate.tsx has the rest.
+export const SupportGate = screen(
+  () => import('./SupportGate').then((m) => m.SupportGate),
+  'SupportGate',
+)
+// Through the gate's module rather than its own, so the pair is one chunk
+// and one entry in the shell's preload map: each separate chunk costs the
+// launch its file name and dependency list, and this pair had no room.
+export const YourSupportPage = screen(
+  () => import('./SupportGate').then((m) => m.YourSupportPage),
+  'YourSupportPage',
 )
 
 // THE SHEETS, PANELS AND CARDS A TAP OPENS, deferred for the reason the

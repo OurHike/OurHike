@@ -8,8 +8,8 @@
 // phone.
 //
 // THE CLOCK IS LEFT REAL, ON PURPOSE. The preview runs before the 2027
-// window opens, so the untagged row reads "opens May 15" where an open
-// window offers Tag it - the place card offered a tag outside the window
+// window opens, so the unearned row reads "opens May 13" where an open
+// window offers Earn it (#1961) - the place card offered a tag outside the window
 // until the second review of #1780 (Let a club publish a challenge — places
 // on its own trails that hikers opt into and tag at camp — starting with the
 // ATC's A.T. Summer Bucket List, 2026-10-01). challenge-detail.mjs fixes its

@@ -399,8 +399,8 @@ export function HikeDetail({
           ))}
           {paperMaps.length > 0 && (
             <p className="hike-detail__aside">
-              Their paper map, sold on their own store. OurHike takes no cut and holds no
-              money.
+              Their paper map, sold on their own store. OurHike takes no cut and never
+              touches that money.
             </p>
           )}
           <p className="hike-detail__aside">

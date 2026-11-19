@@ -139,7 +139,7 @@ voice, and a provenance that stops at this file is provenance no hiker has.
 Where the site has no actual
 water point folded in, a close-enough distance is also named among the nearby
 parts - see attach_nearby - so the answer to "is there water" stops depending
-on the 9 opentrail points that happen to fold. 305 of 512 features publish one
+on the opentrail points that happen to fold (9 at the time of #668, undated since - re-measure before relying on it). 305 of 512 features publish one
 (the FarOut-measured rows joined on the maintainer's 2026-08-13
 authorisation, sources.json's atc_licence block / #688); the rest have no
 CSI neighbour (most of Maine) or an unreadable value, and publish nothing
@@ -470,13 +470,14 @@ ATC_NOTE_FIELD = "Comments"
 # composes every other id.
 SHELTER_SOURCE = "atc_shelters"
 
-# The campsite twin, for the same reason: water_distance.json stores bare
-# GlobalIDs against a `layer` name, and load_water_distances composes the
-# unified id from these two constants.
+# The campsite twin. build_water_distance.py looks each feature up in the
+# ledger as `(source, GlobalID)` with these two constants, and falls back to
+# `{source}:{GlobalID}` only for a feature the ledger does not carry (#1729).
 CAMPSITE_SOURCE = "atc_campsites"
 
-# water_distance.json's `layer` values (sources.json keys) -> the source name
-# unified ids are built from.
+# water_distance.json's `layer` values (sources.json keys) -> the ledger
+# `source` of that layer's features. build_water_distance.py resolves each
+# record's `poi_id` through it; load_water_distances reads only these layers.
 WATER_DISTANCE_SOURCES = {"shelters": SHELTER_SOURCE, "campsites": CAMPSITE_SOURCE}
 
 # The source stamped on the water POIs synthesize_csi_water builds from those
@@ -652,7 +653,17 @@ class WaterDistance(NamedTuple):
 
 def load_water_distances(path: Path) -> dict[str, WaterDistance]:
     """water_distance.json's known distances, with their provenance, keyed by
-    the same unified POI id this export writes.
+    each record's `poi_id` - the ledger id build_water_distance.py resolved
+    for it, which is the id apply_ledger_ids publishes (#1729). Before #1729
+    the file carried a bare `atc_global_id` and this composed
+    `{source}:{atc_global_id}`; once ATC re-keys a feature and the ledger
+    carries its old id across, that composed id names nobody, and the
+    distance, the synthesized water member and the nearby sentence would have
+    gone without a log line. int_points_of_interest__water reads the same
+    column the same way.
+
+    Only the shelters and campsites layers are read, as the dbt model reads
+    them: a record on any other layer names no POI this attaches a distance to.
 
     Only records that state a distance are returned - the file lists every
     shelter and campsite, the blanks carrying the reason there is no number
@@ -668,10 +679,9 @@ def load_water_distances(path: Path) -> dict[str, WaterDistance]:
     document = json.loads(path.read_text(encoding="utf-8"))
     distances = {}
     for record in document.get("sites", []):
-        source = WATER_DISTANCE_SOURCES.get(record.get("layer"))
-        if source is None or record.get("distance_ft") is None:
+        if record.get("layer") not in WATER_DISTANCE_SOURCES or record.get("distance_ft") is None:
             continue
-        distances[f"{source}:{record['atc_global_id']}"] = WaterDistance(record["distance_ft"], record.get("provenance") or None)
+        distances[record["poi_id"]] = WaterDistance(record["distance_ft"], record.get("provenance") or None)
     return distances
 
 
@@ -945,7 +955,8 @@ def attach_nearby(records: list[dict]) -> int:
             ]
         # ATC's own distance-to-water fills in where no actual water point
         # folded into the site (#668) - which is nearly everywhere, since only
-        # 9 opentrail points fold over the whole corridor. Anchors and POIs in
+        # few opentrail points fold over the whole corridor (9 at the time of #668,
+        # not re-measured since). Anchors and POIs in
         # no site both take it; a member does not, because its site's anchor
         # already answers "is there water" for the one pin a hiker can see.
         # Never beside a real water member: one site, one water distance.
@@ -1559,6 +1570,19 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     return deduped
 
 
+def live_ledger_ids(ledger_path: Path | None = None) -> dict[tuple[str, str], str]:
+    """The ledger's LIVE rows as `(source, source_feature_id) -> poi_id` - the
+    map apply_ledger_ids publishes under, and the one build_water_distance.py
+    keys its records by, so the two cannot disagree about whose id a feature
+    has. A retired row is left out, as apply_ledger_ids leaves it out. A
+    missing ledger file is the pre-#671 world: an empty map."""
+    path = LEDGER_PATH if ledger_path is None else ledger_path
+    if not path.exists():
+        return {}
+    pois = json.loads(path.read_text(encoding="utf-8"))["pois"]
+    return {(row["source"], row["source_feature_id"]): poi_id for poi_id, row in pois.items() if "retired" not in row}
+
+
 def apply_ledger_ids(records: list[dict], ledger_path: Path | None = None) -> int:
     """Publish every POI under its ledger id (#671) - the load-bearing line
     of features/POI_IDENTITY.md, a byte-for-byte no-op on the day the
@@ -1574,11 +1598,7 @@ def apply_ledger_ids(records: list[dict], ledger_path: Path | None = None) -> in
     printing, because a nonzero one means upstream re-keyed something and
     the ledger carried it.
     """
-    path = LEDGER_PATH if ledger_path is None else ledger_path
-    if not path.exists():
-        return 0
-    pois = json.loads(path.read_text(encoding="utf-8"))["pois"]
-    by_key = {(row["source"], row["source_feature_id"]): poi_id for poi_id, row in pois.items() if "retired" not in row}
+    by_key = live_ledger_ids(ledger_path)
     changed = 0
     for record in records:
         ledger_id = by_key.get((record["source"], record["source_feature_id"]))

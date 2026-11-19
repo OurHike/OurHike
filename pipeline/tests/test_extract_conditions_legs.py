@@ -29,7 +29,7 @@ import pytest
 
 from extract import _run
 from extract._contract import Resource
-from extract._kinds import ConditionsQuery
+from extract._kinds import ConditionsQuery, DatabaseSize
 from extract._run import (
     ExtractRefused,
     make_pipeline,
@@ -100,6 +100,30 @@ class OurhikeAnswer(Answers, ConditionsQuery):
     error: str | None = None
     delay: float = 0.0
     check_error: str | None = None
+
+
+@dataclass(frozen=True)
+class SizeAnswer(Answers, DatabaseSize):
+    """OurHike's database's size: read on the conditions legs beside the closures, and no ConditionsQuery."""
+
+    answer: tuple[dict, ...] = ()
+    count: int | None = None
+    error: str | None = None
+    delay: float = 0.0
+    check_error: str | None = None
+
+
+def database_size(error: str | None = None) -> SizeAnswer:
+    """As _shared/ourhike/database_size.py declares it: typed `org`, hourly by override."""
+    return SizeAnswer(
+        key="database_size",
+        club="ourhike",
+        type="org",
+        cadence_override="hourly",
+        cadence_reason="a test",
+        answer=({"id": "s1"},),
+        error=error,
+    )
 
 
 def ourhike_closures(*ids: str, count: int | None = None, error: str | None = None) -> OurhikeAnswer:
@@ -478,6 +502,21 @@ def test_ourhikes_own_rows_still_stop_the_whole_leg_when_their_read_fails(store)
     assert not stops_the_leg(club_closures("atc"))
     with pytest.raises(RuntimeError, match="permission denied"):
         leg(store, ourhike_closures(error="permission denied for table closures"), nynjtc_alerts("n1", count=1), name=CONDITIONS)
+
+
+def test_a_failed_database_size_read_stops_only_itself_and_ourhikes_closures_still_land(store):
+    """The size is the data-quality page's storage check, never a reason to hold a closure back: DatabaseSize is no
+    ConditionsQuery (stops_the_leg()), so a failed read is left out with its last row standing, as a club's is."""
+    assert not stops_the_leg(database_size())
+    leg(store, ourhike_closures("o1", count=1), database_size(), name=CONDITIONS)
+
+    report = leg(
+        store, ourhike_closures("o1", "o2", count=2), database_size(error="permission denied for database"), name=CONDITIONS
+    )
+
+    assert set(report.isolated) == {"raw_ourhike__database_size"}
+    assert report.rows == {"raw_ourhike__closures": 2}
+    assert warehouse_ids(store) == {"raw_ourhike__closures": ["o1", "o2"], "raw_ourhike__database_size": ["s1"]}
 
 
 def test_a_change_check_that_raises_what_its_kind_does_not_catch_reads_that_club_and_holds_back_no_other(store):

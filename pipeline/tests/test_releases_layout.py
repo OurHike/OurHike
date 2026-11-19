@@ -493,3 +493,18 @@ def test_the_three_statuses_are_spelled_once():
         "verified",
         "released",
     )
+
+
+def test_next_release_id_defaults_to_the_utc_date_not_the_local_one(monkeypatch):
+    """At 23:30 on 2026-08-13 in UTC-8 the local date is still the 13th while
+    UTC is already the 14th; the id must follow UTC (#1769)."""
+    from datetime import datetime, timezone
+
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc, "next_release_id must ask for the UTC clock"
+            return datetime(2026, 8, 14, 7, 30, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(releases, "datetime", FakeDatetime)
+    assert releases.next_release_id([]) == "2026-08-14"

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>State strip — the A.T. as fourteen stops</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;font-family:'IBM Plex Mono',monospace;color:#fdfaf2}
+a{color:#96b98c}a:hover{color:#c7dabd}
+.ss-state{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;border-radius:4px;background:#1c2f1f;box-sizing:border-box;padding:4px 2px 3px;position:relative}
+.ss-state.walked{background:#355c3a}
+.ss-marks{display:flex;flex-direction:column-reverse;align-items:center;gap:2px;flex:1;justify-content:flex-start}
+.ss-mark{display:block;border-radius:1px;box-sizing:border-box}
+.ss-mark.done{background:#fdfaf2;box-shadow:0 1px 0 rgba(0,0,0,0.35)}
+.ss-mark.todo{border:1px solid #96b98c;background:transparent}
+.ss-abbr{font-family:'IBM Plex Mono',monospace;letter-spacing:0.04em;color:#c7dabd;line-height:1}
+.ss-state.walked .ss-abbr{color:#fdfaf2}
+.ss-more{font-family:'IBM Plex Mono',monospace;color:#d69a2d;line-height:1}
+</style>
+</helmet>
+<div style="display: flex; flex-direction: column; gap: 6px">
+  <div style="display: flex; align-items: stretch; gap: {{gapPx}}">
+    <sc-for list="{{states}}" as="s" hint-placeholder-count="14">
+      <div class="ss-state {{s.cls}}" style="flex: 1; height: {{heightPx}}" title="{{s.title}}">
+        <div class="ss-marks">
+          <sc-for list="{{s.marks}}" as="m" hint-placeholder-count="2">
+            <span class="ss-mark {{m.cls}}" style="width: {{markW}}; height: {{markH}}"></span>
+          </sc-for>
+          <sc-if value="{{s.hasMore}}" hint-placeholder-val="{{false}}">
+            <span class="ss-more" style="font-size: {{smallPx}}">+{{s.more}}</span>
+          </sc-if>
+        </div>
+        <span class="ss-abbr" style="font-size: {{abbrPx}}">{{s.abbr}}</span>
+      </div>
+    </sc-for>
+  </div>
+  <sc-if value="{{labels}}" hint-placeholder-val="{{true}}">
+    <div style="display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: {{abbrPx}}; letter-spacing: 0.1em; text-transform: uppercase; color: #6b9463; line-height: 1">
+      <span>Springer Mtn</span>
+      <span>Katahdin</span>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"size":{"editor":"int","default":48,"min":28,"max":120,"unit":"px","section":"Strip"},"labels":{"editor":"boolean","default":true,"section":"Strip"},"blazes":{"editor":null},"walked":{"editor":null},"$preview":{"width":420,"height":120}}'>
+// The A.T.'s fourteen states as fourteen stops, in NOBO order. Mile bands are
+// approximate (a mock); the app carries the published miles.
+const STATES=[
+["GA",0,78.5],["NC",78.5,165],["TN",165,467],["VA",467,1021],["WV",1021,1025],["MD",1025,1066],
+["PA",1066,1295],["NJ",1295,1367],["NY",1367,1457],["CT",1457,1508],["MA",1508,1599],["VT",1599,1749],
+["NH",1749,1910],["ME",1910,2198]
+];
+const NAMES={GA:"Georgia",NC:"North Carolina",TN:"Tennessee",VA:"Virginia",WV:"West Virginia",MD:"Maryland",PA:"Pennsylvania",NJ:"New Jersey",NY:"New York",CT:"Connecticut",MA:"Massachusetts",VT:"Vermont",NH:"New Hampshire",ME:"Maine"};
+class Component extends DCLogic {
+  renderVals() {
+    const size = this.props.size ?? 48;
+    const labels = this.props.labels ?? true;
+    const blazes = Array.isArray(this.props.blazes) ? this.props.blazes : [];
+    const walked = Array.isArray(this.props.walked) ? this.props.walked : [];
+    const cap = size >= 64 ? 4 : 3;
+    const states = STATES.map(([abbr, from, to]) => {
+      const here = blazes.filter((b) => b.mile >= from && b.mile < to);
+      // Painted first, so a full state shows its white blazes before its hollow ones.
+      here.sort((a, b) => (b.done ? 1 : 0) - (a.done ? 1 : 0));
+      const shown = here.slice(0, cap);
+      const isWalked = walked.some(([a, b]) => b > from && a < to);
+      const painted = here.filter((b) => b.done).length;
+      return {
+        abbr,
+        cls: isWalked ? 'walked' : '',
+        marks: shown.map((b) => ({ cls: b.done ? 'done' : 'todo' })),
+        hasMore: here.length > cap,
+        more: String(here.length - cap),
+        title: NAMES[abbr] + (painted ? ' · ' + painted + ' painted' : ''),
+      };
+    });
+    const markW = Math.max(4, Math.round(size * 0.22));
+    return {
+      states,
+      labels,
+      gapPx: Math.max(2, Math.round(size * 0.08)) + 'px',
+      heightPx: Math.round(size * 1.35) + 'px',
+      markW: markW + 'px',
+      markH: Math.round(markW * 2.6) + 'px',
+      abbrPx: Math.max(8, Math.round(size * 0.22)) + 'px',
+      smallPx: Math.max(8, Math.round(size * 0.2)) + 'px',
+    };
+  }
+}
+</script>
+</body>
+</html>

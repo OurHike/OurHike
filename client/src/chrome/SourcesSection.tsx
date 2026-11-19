@@ -56,12 +56,16 @@ const THIS_SURFACE = 'sources_screen'
  * about a thing that was not on it (#932 added the data; #1574 added the
  * link). It is printed now as FRAMING_LINKS, and only while at least one
  * card actually carries a link - which is the same rule, kept.
+ *
+ * "Holds no money" became "never touches that money" on 2026-10-23 (#1876),
+ * when OurHike began asking hikers to cover its own costs: the sentence is
+ * about the money these links carry, and only that half is still true.
  */
 const FRAMING = 'Each organization below sets its own licence for the data it publishes.'
 // "On a card" since the site's two data pages went under this line: those
 // are OurHike's own pages, and "every link below" would have taken them in.
 const FRAMING_LINKS =
-  'Every link on a card below opens the organization’s own site — OurHike takes no cut and holds no money.'
+  'Every link on a card below opens the organization’s own site — OurHike takes no cut and never touches that money.'
 
 /** The line over the two links to the site's data pages. */
 export const DATA_PAGES_LINE =

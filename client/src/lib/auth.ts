@@ -14,6 +14,7 @@
 import type { Session } from '@supabase/supabase-js'
 import { getAuthClient } from './supabase'
 import { NOT_CONFIGURED_MESSAGE, signInMessage } from './authMessages'
+import { noteSignInStarted } from './signInMarker'
 import type { AuthProvider } from '../screens/SignInPrompt'
 
 /** What the screens show. Matches Settings' account row. */
@@ -75,6 +76,10 @@ export async function signInWithProvider(
   const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
+  // Before the redirect, which reloads the page: what lets usage measurement
+  // count this sign-in when it finishes, and not a session restored at launch
+  // (lib/signInMarker.ts, #1902).
+  noteSignInStarted()
   const { error } = await client.auth.signInWithOAuth({
     provider,
     options: { redirectTo: redirectUrl() },
@@ -163,6 +168,7 @@ export async function verifyEmailCode(email: string, code: string): Promise<Auth
   const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
+  noteSignInStarted()
   const { error } = await client.auth.verifyOtp({
     email,
     token: code.replace(/\s+/g, ''),

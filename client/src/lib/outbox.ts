@@ -710,6 +710,21 @@ export async function hasWorkThatNeedsNoAccount(): Promise<boolean> {
 }
 
 /**
+ * How many queued items the outbox would send now, which usage measurement
+ * waits behind (lib/useUsageMeasurement.ts `reportsWaiting`). Signed out,
+ * that is only the app-failure reports (#848): a report saved before signing
+ * in waits for an account, and counted as waiting it held every usage row
+ * back for as long as its hiker stayed signed out - 0 sends in 24 online
+ * hours (#1903's second review). An item already marked failed is not
+ * waiting to send, signed in or out.
+ */
+export function sendableNow(items: readonly OutboxItem[], signedIn: boolean): number {
+  return items.filter(
+    (item) => item.failure === undefined && (signedIn || item.appFailure !== undefined),
+  ).length
+}
+
+/**
  * Queue a field note (features/FIELD_NOTES.md). Same queue and the same four
  * properties: the observed time travels as `authoredAt`, a failed send
  * leaves it queued, and the id makes a resend recognisably the same note -

@@ -45,10 +45,10 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-// --- The home screen: six rows that answer before they are tapped ----------
+// --- The home screen: seven rows that answer before they are tapped --------
 
 describe('More, the home screen', () => {
-  it('offers six destinations, in order, with Challenges after Volunteer & report', () => {
+  it('offers seven destinations, in order, with Your support just before the sources', () => {
     const { container } = render(<More {...PROPS} />)
 
     expect(
@@ -61,14 +61,23 @@ describe('More, the home screen', () => {
       'Safety & privacy',
       'Volunteer & report',
       'Challenges',
+      'Your support',
       'Where this map comes from',
     ])
+  })
+
+  it('says on the Your support row that $0 is an answer before anything is chosen', () => {
+    render(<More {...PROPS} />)
+
+    expect(screen.getByRole('button', { name: /^Your support/ })).toHaveTextContent(
+      'Pay what you want, $0 included',
+    )
   })
 
   it('summarises the account state on the You row', () => {
     render(<More {...PROPS} />)
 
-    expect(screen.getByRole('button', { name: /^You/ })).toHaveTextContent(
+    expect(screen.getByRole('button', { name: /^You(?!r support)/ })).toHaveTextContent(
       'Not signed in',
     )
   })
@@ -182,7 +191,7 @@ describe('the doors to what this phone holds', () => {
     const user = userEvent.setup()
     render(<MoreWalkable yourWork={<p>the work</p>} />)
 
-    await user.click(screen.getByRole('button', { name: /^You/ }))
+    await user.click(screen.getByRole('button', { name: /^You(?!r support)/ }))
     await user.click(screen.getByRole('button', { name: 'Your photos and notes' }))
     expect(screen.getByText('the work')).toBeInTheDocument()
 

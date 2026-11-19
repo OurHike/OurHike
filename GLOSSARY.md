@@ -87,6 +87,30 @@ once #558 ships and there is behaviour to measure, plus the duplication share th
 [costs]." Quoting 3 km here without that tag would be this file doing exactly what
 CLAUDE.md's *Never let a display outrun its source* forbids.
 
+### blaze
+
+**Two meanings. A third was added and retired within a day.**
+
+1. **The paint on a tree** — the trail marking a hiker follows: white for the A.T., blue for a
+   side trail. `features/TRAIL_BLAZE_COLORS.md` is about this sense, and so is `lib/blaze.ts`.
+2. **A colour family and the logo** — `--blaze-white`, `--blaze-yellow`, `--blaze-orange` in
+   `design-system/tokens/colors.css`, and `trail-blaze-logo.svg`. Named for sense 1, used for
+   buttons and the taken-trail line.
+3. **Retired: one earned item on a challenge card.** `features/CHALLENGES_BLAZE_CARD.md`
+   (2026-11-03) called each earned item a blaze — "12 blazes earned", "Your blazes". The
+   maintainer took it back on 2026-11-04 — "blazes are official, lets not mess with them" —
+   and chose **trail karma** by poll the same day: `CHALLENGE_WORDS.noun` in
+   `lib/challengeWords.ts`, a mass noun ("4 trail karma"), held to never saying "blaze" by
+   `challengeWords.test.ts`. **The code names keep the old word**: the brief's own file name
+   and, from #1990 — The card: 100 tiles, one per item, karma gold when earned, its
+   `chrome/BlazeCard.tsx`, `chrome/BlazeTile.tsx`, `chrome/blazeIcons.ts` and the
+   `.blaze-card` / `.blaze-tile` classes all mean the card of tiles, which a hiker reads as
+   "the card". A hiker-facing string that says "blaze" means sense 1 or nothing.
+
+**Say which on first use.** The challenge list still shows sense 1 in the ATC's own words
+("Take a photo of a white blaze"), and the card #1990 adds beside it has code named for the
+retired sense 3.
+
 ### shelf
 
 1. **Where a generated file belongs** — `.github/tests/test_no_committed_data.py`: "The
@@ -284,8 +308,9 @@ promotion and belongs to the release train. See [RELEASING.md](RELEASING.md).
 
 ## Not in here on purpose
 
-**Ordinary domain words that mean what they say**: shelter, blaze, thru-hiker, blowdown,
-resupply, ford, trailhead. A hiker would recognise all of them and so would a reader.
+**Ordinary domain words that mean what they say**: shelter, thru-hiker, blowdown, resupply,
+ford, trailhead. A hiker would recognise all of them and so would a reader. (Blaze was on this
+list until the challenge card gave it a second thing to mean; it is in the dangerous list now.)
 
 **Words whose definition is one click away**: POI, DEM, pmtiles, R2, dbt. These are
 findable; the entries above are not.

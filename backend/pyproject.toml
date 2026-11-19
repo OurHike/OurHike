@@ -2,6 +2,9 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "--cov=. --cov-report=term-missing"
+markers = [
+    "real_database_size: read the Postgres server's real database size, not the 0 tests/conftest.py pins it to",
+]
 
 [tool.coverage.run]
 omit = [".venv/*", "tests/*", "alembic/*"]

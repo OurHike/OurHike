@@ -132,7 +132,9 @@ def test_every_conditions_job_upstream_a_leg_can_refuse_on_its_own_errors_after_
     a failed read of those stops the whole leg (extract/_run.py's stops_the_leg()), which is red at once."""
     by_table = {resource.table: resource for resource in resources}
     refusable = {table for table in HOURLY_JOB_TABLES if not stops_the_leg(by_table[table])}
-    assert len(refusable) == 8, sorted(refusable)
+    # Eight upstreams, and OurHike's own database size (extract/_kinds.py's DatabaseSize), which is no
+    # ConditionsQuery, so that a size it cannot read never holds back a closure.
+    assert len(refusable) == 9, sorted(refusable)
     tagged = {table for table, config in tables.items() if "conditions_job" in (config.get("tags") or [])}
     assert tagged == refusable, sorted(tagged ^ refusable)
     problems = []

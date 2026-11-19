@@ -14,6 +14,11 @@ ruff
 # true.
 pytest-xdist
 
+# Writes and reads the usage archive's Parquet files in the tests (#1923).
+# The nightly job gets it from requirements-archive.txt; the API's image never
+# does (requirements-archive.in says why).
+pyarrow
+
 # S3 doubled in-process rather than a live bucket, the project's established
 # convention (pipeline/requirements-dev.in asks for the same thing for
 # publish.py's tests).

@@ -18,14 +18,16 @@ what a public list excludes needs two closures, and a fixture yields one.
 """
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.core.time import utc_now
+from app.models.analytics import AnalyticsMonth, MonthStatus
 from app.models.closure import Closure
 from app.models.club import Club, OrgAdmin, OrgState
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import OrgRole, RoleCategory
+from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.work_project import WorkProject
 
@@ -75,12 +77,20 @@ def make_org(db_session, slug="ramapo-trail-conference", **fields) -> Club:
     `state=OrgState.claimed` and an admin, which is then the only thing on the
     line and readable as the point.
     """
+    state = fields.pop("state", OrgState.unclaimed)
     club = Club(
         slug=slug,
         **{
             "name": "Ramapo Trail Conference",
             "domain": "ramapotrails.org",
-            "state": OrgState.unclaimed,
+            "state": state,
+            # A maintainer's row while nobody has claimed it, which is what
+            # the default org is. Claiming or approving clears the flag in
+            # real code, so a claimed, held or frozen org here is not
+            # maintainer-written unless a test says so - it used to default to
+            # true whatever the state, a combination only the misread backfill
+            # of #1913's fix could produce (the 2026-10-29 review).
+            "maintainer_written": state == OrgState.unclaimed,
             **fields,
         },
     )
@@ -174,3 +184,42 @@ def make_workday(db_session, club, **fields) -> WorkProject:
     db_session.add(project)
     db_session.commit()
     return project
+
+
+def make_usage_consent(db_session, profile, *, enabled: bool = True, linked: bool | None = True) -> UserPreferences:
+    """The two usage-measurement switches, as `profile`'s account last synced them.
+
+    `POST /usage-events` links a row only when the account's own synced
+    preferences say yes (app/routers/analytics.py), so a test about linking
+    needs this as surely as it needs the token. Only these two keys: the route
+    reads nothing else from the blob.
+    """
+    preferences = db_session.get(UserPreferences, profile.id)
+    data = {"measurement_enabled": enabled, "measurement_linked": linked}
+    if preferences is None:
+        preferences = UserPreferences(profile_id=profile.id, data=data)
+        db_session.add(preferences)
+    else:
+        preferences.data = {**preferences.data, **data}
+    db_session.commit()
+    return preferences
+
+
+def make_rollup_heartbeat(db_session, now: datetime | None = None) -> AnalyticsMonth:
+    """The nightly usage rollup, as having just run at `now`.
+
+    `POST /usage-events` turns every batch away while the rollup's newest
+    `analytics_months.computed_at` is stale (app/routers/analytics.py), because
+    retention is a promise only that job keeps. A test about anything else the
+    route does needs the job to look alive; this is that, and nothing more -
+    one provisional month, computed at `now`.
+    """
+    now = now or utc_now()
+    month = now.date().replace(day=1)
+    state = db_session.get(AnalyticsMonth, month)
+    if state is None:
+        state = AnalyticsMonth(month=month, status=MonthStatus.provisional, definition_version=1)
+        db_session.add(state)
+    state.computed_at = now
+    db_session.commit()
+    return state

@@ -24,18 +24,18 @@ turns a workday into an event to be amplified.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.org_access import OrgAccess, club_by_slug, require_manage_volunteers, resolve_access
+from app.core.org_access import NO_SUCH_ORGANIZATION, OrgAccess, club_by_slug, require_manage_volunteers, resolve_access
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
 from app.db.session import get_db
-from app.models.club import Club
+from app.models.club import Club, OrgState
 from app.models.profile import Profile
 from app.models.work_project import (
     ProjectSource,
@@ -116,15 +116,34 @@ def list_workdays(
 
     `days` is capped rather than trusted, because an unbounded window on a
     public endpoint is a full table scan anybody can ask for.
+
+    **A `pending` organization's workdays are never listed**, and an `org`
+    naming one is the 404 a slug nobody registered gets, to everybody: an
+    empty list there told anybody the slug was held (the 2026-11-04 security
+    review; `club_for_a_public_read` in core/org_access.py is the rule).
+    Nothing about a held registration is published (`OrgState`), and
+    `create_workday` below refuses one now; this hides any row it wrote
+    before that refusal existed. The embed an organization pastes on its own
+    site (site/public/embed/v1/ourhike.js) draws nothing on the 404, and the
+    console reads this list as optional, so neither breaks on it. Every
+    other state lists exactly as before.
     """
     window = max(1, min(days, 365))
-    query = db.query(WorkProject).filter(
-        WorkProject.status == ProjectStatus.upcoming,
-        WorkProject.ends_on >= date.today(),
-        WorkProject.starts_on <= date.today() + timedelta(days=window),
+    query = (
+        db.query(WorkProject)
+        .join(Club, Club.id == WorkProject.club_id)
+        .filter(
+            Club.state != OrgState.pending,
+            WorkProject.status == ProjectStatus.upcoming,
+            WorkProject.ends_on >= utc_now().date(),
+            WorkProject.starts_on <= utc_now().date() + timedelta(days=window),
+        )
     )
     if org:
-        query = query.filter(WorkProject.club_id == club_by_slug(db, org).id)
+        club = club_by_slug(db, org)
+        if club.state == OrgState.pending:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_SUCH_ORGANIZATION)
+        query = query.filter(WorkProject.club_id == club.id)
 
     projects = query.order_by(WorkProject.starts_on, WorkProject.title).all()
     counts = _counts(db, [project.id for project in projects])
@@ -146,7 +165,26 @@ def create_workday(
     carries no geometry a hiker navigates by, and a wrong one costs somebody
     a Saturday rather than a wrong turn. A trail line is a different risk
     class and keeps the reviewed-file path.
+
+    **A held (`pending`) registration posts nothing**, which is #1918 -
+    Backend findings the 2026-10-27 pre-launch review filed together: none
+    blocks the launch on its own, and each says what it rests on, item 4.
+    `register_org` seats the registrant as an approved codeowner whatever
+    `state` says, so the seat this route checks exists the moment a stranger
+    registers any organization's name on an address they typed for somebody
+    else - and `GET /workdays` served what that seat posted to anybody, though
+    `OrgState` says nothing about a `pending` org is published. Only `pending`
+    is refused: an `unclaimed` org a maintainer wrote, a `claimed` one and a
+    `frozen` one post exactly as before.
     """
+    if access.club.state == OrgState.pending:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This organization's registration is waiting for somebody at its domain to confirm it, "
+                "and nothing about it is published until then, so it cannot post a workday yet."
+            ),
+        )
     project = WorkProject(
         club_id=access.club.id,
         title=payload.title,

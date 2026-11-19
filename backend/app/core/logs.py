@@ -9,7 +9,7 @@ at 3 pm" could not be tied to a line.
 WHAT THIS IS. The `app` logger (every module's `logging.getLogger(__name__)`
 is a child of it), one handler writing one JSON object per line to stderr, and
 a middleware that mints a request id, returns it as `X-Request-Id`, and logs
-one line for each 401 and each 5xx - including the 500 an unhandled exception
+one line for each 4xx and each 5xx - including the 500 an unhandled exception
 becomes, which `RequestIdMiddleware` answers itself so that it carries the id
 too (the reason is on the class).
 
@@ -20,13 +20,31 @@ has a reason to correlate with a caller's own id.
 WHAT IT MUST NEVER PUT IN A LINE. A presigned URL, a bearer token, the R2
 endpoint. `core/photos.py` already keeps that rule. This module logs the
 method, the route path and the status - not the query string, which is where
-a presigned URL would sit, and not any header. Nor the values a failed database
+a presigned URL would sit, and not any header - and the route's template, so an
+id or a token in the path stays out too. Nor the values a failed database
 statement was bound to: `describe_failure` below is how a caller logs a
 database error by its names alone.
 
-@unvalidated: the 401-and-5xx filter on the request line is picked, not
-measured. It is the two classes the issue names as invisible; whether 403, 429
-or a slow 200 belong beside them is a question for the first week of real logs.
+EVERY 4XX, NOT ONLY THE 401. The first filter was 401 and 5xx, the two classes
+#1759 named as invisible. Then `--no-access-log` (backend/Dockerfile) took away
+the only other record of a 403, 404, 409, 422 or 429 - a run of 404s from
+somebody guessing `/nominations/{token}` links included - and the maintainer
+chose by poll, 2026-11-03, to log every 4xx here instead, by route template like
+the rest. A request no route matched is logged as `(no route)`, so a scanner's
+paths stay out as well.
+
+@unvalidated: what every 4xx costs in volume on the host's log, which nobody
+has measured because no host has served real traffic yet; the first week of
+real logs will say, and a slow 200 is still not logged at all.
+
+AND ONE LINE UVICORN WRITES IS DROPPED. Uvicorn's access log (the
+`uvicorn.access` logger) opens every line with the client's address. For
+`POST /usage-events` that is an IP beside the moment a phone found signal -
+exactly what that endpoint promises never to keep (app/routers/analytics.py,
+and the Privacy Policy: no IP is recorded with these counts) - so
+`DropUnloggedPaths` removes those lines before any handler sees them. What it
+cannot reach, said rather than implied: the host's own edge, which may log
+the address of every request it forwards.
 """
 
 from __future__ import annotations
@@ -72,13 +90,39 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(line, default=str)
 
 
+# Requests the access log must not record, by path (the module docstring says why).
+UNLOGGED_PATHS = ("/usage-events",)
+
+
+class DropUnloggedPaths(logging.Filter):
+    """Drop Uvicorn's access line for a request to one of `UNLOGGED_PATHS`.
+
+    Uvicorn 0.54 (requirements.txt) logs `'%s - "%s %s HTTP/%s" %d'` with the
+    client address, method, path-with-query, HTTP version and status as the
+    record's args, so the path is the third. A record of any other shape is
+    let through untouched: this decides about one line, not about logging.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args if isinstance(record.args, tuple) else ()
+        if len(args) < 3:
+            return True
+        path = str(args[2]).split("?", 1)[0]
+        return not any(path == unlogged or path.startswith(f"{unlogged}/") for unlogged in UNLOGGED_PATHS)
+
+
 def configure_logging() -> None:
-    """Attach the JSON handler to the `app` logger, once.
+    """Attach the JSON handler to the `app` logger, and the access-log filter to Uvicorn's, once each.
 
     Idempotent because the module that calls it is imported by every test.
     `propagate` is off so a line is not also written by the root handler
-    Uvicorn installs, in a second format.
+    Uvicorn installs, in a second format. The filter sits on the logger, not
+    a handler, so it holds whatever handlers Uvicorn's own logging config
+    attaches - and that config removes handlers, never filters.
     """
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(existing, DropUnloggedPaths) for existing in access.filters):
+        access.addFilter(DropUnloggedPaths())
     if any(isinstance(handler.formatter, JsonFormatter) for handler in logger.handlers):
         return
     handler = logging.StreamHandler(sys.stderr)
@@ -170,6 +214,12 @@ class RequestIdMiddleware:
                 await PlainTextResponse("Internal Server Error", status_code=500)(scope, receive, send_with_id)
             raise
         finally:
-            if status_code == 401 or status_code >= 500:
-                _request_logger.warning("%s %s -> %s", scope.get("method"), scope.get("path"), status_code)
+            if status_code >= 400:
+                # The route's template, never the path the caller sent: a path
+                # can carry a capability (`/nominations/{token}` is a vote that
+                # lasts `TOKEN_DAYS`, 45), and the template is what a reader needs to
+                # find the handler. FastAPI leaves the matched route in the
+                # scope; a request no route matched has none to name.
+                route = getattr(scope.get("route"), "path", None) or "(no route)"
+                _request_logger.warning("%s %s -> %s", scope.get("method"), route, status_code)
             _request_id.reset(token)

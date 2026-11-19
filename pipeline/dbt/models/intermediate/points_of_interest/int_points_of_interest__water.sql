@@ -15,7 +15,12 @@
 -- and an empty source counts as none (export_poi.py's
 -- attach_water_distance()). The join is on the published id, as in the
 -- Python, after the POI identity ledger (base_ourhike__poi_identity) has
--- resolved ids.
+-- resolved ids: the file's own `poi_id`, which build_water_distance.py
+-- resolved through the same ledger, so a shelter ATC re-keyed keeps its
+-- distance (#1729 - The water-distance join is keyed by bare ATC GlobalID,
+-- nothing runs its --check, and the CSI figure carries no as-of date). A
+-- row on a layer other than shelters and campsites is not read, as
+-- export_poi.py's load_water_distances() reads none.
 --
 -- The synthesized water point (synthesize_csi_water(); #694 — A card can
 -- promise water 37 m away while its site shows no water at all). CSI says
@@ -61,10 +66,7 @@ with sites as (
 
 distances as (
     select
-        case layer
-            when 'shelters' then 'atc_shelters:'
-            when 'campsites' then 'atc_campsites:'
-        end || atc_global_id as poi_id,
+        poi_id,
         distance_ft,
         nullif(provenance, '') as provenance
     from {{ ref('base_atc__water_distance') }}

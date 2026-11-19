@@ -83,6 +83,7 @@ def main() -> int:
 
     collection = fetch_layer_geojson(
         source["url"],
+        where=source.get("where") or "1=1",
         out_fields=OUT_FIELDS,
         geometry_precision=GEOMETRY_PRECISION,
         page_size=PAGE_SIZE,

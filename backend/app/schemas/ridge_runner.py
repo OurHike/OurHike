@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from app.core.time import UtcDatetime
+from app.core.time import UtcDatetime, utc_now
 from app.models.ridge_runner import COMMITMENT_TASKS, MAX_COMMITMENT_DAYS
 from app.schemas.common import NoteText
 
@@ -52,7 +52,7 @@ class CommitmentCreate(BaseModel):
                 f"a commitment runs {MAX_COMMITMENT_DAYS} days at most - "
                 "a window that ends is what keeps this from becoming an obligation that accumulates"
             )
-        if self.starts_on < date.today() - timedelta(days=1):
+        if self.starts_on < utc_now().date() - timedelta(days=1):
             raise ValueError("a commitment starts today or later")
         return self
 

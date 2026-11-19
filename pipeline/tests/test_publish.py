@@ -2739,3 +2739,26 @@ def test_a_published_copy_that_is_not_json_does_not_hold_an_empty_bake(s3_client
     held = publish.hold_emptied_conditions(_conditions_file(tmp_path, "closures", []), s3_client, BUCKET, "")
 
     assert held == {}
+
+
+def test_r2_client_opens_the_public_bucket_unless_handed_another_key_pair(monkeypatch):
+    """Every publish passes no key_pair and gets the public bucket's key;
+    fetch_planetiler_sources.py passes the raw store's (#1970), the only
+    pair its step holds."""
+    opened = []
+    monkeypatch.setattr(publish.boto3, "client", lambda *_a, **kwargs: opened.append(kwargs))
+    for name, value in (
+        ("R2_ENDPOINT_URL", "https://r2.invalid"),
+        ("R2_ACCESS_KEY_ID", "public-id"),
+        ("R2_SECRET_ACCESS_KEY", "public-secret"),
+    ):
+        monkeypatch.setenv(name, value)
+
+    publish.r2_client()
+    publish.r2_client(key_pair=("raw-id", "raw-secret"))
+
+    assert [(kwargs["aws_access_key_id"], kwargs["aws_secret_access_key"]) for kwargs in opened] == [
+        ("public-id", "public-secret"),
+        ("raw-id", "raw-secret"),
+    ]
+    assert {kwargs["endpoint_url"] for kwargs in opened} == {"https://r2.invalid"}

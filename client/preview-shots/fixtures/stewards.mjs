@@ -152,6 +152,12 @@ function centerlineGeoJSON(miles = 40) {
  *
  * Does NOT reload: a recipe seeding more than one fixture reloads once, after
  * all of them (`seedSuggestedHikes` reloads itself, so call this first).
+ *
+ * Typed loosely for seedDayHikes's reason: inferred from STEWARDS_DOCUMENT,
+ * a list with a `licence: null` steward in it is refused at the call site.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {{ stewards: object[] }} [document]
  */
 export async function seedStewards(page, document = STEWARDS_DOCUMENT) {
   await page.route(/\/stewards\.json(\?|$)/, (route) =>

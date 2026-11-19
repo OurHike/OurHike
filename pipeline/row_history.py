@@ -279,13 +279,13 @@ import secrets
 import sys
 import tempfile
 import time
+import tomllib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 import duckdb
-import tomllib
 
 # _quote() lived here; it moved to lib/store_names.py so extract/_warehouse.py quotes with the same function.
 from lib.store_names import StoreNameRefused, relative_path, table_name

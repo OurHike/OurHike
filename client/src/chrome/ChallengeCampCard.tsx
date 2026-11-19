@@ -8,8 +8,8 @@
 // so there is nothing here that could leak one. ChallengeCampCard.test.tsx
 // holds the words out.
 //
-// ONCE A DAY. "Tag all" and "Not tonight" both answer today's card and it
-// does not come back until tomorrow; "Not tonight" leaves every row taggable
+// ONCE A DAY. "Earn all" and "Not tonight" both answer today's card and it
+// does not come back until tomorrow; "Not tonight" leaves every row earnable
 // from the challenge's own page.
 
 import { CHALLENGE_WORDS } from '../lib/challengeWords'
@@ -33,7 +33,13 @@ export function ChallengeCampCard({
   onNotTonight,
 }: ChallengeCampCardProps) {
   if (candidates.length === 0) return null
-  const ask = `${CHALLENGE_WORDS.noun.charAt(0).toUpperCase()}${CHALLENGE_WORDS.noun.slice(1)} them?`
+  const ask = `${CHALLENGE_WORDS.verb.charAt(0).toUpperCase()}${CHALLENGE_WORDS.verb.slice(1)} them?`
+  // One draft banner per draft list, above the rows (#1961) - not one per
+  // row, which on a day that passed three of a draft's places said it three
+  // times.
+  const drafts = [...new Set(candidates.map((candidate) => candidate.challenge))].filter(
+    (challenge) => challenge.status === 'draft',
+  )
   return (
     <section className="challenge-camp" aria-labelledby="challenge-camp-ask">
       <p className="challenges__eyebrow">From today’s walk</p>
@@ -41,6 +47,9 @@ export function ChallengeCampCard({
       <h2 className="challenge-camp__ask" id="challenge-camp-ask">
         You passed places on your challenges. {ask}
       </h2>
+      {drafts.map((challenge) => (
+        <DraftLabel key={challenge.id} challenge={challenge} />
+      ))}
       <ul className="challenge-rows">
         {candidates.map(({ challenge, item, place }) => (
           <li key={`${challenge.id}/${item.id}/${place.poi}`} className="challenge-row">
@@ -57,7 +66,6 @@ export function ChallengeCampCard({
                   : ''}
                 {challenge.name}
               </span>
-              <DraftLabel challenge={challenge} />
             </span>
             <span className="challenge-row__trailing">{mileLabel(place.mile)}</span>
           </li>

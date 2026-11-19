@@ -527,8 +527,11 @@ export function OrgConsole({
             <RegistrySignoff
               org={org}
               registry={data.registry}
+              // By seat id: a seat's holder is withheld from a viewer who is
+              // not one of the org's approved admins (#1914), and keying this
+              // by holder read "0 of 3" to them over approved seats.
               confirmed={
-                new Set(org.admins.filter((s) => s.approved_at).map((s) => s.person_id))
+                new Set(org.admins.filter((s) => s.approved_at !== null).map((s) => s.id))
               }
               personId={null}
               approvalsRequired={3}

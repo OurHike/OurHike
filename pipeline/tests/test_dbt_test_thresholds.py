@@ -235,16 +235,38 @@ def test_no_generic_test_gives_its_model_an_alias():
     assert aliased == []
 
 
+#: A SQL test whose meta names what its `failures` measures, which macros/data_quality.sql publishes under that name.
+MEASURES = re.compile(r"""['"]measures['"]\s*:\s*['"]([a-z_]+)['"]""")
+
+
 def test_the_level_tests_warn_at_one_and_are_errors_at_two():
-    """rows_named, equal_rowcount_to_raw and the review aids score 0, 1 or 2 (macros/test_levels.sql)."""
+    """rows_named, equal_rowcount_to_raw and the review aids score 0, 1 or 2 (macros/test_levels.sql). A test that
+    measures (MEASURES) is no level, and has its own pair (the next test)."""
     levels = {
         where: (_keyword(config, "warn_if"), _keyword(config, "error_if"))
         for folder in ("generic", "singular")
         for where, config in _sql_configs(folder)
-        if "fail_calc" in config
+        if "fail_calc" in config and not MEASURES.search(config)
     }
     assert {"tests/generic/rows_named.sql", "tests/generic/equal_rowcount_to_raw.sql"} <= set(levels)
     assert set(levels.values()) == {(">0", ">1")}, levels
+
+
+def test_the_one_test_that_measures_is_the_databases_size_against_the_backends_warning_line():
+    """assert_the_database_stays_under_its_plan.sql's `failures` is the database's size in whole megabytes on every
+    run (the maintainer's poll of 2026-10-28, "Hourly dbt check, with megabytes"), so its pair is in megabytes: from
+    400, the backend's STORAGE_WARN_SHARE of its 500 MB `database_quota_mb`, which
+    backend/tests/test_database_size_agrees.py holds, and from 475, 95%. Its measure is one data_quality.sql
+    publishes, or the page would print its value as a count of rows."""
+    measured = {
+        where: (MEASURES.search(config).group(1), _keyword(config, "warn_if"), _keyword(config, "error_if"))
+        for folder in ("generic", "singular")
+        for where, config in _sql_configs(folder)
+        if MEASURES.search(config)
+    }
+    assert measured == {"tests/singular/assert_the_database_stays_under_its_plan.sql": ("database_mb", ">399", ">474")}
+    macro = (DBT_DIR / "macros" / "data_quality.sql").read_text(encoding="utf-8")
+    assert re.search(r"set measured_metrics = \[\s*'database_mb'\s*\]", macro), "data_quality.sql names no such measure"
 
 
 def test_decision_208_every_yaml_test_of_the_gate_and_nynjtc_checked_is_an_error_but_the_held_share():

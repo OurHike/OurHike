@@ -432,7 +432,31 @@ if (serviceWorker !== undefined) {
 // absolute line still cannot do is tell organic growth from a drift smaller
 // than the room left; a check against `main`'s own figure would, and is
 // #1591's open half.
-const EAGER_JS_BUDGET_BYTES = 240 * 1024
+//
+// 241 KB SINCE 2026-10-26, the maintainer's call by poll on #1876 - Ask
+// every hiker to choose what they give after their fifth day of use, $0
+// included, and take payment only on the website. main stood at 245,470
+// bytes, 290 under 240 KB, by this walk on 2026-10-24. The support feature
+// deferred everything that could leave (screens/SupportGate.tsx: both
+// screens, the nudge lines and the three API calls load after launch) and
+// still measured 245,909: the shell's wiring and the preload map's entries
+// for two deferred screens, about 430 bytes. Asked whether to raise the line
+// a kilobyte, find the bytes in unrelated code, or wait for #1591's relative
+// check, the maintainer chose the kilobyte - with 290 bytes of room the next
+// feature trips it too, which is the absolute line's known failure above.
+//
+// 250 KB SINCE 2026-11-04, the maintainer's call by poll, to take React
+// 19.3.1, which is all eager: main measured 246,042 bytes by this walk and
+// 254,524 with React 19.3.1 and its types, 7,740 over 241 KB. Offered
+// instead: deferring Capacitor and the first-run entry card first (about
+// 6 KB compressed by features/LAUNCH_BUDGET.md section 4.4's ratio, an
+// estimate, likely short), or holding React at 19.2 until App.tsx's
+// planning hooks leave the closure, in the order #1746 - App.tsx is 11,743
+// lines, 92 useState and 209 imports, 2.7x its size when #327 closed; eight
+// panel hooks in this order would take about 5,200 lines out - sets
+// (LAUNCH_BUDGET.md section 4.4's table). 250 KB was the line until
+// 2026-09-30, and leaves 1,476 bytes of room over 254,524.
+const EAGER_JS_BUDGET_BYTES = 250 * 1024
 const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
 
 /**

@@ -93,7 +93,8 @@ export const KINDS = [
     label: "Volume",
     passed: "checks at the usual size",
     problem: "unusual",
-    about: "Row counts per build in every source table and finished table.",
+    about:
+      "Row counts per build in every source table and finished table, and the size of OurHike's own database against the limits its check holds it to.",
   },
   {
     id: "schema",
@@ -146,6 +147,17 @@ export const LEARNING_KINDS = new Set(["volume", "anomalies"]);
 export const LAST_READ = "last_read_age";
 
 /**
+ * The metric of OurHike's own database's size, in whole megabytes: the one
+ * measured test (pipeline/dbt/macros/data_quality.sql's "A MEASURED TEST",
+ * the maintainer's poll of 2026-10-28, "Hourly dbt check, with megabytes").
+ * Like LAST_READ it is held to fixed limits rather than to a range learned
+ * from the builds before: its entry's `expected_max` is the size it fails
+ * at, and its series alone carries `warn_at` and `fail_at`, which its chart
+ * draws as lines (limitedChartView) where another series has a band.
+ */
+export const DATABASE_SIZE = "database_mb";
+
+/**
  * A check's status as the page words it. `rank` orders "Needs a look", worst
  * first: a failed check before one that could not run (which is a gap, not a
  * finding) before a warning. A status the page does not know is shown in the
@@ -176,6 +188,7 @@ const OTHER_STATUS_RANK = 3;
 const METRICS = {
   row_count: { label: "Rows", kind: "count", unit: ["row", "rows"], floor: 0 },
   [LAST_READ]: { label: "Since the last read", kind: "duration", phrase: "since the last read", floor: 0 },
+  [DATABASE_SIZE]: { label: "Database size", kind: "count", unit: ["MB", "MB"], floor: 0 },
   freshness: { label: "Time between updates", kind: "duration", phrase: "between updates", floor: 0 },
   null_count: { label: "Nulls", kind: "count", floor: 0 },
   null_percent: { label: "Null rate", kind: "percent", floor: 0 },
@@ -441,6 +454,13 @@ function kind(v, where) {
   return v;
 }
 
+/** `{warn, fail}` from a series' `warn_at` and `fail_at`, or null when it carries neither. */
+function limitsOf(entry, where) {
+  const warn = measure(entry.warn_at, `${where}.warn_at`);
+  const fail = measure(entry.fail_at, `${where}.fail_at`);
+  return warn === null && fail === null ? null : { warn, fail };
+}
+
 function parse(value, lane) {
   if (!isObject(value)) fail("the file is not a JSON object");
   if (value.format !== FORMAT) fail(`format is not ${FORMAT}`);
@@ -508,6 +528,8 @@ function parse(value, lane) {
       mart: name(entry.mart, `${where}.mart`, { optional: true }),
       inNeedsALook: typeof flag === "boolean" ? flag : null,
       points,
+      // A measured series' sizes (DATABASE_SIZE); null on every other, and in a file from before them.
+      limits: limitsOf(entry, where),
     };
   });
 
@@ -828,6 +850,7 @@ export const FLAGGED_AS = { above: "high", below: "low" };
 function itemSentence(item, series) {
   if (item.status === "error") return "The check could not run, so this went unchecked in this build.";
   if (item.metric === LAST_READ && item.value !== null) return `${capitalised(lastReadSentence(item))}.`;
+  if (item.metric === DATABASE_SIZE && item.value !== null) return `${sizeSentence(item)}.`;
   const counted = countSentences(item);
   if (counted) return counted.long;
   const metric = item.metric ?? DEFAULT_METRIC[item.kind] ?? null;
@@ -872,6 +895,19 @@ function lastReadSentence(item) {
 const capitalised = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /**
+ * A SIZE AGAINST ITS LIMIT, as a source's age is (lastReadSentence): "415 MB
+ * in this build · limit 475 MB", the limit being the entry's `expected_max`,
+ * the size its check fails at. The warning line is on the chart, which draws
+ * both lines (limitedChartView). Short, on a kind's card, without "in this
+ * build".
+ */
+function sizeSentence(item, { short = false } = {}) {
+  const fmt = metricFormat(item.metric);
+  const what = short ? fmt.value(item.value) : `${fmt.value(item.value)} in this build`;
+  return item.max === null ? what : `${what} · limit ${fmt.value(item.max)}`;
+}
+
+/**
  * A kind's card names its first row in short. "Its usual range" there is
  * the row's range from the builds before, so the card names a
  * side only where that range gives the side Elementary flagged; anywhere else
@@ -881,6 +917,7 @@ const capitalised = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 function shortSentence(item, series) {
   if (item.status === "error") return "could not run.";
   if (item.metric === LAST_READ && item.value !== null) return `${lastReadSentence(item)}.`;
+  if (item.metric === DATABASE_SIZE && item.value !== null) return `${sizeSentence(item, { short: true })}.`;
   const counted = countSentences(item);
   if (counted) return counted.short;
   const metric = item.metric ?? DEFAULT_METRIC[item.kind] ?? null;
@@ -1085,11 +1122,11 @@ function needsALook(series, items) {
 
 /**
  * The kind a series' metric belongs to, for a series no entry names: a row
- * count is volume, an age is freshness, and every other metric an anomaly
- * check's (KINDS' order and words).
+ * count or the database's size is volume, an age is freshness, and every
+ * other metric an anomaly check's (KINDS' order and words).
  */
 function metricKind(metric) {
-  if (metric === MART_METRIC) return "volume";
+  if (metric === MART_METRIC || metric === DATABASE_SIZE) return "volume";
   if (metric === LAST_READ || metric === "freshness") return "freshness";
   return "anomalies";
 }
@@ -1097,7 +1134,8 @@ function metricKind(metric) {
 /**
  * The Show menu's groups. "Needs a look" lists its series in the order the
  * list above it does, worst first, split by kind in KINDS' order, "Needs a
- * look · Volume" and the rest; "Every finished table" in By mart's order. A
+ * look · Volume" and the rest; "Every finished table" in By mart's order,
+ * then "OurHike's own database" for a passing size held to limits. A
  * series is listed once, in the group its flag puts it in, so a mart whose
  * row count needs a look is under "Needs a look" and not again under "Every
  * finished table" - the shape the maintainer chose from (round 2's frames,
@@ -1134,7 +1172,9 @@ function menuOf(series, items, marts) {
     other,
     groups: [
       ...KINDS.map((kind) => ({ label: `Needs a look · ${kind.label}`, options: look.filter((s) => kindOf(s) === kind.id) })),
-      { label: "Every finished table", options: other },
+      { label: "Every finished table", options: other.filter((s) => !s.limits) },
+      // The database's size is no finished table's (DATABASE_SIZE): its own group, after them.
+      { label: "OurHike's own database", options: other.filter((s) => s.limits) },
     ]
       .filter((group) => group.options.length > 0)
       .map((group) => ({
@@ -1237,6 +1277,7 @@ function bandBefore(points, i) {
 
 function chartView(series, read) {
   if (series === null) return null;
+  if (series.limits !== null && series.limits !== undefined) return limitedChartView(series);
   const fmt = metricFormat(series.metric);
   const file = read.find((candidate) => candidate.lane === series.lane);
   const flagged = flaggedPoints(series, file?.items ?? []);
@@ -1331,6 +1372,65 @@ function chartView(series, read) {
       value: point.value === null ? "No value" : fmt.cell(point.value),
       expected: `${point.min === null || point.max === null ? NO_RANGE : fmt.range(point.min, point.max)}${point.outside ? `, flagged as ${FLAGGED_AS[point.outside]}` : ""}`,
       where: flaggedLine(point),
+    })),
+  };
+}
+
+/**
+ * A SERIES HELD TO FIXED LIMITS (DATABASE_SIZE): its line, and two dashed
+ * lines where its check warns and fails, with no band and no triangle, since
+ * nothing here is learned from the runs before and Elementary judges none of
+ * it. The table says, of each point, what the check made of it by the same
+ * two lines; a line the file does not give is left out of every sentence.
+ */
+function limitedChartView(series) {
+  const fmt = metricFormat(series.metric);
+  const { warn, fail } = series.limits;
+  const points = series.points.map((point) => ({ at: point.at, value: point.value, min: null, max: null, outside: null }));
+  const drawn = points.filter((point) => point.value !== null);
+  const each = series.lane === "monthly" ? "monthly build" : "hourly run";
+  const what = fmt.known ? fmt.label : "Values";
+  const lines = [
+    warn === null ? null : `warns from ${fmt.value(warn)}`,
+    fail === null ? null : `fails from ${fmt.value(fail)}`,
+  ].filter((line) => line !== null);
+
+  let summary;
+  if (drawn.length === 0) summary = `No ${each} in this history recorded a value.`;
+  else {
+    const first = drawn[0];
+    const last = drawn[drawn.length - 1];
+    summary =
+      drawn.length === 1
+        ? `One ${each} so far: ${fmt.value(first.value)} on ${formatDay(first.at)}.`
+        : `${drawn.length} ${LANE_RUNS[series.lane]}, from ${fmt.value(first.value)} on ${formatDay(first.at)} to ${fmt.value(last.value)} on ${formatDay(last.at)}.`;
+  }
+  if (lines.length) summary += ` The check ${lines.join(" and ")}.`;
+  const verdict = (value) => {
+    if (value === null) return "";
+    if (fail !== null && value >= fail) return "Fails";
+    if (warn !== null && value >= warn) return "Warns";
+    return "Passes";
+  };
+
+  return {
+    key: seriesKey(series),
+    lane: series.lane,
+    table: series.table,
+    column: series.column ?? null,
+    metric: series.metric,
+    format: fmt,
+    title: [`${what} in `, code(series.table), `, one point per ${each}`],
+    summary,
+    caption: "The dashed lines are the sizes at which the check warns and fails.",
+    points,
+    limits: { warn, fail },
+    rows: points.map((point) => ({
+      when: series.lane === "monthly" ? formatDay(point.at) : formatWhen(point.at).replace(/ UTC$/, ""),
+      whenFull: formatWhen(point.at),
+      value: point.value === null ? "No value" : fmt.cell(point.value),
+      expected: verdict(point.value),
+      where: null,
     })),
   };
 }

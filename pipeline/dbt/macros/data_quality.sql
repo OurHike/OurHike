@@ -21,7 +21,8 @@
     row's anomaly_description or dimension_value, a test's params beyond
     `days_back`, or a freshness result's `error`, dbt's own message. A
     measured number is carried only for the count_metrics
-    below: a column's min or max is one row's own value, and an average or a
+    below, and for a measured test's one measure (below, "A MEASURED
+    TEST"): a column's min or max is one row's own value, and an average or a
     length is a property of row values, so those checks carry their status
     and names, with every number null.
 
@@ -52,9 +53,11 @@
       int_sources__publication reads a missing licence.
     - OurHike's own two source groups, `ourhike` and `registry`, are cleared.
       Every row in them is reviewed into this public repository
-      (pipeline/sources.json, reference/*.json) or is one of the conditions
+      (pipeline/sources.json, reference/*.json), is one of the conditions
       database's public rows (_ourhike_conditions__sources.yml: verified
-      closures, public reports, visible field notes, corroborated disputes).
+      closures, public reports, visible field notes, corroborated disputes),
+      or is that database's own size, which the maintainer chose to publish
+      (below, "A MEASURED TEST").
       Held, they would hold nearly every intermediate, since every one that
       reads int_sources__publication reads the registry.
     - a check missing from Elementary's dbt_tests (its lineage unknown) is
@@ -138,6 +141,25 @@
     the rest is dbt starting and parsing (a rerun of the pass over the same
     warehouse with this series SQL took 29.2 s).
 
+    A MEASURED TEST is a dbt test whose `failures` is a size rather than a
+    count of rows or a level, and whose meta's `measures` names it from
+    `measured_metrics` below: one today,
+    tests/singular/assert_the_database_stays_under_its_plan.sql, whose
+    `failures` is OurHike's own database's size in whole megabytes on every
+    run, passing or not (the maintainer's poll of 2026-10-28 on #1902 — Count
+    six usage events with a sealed account id and GPS fix, keep them six
+    months, close each month into a table, and report them per club, "Hourly
+    dbt check, with megabytes"). A meta naming anything else leaves the test
+    an ordinary dbt test. Such a test is a Volume check, its `metric` the
+    measure; its entry's `value` is the size and its `expected_max` the size
+    it fails at, its error_if's N + 1, since the size is whole (`expected_min`
+    null); and its history is a series of its own, from its `failures` in
+    every run the lane's history holds, the newest series_points of them,
+    unbanded, whether or not it needs a look. A 0 is a run that read no row,
+    as the test itself says, and is written as no value and no point: no
+    database is 0 MB. Published by that choice, never by the rules above for
+    a row's value.
+
     ONE CHECK is one dbt test; one table's freshness or volume; one schema
     test (a table's schema, whatever number of columns changed); and one
     column measure of an anomaly test (each column and metric of a
@@ -219,7 +241,11 @@
       counted), whether or not it needs a look; and the history behind each
       needs_a_look entry whose metric is one of the count_metrics below, a
       table's row_count or a column's (a null, zero or missing count or
-      rate, a true or false count). A source's freshness has none: dbt keeps
+      rate, a true or false count); and each measured test's own history,
+      whether or not it needs a look (above, "A MEASURED TEST"), unbanded,
+      its `mart` null, and carrying two fields no other series has,
+      `warn_at` and `fail_at`, the sizes its test warns and fails at, each
+      its threshold's N + 1. A source's freshness has none: dbt keeps
       no history of it. A column's min,
       max, average or length is row values, and a dimension's history is per
       dimension value, so neither is charted. One series per table, column
@@ -353,6 +379,9 @@
         of rows (macros/test_levels.sql); a singular one says so in its meta,
         `scores_a_level` (the header, "AN ERROR PAST ITS THRESHOLD"). -#}
     {%- set level_tests = ['rows_named', 'equal_rowcount_to_raw'] -%}
+    {#- The measures a dbt test's `failures` may be, named by its meta's
+        `measures` (the header, "A MEASURED TEST"). -#}
+    {%- set measured_metrics = ['database_mb'] -%}
 with recursive
 
 -- Each dbt test's error threshold, whether it stays at warn, and whether its
@@ -365,9 +394,20 @@ test_thresholds as (
             when regexp_full_match(trim(coalesce(error_if, '')), '>\s*[0-9]+')
                 then cast(regexp_extract(error_if, '[0-9]+') as bigint)
         end as error_above,
+        -- Read for a measured test's series alone (the header, "A MEASURED
+        -- TEST").
+        case
+            when regexp_full_match(trim(coalesce(warn_if, '')), '>\s*[0-9]+')
+                then cast(regexp_extract(warn_if, '[0-9]+') as bigint)
+        end as warn_above,
         coalesce(json_extract_string(meta, '$.stays_at_warn'), '') != '' as stays_at_warn,
         lower(short_name) in ('{{ level_tests | join("', '") }}')
-        or coalesce(json_extract_string(meta, '$.scores_a_level'), '') = 'true' as scores_a_level
+        or coalesce(json_extract_string(meta, '$.scores_a_level'), '') = 'true' as scores_a_level,
+        -- The header, "A MEASURED TEST".
+        case
+            when lower(json_extract_string(meta, '$.measures')) in ('{{ measured_metrics | join("', '") }}')
+                then lower(json_extract_string(meta, '$.measures'))
+        end as measures
     from {{ ref('elementary', 'dbt_tests') }}
 ),
 
@@ -405,11 +445,14 @@ results as (
             else 3
         end as status_rank,
         coalesce(test_thresholds.scores_a_level, false) as scores_a_level,
+        test_thresholds.error_above,
+        test_thresholds.warn_above,
         case
             when
                 test_type in ('anomaly_detection', 'schema_change')
                 and test_sub_type not in ('generic', 'singular')
                 then lower(test_sub_type)
+            when test_type = 'dbt_test' then test_thresholds.measures
         end as metric
     from {{ ref('elementary', 'elementary_test_results') }}
     left join test_thresholds
@@ -448,6 +491,8 @@ classified as (
                 )
                 then 'schema'
             when this_build.test_type = 'anomaly_detection' and this_build.metric = 'row_count' then 'volume'
+            -- A measured test (the header, "A MEASURED TEST").
+            when this_build.metric in ('{{ measured_metrics | join("', '") }}') then 'volume'
             when this_build.test_type = 'schema_change' then 'schema'
             when this_build.test_type = 'anomaly_detection' then 'anomalies'
             else 'dbt_tests'
@@ -809,6 +854,10 @@ issues as (
             -- A level (macros/test_levels.sql) is no count of rows, so no
             -- value.
             when counted.scores_a_level then null
+            -- A measured test's size, a 0 being no row read (the header, "A
+            -- MEASURED TEST").
+            when counted.metric in ('{{ measured_metrics | join("', '") }}')
+                then case when counted.failures > 0 then to_json(counted.failures) end
             when counted.kind = 'dbt_tests' then to_json(counted.failures)
             when counted.kind = 'schema' and counted.test_type = 'dbt_test' then to_json(counted.failures)
         end as value,
@@ -819,6 +868,10 @@ issues as (
         case
             when counted.status_rank < 3 and counted.metric in ('{{ count_metrics | join("', '") }}')
                 then round(anomalous.expected_max, 3)
+            -- The size a measured test fails at: its error_if's N + 1, the size
+            -- being whole (the header, "A MEASURED TEST").
+            when counted.status_rank < 3 and counted.metric in ('{{ measured_metrics | join("', '") }}')
+                then cast(counted.error_above + 1 as double)
         end as expected_max,
         -- The entry's table, never null (the header, "needs_a_look").
         coalesce(
@@ -1067,6 +1120,94 @@ series as (
         charted.in_needs_a_look
 ),
 
+-- A measured test's history (the header, "A MEASURED TEST"): its `failures`
+-- in each run the lane's history holds, the run's last result, a 0 left out.
+-- Its table is named as its needs_a_look entry names it, so the page finds
+-- the one from the other.
+measured_runs as (
+    select
+        results.test_unique_id,
+        results.invocation_id,
+        any_value(results.metric) as metric,
+        any_value(
+            coalesce(results.table_name, test_tables.table_name, lower(results.test_short_name), results.test_unique_id)
+        ) as table_name,
+        max(results.detected_at) as measured_at,
+        arg_max(results.failures, results.created_at) as measured,
+        any_value(results.warn_above) as warn_above,
+        any_value(results.error_above) as error_above
+    from results
+    left join test_tables on results.test_unique_id = test_tables.test_unique_id
+    left join held_tests on results.test_unique_id = held_tests.test_unique_id
+    where
+        results.metric in ('{{ measured_metrics | join("', '") }}')
+        and results.status_rank < 3
+        and held_tests.test_unique_id is null
+    group by results.test_unique_id, results.invocation_id
+),
+
+measured_points as (
+    select
+        *,
+        row_number() over (partition by test_unique_id order by measured_at desc) as newest
+    from measured_runs
+    where measured > 0
+),
+
+measured_issues as (
+    select distinct test_unique_id from issues
+),
+
+measured_series as (
+    select
+        any_value(measured_points.table_name) as table_name,
+        cast(null as varchar) as column_name,
+        any_value(measured_points.metric) as metric,
+        cast(null as varchar) as mart,
+        bool_or(measured_issues.test_unique_id is not null) as in_needs_a_look,
+        -- The sizes it warns and fails at, each its threshold's N + 1, the
+        -- size being whole.
+        any_value(measured_points.warn_above) + 1 as warn_at,
+        any_value(measured_points.error_above) + 1 as fail_at,
+        list(
+            {
+                'at': strftime(measured_points.measured_at, '%Y-%m-%dT%H:%M:%SZ'),
+                'value': to_json(measured_points.measured),
+                'expected_min': cast(null as double),
+                'expected_max': cast(null as double)
+            }
+            order by measured_points.measured_at
+        ) as points
+    from measured_points
+    left join measured_issues on measured_points.test_unique_id = measured_issues.test_unique_id
+    where measured_points.newest <= {{ series_points }}
+    group by measured_points.test_unique_id
+),
+
+all_series as (
+    select
+        table_name,
+        column_name,
+        metric,
+        mart,
+        in_needs_a_look,
+        points,
+        cast(null as bigint) as warn_at,
+        cast(null as bigint) as fail_at
+    from series
+    union all
+    select
+        table_name,
+        column_name,
+        metric,
+        mart,
+        in_needs_a_look,
+        points,
+        warn_at,
+        fail_at
+    from measured_series
+),
+
 -- Every needs_a_look entry: Elementary's and dbt's checks that did not
 -- pass, with `since`, and each source past a freshness limit or not
 -- measured (the header, "FRESHNESS"). `order_metric` is the metric the
@@ -1090,9 +1231,14 @@ entries as (
             {%- endif %}
             else '{{ built_at }}'
         end as since,
-        -- An anomaly check's metric alone; a schema change's kind of change
-        -- stays out (the header, "needs_a_look").
-        case when issues.test_type = 'anomaly_detection' then issues.metric end as metric,
+        -- An anomaly check's metric, or a measured test's measure; a schema
+        -- change's kind of change stays out (the header, "needs_a_look").
+        case
+            when
+                issues.test_type = 'anomaly_detection'
+                or issues.metric in ('{{ measured_metrics | join("', '") }}')
+                then issues.metric
+        end as metric,
         issues.metric as order_metric,
         issues.test_short_name,
         issues.test_unique_id
@@ -1195,17 +1341,35 @@ select
     (
         select
             coalesce(
-                to_json(list({
-                    'table': table_name,
-                    'column': column_name,
-                    'metric': metric,
-                    'mart': mart,
-                    'in_needs_a_look': in_needs_a_look,
-                    'points': points
-                } order by in_needs_a_look desc, table_name, column_name nulls first, metric)),
+                to_json(list(
+                    -- A measured series alone carries the sizes it warns and
+                    -- fails at (the header, "series").
+                    case
+                        when warn_at is null and fail_at is null
+                            then to_json({
+                                'table': table_name,
+                                'column': column_name,
+                                'metric': metric,
+                                'mart': mart,
+                                'in_needs_a_look': in_needs_a_look,
+                                'points': points
+                            })
+                        else to_json({
+                            'table': table_name,
+                            'column': column_name,
+                            'metric': metric,
+                            'mart': mart,
+                            'in_needs_a_look': in_needs_a_look,
+                            'points': points,
+                            'warn_at': warn_at,
+                            'fail_at': fail_at
+                        })
+                    end
+                    order by in_needs_a_look desc, table_name, column_name nulls first, metric
+                )),
                 cast('[]' as json)
             )
-        from series
+        from all_series
     ) as series,
     (
         select

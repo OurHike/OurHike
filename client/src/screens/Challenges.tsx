@@ -56,7 +56,7 @@ export function Challenges({
       {joined.length === 0 && missing === 0 ? (
         <p className="challenges__empty">
           A challenge is a club’s list of places on its own trails - walk there, and{' '}
-          {CHALLENGE_WORDS.noun} them at camp. Join as many as you like.
+          {CHALLENGE_WORDS.verb} them at camp. Join as many as you like.
         </p>
       ) : (
         joined.map((challenge) => (

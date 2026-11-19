@@ -20,7 +20,7 @@
 
 import { useState } from 'react'
 import { PageHeader } from '../components'
-import type { Org, OrgAdmin } from '../orgApi'
+import { seatName, type Org, type OrgAdmin } from '../orgApi'
 
 export interface AdminApprovalProps {
   readonly org: Org
@@ -97,7 +97,7 @@ export function AdminApproval({
             return (
               <div className="org-card org-panel" key={seat.id}>
                 <div className="org-panel__head">
-                  <h2>{names[seat.person_id] ?? seat.person_id}</h2>
+                  <h2>{seatName(seat, names)}</h2>
                   <span
                     className="org-pill"
                     data-tone={state.tone}
@@ -244,7 +244,7 @@ export function AdminApproval({
                 <p className="org-mono" key={`audit-${seat.id}`}>
                   {when(seat.approved_at ?? seat.declined_at)} ·{' '}
                   {seat.approved_at ? 'approved by ' : 'paused by '}
-                  {names[seat.person_id] ?? seat.person_id}
+                  {seatName(seat, names)}
                 </p>
               ))}
           </div>

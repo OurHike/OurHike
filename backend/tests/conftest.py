@@ -187,6 +187,19 @@ def db_engine():
         engine.dispose()
 
 
+@pytest.fixture(autouse=True)
+def _database_size_pinned_to_nothing(request, monkeypatch):
+    """`database_near_quota` reads every database on the server, as Supabase's
+    quota does (app/core/analytics_storage.py), and the server under these
+    tests holds others - a developer's own, each xdist worker's. Measured
+    2026-10-27 in a web session: 357 MB, which is past four-fifths of the
+    500 MB quota before a test has written a row. Pinned to nothing, so the
+    warning fires only in a test that sets the size itself; a test marked
+    `real_database_size` reads the server as it is."""
+    if request.node.get_closest_marker("real_database_size") is None:
+        monkeypatch.setattr("app.core.analytics_storage.database_bytes", lambda db: 0)
+
+
 @pytest.fixture()
 def db_session(db_engine):
     """A SQLAlchemy session bound to the per-test engine."""
@@ -219,3 +232,33 @@ def client(db_engine):
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
+
+
+#: The bucket `photo_bucket` makes, for a test that lists what landed in it.
+PHOTO_BUCKET = "ourhike-test"
+
+
+@pytest.fixture()
+def photo_bucket(monkeypatch):
+    """A configured, empty R2 bucket with uploads on, doubled in-process by moto.
+
+    One copy for the survey's photo tests (#1986 — Observation photos use
+    the report pipeline with a key of their own and no table), which had
+    been about to add the fifth and sixth copies of the fixture
+    test_poi_photos.py started. The older copies in the report, note and
+    waypoint photo tests are left as they are; moving them is a separate
+    change. moto and boto3 are imported here, not at the top, so tests that
+    never touch a bucket do not pay for them.
+    """
+    import boto3
+    from moto import mock_aws
+
+    with mock_aws():
+        monkeypatch.setattr(settings, "r2_photo_endpoint_url", "https://s3.amazonaws.com")
+        monkeypatch.setattr(settings, "r2_photo_bucket", PHOTO_BUCKET)
+        monkeypatch.setattr(settings, "r2_photo_access_key_id", "test-key")
+        monkeypatch.setattr(settings, "r2_photo_secret_access_key", "test-secret")
+        monkeypatch.setattr(settings, "r2_photo_write_enabled", True)
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket=PHOTO_BUCKET)
+        yield s3

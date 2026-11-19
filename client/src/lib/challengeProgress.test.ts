@@ -276,7 +276,7 @@ describe('matchDay - the camp card lists what was passed and nothing else', () =
       todayRanges: [{ startMile: 710, endMile: 716 }],
       trail: 'AT',
       pois: SHELTERS,
-      today: '2027-05-14',
+      today: '2027-05-12',
     })
     expect(before).toEqual([])
   })
@@ -407,7 +407,7 @@ describe('autoTags - the items that tag themselves', () => {
     const early = autoTags(
       {
         ...base,
-        today: '2027-05-14',
+        today: '2027-05-12',
         maxElevationFt: () => 4_010,
         state: joinedAtc,
         todayRanges: [{ startMile: 1860, endMile: 1866 }],
@@ -556,7 +556,7 @@ describe('the edges of plan suggestions, Browse distance, workday stamps and rem
       state: EMPTY_CHALLENGE_STATE,
       days: [{ dayNumber: 1, startMile: 700, endMile: 725 }],
       hikeKey: 'hike',
-      today: '2027-09-02',
+      today: '2027-09-08',
       maintainedMiles: () => 0,
     })
     expect(picked).toBeNull()
@@ -607,15 +607,17 @@ describe('the edges of plan suggestions, Browse distance, workday stamps and rem
         state: joinedAtc,
         todayRanges: [],
         trail: 'AT',
-        today: '2027-09-05',
+        // After the window closed on September 7: hours worked inside it and
+        // noticed late still count, stamped on the day worked.
+        today: '2027-09-10',
         maxElevationFt: () => null,
-        hours: [{ workedOn: '2027-08-31', mile: 1400, clubName: null, disputed: false }],
+        hours: [{ workedOn: '2027-09-06', mile: 1400, clubName: null, disputed: false }],
       },
-      new Date('2027-09-05T20:00:00Z'),
+      new Date('2027-09-10T20:00:00Z'),
     )
     const made = result.state.tags.find((entry) => entry.itemId === 'trail-crew')
     expect(made).toBeDefined()
-    expect(localDay(new Date(made!.at))).toBe('2027-08-31')
+    expect(localDay(new Date(made!.at))).toBe('2027-09-06')
   })
 
   it("never stamps today's workday later than the moment it was noticed", () => {

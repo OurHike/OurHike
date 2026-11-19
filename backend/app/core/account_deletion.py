@@ -59,17 +59,22 @@ it is not a contribution that stayed - it is a record about the account,
 and the export hands the hiker their own rows from it.
 """
 
+import secrets
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+from app.core.analytics_accounts import keys_or_refuse
+from app.core.support import forget_addresses, mark_stop
 from app.core.time import utc_now
+from app.models.analytics import AnalyticsEvent, AnalyticsUser
 from app.models.app_failure import AppFailure
 from app.models.closure import Closure, ClosureApproval
 from app.models.club import Club, OrgAdmin
 from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
+from app.models.inventory import InventoryClaim, InventoryEnrollment, InventoryObservation, InventoryPass
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.org_registry import RegistrySignoff
 from app.models.org_role import RoleInvite, RosterSyncRun
@@ -78,6 +83,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
 from app.models.ridge_runner import RidgeRunnerCommitment
+from app.models.support import SupportChoice, SupportStatus
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
@@ -127,11 +133,25 @@ class DeletionSummary:
     registry_signatures_withdrawn: int = 0
     workday_signups_released: int = 0
     commitments_deleted: int = 0
+    #: The structure survey (#1983 — The structure inventory's five tables land
+    #: in one revision, locked by RLS, with every enum as VARCHAR + CHECK): a
+    #: standing in a club's programme, with its
+    #: waiver signature, and the days they had claimed on a section. What they
+    #: logged stays, and is counted in `contributions_kept`.
+    survey_enrollments_deleted: int = 0
+    survey_claims_released: int = 0
     org_rows_unlinked: int = 0
     app_failures_unlinked: int = 0
     #: Challenges (#1780) - see the reasoning at each query in `delete_account`.
     challenge_tags_deleted: int = 0
     challenge_entries_deleted: int = 0
+    #: Support choices this deletion asked to stop (#1876) - their ids, so the
+    #: router can email the founder to cancel each one after the commit.
+    support_stops_requested: list[str] = field(default_factory=list)
+    #: Usage measurement (#1902): the events this account linked by saying
+    #: yes. Its User-table rows go with them and are not counted separately -
+    #: they are the same events, summed.
+    usage_events_deleted: int = 0
     contributions_kept: dict[str, int] = field(default_factory=dict)
 
 
@@ -166,9 +186,16 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
 
     Returns the counts rather than a bare success, so the endpoint can hand a
     hiker a receipt naming what went.
+
+    Raises `LinkedUsageUnreachable` (app/core/analytics_accounts.py), before
+    it deletes anything, when linked usage rows exist and no secret is
+    configured to find this account's among them: a receipt saying its usage
+    went, while it stayed linked in the table, is the one answer worse than
+    refusing.
     """
     now = now or utc_now()
     profile_id = profile.id
+    usage_keys = keys_or_refuse(db, profile_id)
 
     # --- The rows that were only ever theirs. These go outright. ---
 
@@ -243,6 +270,37 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         db.query(RidgeRunnerCommitment).filter(RidgeRunnerCommitment.person_id == profile_id).delete(synchronize_session=False)
     )
 
+    # THE STRUCTURE SURVEY (#1983 — The structure inventory's five tables land in
+    # one revision, locked by RLS, with every enum as VARCHAR + CHECK; the design
+    # is features/STRUCTURE_INVENTORY.md).
+    #
+    # An enrolment is a standing in one club's programme and the volunteer's
+    # signature on its waiver: a permission, like a seat above, and a
+    # signature, like a registry sign-off - it cannot outlive its signer.
+    # Whether a club needs a signed waiver kept as its legal record after the
+    # account is gone is the design doc's open question 3, which is counsel's
+    # call; until it is answered the row goes, which is the answer that keeps
+    # no typed name nobody asked to keep.
+    survey_enrollments = (
+        db.query(InventoryEnrollment).filter(InventoryEnrollment.person_id == profile_id).delete(synchronize_session=False)
+    )
+    # A claim tells other volunteers that somebody means to walk a section on
+    # a day. From an account that is gone it is a claim by nobody, steering
+    # people away from a section nobody will walk - the assignment argument
+    # above, where showing a stretch as covered by somebody who is gone is
+    # worse than showing it as uncovered.
+    survey_claims = db.query(InventoryClaim).filter(InventoryClaim.volunteer_id == profile_id).delete(synchronize_session=False)
+
+    # What they LOGGED stays: every observation, the walks it came from, and
+    # any structure they were first to log. Each is the club's survey record
+    # from the moment it uploads - in the review queue, in coverage, and for
+    # an Unsafe one already a report and an email - so other people are
+    # relying on it, which is this module's rule for keeping a row. They
+    # point at the scrubbed profile, as a condition report does, and are
+    # counted in `_contributions_kept`. A review decision they made as a club
+    # admin (`reviewed_by`) stays too: it is the club's decision about
+    # somebody else's record, the precedent `reports.dismissed_by` sets.
+
     # A challenge tag is the hiker's own record of where they have been -
     # "the hiker's record is theirs" is the design's sixth principle
     # (features/CHALLENGES.md) - and all anybody else ever derives from it is
@@ -260,6 +318,21 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     # reach is the copy a club already downloaded as CSV: that file is the
     # club's, and nothing here pretends otherwise.
     challenge_entries = db.query(ChallengeEntry).filter(ChallengeEntry.user_id == profile_id).delete(synchronize_session=False)
+
+    # USAGE MEASUREMENT (#1902). The events this account linked by saying yes
+    # are found by recomputing the key they were stored under - under every
+    # secret it was ever made with, current and previous - and go with the
+    # User-table rows summing them: both were only ever about this hiker, and a
+    # monthly figure already closed from them is a count that names nobody, so
+    # nothing anybody relies on moves. Events sent before the yes, or after a
+    # no, carry no key and name nobody - there is nothing of theirs to find
+    # among them, which is the point of rows like that. The keys were found
+    # before anything above was deleted, so a deployment that cannot find them
+    # refuses the whole deletion (see `delete_account`).
+    usage_events = 0
+    if usage_keys:
+        usage_events = db.query(AnalyticsEvent).filter(AnalyticsEvent.user_key.in_(usage_keys)).delete(synchronize_session=False)
+        db.query(AnalyticsUser).filter(AnalyticsUser.user_key.in_(usage_keys)).delete(synchronize_session=False)
 
     # --- Organization rows that NAME them and belong to the organization.
     # Every one of these columns is nullable, so the link can be forgotten
@@ -320,10 +393,62 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         report.signed_name_kind = None
         report.contact_ok = False
 
+    # WHAT A HIKER GIVES OURHIKE (#1876): A PAYMENT STAYS AND STOPS; A CHOICE
+    # NOBODY PAID FOR IS EMPTIED. A row the provider confirmed is the money
+    # record the published total and any later refund question rely on,
+    # which is this module's rule for keeping a row. A choice that never
+    # became a payment is nobody's money record, so everything that says who
+    # made it goes - the address, the account, the accounting opt-in, the
+    # unsubscribe token. The row itself stays, `stopped`, under its id: a
+    # setup email or an open checkout tab can still be paid after the
+    # account is gone, and that payment names this id. Deleting the row
+    # would make it a payment nobody asked to stop; keeping it lets
+    # core/support.py recognise it as unwanted and stop it (the third #1885
+    # review). A deleted account can no longer reach More -> Your support to
+    # press Stop, so anything still charging is asked to stop here, exactly
+    # as Stop would - nobody deleting their account means "keep charging
+    # me". Whoever cancels it is asked by the router once the deletion has
+    # committed.
+    # Locked first, every row of this account's, so a payment confirmation
+    # committing meanwhile is read as paid rather than written over as
+    # emptied (the fourth #1885 review measured a deletion leave a $60
+    # subscription charging under a row with no account and no address).
+    db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).order_by(
+        SupportChoice.id
+    ).with_for_update().populate_existing().all()
+    unpaid = (
+        db.query(SupportChoice)
+        .filter(
+            SupportChoice.profile_id == profile_id,
+            SupportChoice.provider_ref.is_(None),
+            SupportChoice.started_at.is_(None),
+        )
+        .all()
+    )
+    forgotten = [choice.email for choice in unpaid]
+    for choice in unpaid:
+        choice.profile_id = None
+        choice.email = ""
+        choice.status = SupportStatus.stopped
+        choice.ended_at = choice.ended_at or now
+        choice.accounting_email = False
+        choice.accounting_email_at = None
+        choice.replaces_choice_id = None
+        choice.link_token = secrets.token_urlsafe(32)
+    db.flush()
+    # And the mail log and switch rows that still name those addresses.
+    forget_addresses(db, forgotten)
+    stopping = [
+        choice
+        for choice in db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).all()
+        if mark_stop(choice, now=now) or (choice.status == SupportStatus.stop_requested and choice.stop_notified_at is None)
+    ]
+
     # --- The rows other people are relying on. Untouched, and counted so the
     # hiker is told rather than left to assume. ---
 
     kept = _contributions_kept(db, profile_id)
+    kept["records of what you gave OurHike"] = db.query(SupportChoice).filter(SupportChoice.profile_id == profile_id).count()
     kept["volunteer hours a club confirmed"] = (
         db.query(VolunteerHoursRecord)
         .filter(
@@ -350,9 +475,13 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         registry_signatures_withdrawn=registry_signatures,
         workday_signups_released=signups,
         commitments_deleted=commitments,
+        survey_enrollments_deleted=survey_enrollments,
+        survey_claims_released=survey_claims,
         org_rows_unlinked=unlinked,
         challenge_tags_deleted=challenge_tags,
         challenge_entries_deleted=challenge_entries,
+        support_stops_requested=[choice.id for choice in stopping],
+        usage_events_deleted=usage_events,
         contributions_kept={name: count for name, count in kept.items() if count},
     )
 
@@ -389,4 +518,12 @@ def _contributions_kept(db: Session, profile_id: str) -> dict[str, int]:
         # back below the three it needed, which is a decision about that
         # closure rather than about this account.
         "closures you helped confirm": db.query(ClosureApproval).filter(ClosureApproval.person_id == profile_id).count(),
+        # The structure survey (#1983 — The structure inventory's five tables
+        # land in one revision, locked by RLS, with every enum as VARCHAR +
+        # CHECK): records a club is relying on from the
+        # moment they upload - see `delete_account`.
+        "structure records you logged for a club": db.query(InventoryObservation)
+        .filter(InventoryObservation.volunteer_id == profile_id)
+        .count(),
+        "survey walks you recorded for a club": db.query(InventoryPass).filter(InventoryPass.volunteer_id == profile_id).count(),
     }

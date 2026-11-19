@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 import sqlalchemy
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from alembic import command
 from app.config import settings
@@ -109,6 +110,44 @@ def migration_engine():
     finally:
         _reset_schema(engine)
         engine.dispose()
+
+
+def test_the_revision_chain_has_one_head():
+    """`alembic upgrade head` refuses to run against two heads, and `main`
+    carried two for 25 minutes on 2026-11-02: **#1936 — Move each closed
+    month's unlinked usage rows to Parquet in a private R2 bucket, nightly
+    before the rollup** (8f6794da722d) merged at 20:37 and **#1927 — Keep who
+    wrote an org's row in clubs.maintainer_written, which account deletion
+    cannot null** (c3a9e5d27f18) at 20:40, each revising 897b71ad5fff, until
+    **#1950 — Re-point clubs.maintainer_written's migration onto the usage
+    archive's, so main has one Alembic head again** landed at 21:05 (times
+    -05:00, `git log --first-parent main`; the issue was #1945 — main has two
+    Alembic heads since #1927 merged after #1936, so migrate.yml cannot give
+    UA clubs.maintainer_written). migrate.yml's UA run on that push would have
+    failed at `upgrade head`.
+
+    This goes red on the first run that sees both heads: `main`'s post-merge
+    run, or a pull request's or merge-queue entry's run that starts after the
+    other head has landed. backend-tests.yml runs on `pull_request`, whose
+    checkout is the branch merged into `main` as `main` stood when the run
+    started, and on `merge_group`. On 2026-11-02 neither pull request's run
+    could: each one's last Backend tests run started on 2026-10-29, days
+    before either merged (the Actions API, read 2026-11-04), so `main`'s run
+    was the first. migrate.yml runs only on a push touching alembic/versions,
+    and this test names the two heads where Alembic says only "Multiple head
+    revisions are present".
+    Checked to have teeth with a throwaway revision beside the head
+    (2026-11-04: red with it, green without). Needs no database: the heads
+    are read from the files in alembic/versions.
+    """
+    heads = ScriptDirectory.from_config(_alembic_config()).get_heads()
+
+    assert len(heads) == 1, (
+        f"alembic/versions declares {len(heads)} heads, {sorted(heads)}: two branches revised the same parent, "
+        "and `alembic upgrade head` refuses to choose. Re-point the newer one onto the other, as "
+        "#1950 — Re-point clubs.maintainer_written's migration onto the usage archive's, so main has one Alembic head "
+        "again - did."
+    )
 
 
 def test_upgrade_head_builds_the_schema_with_rls_on(migration_engine):
@@ -369,3 +408,66 @@ def test_the_challenge_entry_backfill_names_the_owner_and_freezes_the_tags(migra
         )
     assert {"club_id", "hand_item_ids", "untagged_item_ids"}.isdisjoint(columns)
     assert foreign_keys == []
+
+
+def test_the_maintainer_written_backfill_marks_only_rows_no_person_wrote(migration_engine):
+    """c3a9e5d27f18 adds `clubs.maintainer_written` and fills it once (#1913 -
+    Deleting the registrant's account turns a self-registered organization
+    into a maintainer-written one, and lets an accomplice keep an admin seat).
+    `created_by IS NULL` alone is what account deletion fakes, so the rows a
+    deleted account left behind - a registration claimed or held, a
+    nomination - must come out false, and only a maintainer's row true. Rows
+    after the upgrade default to false, which a maintainer's path has to
+    change."""
+    config = _alembic_config()
+    command.upgrade(config, "897b71ad5fff")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into profiles (id, role, created_at) values "
+                "('person-1', 'hiker', now()), ('accomplice', 'hiker', now()), ('nominator', 'hiker', now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into clubs (id, name, created_by, state) values "
+                "('loaded', 'Loaded Club', null, 'unclaimed'), "
+                "('registered', 'Registered Club', 'person-1', 'claimed'), "
+                # Registrants who deleted their accounts: deletion nulls
+                # `created_by` and takes their own seat, not the accomplice's.
+                "('claimed-then-deleted', 'Evil Trails', null, 'claimed'), "
+                "('held-then-deleted', 'Ramapo', null, 'pending'), "
+                "('seated-then-deleted', 'Seated', null, 'unclaimed'), "
+                "('nominated-then-deleted', 'Nominated', null, 'unclaimed')"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into club_admins (id, club_id, person_id, is_codeowner, invited_at) values "
+                "('seat-1', 'held-then-deleted', 'accomplice', true, now()), "
+                "('seat-2', 'seated-then-deleted', 'accomplice', true, now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into org_nominations (id, club_id, nominated_by, website, state, proposal_token, "
+                "token_expires_at, pages_read, created_at) values "
+                "('nom-1', 'nominated-then-deleted', 'nominator', 'https://nominated.example', 'proposed', 'tok-1', "
+                "now() + interval '1 day', 0, now())"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with migration_engine.begin() as connection:
+        connection.execute(sqlalchemy.text("insert into clubs (id, name) values ('after', 'After the upgrade')"))
+        flags = dict(connection.execute(sqlalchemy.text("select id, maintainer_written from clubs")).tuples().all())
+    assert flags == {
+        "loaded": True,
+        "registered": False,
+        "claimed-then-deleted": False,
+        "held-then-deleted": False,
+        "seated-then-deleted": False,
+        "nominated-then-deleted": False,
+        "after": False,
+    }

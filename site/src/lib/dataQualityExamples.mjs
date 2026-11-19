@@ -270,6 +270,82 @@ export function hourlyAllGreen() {
   };
 }
 
+// ---------------------------------------------------------------- the database's size
+
+/** The sizes the pipeline's check warns and fails at, in megabytes: 80% and 95% of the plan's 500. */
+const DATABASE_WARN_MB = 400;
+const DATABASE_FAIL_MB = 475;
+
+/**
+ * OurHike's own database over a week of hourly runs, growing steadily to
+ * `last` megabytes, as pipeline/dbt/macros/data_quality.sql writes a measured
+ * test's series ("A MEASURED TEST"): named by the table its test reads, its
+ * values whole, unbanded, and carrying the two sizes the check warns and
+ * fails at, which no other series has.
+ */
+function databaseSeries(last, { inNeedsALook }) {
+  const n = 168;
+  const first = last - 110;
+  const endMs = Date.parse(HOURLY_BUILT_AT);
+  const points = Array.from({ length: n }, (_, i) => ({
+    at: new Date(endMs - (n - 1 - i) * 3600 * 1000).toISOString().replace(".000Z", "Z"),
+    value: Math.round(first + ((last - first) * i) / (n - 1)),
+    expected_min: null,
+    expected_max: null,
+  }));
+  return {
+    table: "base_ourhike__database_size",
+    column: null,
+    metric: "database_mb",
+    mart: null,
+    in_needs_a_look: inNeedsALook,
+    points,
+    warn_at: DATABASE_WARN_MB,
+    fail_at: DATABASE_FAIL_MB,
+  };
+}
+
+/**
+ * hourlyAllGreen's run but for OurHike's own database, past its warning at
+ * 415 MB, mock B's figure, which the maintainer chose from (the poll of
+ * 2026-10-28, "Hourly dbt check, with megabytes"): a Volume entry whose
+ * `expected_max` is the size it fails at, since the hour its size first
+ * reached 400, and the week behind it. Nothing else warns, so the row and
+ * the whole chart fit one laptop frame (data-quality-database-size.mjs).
+ */
+export function hourlyDatabaseNearItsLimit() {
+  const base = hourlyAllGreen();
+  const series = databaseSeries(415, { inNeedsALook: true });
+  const since = series.points.find((point) => point.value >= DATABASE_WARN_MB).at;
+  const byKind = kinds([
+    ["freshness", 32],
+    ["volume", 41, 1],
+    ["schema", 40],
+    ["dbt_tests", 300],
+    ["anomalies", 6],
+  ]);
+  return {
+    ...base,
+    totals: totalOf(byKind),
+    kinds: byKind,
+    needs_a_look: [
+      {
+        kind: "volume",
+        table: "base_ourhike__database_size",
+        column: null,
+        status: "warn",
+        value: 415,
+        expected_min: null,
+        expected_max: DATABASE_FAIL_MB,
+        since,
+        metric: "database_mb",
+        test: "assert_the_database_stays_under_its_plan",
+      },
+    ],
+    series: [series],
+  };
+}
+
 // ---------------------------------------------------------------- many problems
 
 const HOUR = 3600;

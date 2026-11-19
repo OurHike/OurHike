@@ -47,6 +47,7 @@ vi.mock('./lib/api', () => ({
       timestamp: '2026-09-04T09:00:00.000Z',
     },
   ]),
+  fetchMyReports: vi.fn(async () => []),
   fetchClosures: vi.fn(async () => []),
   fetchFieldNotes: vi.fn(async () => []),
   fetchDisputes: vi.fn(async () => []),
@@ -144,7 +145,7 @@ describe('Your photos and notes', () => {
     })
     const user = userEvent.setup()
     await openMore(user)
-    await user.click(await screen.findByRole('button', { name: /^You/ }))
+    await user.click(await screen.findByRole('button', { name: /^You(?!r support)/ }))
     await user.click(screen.getByRole('button', { name: 'Your photos and notes' }))
 
     const row = await screen.findByRole('button', { name: /Brink Road spring/ })

@@ -112,6 +112,7 @@ vi.mock('./lib/api', () => ({
   // Disputes ride the same read as the notes they are computed from (#876).
   fetchDisputes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => REPORTS),
+  fetchMyReports: vi.fn(async () => []),
 }))
 
 // No fetch stub: this file mocks lib/api and lib/config, so nothing here

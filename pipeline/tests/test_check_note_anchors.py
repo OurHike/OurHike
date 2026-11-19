@@ -49,6 +49,8 @@ def _note(poi_id, observed="2026-08-19T12:00:00Z", lat=41.2, lon=-74.1, mile=136
 
 
 def _publish(mock, manifest_artifacts, objects=None):
+    # No channels.json: the root manifest is read, as before the swap (#1862).
+    mock.get(f"{BASE}/channels.json", status_code=404)
     mock.get(f"{BASE}/latest.json", json={"artifacts": {key: {} for key in manifest_artifacts}})
     for key, payload in (objects or {}).items():
         mock.get(f"{BASE}/{key}", json=payload)
@@ -189,6 +191,50 @@ def test_a_manifest_naming_no_poi_files_is_a_failure_not_an_empty_answer(request
 
     assert not verdict["healthy"]
     assert any("no poi_*.geojson" in p["detail"] for p in verdict["failed"])
+
+
+def _promoted_production(mock, release="2026-10-17-2", poi_ids=("atc_shelters:abc",), manifest=True):
+    """Production as it has been since the 2026-10-02 bucket swap (#1862): the
+    root latest.json names only conditions files, the POI files sit in the
+    release folder channels.json points at, and notes stay at the root."""
+    mock.get(f"{BASE}/latest.json", json={"artifacts": {NOTES_KEY: {}}})
+    mock.get(f"{BASE}/channels.json", json={"production": {"v1": release}})
+    folder = f"{BASE}/releases/{release}"
+    if manifest:
+        mock.get(f"{folder}/manifest.json", json={"artifacts": {"poi_shelter.geojson": {}}})
+    mock.get(f"{folder}/poi_shelter.geojson", json=_poi_file(*poi_ids))
+
+
+def test_poi_files_are_read_from_the_release_channels_json_names(requests_mock):
+    _promoted_production(requests_mock)
+    requests_mock.get(f"{BASE}/{NOTES_KEY}", json=_notes(_note("atc_shelters:abc")))
+
+    verdict = check_anchors(BASE)
+
+    assert verdict["healthy"]
+    assert verdict["published_ids"] == 1
+
+
+def test_an_anchor_missing_from_the_pointed_release_is_still_an_orphan(requests_mock):
+    _promoted_production(requests_mock, poi_ids=("atc_shelters:other",))
+    requests_mock.get(f"{BASE}/{NOTES_KEY}", json=_notes(_note("atc_shelters:abc")))
+
+    verdict = check_anchors(BASE)
+
+    assert not verdict["healthy"]
+    assert verdict["unknown_orphans"] == 1
+
+
+def test_a_pointer_to_a_release_with_no_manifest_fails_rather_than_orphaning_every_anchor(requests_mock):
+    _promoted_production(requests_mock, manifest=False)
+    requests_mock.get(f"{BASE}/releases/2026-10-17-2/manifest.json", status_code=404)
+    requests_mock.get(f"{BASE}/{NOTES_KEY}", json=_notes(_note("atc_shelters:abc")))
+
+    verdict = check_anchors(BASE)
+
+    assert not verdict["healthy"]
+    assert verdict["orphans"] == []
+    assert any("channels.json -> 2026-10-17-2" == p["key"] for p in verdict["failed"])
 
 
 def test_pin_drop_notes_have_nothing_to_orphan(requests_mock):

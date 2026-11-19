@@ -39,6 +39,7 @@ os.environ.setdefault("SUPABASE_ANON_KEY", "test-only-placeholder-anon-key")
 # container and that always wins.
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://ourhike:ourhike@localhost:5432/ourhike_test")
 
+import jwt  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import MetaData, create_engine, text  # noqa: E402
@@ -185,6 +186,21 @@ def db_engine():
     finally:
         _reset_schema(engine)
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _supabase_identities_from_the_test_token(monkeypatch):
+    """Stands in for Supabase's `GET /auth/v1/user` (#1765): answers with the
+    GitHub identity `make_token(github_login=...)` recorded as the provider's
+    own, ignoring `user_metadata`, which the real endpoint's identities do not
+    read from. A test that wants the call to fail patches the seam itself."""
+
+    def identities(token):
+        app_metadata = jwt.decode(token, options={"verify_signature": False}).get("app_metadata") or {}
+        login = app_metadata.get("test_identity")
+        return [{"provider": "github", "identity_data": {"user_name": login}}] if login else []
+
+    monkeypatch.setattr("app.core.auth.fetch_supabase_identities", identities)
 
 
 @pytest.fixture(autouse=True)

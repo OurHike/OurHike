@@ -1,0 +1,85 @@
+# Inventory.dc.html — rendered text, captured 2026-11-04
+
+logo
+Your Trail Club
+Structure inventory · Inventory
+Signed in as [YOUR NAME] · Local Chair
+Inventory
+118 accepted structures · 236 visits this year · 7 flagged Poor or Unsafe
+Export GeoJSON
+Export CSV
+Photos (zip)
+All types
+Poor or Unsafe
+Not checked in 6 months
+NY 301 – Dennytown
+STRUCTURE
+AREA
+WHERE
+LATEST
+CHECKED
+VISITS
+Bridge
+AT-NY-BR-014
+NY 301 – Dennytown
+1.9 mi in
+Poor
+Sept 14
+3
+Puncheon
+AT-NY-PU-031
+NY 301 – Dennytown
+1.1 mi in
+Good
+Sept 14
+2
+RPH Shelter
+AT-NY-SH-004
+S. Highland – RPH
+2.0 mi in
+Fair
+Oct 28
+5
+Privy at RPH
+AT-NY-PR-004
+S. Highland – RPH
+2.0 mi in
+Poor
+Oct 28
+5
+Piped spring
+AT-NY-WS-009
+Hemlock Springs – Canopus Lake
+0.7 mi in
+Good
+Oct 11
+2
+Stone steps
+AT-NY-ST-012
+Dennytown – Canopus Hill
+2.8 mi in
+Fair
+Oct 4
+1
+Junction sign
+AT-NY-SG-040
+NY 301 – Dennytown
+0.3 mi in
+Unsafe
+Nov 2
+1
+Showing 7 of 118 · sorted by condition, worst first
+Bridge · AT-NY-BR-014
+NY 301 – Dennytown · 1.9 mi in · about 10 to 25 ft
+HISTORY
+Sept 14, 2026 · M. K. · Poor
+Rot, missing boards · major repair, this season · 3 photos
+Jun 2, 2026 · J. S. · Fair
+Loose boards · minor repair, next year · 2 photos
+Oct 2025 · ATC inventory · Good
+22 ft · 1 photo
+2017 · club list
+Built 2014, treated lumber
+Open on map
+Make a work item
+Each visit is one volunteer's observation and stays as they wrote it. Editing here adds the Local Chair's note; it never changes theirs.

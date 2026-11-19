@@ -28,8 +28,19 @@ from app.models.club import Club, OrgAdmin
 from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
+from app.models.inventory import (
+    Condition,
+    InventoryClaim,
+    InventoryEnrollment,
+    InventoryObservation,
+    InventoryPass,
+    InventoryStructure,
+    Repair,
+    StructureKind,
+)
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.nomination import OrgNomination
+from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal
 from app.models.preferences import UserPreferences
@@ -220,6 +231,43 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
             updated_by=profile_id,
         )
     )
+    # The structure survey (#1983 — The structure inventory's five tables land
+    # in one revision, locked by RLS, with every enum as VARCHAR + CHECK): a row
+    # in each of its five tables that
+    # names a person. The section and trail are the club's own registry,
+    # which a claim and a walk hang off.
+    park = OrgPark(id=f"park-{profile_id}", club_id=club.id, name="Fahnestock")
+    trail = OrgTrail(id=f"trail-{profile_id}", park_id=park.id, name="Appalachian Trail")
+    section = OrgSection(id=f"section-{profile_id}", trail_id=trail.id, name="NY 301 to Dennytown Road", miles=3.6)
+    for tier in (park, trail, section):
+        db.add(tier)
+        db.flush()
+    db.add(InventoryEnrollment(club_id=club.id, person_id=profile_id, waiver_version="2026-1", typed_name="Jane Doe"))
+    db.add(InventoryClaim(club_id=club.id, volunteer_id=profile_id, section_id=section.id, walk_on=dt.date(2026, 11, 14)))
+    walk = InventoryPass(id=f"walk-{profile_id}", club_id=club.id, volunteer_id=profile_id, trail_id=trail.id)
+    bridge = InventoryStructure(
+        id=f"structure-{profile_id}", club_id=club.id, kind=StructureKind.bridge, lat=41.43, lon=-73.88, created_by=profile_id
+    )
+    for row in (walk, bridge):
+        db.add(row)
+        db.flush()
+    db.add(
+        InventoryObservation(
+            structure_id=bridge.id,
+            club_id=club.id,
+            pass_id=walk.id,
+            volunteer_id=profile_id,
+            captured_at=dt.datetime(2026, 11, 2, 10, 14),
+            lat=41.43,
+            lon=-73.88,
+            accuracy_m=4.3,
+            readings_count=1,
+            readings_seconds=1,
+            readings=[{"lat": 41.43, "lon": -73.88, "acc": 4.3, "t": 0}],
+            condition=Condition.unsafe,
+            repair=Repair.replace,
+        )
+    )
     club.created_by = profile_id
     # The other profile column on `clubs`: whoever agreed that a model may
     # read this organization's data. Furnished so the completeness guard
@@ -369,7 +417,35 @@ def test_the_summary_names_what_stayed(db_session, hiker):
         "photos you shared": 1,
         "closures you helped confirm": 1,
         "records of what you gave OurHike": 1,
+        "structure records you logged for a club": 1,
+        "survey walks you recorded for a club": 1,
     }
+
+
+def test_a_volunteer_s_survey_standing_and_claims_go_and_what_they_logged_stays_with_the_club(db_session, hiker):
+    """The structure survey's line through this module's rule.
+
+    #1983 — The structure inventory's five tables land in one revision, locked
+    by RLS, with every enum as VARCHAR + CHECK.
+
+    The enrolment is a standing and a waiver signature, and the claim is a
+    heads-up about a day: both were only ever this volunteer's, so both go.
+    The record they logged, the walk it came from and the bridge they were
+    first to log are the club's survey data, so all three stay - pointing at
+    the scrubbed profile, as a condition report does.
+    """
+    summary = delete_account(db_session, hiker)
+    db_session.commit()
+
+    assert (summary.survey_enrollments_deleted, summary.survey_claims_released) == (1, 1)
+    assert _count(db_session, InventoryEnrollment, InventoryEnrollment.person_id == hiker.id) == 0
+    assert _count(db_session, InventoryClaim, InventoryClaim.volunteer_id == hiker.id) == 0
+
+    record = db_session.query(InventoryObservation).filter(InventoryObservation.volunteer_id == hiker.id).one()
+    assert record.condition is Condition.unsafe
+    assert db_session.get(InventoryPass, record.pass_id).volunteer_id == hiker.id
+    assert db_session.get(InventoryStructure, record.structure_id).created_by == hiker.id
+    assert db_session.get(Profile, hiker.id).display_name is None
 
 
 def test_support_that_was_running_is_asked_to_stop_and_kept(db_session, hiker):
@@ -470,6 +546,14 @@ def test_every_table_that_names_a_profile_is_accounted_for(db_session, hiker):
 # this hiker's own. Listed rather than inferred so that a table joining this
 # set is a line somebody wrote on purpose.
 _TABLES_EMPTIED = {
+    # The structure survey (#1983 — The structure inventory's five tables land
+    # in one revision, locked by RLS, with every enum as VARCHAR + CHECK). An
+    # enrolment is a standing and a waiver
+    # signature, and a signature cannot outlive its signer; a claim from an
+    # account that is gone steers volunteers away from a section nobody will
+    # walk. What a volunteer logged stays - see core/account_deletion.py.
+    "inventory_enrollments",
+    "inventory_claims",
     "synced_trips",
     # The same claim as synced_trips, decided with #976: a synced day hike
     # is private planning nobody else has acted on.

@@ -32,6 +32,11 @@ shapely
 # That the SQL side's PROJ is DuckDB spatial's own, which moves only with the
 # duckdb pin above, is reasoned, not checked. Raise this with that pin, or
 # with a parity test that says how close is close enough.
+#
+# .github/dependabot.yml ignores pyproj 3.8 and later to hold this cap.
+# Without that rule Dependabot raised it to <3.9 by itself, in #1959 (Bump
+# the pipeline-minor-and-patch group in /pipeline with 2 updates,
+# 2026-11-04). Lift the two together.
 pyproj<3.8
 boto3
 

@@ -25,6 +25,7 @@ from app.routers import (
     console,
     field_notes,
     hikes,
+    inventory,
     maintainer_assignments,
     moderation,
     nominations,
@@ -204,6 +205,7 @@ app.include_router(org_registry.router)
 app.include_router(org_roles.router)
 app.include_router(work_projects.router)
 app.include_router(ridge_runner.router)
+app.include_router(inventory.router)
 app.include_router(console.router)
 app.include_router(assist.router)
 app.include_router(nominations.router)

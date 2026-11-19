@@ -32,11 +32,15 @@ signed-out caller would be telling them the resource exists, and one answering
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 from app.core.console_tokens import hash_secret, new_key_pair
+from app.core.time import utc_now
 from app.models.club import OrgState
 from app.models.console_key import ConsoleKey
+from app.models.inventory import InventoryClubSettings, InventoryEnrollment, InventoryObservation, InventoryStructure
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import OrgRole
 from app.models.trail_challenge import ClubChallenge
@@ -731,3 +735,198 @@ def test_a_maintainer_can_read_the_roster_of_nothing_and_still_walk_their_miles(
     body = _call(client, org_world, MAINTAINER, "get", "/clubs/{slug}/access").json()
     assert body["is_volunteer"] is True
     assert body["can_manage_volunteers"] is False
+
+
+# ------------------------------------------------------------------ #
+# The structure survey: #1984 — A club's enrolment, settings and waiver have
+# endpoints, and an enrolled volunteer is a person `org_access` did not know
+# about (features/STRUCTURE_INVENTORY.md)
+# ------------------------------------------------------------------ #
+#
+# One more kind of person, and only for these rows: somebody enrolled in the
+# club's survey who holds no seat, no role and no assignment. A roving
+# volunteer is not a maintainer of anything, so every row above would treat
+# them as an outsider - which is right, and is why EVERYBODY is left as it
+# is rather than widened under rows that never asked about them.
+
+ENROLLED_VOLUNTEER = "enrolled volunteer"
+SURVEY_PEOPLE = (*EVERYBODY, ENROLLED_VOLUNTEER)
+SIGNED_IN = set(SURVEY_PEOPLE) - {SIGNED_OUT}
+
+WAIVER = {
+    "waiver_text": "I walk at my own risk and will not repair anything I log.",
+    "waiver_version": "2026-1",
+    "claim_days_ahead": 14,
+    "coverage_window_days": 90,
+    "coverage_min_records": 3,
+    "stale_days": 365,
+}
+
+
+@pytest.fixture
+def survey_world(db_session, org_world):
+    """`org_world`, with a written waiver and one enrolled, trained volunteer."""
+    org = org_world["org"]
+    volunteer = make_profile(db_session)
+    db_session.add(
+        InventoryClubSettings(club_id=org.id, waiver_text=WAIVER["waiver_text"], waiver_version=WAIVER["waiver_version"])
+    )
+    db_session.add(
+        InventoryEnrollment(
+            club_id=org.id,
+            person_id=volunteer.id,
+            waiver_version=WAIVER["waiver_version"],
+            typed_name="Pat R.",
+            training_completed_at=utc_now(),
+        )
+    )
+    db_session.commit()
+    return {**org_world, "people": {**org_world["people"], ENROLLED_VOLUNTEER: volunteer}}
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_a_clubs_survey_settings_are_readable_by_anybody_signed_in(client, survey_world, who):
+    """The waiver has to be readable before it is signed, by somebody who
+    holds nothing at the club yet."""
+    response = _call(client, survey_world, who, "get", "/clubs/{slug}/inventory/settings")
+    expected = _expected(SIGNED_IN, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_a_clubs_survey_settings_are_an_admins_to_change(client, survey_world, who):
+    """The waiver and the thresholds are the club's rules. Not a supervisor's,
+    and not the volunteers' who sign them."""
+    response = _call(client, survey_world, who, "put", "/clubs/{slug}/inventory/settings", WAIVER)
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_anybody_signed_in_can_join_a_clubs_survey(client, survey_world, who):
+    """A roving volunteer need not hold anything at the club. The one already
+    enrolled gets their enrolment back rather than an error."""
+    response = _call(
+        client,
+        survey_world,
+        who,
+        "post",
+        "/clubs/{slug}/inventory/enrollments",
+        {"typed_name": "Somebody", "waiver_version": WAIVER["waiver_version"]},
+    )
+    expected = _expected(SIGNED_IN, who)
+
+    if expected is not None:
+        assert response.status_code == expected
+    else:
+        assert response.status_code == (200 if who == ENROLLED_VOLUNTEER else 201)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_anybody_signed_in_can_read_their_own_survey_enrolment(client, survey_world, who):
+    response = _call(client, survey_world, who, "get", "/clubs/{slug}/inventory/enrollments/me")
+    expected = _expected(SIGNED_IN, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+    if expected is None:
+        assert (response.json() is not None) is (who == ENROLLED_VOLUNTEER)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_only_an_enrolled_volunteer_can_finish_the_field_guide(client, survey_world, who):
+    """Everybody signed in reaches the endpoint; only somebody enrolled has a
+    field guide to finish, and the rest are told so with a 404 - their own
+    enrolment does not exist, which is not a permission refused."""
+    response = _call(client, survey_world, who, "patch", "/clubs/{slug}/inventory/enrollments/me", {"training_completed": True})
+    expected = _expected(SIGNED_IN, who)
+
+    if expected is not None:
+        assert response.status_code == expected
+    else:
+        assert response.status_code == (200 if who == ENROLLED_VOLUNTEER else 404)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_only_an_enrolled_volunteer_can_upload_a_survey_record(client, survey_world, who):
+    """#1985 — An observation uploads once, idempotent on its id, creates its structure when the structure is new, and keeps every GPS reading it was given.
+
+    An admin who has not joined the survey cannot file a record as
+    if they had walked it; the waiver and the field guide come first for
+    everybody."""
+    body = {
+        "id": str(uuid.uuid4()),
+        "structure_id": str(uuid.uuid4()),
+        "kind": "bridge",
+        "captured_at": "2026-11-02T10:14:00Z",
+        "readings": [{"lat": 41.4321, "lon": -73.8765, "acc": 4.3, "t": 0}],
+        "readings_seconds": 1,
+        "condition": "good",
+        "repair": "leave",
+    }
+    response = _call(client, survey_world, who, "post", "/clubs/{slug}/inventory/observations", body)
+    expected = _expected({ENROLLED_VOLUNTEER}, who)
+
+    assert response.status_code == (201 if expected is None else expected)
+
+
+@pytest.fixture
+def survey_photo(client, db_session, survey_world, photo_bucket):
+    """`survey_world` with a bucket, and one record of the enrolled
+    volunteer's, in the world's section, carrying photo 1 (#1986 —
+    Observation photos use the report pipeline with a key of their own and
+    no table)."""
+    volunteer = survey_world["people"][ENROLLED_VOLUNTEER]
+    record_id = str(uuid.uuid4())
+    body = {
+        "id": record_id,
+        "structure_id": str(uuid.uuid4()),
+        "kind": "bridge",
+        "captured_at": "2026-11-02T10:14:00Z",
+        "readings": [{"lat": 41.43, "lon": -73.88, "acc": 4.3, "t": 0}],
+        "readings_seconds": 1,
+        "condition": "poor",
+        "repair": "major",
+    }
+    base = f"/clubs/{survey_world['org'].slug}/inventory/observations"
+    assert client.post(base, json=body, headers=auth_headers(volunteer.id)).status_code == 201
+    photo = {**auth_headers(volunteer.id), "Content-Type": "image/jpeg"}
+    assert client.put(f"{base}/{record_id}/photos/1", content=b"\xff\xd8\xff\xe0 jpeg", headers=photo).status_code == 200
+    structure_id = db_session.get(InventoryObservation, record_id).structure_id
+    db_session.get(InventoryStructure, structure_id).section_id = survey_world["section"].id
+    db_session.commit()
+    return {**survey_world, "record": record_id}
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_only_the_volunteer_who_logged_a_record_can_add_its_photos(client, survey_photo, who):
+    """#1986 — Observation photos use the report pipeline with a key of their own and no table.
+
+    Everybody else is refused before a byte is read: 403 for the
+    people the survey's volunteer check turns away."""
+    path = f"/clubs/{{slug}}/inventory/observations/{survey_photo['record']}/photos/2"
+    url = path.replace("{slug}", survey_photo["org"].slug)
+    headers = {**_headers(survey_photo, who), "Content-Type": "image/jpeg"}
+    response = client.put(url, content=b"\xff\xd8\xff\xe0 jpeg", headers=headers)
+    expected = _expected({ENROLLED_VOLUNTEER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_a_records_photo_reaches_its_volunteer_and_its_reviewers_and_is_a_404_to_everybody_else(client, survey_photo, who):
+    """#1986 — Observation photos use the report pipeline with a key of their own and no table.
+
+    The volunteer, the club's admins, and the supervisor whose role
+    reaches the record's section. A maintainer and an outsider get the same
+    404 a missing photo gets - a 403 would confirm the record exists."""
+    response = _call(
+        client, survey_photo, who, "get", f"/clubs/{{slug}}/inventory/observations/{survey_photo['record']}/photos/1/link"
+    )
+    if who == SIGNED_OUT:
+        assert response.status_code == 401
+    elif who in {ADMIN, CODEOWNER, SUPERVISOR, ENROLLED_VOLUNTEER}:
+        assert response.status_code == 200
+    else:
+        assert response.status_code == 404

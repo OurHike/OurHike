@@ -10,6 +10,9 @@
 // seventy-six of a hundred rows said nothing a hiker did not know from the
 // title, and read as a grade.
 
+import { CHALLENGE_WORDS } from './challengeWords'
+import { isItemDone, type ChallengeTag } from './challengeProgress'
+import { stateName, type TagPlace } from './wherePlace'
 import {
   isPlaceItem,
   isSelfReport,
@@ -114,6 +117,38 @@ export function statusLine(
   return `Saved on this phone, and counted for the ${club.orgShort} with signal, never by name.`
 }
 
+/**
+ * The one sentence a screen reader hears for the blaze card (#1962): what is
+ * earned, by section, and never what is not. "12 trail karma earned: 3 Learn, 7
+ * Experience, 2 Protect." A card with nothing earned yet says so in one
+ * short sentence rather than printing a hundred.
+ */
+export function cardSummary(challenge: Challenge, tags: readonly ChallengeTag[]): string {
+  const parts: string[] = []
+  let total = 0
+  for (const section of challenge.sections) {
+    const earned = challenge.items.filter(
+      (item) => item.section === section.id && isItemDone(item, challenge.id, tags),
+    ).length
+    if (earned === 0) continue
+    total += earned
+    parts.push(`${earned} ${section.short}`)
+  }
+  if (total === 0) return `${capitalise(CHALLENGE_WORDS.noun)} you earn appears here.`
+  return `${total} ${CHALLENGE_WORDS.noun} ${CHALLENGE_WORDS.past}: ${parts.join(', ')}.`
+}
+
+function capitalise(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1)
+}
+
+/** The club's one line about a sealed mystery item, or null: shown under
+ *  "Sealed until Jul 20" before its day, never in place of the title. */
+export function mysteryTeaser(item: ChallengeItem, today: string): string | null {
+  if (item.mystery === null || itemTitle(item, today) !== null) return null
+  return item.mystery.teaser
+}
+
 const MONTHS = [
   'Jan',
   'Feb',
@@ -153,4 +188,25 @@ export function formatMoment(iso: string): string {
   const minutes = String(at.getMinutes()).padStart(2, '0')
   const clock = `${hours % 12 === 0 ? 12 : hours % 12}:${minutes} ${hours < 12 ? 'am' : 'pm'}`
   return `${MONTHS[at.getMonth()]} ${at.getDate()} · ${clock}`
+}
+
+/** One line for where an earned item happened (lib/wherePlace.ts), as the sheet and
+ *  the Where view print it: a mile, a day's extent, a place, a state, or
+ *  "Not on the trail". Read on any later day, so nothing in it is relative
+ *  to now: "here" and "walked today" were the Where sheet's words at the
+ *  moment of earning, and printed under "earned Jul 2" on Jul 14 they said
+ *  something false (review of #2015). */
+export function placeWords(place: TagPlace): string {
+  switch (place.kind) {
+    case 'here':
+      return `${mileLabel(place.mile)} · where you stood`
+    case 'walked':
+      return `${mileLabel(place.fromMile)} – ${mileLabel(place.toMile)} · on that day’s walk`
+    case 'poi':
+      return place.mile === null ? place.name : `${place.name} · ${mileLabel(place.mile)}`
+    case 'state':
+      return `On the trail in ${stateName(place.state)}`
+    case 'off':
+      return 'Not on the trail'
+  }
 }

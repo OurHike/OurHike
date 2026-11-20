@@ -9,7 +9,7 @@
 // line has a date and a time and no weather, which the phone never kept
 // against a tag.
 //
-// And "Take it back" beside Done (#1961), for the hiker who pressed Earn all after
+// And "Take it back" (#1961; the tile sheet of #1963 now), for the hiker who pressed Earn all after
 // walking past the junction without going up (review, 2026-09-30).
 //
 // SEEDED, AND SAID SO: fixtures/challenges.mjs. No walked miles are seeded,

@@ -53,7 +53,8 @@ export function TagPill({
   label,
 }: {
   tagged: boolean
-  onPress: () => void
+  /** `from` is the pill itself, for whatever needs focus back on it. */
+  onPress: (from: HTMLButtonElement) => void
   /** The accessible name, which must say WHICH item - a list of ten
    *  identical "Tag it" buttons is a list nobody can use by ear. */
   label: string
@@ -64,7 +65,7 @@ export function TagPill({
       className="challenge-tag"
       aria-pressed={tagged}
       aria-label={label}
-      onClick={onPress}
+      onClick={(event) => onPress(event.currentTarget)}
     >
       {tagged ? CHALLENGE_WORDS.done : CHALLENGE_WORDS.act}
     </button>

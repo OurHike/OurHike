@@ -251,35 +251,11 @@
   text-decoration: underline;
 }
 
-/* The strip: every place on the list laid along the trail in mile order,
-   ends labelled with the first and last place rather than any count. */
-.challenge-strip {
-  position: relative;
-  height: 18px;
-  margin: 4px 8px 0;
-  border-top: 1px solid var(--border-chrome);
-}
-
-/* A point on a strip or a line: positioned by its mile, centred on it. */
+/* A point on a line: positioned by its mile, centred on it. */
 .challenge-strip__point {
   position: absolute;
   top: -8px;
   width: 0;
-}
-
-.challenge-strip .challenge-diamond {
-  width: 10px;
-  height: 10px;
-  margin: 0 0 0 -5px;
-}
-
-.challenge-strip__ends {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--fg-chrome-3);
 }
 
 .challenge-pills {
@@ -987,4 +963,436 @@ div.challenge-row__open {
   font-size: 13px;
   text-decoration: underline;
   cursor: pointer;
+}
+
+/* ---- The blaze card (#1962, features/CHALLENGES_BLAZE_CARD.md) ----
+   Tiles taller than wide, 1 by 1.3; the three sizes
+   are the frames' and @unvalidated (BlazeCard.tsx says what would settle
+   them). Chrome tokens for colour: the card sits on the pine header, where
+   --border-chrome is the frames' pine-700 tile; the earned tile's one-pixel
+   shadow is the only raw colour, a lift rather than a hue.
+   A tile becoming earned is a 150 ms colour change and nothing else
+   (maintainer, 2026-09-30: no stamp animation). */
+
+.blaze-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  --tile-size: 26px;
+  --tile-gap: 4px;
+}
+
+.blaze-card--mini {
+  gap: 3px;
+  --tile-size: 8px;
+  --tile-gap: 2px;
+}
+
+.blaze-card--expanded {
+  gap: 12px;
+  --tile-size: 56px;
+  --tile-gap: 6px;
+}
+
+.blaze-card__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/* The card's size: each section is the tap target, never a tile. */
+.blaze-card__section--press {
+  cursor: pointer;
+  border-radius: 8px;
+  min-height: var(--min-touch-target, 44px);
+}
+
+.blaze-card__section--press:focus-visible {
+  outline: 2px solid var(--accent-blaze-yellow);
+  outline-offset: 4px;
+}
+
+.blaze-card__label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 1px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--fg-chrome-3);
+}
+
+.blaze-card--expanded .blaze-card__label {
+  font-size: 11px;
+}
+
+.blaze-card__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tile-gap);
+}
+
+.blaze-tile {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--tile-size);
+  height: calc(var(--tile-size) * 1.3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--border-chrome);
+  color: var(--fg-chrome-3);
+  transition:
+    background-color 150ms var(--ease-standard, ease),
+    color 150ms var(--ease-standard, ease);
+}
+
+.blaze-card--expanded .blaze-tile {
+  border-radius: 6px;
+}
+
+.blaze-tile svg {
+  width: 62%;
+  height: 62%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 8 px tiles: a glyph would be a smudge, so the strip draws plain tiles. */
+.blaze-card--mini .blaze-tile svg {
+  display: none;
+}
+
+.blaze-card--mini .blaze-tile {
+  border-radius: 1px;
+}
+
+/* An earned tile is karma gold (the maintainer's poll, 2026-11-04, from the
+   card as built beside this): it was paper-white, which the code called "a
+   white blaze", and blazes are official trail marking - the same poll day
+   retired "blaze" as the word for what is earned. The ink is the chrome's
+   own ground, dark under both themes as the yellow needs - the support
+   nudge's pairing (support.css). */
+.blaze-tile--done {
+  background: var(--accent-blaze-yellow);
+  color: var(--bg-chrome);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.blaze-tile--done svg {
+  stroke-width: 2;
+}
+
+.blaze-tile--sealed {
+  background: transparent;
+  /* --fg-chrome-3 on the chrome: 7.73:1 light, 6.35:1 dark, measured from
+     tokens/colors.css. --brand-primary was 2.21:1 in the light theme, under
+     the 3:1 a non-text mark needs (review of #1990). */
+  border: 1.5px dashed var(--fg-chrome-3);
+}
+
+.blaze-tile--press {
+  cursor: pointer;
+  font: inherit;
+}
+
+.blaze-tile--press:focus-visible {
+  outline: 2px solid var(--accent-blaze-yellow);
+  outline-offset: 2px;
+}
+
+/* A yellow ring round a yellow tile is no ring at all. */
+.blaze-tile--done.blaze-tile--press:focus-visible {
+  outline-color: var(--fg-chrome-1);
+}
+
+.blaze-tile--press:active {
+  transform: scale(0.97);
+}
+
+/* The toggle under the card, one ghost pill: "Bigger tiles" / "Smaller
+   tiles" - the maintainer's answer (poll, 2026-11-04) to the brief's
+   pinch-or-button question. On the pine header, so the ghost pill reads in
+   the header's own ink. */
+.blaze-card__zoom {
+  align-self: flex-start;
+}
+
+.challenge-head .blaze-card__zoom {
+  border-color: var(--fg-chrome-3);
+  color: var(--fg-chrome-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blaze-tile {
+    transition: none;
+  }
+}
+
+/* ---- A tile, opened, and "Where did it happen?" (#1963) ---- */
+
+/* With no photo the glyph stands where the photo would, above a title that
+   may run to four lines: the header grows and the tile sits near its top. */
+.tile-sheet__glyph {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  height: 380px;
+  padding-top: 64px;
+  box-sizing: border-box;
+}
+
+.tile-sheet__tile {
+  --tile-size: 72px;
+  display: inline-flex;
+}
+
+/* The place and the moment, one line each. */
+.tile-sheet__line {
+  display: block;
+}
+
+.tile-sheet__actions {
+  align-items: center;
+}
+
+.tile-sheet__earned {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--brand-primary);
+}
+
+.tile-sheet__own-photo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tile-sheet__cards {
+  display: flex;
+  gap: 10px;
+}
+
+.tile-sheet__card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-1);
+  border-radius: 14px;
+  background: var(--surface-card);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.where-sheet__head {
+  flex: none;
+  padding: 18px 20px 22px;
+  border-radius: 0 0 28px 28px;
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.where-sheet__head .challenges__eyebrow {
+  color: var(--fg-chrome-3);
+}
+
+.where-sheet__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.where-sheet__back {
+  min-height: var(--min-touch-target, 44px);
+  color: var(--fg-chrome-2);
+  font-weight: 700;
+}
+
+.where-sheet__heading {
+  margin: 14px 0 0;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.where-sheet__item {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--fg-chrome-2);
+}
+
+.where-sheet__options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 16px 0;
+}
+
+.where-option {
+  border: 1.5px solid var(--border-1);
+  border-radius: 16px;
+  background: var(--surface-card);
+}
+
+.where-option:has(.where-option__press[aria-pressed='true']) {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
+}
+
+.where-option__press {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.where-option__title {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.where-option__sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.where-option__body {
+  padding: 0 14px 12px;
+}
+
+.where-places {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.where-places__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.where-places__row[aria-pressed='true'] {
+  background: var(--bg-sunken);
+}
+
+.where-sheet__note {
+  padding: 14px 20px 0;
+}
+
+.where-sheet__actions {
+  margin-top: auto;
+  padding: 16px 20px 20px;
+}
+
+/* ---- The season at the bottom of Today (#1964) ---- */
+
+.season {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.season__strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border-chrome);
+  border-radius: 20px;
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.season__card {
+  flex: none;
+  width: 100px;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--border-chrome);
+}
+
+.season__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.season__count {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.season__count strong {
+  color: var(--accent-chrome);
+}
+
+.season__where,
+.season__meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-chrome-2);
+}
+
+.season__meta {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.season__chevron {
+  flex: none;
+  color: var(--fg-chrome-3);
+  font-size: 20px;
+  font-weight: 700;
 }

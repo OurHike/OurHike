@@ -21,6 +21,7 @@ import pytest
 
 from lib.challenges import (
     DEFAULT_RADIUS_M,
+    ICON_NAMES,
     MAX_RADIUS_M,
     MIN_RADIUS_M,
     haversine_m,
@@ -368,12 +369,29 @@ class TestTheOtherMatchKinds:
         # clicks" - carry no place and nothing to check.
         published, why = one_item({"kind": "self_report", "poi": "ignored"})
         assert why == ""
-        assert published["match"] == {"kind": "self_report"}
+        assert published["match"] == {"kind": "self_report", "on_trail": False}
 
     @pytest.mark.parametrize("match", [{"kind": "tap_a_button"}, {}, "place", None])
     def test_an_unknown_kind_is_refused(self, match):
         _, why = one_item(item(match=match))
         assert "match" in why
+
+
+class TestSelfReportOnTrail:
+    """Whether an at-home item asks where it happened when earned by hand
+    (#1963): a reviewer's boolean, false when absent, refused when it is
+    anything but a boolean."""
+
+    def test_on_trail_publishes_as_given_and_false_when_absent(self):
+        on_trail, _ = one_item({"kind": "self_report", "on_trail": True})
+        assert on_trail["match"] == {"kind": "self_report", "on_trail": True}
+        absent, _ = one_item({"kind": "self_report"})
+        assert absent["match"] == {"kind": "self_report", "on_trail": False}
+
+    @pytest.mark.parametrize("value", ["yes", 1, 0, None, [True]])
+    def test_anything_but_a_boolean_is_refused(self, value):
+        _, why = one_item({"kind": "self_report", "on_trail": value})
+        assert why == "on_trail must be true or false"
 
 
 class TestItems:
@@ -403,6 +421,31 @@ class TestItems:
         assert dropped[0][1] == "item id must be lowercase words joined by hyphens, at most 120 characters"
 
 
+class TestItemIcons:
+    """The blaze card's glyph per item (#1962): a reviewer's judgement the
+    exporter holds to the names the shell draws, so a tile never comes up
+    blank on a phone."""
+
+    def test_a_known_icon_publishes_and_an_absent_one_publishes_null(self):
+        published, _ = one_item(item(icon="mountain"))
+        assert published["icon"] == "mountain"
+        absent, _ = one_item(item())
+        assert absent["icon"] is None
+
+    @pytest.mark.parametrize("icon", ["rocket", "", ["mountain"], 7])
+    def test_a_name_the_shell_does_not_draw_is_refused_naming_the_set(self, icon):
+        _, why = one_item(item(icon=icon))
+        assert why.startswith("icon must be one of blaze, book, ")
+        assert "mountain" in why and "pen" in why
+
+    def test_the_set_is_the_frames_twenty_six_plus_pen(self):
+        # features/design/blaze-card/BlazeCard.dc.html draws 26; item-icons.json
+        # uses 27. The one the frame did not draw is `pen`.
+        assert len(ICON_NAMES) == 27
+        assert "pen" in ICON_NAMES
+        assert ICON_NAMES == tuple(sorted(ICON_NAMES))
+
+
 class TestSealedMysteryItems:
     TITLE = "Find the spring the ATC hid on its map."
 
@@ -429,7 +472,7 @@ class TestSealedMysteryItems:
         published = record["items"][0]
         assert published["title"] is None
         assert unseal(published["sealed_title"]) == self.TITLE
-        assert published["mystery"] == {"number": 2, "reveal_on": "2027-07-20"}
+        assert published["mystery"] == {"number": 2, "reveal_on": "2027-07-20", "teaser": None}
 
     def test_on_its_date_the_title_is_still_sealed(self):
         # `today` is the build's UTC day. A release built after midnight UTC
@@ -456,7 +499,7 @@ class TestSealedMysteryItems:
         published = record["items"][0]
         assert published["title"] is None
         assert "sealed_title" not in published
-        assert published["mystery"] == {"number": 2, "reveal_on": None}
+        assert published["mystery"] == {"number": 2, "reveal_on": None, "teaser": None}
 
     @pytest.mark.parametrize(
         ("mystery", "because"),
@@ -470,6 +513,39 @@ class TestSealedMysteryItems:
     def test_a_malformed_mystery_is_refused(self, mystery, because):
         _, why = one_item(item(section="mystery", mystery=mystery, match={"kind": "self_report"}))
         assert because in why
+
+
+class TestMysteryTeasers:
+    """A sealed item's one line (#1964): text or absent, never the title."""
+
+    def test_a_teaser_publishes_beside_the_number_and_the_date(self):
+        published, _ = one_item(
+            {
+                "id": "m1",
+                "section": "mystery",
+                "mystery": {"number": 1, "reveal_on": "2027-07-20", "teaser": "Before sunrise."},
+                "match": {"kind": "self_report"},
+            }
+        )
+        assert published["mystery"] == {"number": 1, "reveal_on": "2027-07-20", "teaser": "Before sunrise."}
+
+    def test_no_teaser_publishes_null(self):
+        published, _ = one_item(
+            {"id": "m1", "section": "mystery", "mystery": {"number": 1, "reveal_on": None}, "match": {"kind": "self_report"}}
+        )
+        assert published["mystery"]["teaser"] is None
+
+    @pytest.mark.parametrize("teaser", [7, ["x"], True])
+    def test_anything_but_text_is_refused(self, teaser):
+        _, why = one_item(
+            {
+                "id": "m1",
+                "section": "mystery",
+                "mystery": {"number": 1, "reveal_on": None, "teaser": teaser},
+                "match": {"kind": "self_report"},
+            }
+        )
+        assert why == "mystery teaser must be text"
 
 
 class TestTheWholeChallenge:

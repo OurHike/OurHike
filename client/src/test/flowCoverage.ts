@@ -760,6 +760,38 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/challenges.spec.ts' },
   },
+  // The blaze card and its tile (#1962): the picture in the challenge's
+  // header. Unit tests hold the one rule a flow would (no tile is a button
+  // under 44 px); the flow that reaches the header is challenges.spec.ts's,
+  // which does not yet assert on the card.
+  'chrome/BlazeCard.tsx': {
+    step: 'F13 More',
+    flow: { status: 'planned', since: '2026-11-04' },
+  },
+  // The tile sheet and "Where did it happen?" (#1963): earning from a tile,
+  // and the five answers to where. Unit tests hold each availability branch
+  // of the Where sheet and the cargo's identity; a flow is still to come.
+  'chrome/TileSheet.tsx': {
+    step: 'F13 More',
+    flow: { status: 'planned', since: '2026-11-04' },
+  },
+  'chrome/WhereSheet.tsx': {
+    step: 'F13 More',
+    flow: { status: 'planned', since: '2026-11-04' },
+  },
+  // The season strip at the bottom of Today (#1964): Today's (F2), driven
+  // by Today.test.tsx's ordered-record test and its own unit test; no flow yet.
+  'chrome/ChallengeSeasonStrip.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'planned', since: '2026-11-04' },
+  },
+  'chrome/BlazeTile.tsx': {
+    step: 'F13 More',
+    flow: {
+      status: 'unit-only',
+      why: 'a leaf with no state of its own: BlazeCard.test.tsx proves the tile is never a button below the expanded size',
+    },
+  },
   // The camp card is Today's (F2); the place-card section and Plan's card
   // are driven by unit tests and recipes, not yet by a flow.
   'chrome/ChallengeCampCard.tsx': {

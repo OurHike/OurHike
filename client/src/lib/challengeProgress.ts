@@ -20,6 +20,7 @@
 
 import { localDay } from './passedToday'
 import type { MileRange } from './walkedMiles'
+import { readTagPlace, type TagPlace } from './tagPlace'
 import { mergeRange, walkedWithin } from './walkedMiles'
 import {
   isOpen,
@@ -47,6 +48,10 @@ export interface ChallengeTag {
   how: TagHow
   /** The one-line register note - private, never sent anywhere. */
   note?: string
+  /** Where it happened, as the hiker said (lib/wherePlace.ts) - on this
+   *  phone only, never in the cargo. Absent on a `gps` tag (the walk is the
+   *  place), on a named place, and on every tag from before it existed. */
+  place?: TagPlace
 }
 
 export interface JoinedChallenge {
@@ -111,14 +116,22 @@ export function storedChallengeState(value: unknown): ChallengeState {
       )
     : []
   const tags = Array.isArray(value.tags)
-    ? value.tags.filter(
-        (tag): tag is ChallengeTag =>
-          isRecord(tag) &&
-          typeof tag.challengeId === 'string' &&
-          typeof tag.itemId === 'string' &&
-          typeof tag.at === 'string' &&
-          (tag.how === 'gps' || tag.how === 'hand'),
-      )
+    ? value.tags
+        .filter(
+          (tag): tag is ChallengeTag =>
+            isRecord(tag) &&
+            typeof tag.challengeId === 'string' &&
+            typeof tag.itemId === 'string' &&
+            typeof tag.at === 'string' &&
+            (tag.how === 'gps' || tag.how === 'hand'),
+        )
+        // A malformed place costs the place, never the tag.
+        .map((tag) => {
+          if (!('place' in tag)) return tag
+          const place = readTagPlace(tag.place)
+          const { place: _dropped, ...rest } = tag
+          return place === null ? rest : { ...rest, place }
+        })
     : []
   const sectionWalked: Record<string, MileRange[]> = {}
   if (isRecord(value.sectionWalked)) {
@@ -303,7 +316,7 @@ export function tag(
   state: ChallengeState,
   challenge: Challenge,
   item: ChallengeItem,
-  entry: { poi?: string; at: Date; how: ChallengeTag['how'] },
+  entry: { poi?: string; at: Date; how: ChallengeTag['how']; place?: TagPlace },
 ): { state: ChallengeState; completed: boolean } {
   const poi = item.match.kind === 'places_all' ? entry.poi : undefined
   if (item.match.kind === 'places_all' && poi === undefined) {
@@ -315,6 +328,7 @@ export function tag(
   const wasDone = isItemDone(item, challenge.id, state.tags)
   const next: ChallengeTag = { ...key, at: entry.at.toISOString(), how: entry.how }
   if (poi === undefined) delete next.poi
+  if (entry.place !== undefined) next.place = entry.place
   const tags = [...state.tags, next]
   return {
     state: { ...state, tags },
@@ -348,16 +362,15 @@ export function untag(
 }
 
 /**
- * Takes a tag back, however it was made - the tagged-place sheet's "Remove
- * this tag", for the hiker who walked past McAfee Knob's junction without
- * going up and pressed Tag all anyway. `poi` narrows it to one place, as for
- * `untag`.
+ * Takes a tag back, however it was made - the tile sheet's "Take it back",
+ * for the hiker who walked past McAfee Knob's junction without going up and
+ * pressed Earn all anyway. `poi` narrows it to one place, as for `untag`.
  *
  * A tag that already reached the server is taken back there too:
  * lib/useChallenges.ts queues the removal when the item stops being done. The
- * kinds that tag themselves are not offered this (the sheet does not open for
- * them), because autoTags would put the same tag back the next time it read
- * the same day.
+ * kinds that tag themselves are not offered this - the tile sheet hides the
+ * button on them (chrome/TileSheet.tsx) - because autoTags would put the same
+ * tag back the next time it read the same day.
  */
 export function removeTag(
   state: ChallengeState,

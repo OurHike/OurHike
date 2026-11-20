@@ -128,7 +128,8 @@ function parseMatch(value: unknown): ChallengeMatch | null {
       return trail === null ? null : { kind, org: text(value.org), trail }
     }
     case 'self_report':
-      return { kind }
+      // Absent reads false: an at-home item nobody judged asks nothing.
+      return { kind, onTrail: value.on_trail === true }
   }
 }
 
@@ -146,7 +147,11 @@ function parseItem(
   if (isRecord(value.mystery)) {
     const number = finite(value.mystery.number)
     if (number === null || number < 1) return null
-    mystery = { number, revealOn: day(value.mystery.reveal_on) }
+    mystery = {
+      number,
+      revealOn: day(value.mystery.reveal_on),
+      teaser: text(value.mystery.teaser),
+    }
   }
   const title = text(value.title)
   const sealedTitle = text(value.sealed_title)
@@ -160,6 +165,7 @@ function parseItem(
     note: text(value.note),
     noteBy: text(value.note_by),
     photo: httpsOnly(value.photo),
+    icon: text(value.icon),
     match,
     mystery,
   }

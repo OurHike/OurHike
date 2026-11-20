@@ -80,7 +80,13 @@ export type ChallengeMatch =
       minFraction: number
     }
   | { kind: 'workday'; org: string | null; trail: string }
-  | { kind: 'self_report' }
+  | {
+      kind: 'self_report'
+      /** Whether earning it by hand asks "Where did it happen?" - the
+       *  reviewer's judgement per at-home line (features/CHALLENGES_BLAZE_CARD.md
+       *  slice 3). False: a quiz from the couch has no where. */
+      onTrail: boolean
+    }
 
 export interface ChallengeItem {
   id: string
@@ -92,8 +98,13 @@ export interface ChallengeItem {
   note: string | null
   noteBy: string | null
   photo: string | null
+  /** The blaze card's glyph for this item (chrome/blazeIcons.ts), the
+   *  reviewer's judgement copied through the exporter; null draws `learn`. */
+  icon: string | null
   match: ChallengeMatch
-  mystery: { number: number; revealOn: string | null } | null
+  /** `teaser` is the club's one line about a sealed item, shown before its
+   *  day (CHALLENGES_BLAZE_CARD.md slice 4); null where the club wrote none. */
+  mystery: { number: number; revealOn: string | null; teaser: string | null } | null
 }
 
 export interface ChallengeSection {

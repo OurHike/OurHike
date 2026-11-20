@@ -1,7 +1,13 @@
 // One challenge (#1780, frames 5, 7, 4b, 8b and 8c).
 //
 // The pine header names it, its window and - only when the club set one - the
-// finish line; a strip lays its places along the trail in mile order. Filter
+// finish line; under them the blaze card (chrome/BlazeCard.tsx, #1962): the
+// club's items as tiles in the club's sections, a tile turning karma gold for
+// each earned item, in place of the strip that laid the places along the
+// trail by mile.
+// A tap on a section of the card opens the list at that section; the card
+// can be made bigger, and only then is a tile itself a button, which opens
+// its row. Filter
 // pills are the club's own sections, in the club's order - for the ATC, Learn
 // · Experience · Protect · Mystery - and then Done, the hiker's own (#1961,
 // the blaze card brief: the list in the ATC's sections is the accessible,
@@ -25,14 +31,12 @@ import { CHALLENGE_WORDS } from '../lib/challengeWords'
 import type { ChallengeEntryDraft } from '../lib/challengeDrafts'
 import {
   isOpen,
-  isPlaceItem,
   isSealed,
   itemTitle,
   shortDate,
   windowLine,
   type Challenge,
   type ChallengeItem,
-  type ChallengePlace,
 } from '../lib/challenges'
 import {
   doneItems,
@@ -43,16 +47,22 @@ import {
   type ChallengeState,
   type ChallengeTag,
 } from '../lib/challengeProgress'
+import type { UnitSystem } from '../lib/units'
 import type { MileRange } from '../lib/walkedMiles'
 import { localDay } from '../lib/passedToday'
 import { Diamond, DraftLabel, FinishBar, TagPill } from '../chrome/ChallengeParts'
+import { BlazeCard } from '../chrome/BlazeCard'
+import { TileSheet } from '../chrome/TileSheet'
+import { WhereSheet } from '../chrome/WhereSheet'
+import type { SearchablePoi } from '../lib/searchPoi'
+import { asksWhere, whereOptions, type TagPlace } from '../lib/wherePlace'
 import {
   formatDay,
-  formatMoment,
   handTaggable,
   itemMeta,
   itemTrailing,
   mileLabel,
+  mysteryTeaser,
   statusLine,
   titleOrSealed,
   trailLabel,
@@ -63,21 +73,34 @@ export interface ChallengeDetailProps {
   state: ChallengeState
   /** The hiker's local YYYY-MM-DD. */
   today: string
-  /** All-time walked miles, lib/walkedMiles.ts - "your line" on a tagged
-   *  place. Never uploaded, never stored here. */
+  /** All-time walked miles, lib/walkedMiles.ts. Never uploaded, never
+   *  stored here. Nothing on this page draws them since the tile sheet
+   *  replaced the tagged-place sheet and its "your line" (#1963); the Where
+   *  view (#1965) is what reads them next. */
   walked: readonly MileRange[]
-  /** The hiker's own photo of a place, if they added one on its card
-   *  (features/POI_PHOTOS.md) - kept on the phone, never uploaded. */
-  ownPhotoFor?: (poiId: string) => string | null
   signedIn: boolean
   /** For the entry form's name field; the hiker can change it. */
   defaultName?: string
   onJoin: () => void
   onLeave: () => void
-  /** `poi` names one place of a Triple-Crown-style item. */
-  onTag: (item: ChallengeItem, poi?: string) => void
+  /** `poi` names one place of a Triple-Crown-style item; `place` is where
+   *  the hiker said it happened when the Where sheet asked (#1963),
+   *  kept on this phone only. */
+  onTag: (item: ChallengeItem, poi?: string, place?: TagPlace) => void
+  /** The fix snapped to the trail, or null - for "Here" and "Near you".
+   *  Never asked for by any challenge screen. */
+  fixMile?: number | null
+  /** Today's walked miles (lib/passedToday.ts), for "Somewhere I walked
+   *  today" and "Near you". */
+  todayRanges?: readonly MileRange[]
+  /** The hiker's unit system (Settings), for a distance the tile sheet
+   *  states. Absent reads as imperial, the app's default. */
+  units?: UnitSystem
+  /** The phone's own waypoints by name, for "Pick a place". */
+  places?: readonly SearchablePoi[]
   onUntag: (item: ChallengeItem, poi?: string) => void
-  /** "Take it back" on the earned-place sheet - however it was earned. */
+  /** "Take it back" on the tile sheet - however it was earned, except for
+   *  the kinds that earn themselves (chrome/TileSheet.tsx). */
   onRemoveTag?: (item: ChallengeItem, poi?: string) => void
   onSetNote: (item: ChallengeItem, note: string) => void
   onSendEntry: (entry: ChallengeEntryDraft) => void
@@ -88,6 +111,8 @@ export interface ChallengeDetailProps {
   /** Clears a refused entry so the form comes back. */
   onForgetEntry?: () => void
   onSignIn?: () => void
+  /** "Workdays on this section", under the club's note on an item with a
+   *  place (chrome/TileSheet.tsx). */
   onOpenWorkdays?: () => void
 }
 
@@ -101,17 +126,60 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
   const [view, setView] = useState<'list' | 'finish'>('list')
   const [sheetItem, setSheetItem] = useState<string | null>(null)
   const [confirmingLeave, setConfirmingLeave] = useState(false)
-  // Where focus goes back to when the sheet closes - the row that opened it,
-  // or the page's title when that row is gone.
+  // The card's two sizes (#1962): its own, where a section is the tap
+  // target, and bigger, where a tile is. A button rather than a pinch: the
+  // brief's open thumb question, which the maintainer answered by poll on
+  // 2026-11-04 from the two shots - one pill, usable by any hand and a screen
+  // reader; a pinch stays a possible follow-up, not a plan.
+  const [bigger, setBigger] = useState(false)
+  // "Where did it happen?" (#1963): the item being earned by hand, when
+  // that can mean something (lib/wherePlace.ts asksWhere); null otherwise.
+  const [where, setWhere] = useState<{ item: ChallengeItem; poi?: string } | null>(null)
+  // The control that asked, so Back and Earn put focus back on it (review of
+  // #2015: both left it on <body>) - a row's pill, or the tile sheet's Earn.
+  const whereOpener = useRef<HTMLElement | null>(null)
+  const requestEarn = (item: ChallengeItem, from: HTMLElement | null, poi?: string) => {
+    if (asksWhere(item, 'hand')) {
+      whereOpener.current = from
+      setWhere({ item, poi })
+    } else props.onTag(item, poi)
+  }
+  // A tile tapped on the big card: its row is shown under the right pill,
+  // scrolled into view and given focus, after the render that draws it. A
+  // section tapped on the card does the same for that section's pill, so the
+  // tap visibly lands somewhere - the list sits below the fold under a card
+  // of a hundred tiles, and a screen reader heard nothing change (review of
+  // #1990). `section:` marks a pill rather than a row.
+  const [goTo, setGoTo] = useState<string | null>(null)
+  useEffect(() => {
+    if (goTo === null) return
+    setGoTo(null)
+    const target = goTo.startsWith('section:')
+      ? document.querySelector<HTMLElement>('.challenge-pills [aria-pressed="true"]')
+      : document.getElementById(`challenge-item-${goTo}`)
+    if (target === null) return
+    target.scrollIntoView?.({ block: 'center' })
+    target.focus()
+  }, [goTo])
+  // Where focus goes back to when a sheet closes - the row or tile that
+  // opened it, or the page's title when that is gone. Applied after the
+  // render that removed the sheet, not in the handler: "Take it back" can
+  // replace the control in that same render, and focus sent to it first fell
+  // to <body> (second Challenges review, 2026-10-01). No dependency list: it
+  // runs after every render, and does nothing unless a close asked.
   const opener = useRef<HTMLElement | null>(null)
   const title = useRef<HTMLHeadingElement | null>(null)
-  const [refocus, setRefocus] = useState(false)
+  const pendingFocus = useRef<HTMLElement | null>(null)
+  const focusAfterRender = (target: HTMLElement | null) => {
+    pendingFocus.current = target ?? title.current
+  }
   useEffect(() => {
-    if (!refocus) return
-    setRefocus(false)
-    if (opener.current?.isConnected) opener.current.focus()
+    const target = pendingFocus.current
+    if (target === null) return
+    pendingFocus.current = null
+    if (target.isConnected) target.focus()
     else title.current?.focus()
-  }, [refocus])
+  })
   // Tags only count inside the window, so nothing offers one outside it
   // (review, 2026-09-30: the ATC's 2027 draft is on phones in 2026).
   const open = isOpen(challenge, today)
@@ -173,13 +241,8 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
 
   const closeSheet = () => {
     setSheetItem(null)
-    setRefocus(true)
+    focusAfterRender(opener.current)
   }
-  // After the render that closed the sheet, not in the handler: "Remove this
-  // tag" leaves an item that is no longer done, and that same render turns
-  // its row from a button into text. Focus sent to the button before it was
-  // replaced fell to <body> (second Challenges review, 2026-10-01); the title
-  // is always there.
 
   const sheet =
     sheetItem === null
@@ -220,7 +283,30 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
             <FinishBar tagged={tagged} finish={finish} />
           </>
         )}
-        <PlaceStrip challenge={challenge} tags={tags} today={today} />
+        <BlazeCard
+          challenge={challenge}
+          tags={tags}
+          today={today}
+          size={bigger ? 'expanded' : 'card'}
+          onOpenSection={(sectionId) => {
+            setFilterKey(sectionId)
+            setGoTo(`section:${sectionId}`)
+          }}
+          onOpenItem={(item, from) => {
+            // Focus comes back to the tile, not to whichever row was opened
+            // last (review of #2015).
+            opener.current = from
+            setFilterKey(item.section)
+            setSheetItem(item.id)
+          }}
+        />
+        <button
+          type="button"
+          className="challenge-button challenge-button--ghost blaze-card__zoom"
+          onClick={() => setBigger((current) => !current)}
+        >
+          {bigger ? 'Smaller tiles' : 'Bigger tiles'}
+        </button>
       </header>
 
       {/* To everyone, not only a hiker who joined: somebody deciding whether
@@ -247,14 +333,23 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
           </p>
         </div>
       ) : (
-        eligible && (
+        // Reachable from the day of joining (#1964): what the club receives
+        // and its rule are worth reading before a single blaze, not after
+        // twenty-five. A record with no finish line has nothing to open.
+        (finish !== null || eligible) && (
           <div className="challenge-actions">
             <button
               type="button"
               className="challenge-button"
               onClick={() => setView('finish')}
             >
-              {challenge.reward === null ? 'See your finish' : 'Your finish'}
+              {challenge.reward === null
+                ? eligible
+                  ? 'See your finish'
+                  : 'Your finish line'
+                : eligible
+                  ? 'Your finish'
+                  : 'Your entry'}
             </button>
           </div>
         )
@@ -285,7 +380,7 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
             today={today}
             joined={joined}
             open={open}
-            onTag={(poi) => props.onTag(item, poi)}
+            onTag={(from, poi) => requestEarn(item, from, poi)}
             onUntag={(poi) => {
               props.onUntag(item, poi)
               if (shown?.key === 'done') refocusPills.current = true
@@ -355,16 +450,31 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
       )}
 
       {sheet !== null && (
-        <TaggedPlace
+        <TileSheet
+          // A new item is a new sheet: kept state would carry one item's
+          // register line onto the next (review of #2015).
+          key={sheet.id}
+          // Under the Where sheet, out of reach: one modal at a time.
+          inert={where !== null}
           challenge={challenge}
           item={sheet}
-          tag={itemDoneAt(sheet, challenge.id, tags)}
-          tags={tags}
-          walked={props.walked}
+          number={numberOf.get(sheet.id) ?? 0}
           today={today}
-          ownPhotoFor={props.ownPhotoFor}
-          onSetNote={(note) => props.onSetNote(sheet, note)}
-          onRemove={
+          tags={tags}
+          // A sealed mystery item opens and says it is sealed; it is never
+          // earned before anybody can know what it is (review of #2015).
+          earnable={
+            joined &&
+            open &&
+            !isSealed(sheet, today) &&
+            handTaggable(sheet) &&
+            sheet.match.kind !== 'places_all'
+          }
+          todayRanges={props.todayRanges}
+          fixMile={props.fixMile}
+          units={props.units}
+          onEarn={(from) => requestEarn(sheet, from)}
+          onTakeBack={
             props.onRemoveTag === undefined
               ? undefined
               : (poi) => {
@@ -372,8 +482,33 @@ export function ChallengeDetail(props: ChallengeDetailProps) {
                   closeSheet()
                 }
           }
+          onSetNote={(note) => props.onSetNote(sheet, note)}
           onOpenWorkdays={props.onOpenWorkdays}
           onClose={closeSheet}
+        />
+      )}
+      {where !== null && (
+        <WhereSheet
+          key={`${where.item.id}:${where.poi ?? ''}`}
+          challenge={challenge}
+          item={where.item}
+          today={today}
+          options={whereOptions({
+            fixMile: props.fixMile ?? null,
+            todayRanges: props.todayRanges ?? [],
+          })}
+          places={props.places ?? []}
+          onChoose={(place) => {
+            const asked = where
+            setWhere(null)
+            if (sheet !== null) closeSheet()
+            else focusAfterRender(whereOpener.current)
+            props.onTag(asked.item, asked.poi, place)
+          }}
+          onBack={() => {
+            setWhere(null)
+            focusAfterRender(whereOpener.current)
+          }}
         />
       )}
     </section>
@@ -401,9 +536,10 @@ function ItemRow({
   joined: boolean
   /** Inside the window - the only time a new tag is offered. */
   open: boolean
-  onTag: (poi?: string) => void
+  /** `from` is the pill pressed, where focus returns from the Where sheet. */
+  onTag: (from: HTMLElement, poi?: string) => void
   onUntag: (poi?: string) => void
-  /** Opens the tagged-place sheet; `from` is where focus returns. */
+  /** Opens the tile sheet; `from` is where focus returns. */
   onOpen: (from: HTMLElement) => void
 }) {
   const sealed = isSealed(item, today)
@@ -412,10 +548,6 @@ function ItemRow({
   const title = titleOrSealed(item, challenge, today)
   const trailing = itemTrailing(item)
   const revealed = item.mystery !== null && !sealed
-  // A row opens its sheet once it is done and holds a tag the hiker can look
-  // at or take back: a place, or "any shelter". The kinds that tag
-  // themselves would be put straight back by the day's walk, so they do not.
-  const opens = done && (isPlaceItem(item) || item.match.kind === 'poi_type')
 
   let right: ReactNode = null
   if (!sealed && joined) {
@@ -428,7 +560,7 @@ function ItemRow({
         <TagPill
           tagged={done}
           label={`${done ? CHALLENGE_WORDS.done : CHALLENGE_WORDS.act}: ${title}`}
-          onPress={() => (done ? onUntag() : onTag())}
+          onPress={(from) => (done ? onUntag() : onTag(from))}
         />
       )
     } else if (done) {
@@ -439,12 +571,14 @@ function ItemRow({
   const places = item.match.kind === 'places_all' ? item.match.places : []
   // A place or a walk under the title, and the day it was earned; an at-home
   // item has no sub-line at all (lib/challengeText.ts).
-  const meta = [
-    itemMeta(item),
-    doneTag !== null ? `${CHALLENGE_WORDS.past} ${formatDay(doneTag.at)}` : '',
-  ]
-    .filter((part) => part !== '')
-    .join(' · ')
+  const meta = sealed
+    ? (mysteryTeaser(item, today) ?? '')
+    : [
+        itemMeta(item),
+        doneTag !== null ? `${CHALLENGE_WORDS.past} ${formatDay(doneTag.at)}` : '',
+      ]
+        .filter((part) => part !== '')
+        .join(' · ')
   const text = (
     <>
       <span className="challenge-row__number">{number}</span>
@@ -459,7 +593,7 @@ function ItemRow({
           </span>
         )}
         <span className="challenge-row__title">{title}</span>
-        {!sealed && meta !== '' && <span className="challenge-row__meta">{meta}</span>}
+        {meta !== '' && <span className="challenge-row__meta">{meta}</span>}
       </span>
       {trailing !== undefined && !sealed && (
         <span className="challenge-row__trailing">{trailing}</span>
@@ -468,20 +602,21 @@ function ItemRow({
   )
 
   return (
-    <li className={sealed ? 'challenge-row challenge-row--sealed' : 'challenge-row'}>
-      {/* A button only when it does something: a disabled button on every
-          row that cannot open yet read each one out as "unavailable". */}
-      {opens ? (
-        <button
-          type="button"
-          className="challenge-row__open"
-          onClick={(event) => onOpen(event.currentTarget)}
-        >
-          {text}
-        </button>
-      ) : (
-        <div className="challenge-row__open">{text}</div>
-      )}
+    <li
+      id={`challenge-item-${item.id}`}
+      tabIndex={-1}
+      className={sealed ? 'challenge-row challenge-row--sealed' : 'challenge-row'}
+    >
+      {/* Every row opens its tile (#1963): read it in full, earn it from
+          there, or take it back. A sealed mystery item opens too, and says
+          it is sealed. */}
+      <button
+        type="button"
+        className="challenge-row__open"
+        onClick={(event) => onOpen(event.currentTarget)}
+      >
+        {text}
+      </button>
       {right}
       {places.length > 0 && joined && !sealed && (
         // Each peak of a Triple Crown is its own tag: the row says which are
@@ -502,8 +637,8 @@ function ItemRow({
                   <TagPill
                     tagged={placeTag !== undefined}
                     label={`${placeTag !== undefined ? CHALLENGE_WORDS.done : CHALLENGE_WORDS.act}: ${place.name}`}
-                    onPress={() =>
-                      placeTag !== undefined ? onUntag(place.poi) : onTag(place.poi)
+                    onPress={(from) =>
+                      placeTag !== undefined ? onUntag(place.poi) : onTag(from, place.poi)
                     }
                   />
                 ) : null}
@@ -513,258 +648,6 @@ function ItemRow({
         </ul>
       )}
     </li>
-  )
-}
-
-/** Every place on the list along the trail, in mile order, ends named for
- *  the first and last place - positions, never a count. */
-function PlaceStrip({
-  challenge,
-  tags,
-  today,
-}: {
-  challenge: Challenge
-  tags: readonly ChallengeTag[]
-  today: string
-}) {
-  const points: { place: ChallengePlace; done: boolean; key: string }[] = []
-  for (const item of challenge.items) {
-    if (!isPlaceItem(item) || isSealed(item, today)) continue
-    for (const place of item.match.places) {
-      const done =
-        item.match.kind === 'places_all'
-          ? tags.some((tag) => tag.itemId === item.id && tag.poi === place.poi)
-          : isItemDone(item, challenge.id, tags)
-      points.push({ place, done, key: `${item.id}/${place.poi}` })
-    }
-  }
-  if (points.length < 2) return null
-  points.sort((a, b) => a.place.mile - b.place.mile)
-  const low = points[0].place.mile
-  const high = points[points.length - 1].place.mile
-  const span = high - low || 1
-  return (
-    <div aria-hidden="true">
-      <div className="challenge-strip">
-        {points.map((point) => (
-          <span
-            key={point.key}
-            className="challenge-strip__point"
-            style={{ left: `${((point.place.mile - low) / span) * 100}%` }}
-          >
-            <Diamond done={point.done} />
-          </span>
-        ))}
-      </div>
-      <div className="challenge-strip__ends">
-        <span>{points[0].place.name}</span>
-        <span>{points[points.length - 1].place.name}</span>
-      </div>
-    </div>
-  )
-}
-
-/** The tagged place (#4b): the hiker's own photo or the club's, labelled
- *  which; the moment; the club's note; the line walked; a private register
- *  line. No stamp, no animation. */
-function TaggedPlace({
-  challenge,
-  item,
-  tag,
-  tags,
-  walked,
-  today,
-  ownPhotoFor,
-  onSetNote,
-  onRemove,
-  onOpenWorkdays,
-  onClose,
-}: {
-  challenge: Challenge
-  item: ChallengeItem
-  tag: ChallengeTag | null
-  tags: readonly ChallengeTag[]
-  walked: readonly MileRange[]
-  today: string
-  ownPhotoFor?: (poiId: string) => string | null
-  onSetNote: (note: string) => void
-  /** Takes the tag back - `poi` for one peak of a Triple Crown. */
-  onRemove?: (poi?: string) => void
-  onOpenWorkdays?: () => void
-  onClose: () => void
-}) {
-  // A dialog takes focus and gives it back (ChallengeDetail's `opener`), and
-  // Escape closes it, as every sheet in this app does.
-  const closeButton = useRef<HTMLButtonElement | null>(null)
-  useEffect(() => {
-    closeButton.current?.focus()
-  }, [])
-  const places = isPlaceItem(item) ? item.match.places : []
-  const place =
-    places.find((candidate) => candidate.poi === tag?.poi) ?? places[places.length - 1]
-  const own =
-    place !== undefined && ownPhotoFor !== undefined ? ownPhotoFor(place.poi) : null
-  const photo = own ?? item.photo
-  const chip = own !== null ? 'your photo' : item.photo !== null ? 'club photo' : null
-  const [note, setNote] = useState(
-    () =>
-      tags.find((existing) => existing.itemId === item.id && existing.note)?.note ?? '',
-  )
-
-  // "Your line": ten miles either side of the place, the hiker's own walked
-  // miles filled, the challenge's places on it as diamonds.
-  const centre = place?.mile ?? 0
-  const low = Math.max(0, centre - 10)
-  const high = centre + 10
-  const at = (mile: number) =>
-    `${((Math.min(high, Math.max(low, mile)) - low) / (high - low)) * 100}%`
-  const nearby: { mile: number; done: boolean; key: string }[] = []
-  for (const other of challenge.items) {
-    if (!isPlaceItem(other) || isSealed(other, today)) continue
-    for (const candidate of other.match.places) {
-      if (candidate.mile < low || candidate.mile > high) continue
-      nearby.push({
-        mile: candidate.mile,
-        done: isItemDone(other, challenge.id, tags),
-        key: `${other.id}/${candidate.poi}`,
-      })
-    }
-  }
-
-  return (
-    <div
-      className="challenge-sheet"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="tagged-place-name"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') {
-          event.stopPropagation()
-          onSetNote(note)
-          onClose()
-        }
-      }}
-    >
-      <div
-        className="challenge-sheet__photo"
-        style={
-          photo !== null
-            ? { backgroundImage: `url(${JSON.stringify(photo)})` }
-            : undefined
-        }
-      >
-        <div className="challenge-sheet__top">
-          <span className="challenges__eyebrow">{challenge.name}</span>
-          <button
-            ref={closeButton}
-            type="button"
-            className="challenge-sheet__close"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
-        <div className="challenge-sheet__bottom">
-          <h2 className="challenge-sheet__name" id="tagged-place-name">
-            {place?.name ?? itemTitle(item, today)}
-          </h2>
-          {tag !== null && (
-            <span className="challenge-sheet__moment">{formatMoment(tag.at)}</span>
-          )}
-        </div>
-        {chip !== null && <span className="challenge-sheet__chip">{chip}</span>}
-      </div>
-      <div className="challenge-sheet__body">
-        {item.note !== null && (
-          <div className="challenge-note">
-            <span className="challenges__eyebrow">
-              From {item.noteBy ?? challenge.orgName}
-            </span>
-            <p>{item.note}</p>
-            {onOpenWorkdays !== undefined && (
-              <button type="button" className="challenge-link" onClick={onOpenWorkdays}>
-                Workdays on this section
-              </button>
-            )}
-          </div>
-        )}
-        {place !== undefined && (
-          <div>
-            <p className="challenges__eyebrow">
-              Your line · {trailLabel(challenge.trail)}
-            </p>
-            <div className="challenge-line" aria-hidden="true">
-              <span className="challenge-line__track" />
-              {walked
-                .filter((range) => range.endMile > low && range.startMile < high)
-                .map((range) => (
-                  <span
-                    key={`${range.startMile}-${range.endMile}`}
-                    className="challenge-line__walked"
-                    style={{
-                      left: at(range.startMile),
-                      width: `calc(${at(range.endMile)} - ${at(range.startMile)})`,
-                    }}
-                  />
-                ))}
-              {nearby.map((point) => (
-                <span
-                  key={point.key}
-                  className="challenge-strip__point"
-                  style={{ left: at(point.mile) }}
-                >
-                  <Diamond done={point.done} />
-                </span>
-              ))}
-            </div>
-            <div className="challenge-line__ends">
-              <span>{mileLabel(low)}</span>
-              <span>{mileLabel(high)}</span>
-            </div>
-          </div>
-        )}
-        <label className="challenge-field">
-          <span className="challenges__eyebrow">One line for the register</span>
-          <input
-            type="text"
-            maxLength={200}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            onBlur={() => onSetNote(note)}
-          />
-          <span className="challenges__note">Stays on this phone.</span>
-        </label>
-        <div className="challenge-actions">
-          <button
-            type="button"
-            className="challenge-button"
-            onClick={() => {
-              onSetNote(note)
-              onClose()
-            }}
-          >
-            Done
-          </button>
-          {onRemove !== undefined && tag !== null && (
-            // For the hiker who pressed Tag all after walking past the
-            // junction without going up. A tag already sent is taken back on
-            // the server too (lib/useChallenges.ts).
-            <button
-              type="button"
-              className="challenge-button challenge-button--ghost"
-              onClick={() =>
-                onRemove(
-                  item.match.kind === 'places_all' ? (tag.poi ?? undefined) : undefined,
-                )
-              }
-            >
-              {CHALLENGE_WORDS.takeBack}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -795,6 +678,16 @@ const ADDRESS_MAX_CHARS = 1000
 function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
   const { challenge, state, today } = props
   const done = doneItems(challenge, state)
+  const { finish: finishCount, eligible } = progress(challenge, state)
+  // The ATC's own rules, said as rules: one entry per person, and each
+  // mystery item with a drawing of its own (features/CHALLENGES_BLAZE_CARD.md).
+  // Said only where OurHike sends the entry - "the email you signed up with"
+  // means nothing for a club that collects its own. Keyed on a drawing
+  // because the reviewed file has no field for a club's entry rules: they are
+  // the ATC's, and whether any other club's drawing shares them is
+  // @unvalidated (review of #2020) - the second club with a drawing needs
+  // them carried in its own file.
+  const hasMystery = challenge.items.some((item) => item.mystery !== null)
   // The hiker's own days: a tag at 9 pm and one at 7 am the next morning are
   // two days on the trail, which their UTC dates were not.
   const days = new Set(done.map((entry) => localDay(new Date(entry.tag.at)))).size
@@ -820,15 +713,30 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
   const summary = `${done.length} ${CHALLENGE_WORDS.past} over ${days} ${days === 1 ? 'day' : 'days'}.`
   const orgDomain = challenge.orgDomain
 
+  // "You walked" only once it is true: this screen opens from the day of
+  // joining (#1964), and at 0 of 25 the first thing a screen reader heard was
+  // that the hiker had walked the list (review of #2020).
+  const title = eligible
+    ? `You walked ${challenge.name}`
+    : reward === null
+      ? 'Your finish line'
+      : 'Your entry'
   const header = (
     <header className="challenge-head">
-      <p className="challenges__eyebrow">{challenge.orgName}</p>
+      <p className="challenges__eyebrow">
+        {eligible ? challenge.orgName : `${challenge.orgShort} · ${challenge.name}`}
+      </p>
       <h1 className="challenges__title" ref={heading} tabIndex={-1}>
-        You walked {challenge.name}
+        {title}
       </h1>
       <DraftLabel challenge={challenge} />
     </header>
   )
+  // The club's own finish line, before it is reached - never what is left.
+  const finishRule =
+    finishCount === null
+      ? null
+      : `${finishCount}${challenge.finish?.label ? ` ${challenge.finish.label}` : ''}`
 
   // Why nothing can be sent, in one sentence, or null when it can.
   const refusal = draft
@@ -873,7 +781,7 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
 
   if (reward === null || words === null) {
     return (
-      <section className="challenges" aria-label={`You walked ${challenge.name}`}>
+      <section className="challenges" aria-label={title}>
         {header}
         <ul className="challenge-rows">
           {done.map(({ item, tag }) => (
@@ -888,11 +796,25 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
             </li>
           ))}
         </ul>
-        <p className="challenges__note">
-          {summary} It stays here as a record of the trip.
-        </p>
+        {eligible ? (
+          <p className="challenges__note">
+            {summary} It stays here as a record of the trip.
+          </p>
+        ) : (
+          // Before the finish line nothing is said to the club and nothing
+          // offers to: a reward-less list could tell its club "finished" at 0
+          // (review of #2020), and the server does not count.
+          <>
+            {done.length > 0 && <p className="challenges__note">{summary}</p>}
+            {finishRule !== null && (
+              <p className="challenges__note">
+                The finish line is {finishRule} - the {challenge.orgShort}’s rule.
+              </p>
+            )}
+          </>
+        )}
         {sentLine}
-        {sent === null && refusal !== null && (
+        {eligible && sent === null && refusal !== null && (
           // Said, rather than the button silently vanishing.
           <p className="challenges__note">{refusal}</p>
         )}
@@ -900,7 +822,8 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
           <button type="button" className="challenge-button" onClick={props.onDone}>
             Done
           </button>
-          {refusal === null &&
+          {eligible &&
+            refusal === null &&
             sent === null &&
             (!props.signedIn ? (
               props.onSignIn !== undefined && (
@@ -923,6 +846,7 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
             ) : null)}
         </div>
         {telling &&
+          eligible &&
           sent === null &&
           refusal === null &&
           props.signedIn &&
@@ -978,9 +902,9 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
   const ready = name.trim() !== '' && contactOk && consented
 
   return (
-    <section className="challenges" aria-label={`You walked ${challenge.name}`}>
+    <section className="challenges" aria-label={title}>
       {header}
-      <p className="challenges__note">{summary}</p>
+      {(eligible || done.length > 0) && <p className="challenges__note">{summary}</p>}
       <div className="challenge-grid" aria-hidden="true">
         {tiles.map(({ item }) => (
           <span
@@ -1018,18 +942,72 @@ function Finish(props: ChallengeDetailProps & { onDone: () => void }) {
         </span>
       </div>
 
+      {reward.kind === 'drawing' && challenge.takesEntries && (
+        <p className="challenges__note">
+          One entry per person — use the email you signed up with.
+          {hasMystery ? ' Each mystery item has a drawing of its own.' : ''}
+        </p>
+      )}
       {sent !== null ? (
         sentLine
+      ) : !challenge.takesEntries ? (
+        // The club runs its own entries, from day one as at the line (review
+        // of #2020; the maintainer's poll of 2026-11-04 chose pointing at the
+        // club's form over listing what it would receive). Asking for a name
+        // and an address here would only queue something its server refuses,
+        // and listing them promised a handoff that never happens.
+        <>
+          <p className="challenges__note">
+            The {challenge.orgShort} collects entries itself
+            {reward.rulesUrl !== null ? ' - its rules above say how' : ''}. OurHike sends
+            nothing for this one.
+          </p>
+          {!eligible && finishRule !== null && !closed && (
+            <p className="challenges__note">
+              Its finish line is {finishRule} - the {challenge.orgShort}’s rule.
+            </p>
+          )}
+          {/* A draft still says nobody has confirmed it (2026-09-30), and a
+              closed list when it closed; the other refusals are about what
+              OurHike would send, and it sends nothing here. */}
+          {(draft || closed) && refusal !== null && (
+            <p className="challenges__empty">{refusal}</p>
+          )}
+        </>
+      ) : !eligible && finishCount !== null ? (
+        // Day one (#1964): what the club will receive, before anything can
+        // be sent. The count is the club's rule, the finish line it set. A
+        // draft's "nobody to send it to" is said under it, not instead of it.
+        <>
+          <div className="challenge-receives">
+            <span className="challenges__eyebrow">
+              What the {challenge.orgShort} receives
+            </span>
+            <ul>
+              <li>Your name</li>
+              <li>
+                {words.physical
+                  ? 'Your mailing address, to send ' + words.thing
+                  : 'Your email, for ' + words.thing}
+              </li>
+              <li>
+                The items you {CHALLENGE_WORDS.past}, and whether each was from your walk
+                or by hand
+              </li>
+            </ul>
+            <span>
+              No GPS track, no photos, no register lines. Nothing has been sent.
+            </span>
+          </div>
+          {!closed && (
+            <p className="challenges__note">
+              The entry opens at {finishRule} — the {challenge.orgShort}’s rule.
+            </p>
+          )}
+          {refusal !== null && <p className="challenges__empty">{refusal}</p>}
+        </>
       ) : refusal !== null ? (
         <p className="challenges__empty">{refusal}</p>
-      ) : !challenge.takesEntries ? (
-        // The club runs its own entries. Asking for a name and an address
-        // here would only queue something its server refuses.
-        <p className="challenges__note">
-          The {challenge.orgShort} collects entries itself
-          {reward.rulesUrl !== null ? ' - its rules above say how' : ''}. OurHike sends
-          nothing for this one.
-        </p>
       ) : !props.signedIn ? (
         props.onSignIn !== undefined && (
           <div className="challenge-actions">

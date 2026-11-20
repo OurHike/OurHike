@@ -729,6 +729,37 @@ vars:
   challenges_statuses:
     - draft
     - published
+  # ICON_NAMES: the blaze card's glyphs (features/CHALLENGES_BLAZE_CARD.md
+  # slice 2), the only names an item's `icon` may carry; the shell draws
+  # exactly these (client/src/chrome/blazeIcons.ts).
+  challenges_icon_names:
+    - blaze
+    - book
+    - boots
+    - bridge
+    - camera
+    - film
+    - food
+    - heart
+    - leaf
+    - learn
+    - map
+    - megaphone
+    - mountain
+    - museum
+    - mystery
+    - pen
+    - people
+    - podcast
+    - quiz
+    - shelter
+    - sunrise
+    - tent
+    - tools
+    - tower
+    - town
+    - trash
+    - water
   # DEFAULT_RADIUS_M, the tag radius in metres from the POI when a match
   # gives none. @unvalidated: the handoff's examples (150 m for a named
   # place, 60 m for "any shelter"), not a measurement. For scale, measured

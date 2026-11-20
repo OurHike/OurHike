@@ -50,6 +50,12 @@ artifact with a decoder can read the item early, and nothing here pretends
 otherwise. A mystery item with no title at all (the ATC's 2025 list announced
 its three only on social media) ships sealed with no date, and a club reveals
 it by republishing.
+
+A mystery item may also carry a `teaser`: the club's own line for a sealed
+item, published in the clear beside the number and the date (text, or absent;
+empty becomes null). It is the club's hint, not the title, so it is never
+sealed; the phone shows it under "Sealed until ..." and drops it once the
+title opens.
 """
 
 from __future__ import annotations
@@ -88,6 +94,46 @@ REWARD_KINDS = ("patch", "postcard", "sticker", "drawing")
 #: or publishing drafts to the UA bucket only. `published` is a club standing
 #: behind its own list.
 STATUSES = ("draft", "published")
+
+#: The blaze card's icon set (features/CHALLENGES_BLAZE_CARD.md, slice 2): one
+#: stroke glyph per kind of item, drawn by client/src/chrome/blazeIcons.ts,
+#: whose test holds the client's names to this tuple. An item's `icon` is the
+#: reviewer's judgement - features/design/blaze-card/item-icons.json for the
+#: ATC's list, copied into the reviewed file rather than re-derived - and an
+#: item with none draws the `learn` glyph on the phone. Twenty-six from the
+#: design frame (BlazeCard.dc.html) plus `pen`, which the frame's mapping
+#: used for five writing items without drawing a glyph for it (the frame fell
+#: back to `learn`); a pencil is the honest glyph for "write a journal
+#: entry", kept by the maintainer's poll of 2026-11-04 once seen on the card.
+ICON_NAMES = (
+    "blaze",
+    "book",
+    "boots",
+    "bridge",
+    "camera",
+    "film",
+    "food",
+    "heart",
+    "leaf",
+    "learn",
+    "map",
+    "megaphone",
+    "mountain",
+    "museum",
+    "mystery",
+    "pen",
+    "people",
+    "podcast",
+    "quiz",
+    "shelter",
+    "sunrise",
+    "tent",
+    "tools",
+    "tower",
+    "town",
+    "trash",
+    "water",
+)
 
 #: Tag radius, in metres from the POI, when a match does not give its own.
 #:
@@ -351,7 +397,17 @@ def resolve_match(
             return None, f"workday org {org!r} is not a known organization"
         return {"kind": kind, "org": org, "trail": trail}, ""
 
-    return {"kind": "self_report"}, ""
+    # Whether "Where did it happen?" is asked when it is earned by hand
+    # (features/CHALLENGES_BLAZE_CARD.md, slice 3): the reviewer's judgement
+    # per at-home line - features/design/blaze-card/self-report-on-trail.json
+    # for the ATC's, 35 of 76 by the ATC's own wording - copied into the
+    # reviewed file, never derived here. Absent is false: an item nobody has
+    # judged asks nothing, which is the brief's "only when it can mean
+    # something" erring on silence.
+    on_trail = match.get("on_trail", False)
+    if not isinstance(on_trail, bool):
+        return None, "on_trail must be true or false"
+    return {"kind": "self_report", "on_trail": on_trail}, ""
 
 
 def _mystery(raw: object, today: date) -> tuple[dict | None, str]:
@@ -365,7 +421,15 @@ def _mystery(raw: object, today: date) -> tuple[dict | None, str]:
     reveal = raw.get("reveal_on")
     if reveal is not None and _date(reveal) is None:
         return None, "mystery reveal_on is not a YYYY-MM-DD date"
-    return {"number": number, "reveal_on": reveal}, ""
+    # A line the club may say about a sealed item before its day ("Something
+    # to do before the sun is up") - features/CHALLENGES_BLAZE_CARD.md slice
+    # 4. Text or absent; it never has to carry the title, and it ships in the
+    # clear, so it must not give the item away: that is the club's call when
+    # it writes one.
+    teaser = raw.get("teaser")
+    if teaser is not None and not isinstance(teaser, str):
+        return None, "mystery teaser must be text"
+    return {"number": number, "reveal_on": reveal, "teaser": _text(teaser) or None}, ""
 
 
 def resolve_item(
@@ -405,6 +469,12 @@ def resolve_item(
     photo, photo_ok = _https_or_none(raw.get("photo"))
     if not photo_ok:
         return None, "photo must be an https URL"
+    # The card's glyph: absent is allowed (the phone draws `learn`), a name
+    # this build does not draw is refused rather than shipped to a shell that
+    # would draw nothing for it.
+    icon = raw.get("icon")
+    if icon is not None and icon not in ICON_NAMES:
+        return None, f"icon must be one of {', '.join(ICON_NAMES)}"
 
     out: dict = {
         "id": raw["id"],
@@ -413,6 +483,7 @@ def resolve_item(
         "note": _text(raw.get("note")) or None,
         "note_by": _text(raw.get("note_by")) or None,
         "photo": photo,
+        "icon": icon,
         "match": match,
     }
     if mystery is not None:

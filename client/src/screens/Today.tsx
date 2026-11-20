@@ -296,6 +296,14 @@ export interface TodayProps {
    * which case its slot collapses like any other.
    */
   challengeCamp?: ReactNode
+  /**
+   * The season strip (#1964, CHALLENGES_BLAZE_CARD.md slice 4): one per
+   * joined challenge with a finish line, rendered by the shell. Drawn LAST
+   * in every mode, after the ordered record and the doors - the
+   * maintainer's rule that the season lives at the bottom of Today, never
+   * the top; top of Today is today's business.
+   */
+  challengeSeason?: ReactNode
 }
 
 /**
@@ -483,6 +491,7 @@ export function Today({
   downloadSize = null,
   placeName = null,
   challengeCamp = null,
+  challengeSeason = null,
 }: TodayProps) {
   // The sidebar carries the one account button above the breakpoint, where
   // this screen is a column beside the map rather than a screen of its own.
@@ -1468,6 +1477,14 @@ export function Today({
           </button>
         )}
 
+        {/* THE SEASON, LAST OF ALL (#1964, CHALLENGES_BLAZE_CARD.md slice 4):
+            after the ordered record and after the doors, so the first thing
+            on Today is never a target and the last thing is the hiker's own
+            summer. The maintainer's rule, 2026-11-03: the season lives at
+            the bottom of Today, never the top. */}
+        {challengeSeason !== null && (
+          <div className="today__section today__season">{challengeSeason}</div>
+        )}
         {/* Said on the home screen because it is the promise the whole app
             is built around. */}
         <p className="today__footer">Everything here works with no signal.</p>

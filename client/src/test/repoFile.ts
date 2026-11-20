@@ -76,6 +76,11 @@ export const OUT_OF_TREE_READS = [
   // vitest suite is never run by CI, so a guard living there is a guard
   // nobody ran.
   'site/public/embed/v1/ourhike.js',
+  // The blaze card's icon names, ICON_NAMES (#1962): the exporter admits an
+  // item's `icon` only from this tuple, and chrome/blazeIcons.ts must draw
+  // every one of them or a tile comes up blank. blazeIcons.test.ts reads the
+  // tuple out of the Python so the two cannot drift apart silently.
+  'pipeline/lib/challenges.py',
   // ciScope.test.ts reads the workflow to check the entries above are
   // scoped - which makes the workflow itself an out-of-tree read, held to
   // the same rule it enforces.

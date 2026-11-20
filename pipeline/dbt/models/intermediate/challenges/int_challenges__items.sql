@@ -106,16 +106,19 @@ fields as (
         json_extract(item_json, '$.mystery') as mystery_json,
         json_extract(item_json, '$.mystery.number') as mystery_number_json,
         json_extract(item_json, '$.mystery.reveal_on') as reveal_on_json,
+        json_extract(item_json, '$.mystery.teaser') as teaser_json,
         json_extract(item_json, '$.title') as title_json,
         json_extract(item_json, '$.note') as note_json,
         json_extract(item_json, '$.note_by') as note_by_json,
         json_extract(item_json, '$.photo') as photo_json,
+        json_extract(item_json, '$.icon') as icon_json,
         json_extract(item_json, '$.match') as match_json,
         json_extract(item_json, '$.match.kind') as kind_json,
         json_extract(item_json, '$.match.radius_m') as radius_json,
         json_extract(item_json, '$.match.pois') as pois_json,
         json_extract(item_json, '$.match.type') as poi_type_json,
         json_extract(item_json, '$.match.off_trail') as off_trail_json,
+        json_extract(item_json, '$.match.on_trail') as on_trail_json,
         json_extract(item_json, '$.match.value') as value_json,
         json_extract(item_json, '$.match.min_fraction') as fraction_json,
         json_extract(item_json, '$.match.org') as workday_org_json,
@@ -169,6 +172,20 @@ typed as (
         coalesce(json_type(pois_json), 'NULL') = 'ARRAY'
         and json_array_length(pois_json) >= 2 as names_two_pois,
         coalesce(json_type(off_trail_json), 'NULL') as off_trail_type,
+        -- A self_report item's "Where did it happen?" switch (#1963): JSON
+        -- true, false, or absent (false); anything else is refused below.
+        -- Absent and JSON null are different answers: json_extract gives SQL
+        -- null for a missing key and JSON null for `"on_trail": null`, which
+        -- lib/challenges.py refuses (review of #2015).
+        case
+            when on_trail_json is null then 'ABSENT'
+            else json_type(on_trail_json)
+        end as on_trail_type,
+        coalesce(
+            json_type(on_trail_json) = 'BOOLEAN'
+            and json_extract_string(on_trail_json, '$') = 'true',
+            false
+        ) as self_on_trail,
         -- A place kind's, and poi_type's, `off_trail` is true only when it
         -- is JSON true.
         coalesce(
@@ -192,10 +209,28 @@ typed as (
             cast({{ var('challenges_default_min_fraction') }} as double)
         ) as min_fraction,
         {{ challenges_text('title_json') }} as title,
+        -- A sealed item's one line (#1964): text or absent.
+        coalesce(json_type(teaser_json), 'NULL') as teaser_type,
+        {{ challenges_text('teaser_json') }} as teaser_text,
         {{ challenges_text('note_json') }} as note_text,
         {{ challenges_text('note_by_json') }} as note_by_text,
         {{ challenges_https_ok('photo_json') }} as photo_ok,
-        {{ challenges_https('photo_json') }} as photo_url
+        {{ challenges_https('photo_json') }} as photo_url,
+        -- The card's glyph (#1962): absent or JSON null publishes null and
+        -- the phone draws `learn`; anything else must be one of the names
+        -- the shell draws, as resolve_item() holds it to ICON_NAMES.
+        case
+            when json_type(icon_json) = 'VARCHAR'
+                then json_extract_string(icon_json, '$')
+        end as icon_text,
+        coalesce(json_type(icon_json), 'NULL') = 'NULL'
+        or (
+            json_type(icon_json) = 'VARCHAR'
+            and list_contains(
+                {{ var('challenges_icon_names') }},
+                json_extract_string(icon_json, '$')
+            )
+        ) as icon_ok
     from fields
 ),
 
@@ -582,6 +617,8 @@ checked as (
                 then 'mystery needs a number from 1'
             when matches.reveal_on_given and not matches.reveal_on_ok
                 then 'mystery reveal_on is not a YYYY-MM-DD date'
+            when matches.teaser_type not in ('NULL', 'VARCHAR')
+                then 'mystery teaser must be text'
         end as mystery_problem
     from matches
     left join item_ends
@@ -662,20 +699,25 @@ match_checked as (
                             then 'min_fraction must be in (0, 1]'
                     end
                 )
-            when checked.kind = 'workday' then case
-                when
-                    checked.workday_org_json is not null
-                    and json_type(checked.workday_org_json) != 'NULL'
-                    and not coalesce(
-                        list_contains(
-                            known_orgs.orgs, checked.workday_org_text
-                        ),
-                        false
-                    )
-                    then
-                        'workday org ' || checked.workday_org_repr
-                        || ' is not a known organization'
-            end
+            when checked.kind = 'workday'
+                then case
+                    when
+                        checked.workday_org_json is not null
+                        and json_type(checked.workday_org_json) != 'NULL'
+                        and not coalesce(
+                            list_contains(
+                                known_orgs.orgs, checked.workday_org_text
+                            ),
+                            false
+                        )
+                        then
+                            'workday org ' || checked.workday_org_repr
+                            || ' is not a known organization'
+                end
+            when
+                checked.kind = 'self_report'
+                and checked.on_trail_type not in ('ABSENT', 'BOOLEAN')
+                then 'on_trail must be true or false'
         end as match_problem,
         -- What the match publishes as, by kind.
         case checked.kind
@@ -721,7 +763,11 @@ match_checked as (
                     'org', checked.workday_org_text,
                     'trail', checked.trail
                 )
-            when 'self_report' then json_object('kind', checked.kind)
+            when 'self_report'
+                then json_object(
+                    'kind', checked.kind,
+                    'on_trail', checked.self_on_trail
+                )
         end as published_match
     from checked
     cross join published_types
@@ -751,6 +797,12 @@ resolved as (
             when match_checked.match_problem is not null
                 then match_checked.match_problem
             when not match_checked.photo_ok then 'photo must be an https URL'
+            when not match_checked.icon_ok
+                then
+                    'icon must be one of '
+                    || array_to_string(
+                        {{ var('challenges_icon_names') }}, ', '
+                    )
         end as problem,
         -- Sealed through the reveal day itself, against the build's date.
         coalesce(
@@ -783,6 +835,7 @@ select
                 'note', nullif(note_text, ''),
                 'note_by', nullif(note_by_text, ''),
                 'photo', photo_url,
+                'icon', icon_text,
                 'match', published_match
             )
         when sealed
@@ -793,10 +846,12 @@ select
                 'note', nullif(note_text, ''),
                 'note_by', nullif(note_by_text, ''),
                 'photo', photo_url,
+                'icon', icon_text,
                 'match', published_match,
                 'mystery', json_object(
                     'number', mystery_number,
-                    'reveal_on', reveal_on_text
+                    'reveal_on', reveal_on_text,
+                    'teaser', nullif(teaser_text, '')
                 ),
                 'sealed_title', to_base64(encode(title))
             )
@@ -807,10 +862,12 @@ select
             'note', nullif(note_text, ''),
             'note_by', nullif(note_by_text, ''),
             'photo', photo_url,
+            'icon', icon_text,
             'match', published_match,
             'mystery', json_object(
                 'number', mystery_number,
-                'reveal_on', reveal_on_text
+                'reveal_on', reveal_on_text,
+                'teaser', nullif(teaser_text, '')
             )
         )
     end as published_item

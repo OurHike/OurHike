@@ -74,6 +74,7 @@ import {
   ChallengeCampCard,
   PlanChallenges,
   ChallengeDetail,
+  ChallengeSeasonStrips,
   Challenges,
   ClosureForm,
   Downloads,
@@ -569,6 +570,7 @@ import {
 import { mapPointsFrom, type BoundingBox, type MapPoint } from './lib/legendContents'
 import {
   AT_THE_FIX,
+  fixIsStale,
   nearbyPlaces,
   placesByName,
   reportLocationFields,
@@ -9000,8 +9002,26 @@ function App() {
         defaultName={preferences.trail_name ?? undefined}
         onJoin={() => challenges.join(openChallengeRecord.id)}
         onLeave={() => challenges.leave(openChallengeRecord.id)}
-        onTag={(item, poi) => challenges.tagItem(openChallengeRecord, item, 'hand', poi)}
+        onTag={(item, poi, place) =>
+          challenges.tagItem(openChallengeRecord, item, 'hand', poi, place)
+        }
         onUntag={(item, poi) => challenges.untagItem(openChallengeRecord, item, poi)}
+        // For "Where did it happen?" and "Near you" (#1963): the fix snapped
+        // to the trail, today's walked miles and the phone's own waypoints.
+        // Nothing here asks for location; a null fix is simply no Here card.
+        // A fix past the report path's STALE_FIX_SECONDS is no fix here:
+        // useGeolocation keeps a pocketed phone's last fix "located", and
+        // "your position right now" from miles back would be stored as the
+        // place (review of #2015). Today's miles only if they are today's,
+        // as the camp card reads them.
+        fixMile={
+          currentFix !== null && !fixIsStale(currentFix.fixedAt, now)
+            ? (currentFix.mile ?? null)
+            : null
+        }
+        todayRanges={challengeTodayRanges}
+        units={units}
+        places={searchablePois}
         onRemoveTag={(item, poi) => challenges.removeTag(openChallengeRecord, item, poi)}
         entryState={openChallengeEntryState}
         onForgetEntry={() => challenges.forgetEntry(openChallengeRecord.id)}
@@ -9088,6 +9108,21 @@ function App() {
       today={challengeToday}
       onTagAll={() => challenges.tagAll(campCandidates, challengeToday)}
       onNotTonight={() => challenges.notTonight(challengeToday)}
+    />
+  ) : null
+
+  // The season strip(s) at the bottom of Today (#1964): one per joined
+  // challenge with a finish line, last in every mode. Deferred, loop and
+  // all (chrome/ChallengeSeasonStrip.tsx), so Today's first frame carries
+  // one check and one element.
+  const challengeSeasonNode = challenges.joined.some(
+    (challenge) => challenge.finish !== null,
+  ) ? (
+    <ChallengeSeasonStrips
+      joined={challenges.joined}
+      state={challenges.state}
+      today={challengeToday}
+      onOpen={openChallenge}
     />
   ) : null
 
@@ -10512,6 +10547,7 @@ function App() {
   const todayScreen = (
     <Today
       challengeCamp={challengeCampNode}
+      challengeSeason={challengeSeasonNode}
       account={account}
       onOpenAccount={openSignIn}
       now={now}

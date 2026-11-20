@@ -264,6 +264,21 @@ def poi_photo_key(poi_id: str, contributor_id: str) -> str:
     return f"poi-photos/{poi_id}/{contributor_id}.jpg"
 
 
+def inventory_photo_key(observation_id: str, index: int = FIRST_PHOTO_INDEX) -> str:
+    """Where photo `index` of a structure-survey record lives. Pure,
+    and the only spelling of it, `photo_key`'s rule.
+
+    Keyed by the OBSERVATION, never the structure: a structure is visited
+    again and again, and each visit's photographs say what it looked like
+    that day. Keying by structure would let this week's photo of a sound
+    bridge replace last year's of the scoured abutment, which is the
+    overwrite the survey's first rule refuses. No table: `photo_count` on
+    the observation says how far `inventory/{id}/{n}.jpg` runs, as it does
+    for a report.
+    """
+    return f"inventory/{observation_id}/{index}.jpg"
+
+
 def note_photo_key(note_id: str) -> str:
     """Where a field note's photo lives (#879).
 

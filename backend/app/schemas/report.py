@@ -1,7 +1,7 @@
 """Pydantic request/response models for the `/reports` router."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -18,7 +18,7 @@ from app.models.report import (
     SignedNameKind,
     Visibility,
 )
-from app.schemas.common import FiniteFloat, NoteText
+from app.schemas.common import FiniteFloat, NoteText, refuse_a_future_time
 
 # A name is short. Bounded for NoteText's reason - the compounding failure of
 # an unbounded text field on a row that is stored for good - and at a length
@@ -182,15 +182,9 @@ class ReportCreate(BaseModel):
     def _reject_future_authoring(cls, value: datetime | None) -> datetime | None:
         if value is None:
             return None
-
-        # Phone clocks drift, so a small lead is skew rather than tampering.
-        skew = timedelta(minutes=5)
-        now = datetime.now(timezone.utc)
-        compared = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-
-        if compared > now + skew:
-            raise ValueError("authored_at cannot be in the future")
-        return value
+        # Phone clocks drift, so a small lead is skew rather than tampering
+        # (schemas/common.py's CLOCK_SKEW, shared with the survey's records).
+        return refuse_a_future_time(value, "authored_at")
 
     @field_validator("mile")
     @classmethod

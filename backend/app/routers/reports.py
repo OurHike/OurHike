@@ -751,18 +751,29 @@ def _upload_target(report: Report | None, index: int, uploader_id: str) -> Repor
     is in the bucket (`_record_stored_photo`).
     """
     report = _report_this_caller_may_upload_to(report, uploader_id)
+    refuse_an_out_of_sequence_photo(index, report.photo_count, "report")
+    return report
 
+
+def refuse_an_out_of_sequence_photo(index: int, photo_count: int, holder: str) -> None:
+    """The index rule every numbered photo set shares, or the 409 that says why not.
+
+    Photos run FIRST_PHOTO_INDEX to MAX_REPORT_PHOTOS and the set is dense:
+    an upload may append (one past the end) or replace (inside it), never
+    skip, so `photo_count` always says how far the objects run. One copy,
+    because a report and a structure-survey record must not come to disagree
+    about it; `holder` is the word the refusal uses for what holds the set.
+    """
     if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"A report holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
+            detail=f"A {holder} holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
         )
-    if index > report.photo_count + 1:
+    if index > photo_count + 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"This report has {report.photo_count} photos; the next one is {report.photo_count + 1}.",
+            detail=f"This {holder} has {photo_count} photos; the next one is {photo_count + 1}.",
         )
-    return report
 
 
 def _report_this_caller_may_upload_to(report: Report | None, uploader_id: str) -> Report:

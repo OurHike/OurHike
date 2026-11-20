@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { seasonSummary, seasonWord, stateAtMile } from './seasonStrip'
+import { earnedPlaces, seasonSummary, seasonWord, stateAtMile } from './seasonStrip'
 import { ATC_CHALLENGE } from './challenges.fixtures'
 import { EMPTY_CHALLENGE_STATE, join, tag, tagsFor } from './challengeProgress'
 import type { TagPlace } from './wherePlace'
@@ -115,5 +115,25 @@ describe('the season strip’s summary (#1964)', () => {
     expect(seasonWord({ opens: '2027-11-15', closes: '2028-02-28' })).toBe('winter')
     expect(seasonWord({ opens: '2027-12-01', closes: '2028-03-31' })).toBe('winter')
     expect(seasonWord({ opens: '2027-01-01', closes: '2027-12-31' })).toBe('season')
+  })
+})
+
+describe('where each earned item landed (#1965)', () => {
+  it('asks the lookup it is given for a mile’s state, so the published runs replace the bands', () => {
+    const tags = earned([
+      { id: 'mcafee-knob' },
+      { id: 'white-blaze-photo', place: { kind: 'here', mile: 719.6 } },
+      { id: 'trivia-quiz' },
+    ])
+    const everywhereMaine = () => 'ME' as const
+    const places = earnedPlaces(ATC_CHALLENGE, tags, everywhereMaine)
+    expect(
+      places.map((place) => [place.item.id, place.mile, place.state, place.onTrail]),
+    ).toEqual([
+      ['trivia-quiz', null, null, false],
+      ['mcafee-knob', 714.92, 'ME', true],
+      ['white-blaze-photo', 719.6, 'ME', true],
+    ])
+    expect(seasonSummary(ATC_CHALLENGE, tags, everywhereMaine).states).toEqual(['ME'])
   })
 })

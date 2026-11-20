@@ -203,6 +203,7 @@ jobs:
         pipeline/data/raw/external
         pipeline/data/raw/hikefinder.json
         pipeline/data/raw/hikefinder_gpx
+        pipeline/data/raw/atlas
 
     steps:
       - uses: actions/checkout@v7
@@ -334,6 +335,16 @@ jobs:
 
       - name: Fetch opentrail.org POIs
         run: python fetch_opentrail.py
+
+      # The two atlas files the challenge map is drawn on (#1965): us-atlas's
+      # states and world-atlas's countries, at exact npm versions on
+      # jsDelivr. Pinned, so a copy the cache restored is the file the URL
+      # still serves and is kept without asking the network; a first run
+      # downloads 871 KB. Fails the job only on a row that is not pinned or a
+      # download that is not the topology it names - the same class of fault
+      # as a broken registry row, which nothing downstream should paper over.
+      - name: Fetch atlas outlines
+        run: python fetch_atlas_outlines.py
 
       # Read the POI sources and clip them BEFORE any of the fetching below,
       # and fail here if they are not exportable. Writes nothing.
@@ -939,6 +950,16 @@ jobs:
       # quietly.
       - name: Export challenges
         run: python export_challenges.py
+
+      # The challenge map's geometry (#1965, features/CHALLENGES_BLAZE_CARD.md
+      # slice 5). AFTER "Export trail lines", whose trails.geojson and
+      # trail_miles.json are the line and the mile axis it draws, and after
+      # "Fetch atlas outlines". No network. A missing input writes no
+      # manifest and says so as an annotation: the release then has no map,
+      # which the phone reads as the list alone, and the trail data this job
+      # publishes is never held back by it.
+      - name: Export the challenge map
+        run: python export_challenge_map.py
 
       # Who the map's data belongs to (#927). Reads sources.json in this
       # checkout and nothing else - no raw snapshot, no network - so it could

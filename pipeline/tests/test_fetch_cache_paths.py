@@ -31,6 +31,7 @@ import yaml
 import build_osm_water_reach
 import fetch_all
 import fetch_atc_photos
+import fetch_atlas_outlines
 import fetch_elevation
 import fetch_opentrail
 import fetch_osm_water
@@ -87,6 +88,9 @@ FETCHER_OUTPUTS = (
     # entry mandatory, not the word "fetch" in the module name.
     ("build_osm_water_reach", lambda: [build_osm_water_reach.OUT_PATH]),
     ("fetch_trail_water", lambda: [fetch_trail_water.OUT_PATH]),
+    # The challenge map's atlas files (#1965), named by lib/atlas_sources.py,
+    # which the fetcher reads them from.
+    ("fetch_atlas_outlines", lambda: [path for path, _ in fetch_atlas_outlines.ATLAS_FILES.values()]),
 )
 
 

@@ -206,6 +206,10 @@ def client_keys() -> dict[str, str]:
         # an absent artifact as "no challenges yet" - so a respelling on
         # either end would read as no club having published one, for ever.
         _string_const(config, "CHALLENGES_KEY"): "config.ts CHALLENGES_KEY",
+        # The challenge map's geometry (#1965). Optional for the same reason:
+        # a respelling would read as no map, for ever, and the list alone is
+        # what a hiker would see without anyone noticing.
+        _string_const(config, "CHALLENGE_MAP_KEY"): "config.ts CHALLENGE_MAP_KEY",
         # The one-time archive of NYNJTC's paper-sheet footprints (#1574),
         # read at the bucket root like the conditions family and written by
         # its own script rather than by the publisher - which is why the
@@ -383,6 +387,8 @@ def published(tmp_path, monkeypatch) -> set[str]:
     (tmp_path / "spurs_manifest.json").write_text(json.dumps(manifest_entry("spurs.json")))
     # The clubs' challenges (#1780): highlights_manifest.json's shape.
     (tmp_path / "challenges_manifest.json").write_text(json.dumps(manifest_entry("challenges.json")))
+    # The challenge map (#1965): the same shape.
+    (tmp_path / "challenge_map_manifest.json").write_text(json.dumps(manifest_entry("challenge_map.json")))
     # The tombstones (#673). This fixture is "one of every artifact" and was
     # missing this one, so the key looked unpublished the moment the client
     # started asking for it (#831) - publish.collect_artifacts has emitted it

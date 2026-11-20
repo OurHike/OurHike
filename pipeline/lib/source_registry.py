@@ -209,6 +209,18 @@ JSON_FEATURES = "json_features"
 PAGE_POINTS = "page_points"
 PDF_POINTS = "pdf_points"
 
+# A reference map file at a pinned version, fetched whole and read for the
+# outlines a static map is drawn on (#1965 - the challenge map and its share
+# poster). us-atlas and world-atlas first: Mike Bostock's TopoJSON
+# redistributions of the Census Bureau's state boundaries and Natural Earth's
+# countries, from the npm CDN at an exact version, so the file behind a URL
+# never changes and a fetched copy never goes stale (freshness `none`).
+# fetch_atlas_outlines.py fetches every row of the kind and
+# export_challenge_map.py reads every one, so the kind is an exporter's in
+# EXPORTER_KINDS below and its stewards are named on the sources screen
+# production ships. lib/atlas_sources.py holds the keys.
+ATLAS_FILE = "atlas_file"
+
 KNOWN_KINDS = frozenset(
     {
         ARCGIS_FEATURE_LAYER,
@@ -228,6 +240,7 @@ KNOWN_KINDS = frozenset(
         JSON_FEATURES,
         PAGE_POINTS,
         PDF_POINTS,
+        ATLAS_FILE,
     }
 )
 
@@ -250,9 +263,10 @@ KNOWN_KINDS = frozenset(
 #
 # EXPORTER_KINDS: every row of the kind is read by a legacy fetcher and an
 # exporter after it (fetch_all.py's ArcGIS layers, fetch_external_layers.py's
-# ArcGIS and Socrata layers, the OSM extracts, the drought polygons).
+# ArcGIS and Socrata layers, the OSM extracts, the drought polygons, and the
+# atlas files the challenge map is drawn on).
 EXPORTER_KINDS = frozenset(
-    {ARCGIS_FEATURE_LAYER, EXTERNAL_ARCGIS_LAYER, SOCRATA_GEOJSON_LAYER, GEOFABRIK_EXTRACT, WEEKLY_POLYGONS}
+    {ARCGIS_FEATURE_LAYER, EXTERNAL_ARCGIS_LAYER, SOCRATA_GEOJSON_LAYER, GEOFABRIK_EXTRACT, WEEKLY_POLYGONS, ATLAS_FILE}
 )
 
 # EXPORTER_ONE_ROW_KINDS: an exporter reads ONE row of each, the key its own
@@ -441,3 +455,9 @@ def poi_source_steward(registry: dict, poi_source: str) -> str | None:
     if entry is None:
         return None
     return entry.get("steward") or entry.get("provider") or None
+
+
+def atlas_files(registry: dict) -> list[dict]:
+    """Every `atlas_file` row, in registry order - what fetch_atlas_outlines.py
+    fetches and export_challenge_map.py reads."""
+    return [entry for entry in registry["sources"] if source_kind(entry) == ATLAS_FILE]

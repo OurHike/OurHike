@@ -21,6 +21,7 @@ import { trailLabel } from '../lib/challengeText'
 import type { Challenge } from '../lib/challenges'
 import { tagsFor, type ChallengeState } from '../lib/challengeProgress'
 import { seasonSummary, seasonWord } from '../lib/seasonStrip'
+import { stateLookup, useChallengeMap } from '../lib/useChallengeMap'
 import { BlazeCard } from './BlazeCard'
 import { DraftLabel } from './ChallengeParts'
 import '../screens/challenges.css'
@@ -39,7 +40,10 @@ export function ChallengeSeasonStrip({
   onOpen,
 }: ChallengeSeasonStripProps) {
   const tags = tagsFor(state, challenge.id)
-  const { earned, states, atHome } = seasonSummary(challenge, tags)
+  // The measured state runs when the phone already holds the map (#1965);
+  // Today never downloads it.
+  const map = useChallengeMap({ ask: false })
+  const { earned, states, atHome } = seasonSummary(challenge, tags, stateLookup(map))
   const where = [...states, ...(atHome > 0 ? [`${atHome} at home`] : [])].join(' · ')
   const finish =
     challenge.finish === null

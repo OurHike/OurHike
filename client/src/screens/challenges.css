@@ -1396,3 +1396,179 @@ div.challenge-row__open {
   font-size: 20px;
   font-weight: 700;
 }
+
+/* ---- Where your trail karma is (#1965, features/CHALLENGES_BLAZE_CARD.md
+   slice 5, frame Line.dc.html) ----
+   The Card / Where pair sits above both views; the Where view is a paper
+   page - a list, then the map and the strip of states. */
+.challenge-views {
+  display: flex;
+  align-self: flex-end;
+  gap: 2px;
+  margin: 0 0 8px auto;
+  padding: 3px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-card-alt);
+  width: max-content;
+}
+
+.challenge-views button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.challenge-views button[aria-pressed='true'] {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.challenge-where {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 24px;
+}
+
+.challenge-where__summary {
+  margin: 0;
+  color: var(--fg-2);
+}
+
+.challenge-where__map svg,
+.challenge-where__strip svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.challenge-where__map {
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--border-1);
+}
+
+.challenge-where__strip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  background: var(--bg-chrome);
+}
+
+.challenge-where__strip .challenges__eyebrow {
+  color: var(--fg-chrome-3);
+}
+
+.challenge-where__heading {
+  margin: 6px 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.challenge-where__rows,
+.challenge-where__chips {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  gap: 8px;
+}
+
+.challenge-where__rows {
+  flex-direction: column;
+}
+
+.challenge-where__chips {
+  flex-wrap: wrap;
+}
+
+.challenge-where__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-1);
+  border-radius: 14px;
+  background: var(--surface-card);
+  --tile-size: 30px;
+}
+
+.challenge-where__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.challenge-where__title {
+  color: var(--fg-1);
+}
+
+.challenge-where__line,
+.challenge-where__date {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-3);
+}
+
+.challenge-where__chip {
+  padding: 6px 12px;
+  border: 1.5px dashed var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.challenge-where__chip--earned {
+  border-style: solid;
+}
+
+.poster-sheet__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  margin: 0 16px;
+}
+
+.poster-sheet__image {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.poster-sheet__state {
+  margin: 0;
+  color: var(--fg-2);
+}
+
+.poster-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px 24px;
+}
+
+.poster-sheet__actions .challenge-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}

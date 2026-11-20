@@ -704,6 +704,20 @@ export const PLACES_KEY = 'places.json'
 // "no challenges yet" and never as a failed download.
 export const CHALLENGES_KEY = 'challenges.json'
 
+// The challenge map's geometry (#1965, features/CHALLENGES_BLAZE_CARD.md
+// slice 5), published by pipeline/export_challenge_map.py: the A.T.
+// centerline thinned for a phone with each vertex's mile, the state and
+// Canada outlines around it from the atlas files sources.json registers, and
+// which state each stretch of trail is in. The phone draws it with no tiles
+// (lib/challengeMapSvg.ts) on "Where your trail karma is" and the share
+// poster.
+//
+// @release optional - the exporter writes a manifest publish.py collects only
+// when every input was there (trails, trail miles, both atlas files); a
+// release without it has no map, which lib/challengeMap.ts reads as "the list
+// alone" and never as a failed download.
+export const CHALLENGE_MAP_KEY = 'challenge_map.json'
+
 // 'crossing' IS GONE, AND ON PURPOSE (#1674). It was the stream crossings
 // pipeline/fetch_trail_water.py derived by intersecting every walking route
 // with both hydrographies - 5,318 of them on production release 2026-09-04,

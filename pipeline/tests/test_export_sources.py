@@ -949,8 +949,8 @@ class TestTheRegistryTheConsoleReads:
         """
         orgs = self.real()["organizations"]
 
-        # Recounted from the registry 2026-10-11; git holds which registration added each.
-        assert len(orgs) == 150
+        # Recounted from the registry 2026-11-04 (org:naturalearth, #1965); git holds which registration added each.
+        assert len(orgs) == 151
         assert {org["steward_id"] for org in orgs} == {
             "org:akstateparks",
             "org:alaskatrails",
@@ -1015,6 +1015,7 @@ class TestTheRegistryTheConsoleReads:
             "org:nbatc",
             "org:nchpta",
             "org:ncparks",
+            "org:naturalearth",
             "org:ncta",
             "org:ndmc",
             "org:nhgranit",

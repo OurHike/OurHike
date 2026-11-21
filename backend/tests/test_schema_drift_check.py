@@ -266,7 +266,8 @@ def test_being_behind_head_is_reported_and_never_failed():
     """The state production is in between a migration merging and somebody
     applying it - which RELEASING.md 8c makes a deliberate wait, so this is
     the normal condition rather than a delay. A check that went red for it
-    would be red most weeks, and a check that is usually red is not read."""
+    would be red most weeks, and a check that is usually red is not read.
+    It is warned about instead: the test after the partially-migrated one."""
     state, detail = check_schema_drift.classify("aaaa1111", "cccc3333", REAL_REVISIONS, ["bbbb2222", "cccc3333"])
     assert state == check_schema_drift.BEHIND
     assert state not in check_schema_drift.FAILING_STATES
@@ -330,6 +331,37 @@ def test_a_partially_migrated_database_passes_and_names_what_is_pending(migratio
     output = capsys.readouterr().out
     assert check_schema_drift.BEHIND in output
     assert revisions[0].revision in output, "The head revision is named, so the log says what is not applied yet."
+
+
+def test_a_database_behind_head_is_a_warning_in_the_run_summary_not_a_notice(migration_engine, capsys):
+    """#1918 item 13: once Render deploys `main`, production behind head is
+    live code expecting columns the database does not have, and `/health`
+    touches no table. A `::notice::` is folded away in the run summary, so the
+    state is said and not seen; a `::warning::` is shown. Still exit 0: being
+    behind is not a fault in the database (the test above)."""
+    config = check_schema_drift.alembic_config()
+    revisions = list(check_schema_drift.ScriptDirectory.from_config(config).walk_revisions())
+    if len(revisions) < 2:
+        pytest.skip("Needs at least two revisions for one to be behind the other.")
+    command.upgrade(config, revisions[1].revision)
+
+    assert check_schema_drift.main(["--label", "production"]) == 0
+    output = capsys.readouterr().out
+    warnings = [line for line in output.splitlines() if line.startswith("::warning::")]
+    assert len(warnings) == 1, output
+    assert warnings[0].startswith("::warning::production: At "), warnings[0]
+    assert revisions[0].revision in warnings[0], "The warning names the revision that is not applied yet."
+    assert "migrate.yml (target: production)" in warnings[0], "The warning says how to apply it."
+    assert "::notice::production" not in output, "Behind head is warned about once, not also noted."
+
+
+def test_an_empty_database_is_still_only_a_notice(migration_engine, capsys):
+    """EMPTY is UA's and production's state before either is stood up, which
+    is not something to warn about every morning."""
+    assert check_schema_drift.main(["--label", "production"]) == 0
+    output = capsys.readouterr().out
+    assert "::notice::production: No alembic_version row" in output
+    assert "::warning::" not in output
 
 
 def test_a_database_at_an_unknown_revision_fails_the_run(migration_engine, monkeypatch, capsys):

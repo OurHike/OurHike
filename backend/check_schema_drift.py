@@ -21,7 +21,8 @@ on stale upstream data.
               revisions after it. That is every moment between a migration
               merging and somebody applying it, which for production is a
               deliberate wait (RELEASING.md 8c: expand and contract across two
-              releases, never both at once). Reported, never failed.
+              releases, never both at once). Warned about, never failed: see
+              "Why BEHIND is a warning" below.
 
     UNKNOWN   The database is at a revision this repository has never heard
               of. Something applied a migration from somewhere else - another
@@ -31,6 +32,22 @@ on stale upstream data.
               difference. Everything the repository knows about has been
               applied and the schema is *still* not what the models describe,
               which leaves editing-by-hand as the explanation. Fails.
+
+**Why BEHIND is a warning and not only a notice** (#1918 - Backend findings
+the 2026-10-27 pre-launch review filed together, item 13). Being behind is
+not a fault in the database, so it never fails the run, for the reason
+above. But it is not harmless either. backend/HOSTING.md's migration-skew
+section: once Render tracks `main`, a merge that carries a revision redeploys
+the models that expect it before `migrate.yml target: production` has
+necessarily run, and every request that reaches the missing column is a 500.
+`/health` touches no table, so nothing else notices. A `::notice::` is folded
+away in the run summary; a `::warning::` is shown at the top of it, which is
+the difference between "somebody still has to apply this" being said and
+being seen. UA gets the same warning: `migrate.yml` applies UA on every merge
+that touches a revision, so UA behind head means that run did not happen or
+failed. Reasoned from HOSTING.md and migrate.yml's triggers; no deploy has
+been observed meeting an older schema, because the Render service does not
+exist yet (#2023 - The release's backend runs nowhere but UA).
 
 An empty database is not a fault either: it is indistinguishable from one that
 has not been stood up yet, which is exactly where UA and production both are
@@ -323,9 +340,16 @@ def main(argv: list[str] | None = None) -> int:
     if state in FAILING_STATES:
         return 1
 
-    # BEHIND and EMPTY both reach here. Neither is a fault; both are worth
-    # saying out loud, because "nothing to do" and "somebody still has to
-    # apply this" look identical in a green run otherwise.
+    # BEHIND and EMPTY both reach here. Neither is a fault, so neither fails
+    # the run. BEHIND is a warning rather than a notice: the module docstring,
+    # "Why BEHIND is a warning".
+    if state == BEHIND:
+        print(
+            f"::warning::{args.label}: {detail} Code that expects these revisions may already be deployed, and any "
+            f"request that reaches a table or column they add answers 500 until they are applied. Apply them with "
+            f"migrate.yml (target: {args.label.lower()})."
+        )
+        return 0
     print(f"::notice::{args.label}: {detail}")
     return 0
 

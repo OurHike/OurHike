@@ -23,7 +23,10 @@
 # normal - it is every moment between a migration merging and a maintainer
 # choosing to apply it, which RELEASING.md 8c makes a deliberate wait rather
 # than a delay. A red X for that would be a red X most weeks, and the value of
-# this check is entirely in a red X being unusual.
+# this check is entirely in a red X being unusual. So being behind is a
+# warning at the top of the run's summary, not a failure: once Render deploys
+# main, a database behind head is live code expecting columns that are not
+# there yet (backend/HOSTING.md's migration-skew section; #1918 item 13).
 
 name: Schema drift
 

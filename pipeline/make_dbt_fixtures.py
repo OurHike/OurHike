@@ -5355,8 +5355,9 @@ def _line_geometry(*coordinates) -> dict:
 #: - a stub ending 5 m short of a straight east-west line, whose envelope
 #:   meets the stub's only because EPSG:5070 tilts the line (joined);
 #: - two lines in line, east-west, the second starting 5 m east of the
-#:   first's end: their envelopes do not meet, so node_lines() never
-#:   compares them and the 5 m gap stays open (two nodes, no weld).
+#:   first's end: their envelopes do not meet, which before #1668 meant
+#:   node_lines() never compared them; now each end is joined to the other
+#:   line (two welds, and one node).
 NETWORK_GRAPH_LINES = [
     (
         "{00000000-0000-4000-8000-000000000421}",

@@ -31,8 +31,7 @@
 -- THE TWO WAYS TWO TRAILS MEET, the module's design decision:
 -- 1. lines that cross or touch are cut exactly where they meet, with no
 --    tolerance (`crossing`, one row per pair, the lower part first, as
---    node_lines() asks `line.intersects(other)` of each pair whose envelopes
---    meet);
+--    node_lines() asks `line.intersects(other)` of each pair it compares);
 -- 2. an END of one line within trail_network_endpoint_snap_m (8 m,
 --    @unvalidated: build_trail_graph.py --sweep against real layers settles
 --    it) of another line it does NOT cross is joined to it (`endpoint_join`):
@@ -40,12 +39,14 @@
 --    one node. Only an end: a parallel trail 30 m away for two miles has no
 --    end in that corridor, so no tolerance short of absurd welds it on. A
 --    pair that crosses is never also joined, as the Python `continue`s.
--- Both kinds look only at pairs whose envelopes meet, the candidates
--- STRtree.query hands node_lines(), so an end within 8 m of a line whose
--- envelope its own does not meet is not joined there either: rounding
--- toward disconnection, the safe direction (a missed junction is a refusal
--- a hiker can act on; an invented one is a route across ground with no
--- trail).
+-- node_lines() compares every pair whose envelopes come within the
+-- tolerance of each other (build_trail_graph.snap_partners()), which holds
+-- every pair either rule can cut, so this model needs no pair rule of its
+-- own: an end is joined when it lies within the tolerance and the two do not
+-- cross, whether or not the envelopes meet. Until #1668 both engines looked
+-- only at pairs whose envelopes MEET, and an end 5 m short of a line whose
+-- envelope its own did not touch was never measured: 41,689 of 80,892
+-- near-miss ends on the published network (measured 2026-09-24).
 --
 -- `cut_order` is node_lines()' loop order where SQL can follow it: the lower
 -- part, then the higher, then the lower part's two ends against the higher
@@ -63,8 +64,8 @@
 -- its pieces. Both are what testing the whole lines answers (Reasoned: a
 -- line meets another exactly where one of its segments meets one of the
 -- other's, and GEOS's distance from a point to a line is its least distance
--- to any one segment), and the pair rule stays node_lines()': only parts
--- whose envelopes meet, a crossing pair never also joined.
+-- to any one segment), and a crossing pair is never also joined, as in
+-- node_lines().
 --
 -- WHY, measured in two monthly runs, each building this model alone against
 -- DuckDB's 12.4 GiB, and on the published network:
@@ -99,15 +100,13 @@ with parts as not materialized (
     where refused_because is null
 ),
 
--- What each part brings to a cut: its id, its envelope for node_lines()'
--- pair rule, and its two ends as WKT. ST_AsText wrote a 5070 point that
+-- What each part brings to a cut: its id and its two ends as WKT. ST_AsText wrote a 5070 point that
 -- reads back as the same two doubles (the header), so `end_point_wkt` is
 -- the end shapely welds.
 part_info as (
     select
         part_order,
         part_id,
-        st_envelope(geom_m) as envelope_m,
         st_astext(st_startpoint(geom_m)) as start_wkt,
         st_astext(st_endpoint(geom_m)) as end_wkt
     from parts
@@ -154,8 +153,7 @@ pieces as (
 -- grows as the square of the parts, in every placement tried. As sign() of
 -- the difference it is no join condition, and the spatial test plans as a
 -- SPATIAL_JOIN, 0.3 s (EXPLAIN and timings measured 2026-10-02 on DuckDB
--- 1.5.4 with spatial 28db190). Two parts that cross have envelopes that
--- meet, so node_lines()' pair rule needs no test here.
+-- 1.5.4 with spatial 28db190).
 crossing_pairs as (
     select distinct
         lower_piece.part_order as low_order,
@@ -220,8 +218,7 @@ near_ends as (
         and st_distance_geos(part_ends.end_m, pieces.piece) <= {{ snap_m }}
 ),
 
--- An end joins the part it lies near when their envelopes meet and the two
--- do not cross: the lower part's ends against the higher are direction 0,
+-- An end joins the part it lies near when the two do not cross: the lower part's ends against the higher are direction 0,
 -- the higher's against the lower direction 1.
 joins as (
     select
@@ -250,9 +247,7 @@ joins as (
             = crossing_pairs.low_order
             and greatest(near_ends.line_order, near_ends.other_order)
             = crossing_pairs.high_order
-    where
-        crossing_pairs.low_order is null
-        and st_intersects(line_info.envelope_m, other_info.envelope_m)
+    where crossing_pairs.low_order is null
 ),
 
 cuts as (

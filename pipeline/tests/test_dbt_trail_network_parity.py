@@ -442,14 +442,15 @@ def test_step_node_lines_ranks_the_welds_in_the_order_node_lines_makes_them_not_
 
 
 def test_step_node_lines_refuses_a_join_whose_parts_strtree_does_not_hand_each_other():
-    """A join of two parts whose envelopes do not meet is one node_lines() never makes."""
+    """A join of two parts whose envelopes do not come within the tolerance of each other is one node_lines() never
+    makes."""
     far = {**WELD_ORDER_LINES, "far#1": LineString([(-74.0, 41.0), (-73.99, 41.001)])}
     parts = [{"part_id": part_id, "part_order": order, "line": line} for order, (part_id, line) in enumerate(far.items())]
     lines = [transform(build_trail_graph._transformers()[0].transform, part["line"]) for part in parts]
     index = {part["part_id"]: part["part_order"] for part in parts}
     cut = {**WELD_ORDER_CUTS[0], "cut_key": "endpoint_join:far#1|main#1|end", "line_part_id": "far#1"}
-    with pytest.raises(SystemExit, match="STRtree.query does not hand node_lines"):
-        step_node_lines.weld_ranks(lines, [cut], index)
+    with pytest.raises(SystemExit, match="snap_partners\\(\\) does not hand node_lines"):
+        step_node_lines.weld_ranks(lines, [cut], index, build_trail_graph.ENDPOINT_SNAP_M)
 
 
 @pytest.mark.parametrize(

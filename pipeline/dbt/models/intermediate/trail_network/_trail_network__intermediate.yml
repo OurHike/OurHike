@@ -67,7 +67,8 @@ models:
       Where the routable parts are cut (and the inputs): one row
       per pair of parts that cross or touch, and one per line end within
       trail_network_endpoint_snap_m (8 m, @unvalidated) of a part its own
-      does not cross, among pairs whose envelopes meet, in EPSG:5070 metres.
+      does not cross, whether or not their envelopes meet (#1668), in
+      EPSG:5070 metres.
       step_node_lines makes the cuts.
     columns:
       - name: cut_key

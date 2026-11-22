@@ -100,9 +100,9 @@ with parts as not materialized (
     where refused_because is null
 ),
 
--- What each part brings to a cut: its id and its two ends as WKT. ST_AsText wrote a 5070 point that
--- reads back as the same two doubles (the header), so `end_point_wkt` is
--- the end shapely welds.
+-- What each part brings to a cut: its id and its two ends as WKT.
+-- ST_AsText wrote a 5070 point that reads back as the same two doubles (the
+-- header), so `end_point_wkt` is the end shapely welds.
 part_info as (
     select
         part_order,
@@ -218,8 +218,9 @@ near_ends as (
         and st_distance_geos(part_ends.end_m, pieces.piece) <= {{ snap_m }}
 ),
 
--- An end joins the part it lies near when the two do not cross: the lower part's ends against the higher are direction 0,
--- the higher's against the lower direction 1.
+-- An end joins the part it lies near when the two do not cross: the lower
+-- part's ends against the higher are direction 0, the higher's against the
+-- lower direction 1.
 joins as (
     select
         least(near_ends.line_order, near_ends.other_order) as low_order,

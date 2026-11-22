@@ -13,7 +13,7 @@ WHY THE ROW IS UNIQUE ON (POI, CONTRIBUTOR)
 "a hiker's second photo replaces their first rather than being refused" is
 its self-healing half. Making the pair the row's identity gets both for
 free: a re-share upserts, the derived object key
-(`poi-photos/{poi_id}/{contributor_id}.jpg`) overwrites, and the cap is a
+(`poi-photos/{poi_id}/{photo_id}.jpg`, the row's own id since #1918) overwrites, and the cap is a
 property of the schema rather than a constraint someone has to enforce in
 every code path that writes.
 
@@ -41,7 +41,7 @@ and the moderation surface: vocabulary held open, honestly documented.
 import enum
 import uuid
 
-from sqlalchemy import Column, Date, DateTime, Enum, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, ForeignKey, Index, String, UniqueConstraint, false
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -97,6 +97,13 @@ class PoiPhoto(Base):
     # entry pointing at an object that is not there is a broken image, not a
     # photo.
     uploaded_at = Column(DateTime, nullable=True)
+
+    # Whether this row's object sits at the row-id key
+    # (core/photos.py `poi_photo_key`) rather than the legacy one that named
+    # the contributor's account in every signed URL (#1918 item 2). False
+    # for every row uploaded before that change, whose objects were never
+    # moved; set true by the upload that stores bytes under the row's id.
+    keyed_by_id = Column(Boolean, nullable=False, default=False, server_default=false())
 
     # The trail name the photographer asked to be credited as, captured at
     # share time. Non-null by construction: a share with no trail name is

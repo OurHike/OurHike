@@ -26,8 +26,8 @@ from app.core.photos import (
     PhotoStorageUnavailable,
     delete_photo_object,
     photo_storage_configured,
-    poi_photo_key,
     presigned_object_url,
+    stored_poi_photo_key,
 )
 from app.core.time import utc_now
 from app.db.session import get_db
@@ -282,7 +282,7 @@ def _moderation_row(db: Session, photo: PoiPhoto) -> PoiPhotoModerationOut:
     counts = _dismissal_counts(db, [photo])
     return PoiPhotoModerationOut.from_moderation_row(
         photo,
-        url=presigned_object_url(poi_photo_key(photo.poi_id, photo.contributor_id)),
+        url=presigned_object_url(stored_poi_photo_key(photo)),
         dismissal_count=counts.get((photo.poi_id, photo.contributor_id), 0),
     )
 
@@ -334,7 +334,7 @@ def read_photo_queue(
     return [
         PoiPhotoModerationOut.from_moderation_row(
             photo,
-            url=presigned_object_url(poi_photo_key(photo.poi_id, photo.contributor_id)),
+            url=presigned_object_url(stored_poi_photo_key(photo)),
             dismissal_count=counts.get((photo.poi_id, photo.contributor_id), 0),
         )
         for photo in photos
@@ -463,7 +463,7 @@ def dismiss_photo(
     commit_and_refresh(db, photo)
 
     try:
-        delete_photo_object(poi_photo_key(photo.poi_id, photo.contributor_id))
+        delete_photo_object(stored_poi_photo_key(photo))
     except PhotoStorageUnavailable:
         # The row's status is the authoritative half and it is already
         # dismissed; the object is an orphan, and no sweep exists to reclaim

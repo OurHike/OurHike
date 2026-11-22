@@ -250,18 +250,49 @@ def photo_key(report_id: str, index: int = FIRST_PHOTO_INDEX) -> str:
     return f"reports/{report_id}/{index}.jpg"
 
 
-def poi_photo_key(poi_id: str, contributor_id: str) -> str:
-    """The object key for a community waypoint photo (#576). Pure, and the
-    only spelling of it, same rule as `photo_key` above.
+def poi_photo_key(poi_id: str, photo_id: str) -> str:
+    """The object key for a community waypoint photo (#576), keyed by the
+    photo row's own random `id`. Pure, and the only spelling of it, same rule
+    as `photo_key` above.
 
-    Per POI *and per contributor*, which is what makes the design's own
-    rules structural rather than enforced: a hiker's second photo of a
-    place overwrites their first (self-replacement is free), and
-    one-per-person-per-POI is a property of the key. The caller validates
-    `poi_id` before it reaches here - it is client-supplied text going into
-    an object key, see the router's guard.
+    WHY THE ROW'S ID AND NOT THE CONTRIBUTOR'S (#1918 item 2). The key used to
+    be `poi-photos/{poi_id}/{contributor_id}.jpg`, and the public gallery's
+    signed URL shows the key. A photo shared inside its hiker's anonymity
+    window carries `attribution: null`, and its URL still named the same
+    account id as that hiker's older, credited photos, so anyone could join
+    them. The row's id is a uuid4 minted per share and names nobody.
+
+    Still derived, never stored, for the module docstring's reasons, and
+    still one key per hiker per waypoint: the row is unique on (POI,
+    contributor) (`uq_poi_photos_poi_contributor`), a re-share updates that
+    row, so a hiker's second photo of a place still overwrites their first.
+    The caller validates `poi_id` before it reaches here - it is
+    client-supplied text going into an object key, see the router's guard.
+    """
+    return f"poi-photos/{poi_id}/{photo_id}.jpg"
+
+
+def legacy_poi_photo_key(poi_id: str, contributor_id: str) -> str:
+    """Where a waypoint photo uploaded before #1918 item 2 still lives.
+
+    Those objects were never moved, because moving them needs the private
+    bucket and this code only ever touches one key at a time. So a row whose
+    `keyed_by_id` is false reads here, and **its URL still names its
+    contributor** until either that hiker uploads again (which moves it,
+    `routers/poi_photos.py`) or somebody copies the bucket's legacy objects
+    to their row-id keys and sets the flag.
     """
     return f"poi-photos/{poi_id}/{contributor_id}.jpg"
+
+
+def stored_poi_photo_key(photo) -> str:
+    """The key this waypoint photo row's object is actually at: the row-id
+    key once its bytes were uploaded under it, the legacy one before.
+    Every reader and deleter goes through here, so the two schemes are
+    decided in one place."""
+    if photo.keyed_by_id:
+        return poi_photo_key(photo.poi_id, photo.id)
+    return legacy_poi_photo_key(photo.poi_id, photo.contributor_id)
 
 
 def inventory_photo_key(observation_id: str, index: int = FIRST_PHOTO_INDEX) -> str:

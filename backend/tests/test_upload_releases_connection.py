@@ -399,12 +399,17 @@ def test_a_cleanup_delete_that_fails_is_logged_and_the_refusal_stands(client, db
     errors: list[str] = []
     monkeypatch.setattr(photos_core.logger, "error", lambda message, *args: errors.append(message % args))
     hiker = _share(client, db_session)
+    # The share's id is the object's key (#1918 item 2). Read, then the
+    # connection handed back, as `_share` does, so the pool counts below see
+    # only the request.
+    photo_id = db_session.query(PoiPhoto).one().id
+    db_session.close()
     _watch_the_put(monkeypatch, db_engine, during_the_put=_withdraw(client, hiker), deletes_fail=True)
 
     response = client.put(f"/waypoints/{_POI}/photos/mine", content=_JPEG, headers=_jpeg(hiker))
 
     assert response.status_code == 404
-    key = poi_photo_key(_POI, hiker)
+    key = poi_photo_key(_POI, photo_id)
     assert _stored(r2) == [key]
     assert [line for line in errors if key in line], errors
     assert not [line for line in errors if "cloudflarestorage" in line], errors

@@ -687,11 +687,15 @@ def test_the_notes_export_drops_observations_older_than_the_window(clean_tables)
 
 
 def test_exported_note_timestamps_are_stamped(clean_tables):
-    _insert_note(clean_tables, note_id="n1", observed=datetime(2026, 8, 18, 9, 0, 0))
+    # Yesterday at 09:00, naive as the column stores it. A fixed date aged out
+    # of read_notes' 90-day window on 2026-11-16 and failed from then on
+    # (#2069); the stamp's shape is the subject here, not the date.
+    observed = (datetime.now(timezone.utc) - timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0, tzinfo=None)
+    _insert_note(clean_tables, note_id="n1", observed=observed)
 
     [row] = read_notes(clean_tables)
 
-    assert row["observed_at"] == "2026-08-18T09:00:00Z"
+    assert row["observed_at"] == f"{observed:%Y-%m-%d}T09:00:00Z"
 
 
 def test_the_notes_window_and_cap_mirror_the_backends(clean_tables):

@@ -41,7 +41,18 @@ permissions:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    # PINNED TO 24.04, NOT ubuntu-latest (#2054). Once ubuntu-latest became
+    # ubuntu-26.04 (image 20261103.629, first seen 2026-11-14), three
+    # simplify parity tests here and three dbt unit tests in the job below
+    # differed in a coordinate's 14th significant digit, e.g.
+    # 40.000530003593205 from Python against 40.00053000359324 from SQL, on
+    # pull requests that touch no simplifier. They pass on 24.04 and in a
+    # sandbox. Which library moved (shapely's GEOS, pyproj's PROJ, DuckDB
+    # spatial, a shared libm, or the CPU) is not known. The pin moves back to
+    # ubuntu-latest when that is known and the parity tests either pass on
+    # the new image or are changed on purpose. Skipping or loosening them to
+    # get green is the wrong fix: they hold the dbt port to the exporters.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: pipeline
@@ -185,7 +196,8 @@ jobs:
   # dbt generators it runs have written the generated models.
   # SQLFluff, no longer cheap, runs last (its step says why).
   dbt:
-    runs-on: ubuntu-latest
+    # 24.04 for the same reason as `pytest` above (#2054).
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: pipeline

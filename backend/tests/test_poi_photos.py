@@ -23,6 +23,7 @@ hold:
 """
 
 from datetime import date, timedelta
+from urllib.parse import unquote
 
 import boto3
 import pytest
@@ -31,7 +32,7 @@ from moto import mock_aws
 
 from app.config import settings
 from app.core import photos as photos_core
-from app.core.photos import STORAGE_UNAVAILABLE_DETAIL, poi_photo_key
+from app.core.photos import STORAGE_UNAVAILABLE_DETAIL, legacy_poi_photo_key, poi_photo_key
 from app.core.time import utc_now
 from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal, PoiPhotoStatus
 from app.models.preferences import UserPreferences
@@ -222,8 +223,66 @@ def test_shared_and_uploaded_photo_is_served_with_a_signed_url(client, db_sessio
     assert entry["taken_month"] == "2026-06"
     assert entry["url"].startswith("http")
     # The object really is under the derived key, byte for byte.
-    stored = r2.get_object(Bucket=_BUCKET, Key=poi_photo_key(_POI, hiker.id))
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    stored = r2.get_object(Bucket=_BUCKET, Key=poi_photo_key(_POI, row.id))
     assert stored["Body"].read() == _JPEG
+
+
+def test_a_photos_signed_url_names_its_row_and_never_its_contributor(client, db_session, r2, no_cooling_off):
+    """#1918 item 2: the key is in the URL, so a key naming the account let
+    anyone join a photo shared inside the anonymity window to the same
+    hiker's credited ones."""
+    hiker = _hiker(db_session)
+    _share(client, hiker)
+    _upload(client, hiker)
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+
+    [entry] = _gallery(client)
+
+    assert hiker.id not in entry["url"]
+    assert row.id in entry["url"]
+    assert row.keyed_by_id is True
+
+
+def _back_onto_the_legacy_key(db_session, r2, hiker):
+    """Make an uploaded share look like one uploaded before #1918: its
+    bytes at the contributor's key and the row's flag off."""
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    r2.put_object(Bucket=_BUCKET, Key=legacy_poi_photo_key(_POI, hiker.id), Body=_JPEG)
+    r2.delete_object(Bucket=_BUCKET, Key=poi_photo_key(_POI, row.id))
+    row.keyed_by_id = False
+    db_session.commit()
+    return row
+
+
+def test_a_photo_uploaded_before_the_row_id_key_is_still_served_from_where_it_is(client, db_session, r2, no_cooling_off):
+    """Nothing moved the bucket's existing objects, so a row with the flag
+    off must still sign the key its bytes are really at."""
+    hiker = _hiker(db_session)
+    _share(client, hiker)
+    _upload(client, hiker)
+    _back_onto_the_legacy_key(db_session, r2, hiker)
+
+    [entry] = _gallery(client)
+
+    assert legacy_poi_photo_key(_POI, hiker.id) in unquote(entry["url"])
+
+
+def test_uploading_again_moves_a_legacy_photo_off_the_contributors_key(client, db_session, r2, no_cooling_off):
+    hiker = _hiker(db_session)
+    _share(client, hiker)
+    _upload(client, hiker)
+    row = _back_onto_the_legacy_key(db_session, r2, hiker)
+
+    assert _upload(client, hiker).status_code == 200
+
+    listed = r2.list_objects_v2(Bucket=_BUCKET, Prefix=f"poi-photos/{_POI}/")
+    keys = {obj["Key"] for obj in listed.get("Contents", [])}
+    assert keys == {poi_photo_key(_POI, row.id)}
+    db_session.refresh(row)
+    assert row.keyed_by_id is True
+    [entry] = _gallery(client)
+    assert hiker.id not in entry["url"]
 
 
 def test_gallery_is_empty_where_storage_is_not_configured(client, db_session, r2, no_cooling_off, monkeypatch):
@@ -275,7 +334,7 @@ def test_the_rolling_window_evicts_the_oldest_beyond_twelve(client, db_session, 
     assert db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hikers[0].id).one_or_none() is None
     listed = r2.list_objects_v2(Bucket=_BUCKET, Prefix=f"poi-photos/{_POI}/")
     keys = {obj["Key"] for obj in listed.get("Contents", [])}
-    assert poi_photo_key(_POI, hikers[0].id) not in keys
+    assert not any(hikers[0].id in key for key in keys)
     assert len(keys) == 12
 
 

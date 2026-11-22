@@ -18,6 +18,7 @@ from app.db.base import Base
 from app.models.closure import ClosureApproval
 from app.models.org_registry import RegistrySignoff
 from app.models.org_role import RoleInvite
+from app.models.poi_photo import PoiPhoto
 from app.models.profile import Role
 from app.models.report import Report, ReportType, Visibility
 from tests.factories import make_closure, make_profile
@@ -196,14 +197,22 @@ def test_it_leaves_out_whose_account_claimed_an_invitation_the_hiker_sent(db_ses
 def test_a_photo_carries_the_key_that_identifies_its_object(db_session):
     """The one field the tables do not have, because it is derived.
 
-    `poi_photo_key` computes the R2 key from (poi_id, contributor_id) rather
-    than storing it (core/photos.py), so a plain column dump would hand back
-    a photo record with nothing identifying the photograph.
+    `stored_poi_photo_key` computes the R2 key from the row rather than
+    storing it (core/photos.py): the row's id since #1918, the contributor's
+    on a row uploaded before. A plain column dump would hand back a photo
+    record with nothing identifying the photograph.
     """
     profile = _furnished(db_session)
     archive = build_export(db_session, profile)
 
     assert archive["photos_you_shared"][0]["storage_key"] == f"poi-photos/shelter-1/{profile.id}.jpg"
+
+    photo = db_session.query(PoiPhoto).filter_by(contributor_id=profile.id).one()
+    photo.keyed_by_id = True
+    db_session.commit()
+    archive = build_export(db_session, profile)
+
+    assert archive["photos_you_shared"][0]["storage_key"] == f"poi-photos/shelter-1/{photo.id}.jpg"
 
 
 def test_timestamps_carry_their_zone(db_session):

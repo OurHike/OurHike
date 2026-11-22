@@ -56,7 +56,7 @@ from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.core.analytics_accounts import LinkedUsageUnreachable, keys_or_refuse
-from app.core.photos import poi_photo_key
+from app.core.photos import stored_poi_photo_key
 from app.core.time import utc_now
 from app.models.analytics import AnalyticsEvent, AnalyticsUser
 from app.models.app_failure import AppFailure
@@ -246,13 +246,12 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         # not a route to a copy of them.
         "organizations_you_nominated": _rows(db, OrgNomination, OrgNomination.nominated_by == profile_id),
         # The one section that gains a field the table does not have: the R2
-        # key is DERIVED from (poi_id, contributor_id) rather than stored
-        # (core/photos.py), so dumping the columns alone would omit the only
-        # thing that identifies the object. Named `storage_key` rather than
+        # key is DERIVED from the row rather than stored (core/photos.py
+        # `stored_poi_photo_key`: the row's id, or the contributor's on a row
+        # uploaded before #1918), so dumping the columns alone would omit the
+        # only thing that identifies the object. Named `storage_key` rather than
         # `key` so it cannot be mistaken for a column.
-        "photos_you_shared": [
-            {**_row(photo), "storage_key": poi_photo_key(photo.poi_id, photo.contributor_id)} for photo in photos
-        ],
+        "photos_you_shared": [{**_row(photo), "storage_key": stored_poi_photo_key(photo)} for photo in photos],
         # The takedown ledger (#1551): a moderation record about the hiker
         # rather than a contribution by them, and theirs to see for exactly
         # that reason. Rows they wrote as a moderator (`dismissed_by`) are

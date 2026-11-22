@@ -124,8 +124,9 @@ class Profile(Base):
     # either taking those with it or leaving a dangling key.
     #
     # Nulling the links instead was tried on paper and does not survive
-    # contact with `poi_photos`: its R2 object key is DERIVED from
-    # `contributor_id` (core/photos.py `poi_photo_key`), so a null there
+    # contact with `poi_photos`: a photo uploaded before #1918 still has its
+    # R2 object key DERIVED from `contributor_id` (core/photos.py
+    # `stored_poi_photo_key`), so a null there
     # makes the photograph we just promised to keep unreachable, and its
     # `uq_poi_photos_poi_contributor` unique constraint means a shared
     # "deleted hiker" sentinel row would collide the moment two deleted

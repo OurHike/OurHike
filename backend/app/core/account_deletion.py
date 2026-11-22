@@ -16,10 +16,11 @@ rather than the conclusion.
 
 WHAT "STAYS, UNATTRIBUTED" ACTUALLY MEANS HERE
 
-Not a null. `poi_photos` settles it: its R2 object key is derived from
-`contributor_id` (core/photos.py `poi_photo_key`), so nulling that column
-makes the photograph unreachable - deletion by another name, applied to the
-one artifact carrying an irrevocable CC BY-SA 4.0 grant (#577). And
+Not a null. `poi_photos` settles it: a photo uploaded before #1918 still
+has its R2 object key derived from `contributor_id` (core/photos.py
+`stored_poi_photo_key`), so nulling that column makes the photograph
+unreachable - deletion by another name, applied to the one artifact carrying
+an irrevocable CC BY-SA 4.0 grant (#577). And
 `uq_poi_photos_poi_contributor` means a single shared "deleted hiker" profile
 would collide the moment two deleted accounts had photographed the same
 shelter.

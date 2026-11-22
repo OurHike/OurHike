@@ -241,6 +241,62 @@ def test_an_end_stopping_short_of_another_line_is_joined_within_the_tolerance():
     assert stats["junctions"] == 1
 
 
+def test_an_end_stopping_short_of_a_line_whose_bounding_box_it_does_not_touch_is_still_joined():
+    """#1668: the candidates were the lines whose bounding boxes OVERLAP, so a
+    5 m gap between two boxes was never measured, and on the published network
+    that was 41,689 of 80,892 near-miss ends. Here a north-running trail stops
+    5 m west of where an east-running one starts: the boxes are 5 m apart and
+    the end is 5 m from the line."""
+    gap_degrees = _degrees_east(5)
+    north = _feature([(LON, LAT - 0.01), (LON, LAT)], feature_id="oprhp_trails:1")
+    east = _feature(
+        [(LON + gap_degrees, LAT), (LON + 0.02, LAT)],
+        feature_id="nynjtc_long_path:2",
+        source="nynjtc_long_path",
+    )
+
+    _, stats = _build(north, east)
+
+    assert stats["endpoint_joins"] >= 1
+    assert stats["components"] == 1, "a 5 m gap is inside ENDPOINT_SNAP_M whether or not the boxes meet"
+
+
+def test_two_lines_in_line_with_a_gap_inside_the_tolerance_are_joined_end_to_end():
+    """The same miss end to end: one east-west line starts 5 m east of where
+    the other stops. Neither box reaches the other, which before #1668 meant
+    the pair was never compared."""
+    gap_degrees = _degrees_east(5)
+    west = _feature([(LON, LAT), (LON + 0.01, LAT)], feature_id="oprhp_trails:1")
+    east = _feature(
+        [(LON + 0.01 + gap_degrees, LAT), (LON + 0.02, LAT)],
+        feature_id="nynjtc_long_path:2",
+        source="nynjtc_long_path",
+    )
+
+    graph, stats = _build(west, east)
+
+    assert stats["endpoint_joins"] >= 1
+    assert stats["components"] == 1
+    assert len(graph["nodes"]) == 3, "west's start, the welded middle, east's end"
+
+
+def test_a_gap_just_past_the_tolerance_is_still_left_open_when_the_boxes_do_not_meet():
+    """Widening the search is not widening the tolerance: the decision is
+    still the end's distance to the line against ENDPOINT_SNAP_M."""
+    gap_degrees = _degrees_east(graph_builder.ENDPOINT_SNAP_M * 1.5)
+    west = _feature([(LON, LAT), (LON + 0.01, LAT)], feature_id="oprhp_trails:1")
+    east = _feature(
+        [(LON + 0.01 + gap_degrees, LAT), (LON + 0.02, LAT)],
+        feature_id="nynjtc_long_path:2",
+        source="nynjtc_long_path",
+    )
+
+    _, stats = _build(west, east)
+
+    assert stats["endpoint_joins"] == 0
+    assert stats["components"] == 2
+
+
 def test_the_same_gap_is_left_open_when_the_tolerance_is_zero():
     main = _feature([(LON, LAT), (LON + 0.02, LAT)], feature_id="oprhp_trails:1")
     gap_degrees = _degrees_east(5)

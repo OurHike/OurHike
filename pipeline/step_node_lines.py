@@ -87,11 +87,11 @@ def read_inputs(con: duckdb.DuckDBPyConnection) -> tuple[list[dict], list[dict],
     return rows, [dict(zip(keys, cut)) for cut in cuts], build_trail_graph.ENDPOINT_SNAP_M
 
 
-def weld_ranks(lines: list, cuts: list[dict], index: dict[str, int]) -> dict[str, int]:
+def weld_ranks(lines: list, cuts: list[dict], index: dict[str, int], endpoint_snap_m: float) -> dict[str, int]:
     """Each endpoint join's place among the welds in the order node_lines() makes them, by cut_key, from 0.
 
     node_lines() walks the parts in order and, for each, the higher parts
-    STRtree.query hands it, in the tree's order, which is where their
+    build_trail_graph.snap_partners() hands it, in the tree's order, which is where their
     envelopes sit and not their part order; for each such pair, the lower
     part's ends against the higher, then the higher's against the lower, each
     start before end. int_trail_network__cuts' cut_order takes the higher
@@ -116,8 +116,9 @@ def weld_ranks(lines: list, cuts: list[dict], index: dict[str, int]) -> dict[str
     is numbered one higher there.
 
     The tree is node_lines()' own: an STRtree over the same projected parts in
-    the same order. A join whose two parts the tree does not hand each other
-    is one node_lines() never made, and stops the step."""
+    the same order, asked through the same snap_partners() at the same
+    tolerance. A join whose two parts it does not hand each other is one
+    node_lines() never made, and stops the step."""
     joins = [cut for cut in cuts if cut["cut_kind"] == "endpoint_join"]
     if not joins:
         return {}
@@ -133,12 +134,12 @@ def weld_ranks(lines: list, cuts: list[dict], index: dict[str, int]) -> dict[str
     tree = STRtree(lines)
     place: dict[tuple[int, int], int] = {}
     for low in sorted({low for low, _high, _direction, _end in keyed.values()}):
-        for position, other in enumerate(tree.query(lines[low]).tolist()):
+        for position, other in enumerate(build_trail_graph.snap_partners(tree, lines[low], endpoint_snap_m).tolist()):
             place[(low, int(other))] = position
     order = []
     for cut_key, (low, high, direction, end) in keyed.items():
         if (low, high) not in place:
-            raise SystemExit(f"{cut_key}: the SQL joins two parts STRtree.query does not hand node_lines() together")
+            raise SystemExit(f"{cut_key}: the SQL joins two parts snap_partners() does not hand node_lines() together")
         order.append(((low, place[(low, high)], direction, end), cut_key))
     return {cut_key: rank for rank, (_, cut_key) in enumerate(sorted(order))}
 
@@ -179,7 +180,7 @@ def cut_lines(
         landing = other.interpolate(other.project(endpoint))
         cut_points[other_index].append(landing)
         landings.append((cut["cut_key"], landing))
-    ranks = weld_ranks(lines, cuts, index)
+    ranks = weld_ranks(lines, cuts, index, endpoint_snap_m)
     ranked = [(cut_key, landing, ranks[cut_key]) for cut_key, landing in landings]
     return build_trail_graph._split_all(lines, cut_points), ranked, crossings
 

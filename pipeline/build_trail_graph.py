@@ -386,6 +386,37 @@ def _split_all(lines: list[LineString], cut_points: list[list[Point]]) -> list[l
     return result
 
 
+def snap_partners(tree: STRtree, line, endpoint_snap_m: float) -> np.ndarray:
+    """The lines node_lines() compares `line` with, in the tree's order.
+
+    Every line whose bounding box comes within `endpoint_snap_m` of this
+    line's box, on either axis. A plain `tree.query(line)` asks only for boxes
+    that OVERLAP, and an end stopping 5 m short of a line whose box its own
+    does not touch was never measured at all: 41,689 of 80,892 near-miss ends
+    on the published network (#1668, measured 2026-09-24). Grown by the
+    tolerance, the box holds every line an end of this one could join, and
+    every line that could join an end of this one (Reasoned: a point within
+    d of a line is within d of that line's box on each axis).
+
+    This only chooses which pairs are MEASURED. The decision is still each
+    end's own distance against `endpoint_snap_m`, so a parallel trail with no
+    end near this one is compared and still never welded.
+
+    step_node_lines.weld_ranks() asks the same question of the same tree, so
+    the order welds reach the node grid is the one this gives.
+    """
+    if endpoint_snap_m <= 0:
+        return tree.query(line)
+    min_x, min_y, max_x, max_y = line.bounds
+    grown = shapely.box(
+        min_x - endpoint_snap_m,
+        min_y - endpoint_snap_m,
+        max_x + endpoint_snap_m,
+        max_y + endpoint_snap_m,
+    )
+    return tree.query(grown)
+
+
 def node_lines(lines: list[dict], endpoint_snap_m: float) -> tuple[list[dict], dict]:
     """Split every line where it meets another, and join ends that stop short.
 
@@ -401,7 +432,7 @@ def node_lines(lines: list[dict], endpoint_snap_m: float) -> tuple[list[dict], d
     stats = {"crossings": 0, "endpoint_joins": 0}
 
     for index, line in enumerate(geometries):
-        for other_index in tree.query(line):
+        for other_index in snap_partners(tree, line, endpoint_snap_m):
             other_index = int(other_index)
             if other_index <= index:
                 continue

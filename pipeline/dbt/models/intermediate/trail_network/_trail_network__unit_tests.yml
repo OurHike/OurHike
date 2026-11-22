@@ -201,6 +201,25 @@ unit_tests:
     expect:
       rows: []
 
+  - name: int_trail_network__cuts_ends_are_joined_where_the_envelopes_do_not_meet
+    description: >
+      Ports test_two_lines_in_line_with_a_gap_inside_the_tolerance_are_joined_end_to_end
+      (#1668): one east-west line starts 4.99 m east of where the other stops
+      (measured in EPSG:5070), so their envelopes do not meet. Each end lies
+      within trail_network_endpoint_snap_m of the other line, so each is an
+      `endpoint_join`: the west line's end against the east, then the east
+      line's start against the west. Before #1668 neither was measured.
+    model: int_trail_network__cuts
+    given:
+      - input: ref('int_trail_network__routable')
+        rows:
+          - {part_id: 'oprhp_trails:1#1', part_order: 0, refused_because: null, geom_wkt: 'LINESTRING (-74.1 41.25, -74.09 41.25)'}
+          - {part_id: 'nynjtc_long_path:2#1', part_order: 1, refused_because: null, geom_wkt: 'LINESTRING (-74.08994 41.25, -74.08 41.25)'}
+    expect:
+      rows:
+        - {cut_key: 'endpoint_join:oprhp_trails:1#1|nynjtc_long_path:2#1|end', cut_order: 0, cut_kind: endpoint_join, line_part_id: 'oprhp_trails:1#1', other_part_id: 'nynjtc_long_path:2#1', end_side: end, end_point_wkt: 'POINT (1805707.3676826158 2236062.1874913694)'}
+        - {cut_key: 'endpoint_join:nynjtc_long_path:2#1|oprhp_trails:1#1|start', cut_order: 1, cut_kind: endpoint_join, line_part_id: 'nynjtc_long_path:2#1', other_part_id: 'oprhp_trails:1#1', end_side: start, end_point_wkt: 'POINT (1805712.224642649 2236063.3275412433)'}
+
   - name: int_trail_network__cuts_parallel_trails_are_never_welded
     description: >
       Ports test_parallel_trails_are_not_welded_together_at_the_default_tolerance,

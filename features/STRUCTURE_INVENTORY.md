@@ -354,6 +354,8 @@ inventory_claims             a heads-up that a volunteer means to walk a section
   id, club_id, volunteer_id, section_id → org_sections, claimed_at
   walk_on (date), released_at?
   current = walk_on >= today and released_at is null; nothing expires a row, the query does
+  ("today" is the server's UTC date less one day, CLAIM_DAY_SLACK in
+  backend/app/routers/inventory_areas.py: the UTC date runs a day ahead of a US evening)
 
 inventory_club_settings      one row per club
   club_id (PK), waiver_text, waiver_version

@@ -930,3 +930,25 @@ def test_a_records_photo_reaches_its_volunteer_and_its_reviewers_and_is_a_404_to
         assert response.status_code == 200
     else:
         assert response.status_code == 404
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_only_an_enrolled_volunteer_can_see_where_a_walk_is_needed(client, survey_world, who):
+    """#1988 — Priority areas are sections scored by the records in them, and a claim is a day a volunteer means to walk one.
+
+    The design's permissions table puts the priority areas with the survey's
+    volunteer, beside claiming a day and uploading a record."""
+    path = f"/clubs/{{slug}}/inventory/areas?trail={survey_world['trail_id']}"
+    response = _call(client, survey_world, who, "get", path)
+    expected = _expected({ENROLLED_VOLUNTEER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", SURVEY_PEOPLE)
+def test_only_an_enrolled_volunteer_can_claim_a_day_on_a_section(client, survey_world, who):
+    body = {"section_id": survey_world["section"].id, "walk_on": utc_now().date().isoformat()}
+    response = _call(client, survey_world, who, "post", "/clubs/{slug}/inventory/claims", body)
+    expected = _expected({ENROLLED_VOLUNTEER}, who)
+
+    assert response.status_code == (201 if expected is None else expected)
